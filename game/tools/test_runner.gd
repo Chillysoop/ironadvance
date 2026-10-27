@@ -2,7 +2,8 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat,
-## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad).
+## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad),
+## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
 var out_dir := "user://shots"
@@ -14,6 +15,7 @@ var seed_arg := 1
 var runs_arg := 1
 var playtest_debug := false
 var start_arg := 0
+var clip_arg := ""
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -31,6 +33,8 @@ func _ready() -> void:
 			seed_arg = int(a.substr(7))
 		elif a.begins_with("--start="):
 			start_arg = int(a.substr(8))
+		elif a.begins_with("--clip="):
+			clip_arg = a.substr(7)
 		elif a.begins_with("--runs="):
 			runs_arg = int(a.substr(7))
 	DirAccess.make_dir_recursive_absolute(out_dir)
@@ -646,6 +650,8 @@ func run() -> void:
 			await playtest()
 		"pinball":
 			await pinball()
+		"trailer":
+			await preload("res://tools/trailer.gd").new().run(self, clip_arg)
 		"campaign":
 			Run.new_run()
 			for m in 3:
