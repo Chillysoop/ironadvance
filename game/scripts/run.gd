@@ -866,6 +866,9 @@ func fuse(s: Dictionary, g: Array) -> Dictionary:
 	for c in g:
 		s.deck.erase(c)
 	var c := new_card(g[0].key, Data.tier_of(g[0]) + 1, "fused")
+	var k: int = g.reduce(func(a, o): return a + int(o.get("kills", 0)), 0)
+	if k > 0:
+		c["kills"] = k  # the fused card keeps the copies' kill count
 	for o in g:
 		if o.get("mods", []).size():
 			c["mods"] = o.mods.duplicate()

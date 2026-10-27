@@ -132,10 +132,9 @@ func build() -> void:
 	if not readonly and s().alive and tab != "squad":
 		# D5: a free round at the practice range with this soldier's deck as it stands
 		var pr := HudScript.PixButton.new()
-		pr.text = "PRACTICE RANGE"
-		pr.sub = "T"
+		pr.text = "PRACTICE RANGE  (T)"
 		pr.color = Color("62d26f")
-		pr.size = Vector2(RIGHT.size.x, 30)
+		pr.size = Vector2(RIGHT.size.x, 28)
 		pr.position = Vector2(RIGHT.position.x, RIGHT.end.y - 84)
 		pr.pressed.connect(practice)
 		add_child(pr)
@@ -694,6 +693,7 @@ func draw_right(me: Dictionary) -> void:
 		var src := Services.source(me, c)
 		if src != "":
 			bits.append(src.capitalize() if not src.begins_with("from") else src.capitalize())
+		bits.append("Kills this run: %d." % int(c.get("kills", 0)) if c.get("kills", 0) else "No kills yet.")
 		if c.get("mods", []).size():
 			bits.append("Mods: " + ", ".join(Data.card(c).get("mod_names", [])))
 		var fit := Services.branch_fit(me, c.key)
@@ -883,6 +883,13 @@ func draw_squad() -> void:
 			Art.text(self, "+%d more" % (rows.size() - max_rows), Vector2(x + 20, y), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		# what the deck is building toward: its Overdrive and duo partners
 		var fy := r.end.y - 50
+		var best = null
+		for c in me.deck:
+			if int(c.get("kills", 0)) > 0 and (best == null or c.kills > best.kills):
+				best = c
+		if best != null:
+			Art.text(self, "TOP CARD", Vector2(x, fy - 34), 8, Color("ff7a5a"))
+			Art.text(self, "%s, %d kills" % [best.get("nick", Data.card(best).name), best.kills], Vector2(x + 70, fy - 34), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		draw_line(Vector2(x, fy - 12), Vector2(r.end.x - 8, fy - 12), Color("4a505a"), 1.0)
 		Art.text(self, "OVERDRIVE", Vector2(x, fy), 8, Color("ffb23e"))
 		Art.text(self, Data.CARDS[Run.od_key(me)].name, Vector2(x, fy + 12), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)

@@ -974,7 +974,7 @@ func field() -> void:
 	await frames_wait(6)
 	await shot("field_debrief_dossier")
 	check(not fd[0].get_children().any(func(c): return c is HubUI.ActionTile), "no card services in the field")
-	check(not fd[0].get_children().any(func(c): return c is HudScript.PixButton and c.text == "PRACTICE RANGE"), "no practice range from the field")
+	check(not fd[0].get_children().any(func(c): return c is HudScript.PixButton and c.text.begins_with("PRACTICE RANGE")), "no practice range from the field")
 	fd[0].done.emit()
 	await frames_wait(6)
 	# --- S6: the level-up pick and the battle deck view
@@ -1006,6 +1006,38 @@ func field() -> void:
 	var db2: Array = b.hud.modal.get_children().filter(func(c): return c is HudScript.PixButton and c.text == "DOSSIER")
 	check(db2.size() == 1, "the battle deck view has a DOSSIER button")
 	b.hud.modal.visible = false
+	# --- D4: kills per card
+	var shooter: Unit = b.squad()[0]
+	var inst: Dictionary = shooter.hand.filter(func(c): return not c.get("temp", false))[0]
+	b.spend_card(shooter, shooter.hand.find(inst))
+	for k in Data.NICK_KILLS:
+		var dm := b.mk_enemy("grunt", shooter.x + 200 + k * 10, b.T.stand_y(shooter.x + 200, 0))
+		dm.active = true
+		b.units.append(dm)
+		b.damage(dm, 999, shooter)
+	check(int(inst.get("kills", 0)) == Data.NICK_KILLS and inst.has("nick"), "the played card counts its kills and earns a nickname at %d (%s)" % [Data.NICK_KILLS, inst.get("nick", "none")])
+	check(shooter.s.deck.has(inst), "the count lives on the deck card itself")
+	await until(func(): return not b.busy, 600)
+	var g3: Array = [Run.new_card("knife", 0), Run.new_card("knife", 0), Run.new_card("knife", 0)]
+	g3[0]["kills"] = 2
+	g3[2]["kills"] = 3
+	var sx: Dictionary = Run.soldiers[3]
+	sx.deck.append_array(g3)
+	var fz := Run.fuse(sx, g3)
+	check(int(fz.get("kills", 0)) == 5, "a fused card keeps the copies' kills")
+	main.show_hq(false)
+	await frames_wait(10)
+	main.screen.open_dossier(Run.soldiers.find(shooter.s))
+	await frames_wait(6)
+	main.screen.sub.sel = inst
+	main.screen.sub.build()
+	await frames_wait(6)
+	await shot("field_card_kills")
+	main.screen.sub.set_tab("squad")
+	await frames_wait(6)
+	await shot("field_top_card")
+	main.screen.sub.done.emit()
+	await frames_wait(4)
 	# --- D5: the practice range
 	main.show_hq(false)
 	await frames_wait(10)
@@ -1016,7 +1048,7 @@ func field() -> void:
 	var hist0: int = Run.history.size()
 	main.screen.open_dossier(0)
 	await frames_wait(10)
-	var pr: Array = main.screen.sub.get_children().filter(func(c): return c is HudScript.PixButton and c.text == "PRACTICE RANGE")
+	var pr: Array = main.screen.sub.get_children().filter(func(c): return c is HudScript.PixButton and c.text.begins_with("PRACTICE RANGE"))
 	check(pr.size() == 1, "the HQ Dossier has a PRACTICE RANGE button")
 	await shot("field_practice_button")
 	pr[0].pressed.emit()

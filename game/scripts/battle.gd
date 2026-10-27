@@ -80,6 +80,7 @@ var act_crushed := 0      # Jackals crushed by debris during the current action 
 var act_crush_at := Vector2.ZERO
 var crate_bump := 0       # kill combo x5: the next crate rolls one rarity higher
 var act_unit: Unit = null # who played the card that started the current action
+var act_inst = null       # the deck card behind the current action, credited with its kills (D4)
 var taunter: Unit = null  # Taunt: Jackals that can, shoot this soldier next phase
 var lazarus_used := false
 var last_hit_head := false
@@ -1416,6 +1417,7 @@ func kill(tg: Unit, src) -> void:
 			bodies[0].soak = 0
 	if tg.team == "enemy":
 		stats.kills += 1
+		credit_card(src)
 		var base: int = Data.ETYPES[tg.type].score
 		if state == "player":
 			combo += 1
@@ -1531,6 +1533,17 @@ func kill(tg: Unit, src) -> void:
 			sel = al[0] if al.size() else null
 			card_idx = -1
 	ui_dirty = true
+
+func credit_card(src) -> void:
+	## D4: the card that made the kill keeps count for the run. Ten kills earn it a nickname.
+	if not (src is Unit) or src != act_unit or act_inst == null or state != "player" or act_inst.get("temp", false) or act_inst.get("od", false):
+		return
+	var c: Dictionary = act_inst
+	c["kills"] = int(c.get("kills", 0)) + 1
+	if c.kills == Data.NICK_KILLS and not c.has("nick"):
+		c["nick"] = Data.CARD_NICKS[randi() % Data.CARD_NICKS.size()]
+		float_text(src, "%s IS NOW \"%s\"" % [Data.card(c).name.to_upper(), c.nick.to_upper()], Color("ffd23a"), true)
+		log_msg("%s's %s has %d kills. The squad calls it \"%s\" now." % [src.def.name, Data.card(c).name, c.kills, c.nick])
 
 func feed_kill(tg: Unit, src) -> void:
 	## U1: one kill feed line, Metal Slug style: KILLER [HOW] VICTIM, with a stamp for the flashy ones.
@@ -2037,6 +2050,7 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 			drop_hang(u)
 	act_unit = u
 	act_card = c.get("name", "")
+	act_inst = inst
 	u.played += 1
 	if ch != "":
 		chain(u, ch)

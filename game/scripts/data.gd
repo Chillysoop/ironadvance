@@ -184,6 +184,7 @@ const TAGS := {
 # Legendary items made by a triple merge get a name and a unique line (M1).
 const LEGEND_NAMES := {"weapon": ["Old Faithful", "Widowmaker", "Last Word"], "armor": ["Old Iron", "Second Skin", "Hard Luck"], "kit": ["Lucky Break", "Sixth Sense", "Hot Hands"]}
 const LEGEND_BONUS := {"weapon": {"aim_dmg": 2}, "armor": {"armor_turn": 2}, "kit": {"luck": 1}}
+const NICK_KILLS := 10  # D4: kills that earn a card a nickname
 const CARD_NICKS := ["Old Faithful", "The Closer", "Sweet Talker", "Big Iron", "Last Call", "House Rules"]
 const FAB_PRICE := 70
 
