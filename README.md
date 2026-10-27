@@ -36,7 +36,7 @@ The launcher is unsigned: on Windows choose More info → Run anyway; on macOS r
   collapsing bridges, piers, cranes, minefields, steel-grating catwalks and chain-link fences (bullets and grenades pass through both). `terrain.gd` builds them.
 - `game/tools/gen_art.py`, `gen_sfx.py` regenerate every sprite and sound (Python 3 + Pillow; gen_art.py also needs NumPy).
 - `game/tools/test_runner.gd` scripted tests and an autoplayer:
-  `godot --path game -- --iatest --scenario=flow --out=/tmp/shots` (title, start, aim, arc, topple, level, shop, flow, bot, campaign, alive).
+  `godot --path game -- --iatest --scenario=flow --out=/tmp/shots` (title, start, aim, arc, topple, level, shop, picker, flow, bot, campaign, alive).
   `--scenario=levels` photographs every screen of each mission and walks a soldier through to list blocked spots;
   `--scenario=hazards` sets off each set piece and prints PASS/FAIL; `--scenario=soldat` checks the Soldat borrowings (grating, fences, bodies, recoil, bonus pads, Jet Boots); `--scenario=bot --mission=N` autoplays mission N.
 - `launcher/` the updater. Point it at another host with `--manifest=URL` or a `launcher.cfg` next to the executable
