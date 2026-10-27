@@ -298,16 +298,16 @@ func build_struct(s: Dictionary) -> void:
 				var off: float = s.x + (s.w - 44.0 if k % 2 == 0 else 44.0)
 				ladders.append({"x": lx, "top": bot - fh, "bot": bot, "offx": off})
 		"bridge":
-			# a plank deck flush with both banks, held up only by its posts. The posts stop short of
-			# the riverbed, so the deck hangs off the banks; check_bridges cuts it loose.
+			# a plank deck flush with both banks on posts driven into the riverbed. check_bridges
+			# cuts the deck loose; the posts that survive stay up as stepping stones to hop across.
 			var g := ground_at(s.x0 - 12)
 			s["y"] = g
 			s["down"] = false
 			fill_r(s.x0, g, s.x1 - s.x0, 8, 3)
 			s["post_cells"] = []
 			for px in s.posts:
-				fill_r(px - 4, g + 8, 8, Data.WATER_Y + 12 - g - 8, 3)
-				fill_r(px - 8, g + 8, 16, 4, 3)
+				fill_r(px - 4, g + 8, 8, Data.H - g - 8, 3)
+				fill_r(px - 12, g + 8, 24, 4, 3)
 				s.post_cells.append(_count(px - 4, g + 8, 8, Data.WATER_Y + 12 - g - 8))
 			bridges.append(s)
 		"docks":
@@ -395,16 +395,28 @@ func _count(x: float, y: float, w: float, h: float) -> int:
 				n += 1
 	return n
 
+func _severed(px: float, y0: float, y1: float) -> bool:
+	## true when some row of the post between y0 and y1 has been shot clean through
+	for cy in range(int(floor(y0 / CELL)), int(floor(y1 / CELL))):
+		var any := false
+		for cx in range(int(floor((px - 4) / CELL)), int(ceil((px + 4) / CELL))):
+			if grid[cy * cols + cx]:
+				any = true
+		if not any:
+			return true
+	return false
+
 func check_bridges(cause) -> void:
-	## A bridge goes down as soon as any of its posts is half gone: the deck snaps free of
-	## both banks and drops, with everything standing on it.
+	## A bridge goes down as soon as any of its posts is shot through or half gone: the deck snaps free of
+	## both banks and its posts and drops, with everything standing on it. The posts left
+	## standing keep their cap, so the squad can hop across one post at a time.
 	for s in bridges:
 		if s.down:
 			continue
 		var weak := false
 		for i in s.posts.size():
 			var px: float = s.posts[i]
-			if _count(px - 4, s.y + 8, 8, Data.WATER_Y + 12 - s.y - 8) < s.post_cells[i] * 0.5:
+			if _count(px - 4, s.y + 8, 8, Data.WATER_Y + 12 - s.y - 8) < s.post_cells[i] * 0.5 or _severed(px, s.y + 12, Data.WATER_Y):
 				weak = true
 		if not weak:
 			continue
@@ -416,6 +428,13 @@ func check_bridges(cause) -> void:
 				if cx >= 0 and cy >= 0 and cx < cols and cy < ROWS and grid[cy * cols + cx]:
 					b.debris(cx * CELL + 2, cy * CELL + 2, grid[cy * cols + cx])
 					set_cell(cx, cy, 0)
+		# break the deck over every post so the planks fall between them instead of resting on them
+		for px in s.posts:
+			for cx in range(int(floor((px - 14) / CELL)), int(ceil((px + 14) / CELL))):
+				var cy := int(floor(s.y / CELL))
+				if randf() < 0.5 and grid[cy * cols + cx]:
+					b.debris(cx * CELL + 2, cy * CELL + 2, 3)
+			fill_r(px - 14, s.y, 28, 8, 0)
 		b.bridge_down(s)
 		check_floating((s.x0 + s.x1) / 2.0, s.y + 40, (s.x1 - s.x0) / 2.0 + 16, cause)
 

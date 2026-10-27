@@ -1804,6 +1804,9 @@ func commit_aim(p: Vector2) -> void:
 			resolve(func(): await _act_grapple(u, idx, gs))
 			return
 		if c.get("jump", false):
+			if c.get("hop", false) and u.move_left < 1:
+				float_text(u, "NO MOVE LEFT", Color("ff7a3d"))
+				return
 			resolve(func(): await _act_jump(u, idx, p))
 			return
 		if c.get("rush", false):
@@ -1869,6 +1872,8 @@ func _act_grapple(u: Unit, idx: int, gs: Dictionary) -> void:
 func _act_jump(u: Unit, idx: int, p: Vector2) -> void:
 	var c := spend_card(u, idx)
 	u.fl["jumped"] = true
+	if c.get("hop", false):
+		u.move_left = 0  # a hop is the rest of your legwork for the turn
 	if c.get("rjump", false):
 		explode(u.x, u.y - 4, 30, 6, u)
 		await wait(2)
@@ -2636,6 +2641,8 @@ func start_player_turn() -> void:
 		s.dragged = false
 		stow_hand(s)
 		draw_cards(s, hand_size(s))
+		if not s.hand.any(func(c): return c.key == "hop"):
+			s.hand.append({"id": -4, "key": "hop", "tier": Data.base_tier("hop"), "temp": true})
 		if s.adr >= 100 and not s.hand.any(func(c): return c.get("od", false) and not c.has("duo")):
 			grant_overdrive(s)
 	refresh_duos()

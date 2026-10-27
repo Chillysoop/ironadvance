@@ -60,6 +60,8 @@ const CARDS := {
 	"bazooka": {"name": "Bazooka", "type": "LINE", "cost": 2, "radius": 34, "dmg": 13, "speed": 10.0, "text": "Straight rocket. Big knockback.", "rarity": 1, "up": {"dmg": 17, "radius": 40}},
 	"rocket": {"name": "Rocket Pod", "type": "LINE", "cost": 2, "radius": 24, "dmg": 8, "speed": 11.0, "count": 3, "text": "Three rockets in a spread.", "rarity": 2, "up": {"count": 4}},
 	"grapple": {"name": "Grapple Hook", "type": "LINE", "cost": 1, "grapple": true, "range": 280, "text": "Zip onto a ledge or roof in reach.", "rarity": 1, "up": {"range": 400}},
+	# every soldier carries Hop: it is handed out each turn and never sits in a deck
+	"hop": {"name": "Hop", "type": "LINE", "cost": 1, "jump": true, "jpow": 0.62, "hop": true, "pool": false, "text": "Everyone has one. Jump a short gap or up a wall about head high. Uses the rest of your movement.", "rarity": 0},
 	"jumppack": {"name": "Jump Pack", "type": "LINE", "cost": 1, "jump": true, "jpow": 1.0, "text": "Launch yourself in an arc. Lands soft. Counts as a push.", "rarity": 1, "up": {"jpow": 1.3}},
 	"knife": {"name": "Knife", "type": "MELEE", "cost": 1, "dmg": [8, 10], "range": 38, "knock": 6, "text": "Never misses. Kicks them away.", "rarity": 0, "up": {"dmg": [11, 13]}},
 	"medkit": {"name": "Field Dressing", "type": "ALLY", "cost": 1, "heal": 9, "range": 110, "text": "Patch up a squadmate.", "rarity": 0, "up": {"heal": 13}},
@@ -595,8 +597,8 @@ const SEGMENTS := {
 			["pow", 340, {"up": 128}], ["grunt", 405, {"hold": 1, "up": 128}], ["radio", 380, {"hold": 1, "up": 182}], ["brute", 560]]},
 	# a gully with a plank bridge: drop it while they are on it
 	"gully": {"w": 720, "sandbags": [520], "pits": [],
-		"structs": [{"t": "bridge", "x0": 240, "x1": 440, "posts": [306, 374]}],
-		"spawns": [["pow", 110], ["grunt", 340, {"hold": 1}], ["shield", 400], ["barrel", 470], ["nade", 560, {"hold": 1}], ["grunt", 620], ["radio", 670]]},
+		"structs": [{"t": "bridge", "x0": 240, "x1": 440, "posts": [290, 340, 390]}],
+		"spawns": [["pow", 110], ["grunt", 315, {"hold": 1}], ["shield", 365], ["barrel", 470], ["nade", 560, {"hold": 1}], ["grunt", 620], ["radio", 670]]},
 	# a raised jungle ridge sown with mines
 	"ridge": {"w": 820, "sandbags": [], "pits": [],
 		"ground": [{"x0": 260, "x1": 600, "dh": 46, "ramp": 0}, {"x0": 600, "x1": 640, "dh": 46, "ramp": 90}],
@@ -604,7 +606,7 @@ const SEGMENTS := {
 		"spawns": [["mine", 140], ["mine", 196], ["grunt", 300, {"hold": 1}], ["mine", 352], ["nade", 410, {"hold": 1}], ["pow", 440], ["grunt", 470, {"hold": 1}], ["mine", 530], ["nade", 600], ["mine", 690], ["sapper", 720], ["radio", 780]]},
 	# the long river bridge, mortar fire from the far bank
 	"river": {"w": 960, "sandbags": [590], "pits": [],
-		"structs": [{"t": "bridge", "x0": 180, "x1": 500, "posts": [260, 340, 420]}, {"t": "ledge", "x": 680, "w": 96, "dy": 92, "post": 760}],
+		"structs": [{"t": "bridge", "x0": 180, "x1": 500, "posts": [236, 292, 348, 404, 452]}, {"t": "ledge", "x": 680, "w": 96, "dy": 92, "post": 760}],
 		"spawns": [["grunt", 300, {"hold": 1}], ["shield", 380, {"hold": 1}], ["grunt", 460], ["fuel", 540], ["mine", 620], ["brute", 650], ["nade", 720, {"hold": 1, "up": 120}], ["mortarcrew", 860, {"hold": 1}], ["radio", 900]]},
 	# harbor pier over open water: steel girders above, a crane container over the middle
 	"docks": {"w": 1000, "sandbags": [], "pits": [],
