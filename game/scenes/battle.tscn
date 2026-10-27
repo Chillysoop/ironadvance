@@ -1,8 +1,10 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/battle.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/backdrop.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/world_view.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/decor.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/foreground.gd" id="5"]
 
 [node name="Battle" type="Node2D"]
 script = ExtResource("1")
@@ -16,8 +18,14 @@ centered = false
 
 [node name="Chunks" type="Node2D" parent="."]
 
+[node name="Decor" type="Node2D" parent="."]
+script = ExtResource("4")
+
 [node name="WorldView" type="Node2D" parent="."]
 script = ExtResource("3")
+
+[node name="Foreground" type="Node2D" parent="."]
+script = ExtResource("5")
 
 [node name="Camera" type="Camera2D" parent="."]
 position = Vector2(480, 270)
