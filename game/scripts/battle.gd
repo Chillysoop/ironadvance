@@ -3165,7 +3165,7 @@ func supply_drop(title: String, for_unit) -> void:
 		await offer_item(opts[ch].u, opts[ch].item)
 	elif ch >= 0:
 		var o: Dictionary = opts[ch]
-		var inst := Run.new_card(o.key, o.tier)
+		var inst := Run.new_card(o.key, o.tier, "drop")
 		o.u.s.deck.append(inst)
 		o.u.draw.insert(ri(0, o.u.draw.size()), inst)
 		log_msg("%s added to %s's deck." % [Data.CARDS[o.key].name, o.u.def.name])
