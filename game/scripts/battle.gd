@@ -80,6 +80,8 @@ var acc := 0.0
 var charm_used := 0
 var autopick := -1        # tests: pick this option index in every modal instead of waiting
 var theme := "dusk"
+var th := {}              # the theme colors, with the biome's look laid over them
+var rules := {}           # the biome's rules: sway, sight, wind, amp, wet, fuel, mines, elite
 var world_w := 6400
 
 @onready var cam: Camera2D = $Camera
@@ -91,16 +93,20 @@ var world_w := 6400
 func setup(idx: int, custom := {}) -> void:
 	mission_idx = idx
 	mission = Data.MISSIONS[idx] if custom.is_empty() else custom
+	rules = mission.get("rules", {})
+	Run.sway_mul = rules.get("sway", 1.0)
 	Run.temp_luck = 2 if Run.intel == "veterans" else 0
 	theme = mission.theme
+	th = Data.THEMES[theme].duplicate()
+	th.merge(mission.get("look", {}), true)
 	T = Terrain.new(self)
 	T.build(mission)
 	world_w = T.world_w
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/terrain.gdshader")
 	mat.set_shader_parameter("cells", Vector2(T.cols, Terrain.ROWS))
-	mat.set_shader_parameter("tint", Vector3(Data.THEMES[theme].tint.r, Data.THEMES[theme].tint.g, Data.THEMES[theme].tint.b))
-	var gc: Color = Data.THEMES[theme].grass
+	mat.set_shader_parameter("tint", Vector3(th.tint.r, th.tint.g, th.tint.b))
+	var gc: Color = th.grass
 	mat.set_shader_parameter("grass_col", Vector3(gc.r, gc.g, gc.b))
 	terrain_sprite.material = mat
 	terrain_sprite.texture = T.tex
@@ -131,11 +137,12 @@ func setup(idx: int, custom := {}) -> void:
 		if type == "barrel":
 			var u := mk_unit(); u.team = "neutral"; u.kind = "barrel"; u.x = x; u.y = T.stand_y(x, 0); u.w = 14; u.h = 18
 			units.append(u); continue
-		if type == "fuel":
-			var u := mk_unit(); u.team = "neutral"; u.kind = "fuel"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.w = 22; u.h = 30
-			units.append(u); continue
-		if type == "mine":
-			var u := mk_unit(); u.team = "neutral"; u.kind = "mine"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.w = 12; u.h = 6
+		if type == "fuel" or type == "mine":
+			var fy = T.stand_y(x, T.ground_at(x) - 40)
+			if fy == null:  # a biome's extra drum or mine that landed over water
+				continue
+			var u := mk_unit(); u.team = "neutral"; u.kind = type; u.x = x; u.y = fy
+			u.w = 22 if type == "fuel" else 12; u.h = 30 if type == "fuel" else 6
 			units.append(u); continue
 		if type == "pow":
 			var u := mk_unit(); u.team = "neutral"; u.kind = "pow"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - opt.up) if opt.has("up") else T.stand_y(x, 0); u.face = -1
@@ -151,7 +158,7 @@ func setup(idx: int, custom := {}) -> void:
 		if type == "boss":
 			var bm := 1.4 if Run.threat_on(5) else 1.0
 			u.hp = int(mission.boss_hp * bm); u.max_hp = u.hp; u.plate = int(mission.plate * bm)
-		elif randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0):
+		elif randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
 			make_elite(u, Data.ELITES.keys()[randi() % Data.ELITES.size()])
 		units.append(u)
 	spawn_map_loot()
@@ -291,11 +298,12 @@ func spawn_map_loot() -> void:
 	for i in n:
 		var x := lo + (i + randf_range(0.15, 0.85)) * (hi - lo) / n
 		var k := "strongbox" if randf() < 0.22 else "crate"
-		var u := mk_unit(); u.team = "neutral"; u.kind = k; u.x = x; u.y = T.stand_y(x, 0)
+		var ly = T.stand_y(x, 0)
+		if ly == null:
+			continue
+		var u := mk_unit(); u.team = "neutral"; u.kind = k; u.x = x; u.y = ly
 		u.w = 16 if k == "crate" else 20; u.h = 14 if k == "crate" else 14
 		u.hp = 1; u.max_hp = 1
-		if u.y == null:
-			continue
 		units.append(u)
 	for i in 1 + (1 if randf() < 0.4 else 0):
 		var x := randf_range(lo + 200, hi)
@@ -422,6 +430,10 @@ func settled() -> bool:
 
 func gauss() -> float:
 	return (randf() + randf() + randf() - 1.5) * 1.15
+
+func wet() -> bool:
+	## Monsoon intel or a soaked biome: fire does 1 damage and won't spread.
+	return Run.intel == "monsoon" or rules.get("wet", false)
 
 func ri(a: int, b: int) -> int:
 	return randi_range(a, b)
@@ -624,7 +636,7 @@ func tick_statuses(team: String) -> void:
 			for i in 4:
 				part({"x": u.x + randf_range(-6, 6), "y": u.y - randf() * u.h, "vx": 0.0, "vy": -1.5, "life": 24, "max": 24, "c": Color("ff9a3d"), "s": 3.0, "g": -0.02, "fire": true})
 			var bsrc = u.st_by.get("burn", null)
-			var bd := 1 if Run.intel == "monsoon" else 3 + (2 if bsrc is Unit and bsrc.perk("accelerant") else 0)
+			var bd := 1 if wet() else 3 + (2 if bsrc is Unit and bsrc.perk("accelerant") else 0)
 			burn_tick = true
 			damage(u, bd, bsrc, {"status": true})
 			burn_tick = false
@@ -632,7 +644,7 @@ func tick_statuses(team: String) -> void:
 				# fire meets gas: the whole cloud goes up
 				gases.erase(g)
 				explode(g.x, g.y, g.r * 0.8, 12, g.owner)
-			elif T.mat(u.x, u.y + 2) == 3 and Run.intel != "monsoon":
+			elif T.mat(u.x, u.y + 2) == 3 and not wet():
 				# the wood underfoot chars and the fire jumps to anyone else standing on wood nearby
 				T.carve(u.x, u.y + 3, 6, null)
 				for o in units:
@@ -2594,7 +2606,7 @@ func hand_size(s: Unit) -> int:
 func start_player_turn() -> void:
 	round_n += 1
 	stats.rounds = round_n
-	wind = ri(-6, 6)
+	wind = int(round(ri(-6, 6) * rules.get("wind", 1.0)))
 	combo = 0
 	for s in squad_alive():
 		s.energy = 3
@@ -2873,6 +2885,7 @@ func best_shot(e: Unit, targets: Array, rng: float):
 	var best = null
 	if Run.intel == "fog":
 		rng *= 0.7
+	rng *= rules.get("sight", 1.0)
 	for tg in targets:
 		if tg.team == "squad" and not targetable(e, tg):
 			continue
