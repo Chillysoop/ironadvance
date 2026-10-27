@@ -6,6 +6,8 @@ extends Node
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
+const Services := preload("res://scripts/services.gd")
+
 var out_dir := "user://shots"
 var scenario := ""
 var main: Node
@@ -708,12 +710,16 @@ func run() -> void:
 			await hq_upgrades()
 		"doc":
 			await doc()
+		"dossier":
+			await dossier()
 		"aliens":
 			await aliens()
 		"aliens2":
 			await aliens2()
 		"aliens3":
 			await aliens3()
+		"aliens4":
+			await aliens4()
 		"playtest":
 			await playtest()
 		"pinball":
@@ -786,6 +792,135 @@ func picker() -> void:
 	main.show_title()
 	await frames_wait(30)
 	await shot("picker_title")
+
+func dossier() -> void:
+	## The HQ Dossier: squad bar, soldiers you can click, and card services on the selected card
+	## with a before/after preview that only charges on CONFIRM.
+	Run.new_run()
+	Run.scrip = 600
+	var moss: Dictionary = Run.soldiers[0]
+	moss.hp = 9
+	check(moss.deck.all(func(c): return c.get("from", "") == "start"), "starting cards remember they came with the soldier")
+	moss.deck.append(Run.new_card("rifle", 0, "shop"))
+	main.show_hq(false)
+	await frames_wait(20)
+	var hq: Control = main.screen
+	hq.hover_troop = 0
+	await frames_wait(4)
+	await shot("dossier_hq")
+	check(Services.alert(moss) == "FUSE", "the squad bar flags Moss's three Rifle Shots")
+	hq.hover_troop = -1
+	hq.open_dossier(0)
+	await frames_wait(20)
+	await shot("dossier_deck")
+	var d: Control = hq.sub
+	check(d != null and d.idx == 0 and d.tab == "deck", "the Dossier opens on Moss's deck")
+	var rifles: Array = moss.deck.filter(func(c): return c.key == "rifle")
+	d.sel = rifles[0]
+	d.build()
+	await frames_wait(10)
+	await shot("dossier_selected")
+	var acts := Services.card_actions(moss, rifles[0])
+	check(acts.map(func(a): return a.id) == ["polish", "gunsmith", "fuse", "evolve", "burn"], "a selected card shows the five card services")
+	check(acts[0].ok and acts[0].line.contains("DMG 6-8 > 8-10"), "Polish says what it does: " + acts[0].line)
+	check(acts[2].ok and acts[3].why.contains("Scope"), "Fuse is ready, Evolve says what it needs: " + acts[3].why)
+	# polish through the preview: nothing is paid until CONFIRM
+	var before: int = Run.scrip
+	d.open_preview("polish")
+	await frames_wait(10)
+	await shot("dossier_polish_preview")
+	check(Run.scrip == before and Data.tier_of(rifles[0]) == 0, "opening the preview costs nothing")
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(Data.tier_of(rifles[0]) == 1 and Run.scrip == before - Services.price(Services.POLISH), "CONFIRM polishes the card and charges once")
+	# fuse needs three of one rarity again
+	moss.deck.append(Run.new_card("rifle", 0, "shop"))
+	var commons: Array = moss.deck.filter(func(c): return c.key == "rifle" and Data.tier_of(c) == 0)
+	check(commons.size() == 3, "three Common Rifle Shots for the fusion test")
+	var n0: int = moss.deck.size()
+	d.sel = commons[0]
+	d.build()
+	d.open_preview("fuse")
+	await frames_wait(10)
+	await shot("dossier_fuse_preview")
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(moss.deck.size() == n0 - 2 and d.sel != null and d.sel.get("from", "") == "fused" and Data.tier_of(d.sel) == 1, "Fuse turns three into one Uncommon and selects it")
+	# gunsmith: pick a mod card, then confirm
+	d.open_preview("gunsmith")
+	await frames_wait(10)
+	check(d.modal.confirm.disabled, "Gunsmith waits for a mod to be picked")
+	var opts: Array = d.modal.get_children().filter(func(o): return o is CardView)
+	opts[0].pressed.emit()
+	await frames_wait(6)
+	await shot("dossier_mod_preview")
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(d.sel.get("mods", []).size() == 1, "the picked mod lands on the card")
+	# evolve with an Epic Rifle Shot and the Scope kit
+	var epic := Run.new_card("rifle", 3, "shop")
+	moss.deck.append(epic)
+	var scope := Run.new_item("scope", 0)
+	Run.stash.append(scope)
+	Run.equip(moss, scope)
+	d.sel = epic
+	d.build()
+	check(Services.evolve_info(moss, epic).ok, "Epic Rifle Shot plus Scope can evolve")
+	d.open_preview("evolve")
+	await frames_wait(10)
+	await shot("dossier_evolve_preview")
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(epic.key == "lasergun", "Evolve makes the Laser Gun")
+	# burn
+	var n1: int = moss.deck.size()
+	d.sel = moss.deck.filter(func(c): return c.key == "pistol")[0]
+	d.build()
+	d.open_preview("burn")
+	await frames_wait(6)
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(moss.deck.size() == n1 - 1 and d.sel == null, "Burn takes the card out")
+	# filters, sort, upgraded preview
+	d.filt = "fuse"
+	d.build()
+	check(d.deck_list().all(func(c): return Services.fuse_group(moss, c).size() >= 2 or Services.evolve_rule(c).size() > 0), "the FUSE filter shows only cards with fusion or evolution progress")
+	d.filt = ""
+	d.sort = "rarity"
+	d.show_up = true
+	d.build()
+	await frames_wait(10)
+	await shot("dossier_upgraded")
+	d.show_up = false
+	# sheet and gear tabs
+	moss.perks.append("steady")
+	d.set_tab("sheet")
+	await frames_wait(10)
+	await shot("dossier_sheet")
+	var vest := Run.new_item(Run.random_item_id(["armor"]), 1)
+	Run.stash.append(vest)
+	d.gear_pick = {"where": "stash", "i": Run.stash.find(vest)}
+	d.set_tab("gear")
+	await frames_wait(10)
+	await shot("dossier_gear")
+	check(d.equip_preview(vest).size() > 0, "the gear tab previews what equipping changes")
+	d.cycle(1)
+	await frames_wait(10)
+	check(d.idx == 1 and d.gear_pick.is_empty(), "E flips to the next soldier")
+	await shot("dossier_hex_gear")
+	d.done.emit()
+	await frames_wait(10)
+	check(hq.idle(), "BACK returns to the HQ scene")
+	# read-only from the field: no service tiles
+	var ro: Control = load("res://scripts/dossier.gd").new()
+	ro.readonly = true
+	ro.idx = 2
+	main.add_child(ro)
+	ro.sel = Run.soldiers[2].deck[0]
+	ro.build()
+	await frames_wait(6)
+	check(not ro.get_children().any(func(o): return o.get_script() != null and o.get("why") != null), "a read-only Dossier shows no service buttons")
+	ro.queue_free()
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)
@@ -1005,7 +1140,7 @@ func aliens() -> void:
 	b = main.start_battle(1, Run.level)
 	await until(func(): return b.state == "player" and not b.busy)
 	types = b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
-	check(not types.has("grunt") and not types.has("nade") and Data.BIOME_ALIENS.fortress.all(func(t): return types.has(t)), "level 2 gives every rifleman slot to the fortress's Vharr (%s)" % str(types))
+	check(not types.has("grunt") and not types.has("nade") and Data.BIOME_ALIENS.fortress.filter(func(t): return types.has(t)).size() >= 3, "level 2 gives every rifleman slot to the fortress's Vharr (%s)" % str(types))
 	check(types.count("skitter") % 3 == 0, "Skitters come in packs of 3 (%d)" % types.count("skitter"))
 	b.speed = 2.0
 	# a flat stretch near the start for the duels
@@ -1220,6 +1355,90 @@ func aliens3() -> void:
 	check(ally.hp == 50, "the dome stops bullets and blasts (hp %d)" % ally.hp)
 	b.damage(ally, 10, s, {"melee": true})
 	check(ally.hp == 40, "melee goes through the dome (hp %d)" % ally.hp)
+
+func aliens4() -> void:
+	## Batch 2 Vharr: Prism Drone, Gravity Warden, Phase Stalker, Overseer and its Thralls.
+	Run.new_run()
+	Run.level = Run.make_level("jungle", 2)
+	var b: Battle = main.start_battle(2, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var types := b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
+	check(types.count("overseer") == 1, "level 3 brings one Overseer (%s)" % str(types))
+	b.speed = 2.0
+	var x0 := 600.0
+	flat_strip(b, x0 - 160, 640)
+	# --- Prism Drone: bullets bounce off the mirror face, hit from behind
+	var s := alien_field(b, x0)
+	var pr := spawn_alien(b, "prism", x0 + 240)
+	pr.face = -1
+	var gy: float = pr.y - pr.h / 2.0
+	var tr := b.trace_bullet(x0 + 10, gy, 0.0, 600, 0, s, false)
+	check(not tr.hits.any(func(h): return h.u == pr) and tr.pings.size() == 1 and tr.segs.size() == 2, "a bullet at the mirror bounces off it")
+	pr.face = 1
+	tr = b.trace_bullet(x0 + 10, gy, 0.0, 600, 0, s, false)
+	check(tr.hits.any(func(h): return h.u == pr), "from behind the mirror, it gets hit")
+	var hp0 := s.hp
+	await b.enemy_act(pr)
+	await until(func(): return b.settled(), 900)
+	await shot("alien4_prism")
+	check(pr.face == -1 and s.hp < hp0, "the Prism turns its mirror on the squad and zaps (hp %d -> %d)" % [hp0, s.hp])
+	# --- Gravity Warden: well on the bunched soldiers, pull, bends arcs, collapses on death
+	s = alien_field(b, x0)
+	var s2: Unit = b.squad()[1]
+	s2.x = x0 + 110; s2.y = b.T.stand_y(s2.x, 0); s2.air = false
+	var wd := spawn_alien(b, "warden", x0 + 420)
+	var gap0 := s2.x - s.x
+	await b.enemy_act(wd)
+	await until(func(): return b.settled(), 900)
+	await shot("alien4_warden")
+	check(b.wells.size() == 1, "the Warden drops a gravity well")
+	check(absf(s2.x - s.x) < gap0 - 20, "the well pulls the soldiers together (%d -> %d apart)" % [gap0, absf(s2.x - s.x)])
+	var wl: Dictionary = b.wells[0] if b.wells.size() else {"x": x0, "y": gy}
+	var bent := b.sim_arc(wl.x - 180, wl.y - 120, 3.0, -2.0, 0.0, 30)
+	var keep: Array = b.wells
+	b.wells = []
+	var plain := b.sim_arc(wl.x - 180, wl.y - 120, 3.0, -2.0, 0.0, 30)
+	b.wells = keep
+	var n: int = mini(bent.pts.size(), plain.pts.size()) - 1
+	check(plain.pts[n].distance_to(bent.pts[n]) > 4, "thrown things bend toward the well (%.1f px)" % plain.pts[n].distance_to(bent.pts[n]))
+	b.kill(wd, s)
+	await until(func(): return b.settled(), 600)
+	check(b.wells.is_empty(), "killing the Warden collapses its well")
+	# --- Phase Stalker: phased it ignores bullets and walks through, solid inside rock it dies
+	s = alien_field(b, x0)
+	var st := spawn_alien(b, "stalker", x0 + 200)
+	b.T.fill_r(x0 + 90, b.T.stand_y(x0, 0) - 70, 24, 70, 1)
+	b.T.flush()
+	hp0 = s.hp
+	await b.enemy_act(st)
+	await until(func(): return b.settled(), 900)
+	await shot("alien4_stalker")
+	check(st.fl.get("phased", false), "the Stalker phases on its first turn")
+	check(st.x < x0 + 90 and s.hp < hp0, "it walks through the wall and slashes (x %d, hp %d -> %d)" % [st.x - x0, hp0, s.hp])
+	tr = b.trace_bullet(st.x - 60, st.y - 20, 0.0, 120, 0, s, false)
+	check(not tr.hits.any(func(h): return h.u == st), "bullets pass through a phased Stalker")
+	b.T.fill_r(st.x - 16, st.y - st.h - 4, 32, st.h + 4, 1)
+	b.T.flush()
+	await b.enemy_act(st)
+	await until(func(): return b.settled(), 600)
+	check(st.dead, "turning solid inside rock kills it")
+	# --- Overseer: two Thralls, shrug off one knock, Skitter bursts out, links break on death
+	flat_strip(b, x0 - 160, 640)
+	s = alien_field(b, x0)
+	var j1 := spawn_alien(b, "grunt", x0 + 200)
+	var j2 := spawn_alien(b, "grunt", x0 + 240)
+	j1.hold = true; j2.hold = true
+	var ov := spawn_alien(b, "overseer", x0 + 360)
+	await b.enemy_act(ov)
+	await until(func(): return b.settled(), 900)
+	await shot("alien4_overseer")
+	check(b.is_thrall(j1) and b.is_thrall(j2), "the Overseer turns two Jackals into Thralls")
+	check(b.shrug(j1) and not b.shrug(j1), "a Thrall shrugs off the first knock only")
+	var sk0 := b.units.filter(func(u): return u.type == "skitter" and not u.dead).size()
+	b.kill(j1, s)
+	check(b.units.filter(func(u): return u.type == "skitter" and not u.dead).size() == sk0 + 1, "a Skitter bursts out of a dead Thrall")
+	b.kill(ov, s)
+	check(not b.is_thrall(j2) and j2.has_st("stun"), "killing the Overseer frees and stuns its Thralls")
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.

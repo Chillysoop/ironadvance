@@ -30,7 +30,7 @@ The launcher is unsigned: on Windows choose More info → Run anyway; on macOS r
 ## Layout
 - `game/` the Godot project. `scripts/battle.gd` is the simulation, `terrain.gd` the destructible grid,
   `world_view.gd` the world and in-world plates, `backdrop.gd` the animated parallax sky,
-  `decor.gd` ground life (grass, set dressing, critters, cosmetic idle gunfire), `foreground.gd` close silhouettes and ambient particles, `hud.gd` the HUD, `shop.gd` the Quartermaster,
+  `decor.gd` ground life (grass, set dressing, critters, cosmetic idle gunfire), `foreground.gd` close silhouettes and ambient particles, `hud.gd` the HUD, `shop.gd` the Quartermaster, `dossier.gd` the per-soldier Dossier (sheet, gear, deck), `services.gd` the card and squad services it shares with the shop, `hub_ui.gd` the HQ squad bar and action tiles,
   `run.gd` campaign state (decks, XP, perks, gear, scrip), `data.gd` all cards, perks, gear, enemies and missions.
   Missions are strings of level segments in `data.gd` (`SEGMENTS`): ridges, trenches and cliffs, multi-floor forts,
   collapsing bridges, piers, cranes, minefields, steel-grating catwalks and chain-link fences (bullets and grenades pass through both). `terrain.gd` builds them.
@@ -38,6 +38,6 @@ The launcher is unsigned: on Windows choose More info → Run anyway; on macOS r
 - `game/tools/test_runner.gd` scripted tests and an autoplayer:
   `godot --path game -- --iatest --scenario=flow --out=/tmp/shots` (title, start, aim, arc, topple, level, shop, picker, flow, bot, campaign, alive).
   `--scenario=levels` photographs every screen of each mission and walks a soldier through to list blocked spots;
-  `--scenario=hazards` sets off each set piece and prints PASS/FAIL; `--scenario=soldat` checks the Soldat borrowings (grating, fences, bodies, recoil, bonus pads, Jet Boots); `--scenario=soldat2` checks the second round (overkill pops, kill feed, fuse choice, grenade kits, thin air, roll, mid-air shots, Jet Jackals); `--scenario=soldat3` checks sidearms, dropped Jackal guns, weapon weight and mounted M2s; `--scenario=bot --mission=N` autoplays mission N.
+  `--scenario=hazards` sets off each set piece and prints PASS/FAIL; `--scenario=dossier` checks the HQ Dossier (squad bar, card services with before/after previews, gear and sheet tabs); `--scenario=soldat` checks the Soldat borrowings (grating, fences, bodies, recoil, bonus pads, Jet Boots); `--scenario=soldat2` checks the second round (overkill pops, kill feed, fuse choice, grenade kits, thin air, roll, mid-air shots, Jet Jackals); `--scenario=soldat3` checks sidearms, dropped Jackal guns, weapon weight and mounted M2s; `--scenario=bot --mission=N` autoplays mission N.
 - `launcher/` the updater. Point it at another host with `--manifest=URL` or a `launcher.cfg` next to the executable
   (`[update]` / `manifest="..."`); `--offline` skips the check.
