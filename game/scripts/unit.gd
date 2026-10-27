@@ -54,12 +54,17 @@ var leak = null
 var leak_by = null
 var primed := false
 var freed := false
+var detour := false    # spawned by the camp detour (its guards, prisoners and wrecks)
+var stripped := false  # a salvage wreck someone already stripped
 var pow_name := ""
 var planted := false
 var built := 0
 var dragged := false
 var tread := 0.0
 var elite := ""       # elite Jackal modifier (Data.ELITES key)
+var weight := ""      # Vharr weight class: "light" (knocked twice as far) or "hover" (holds altitude on a pod)
+var pod := 0          # hover: pod HP; when it breaks the alien drops
+var crash := false    # pod just broke: takes crash damage when it lands
 var loot = null       # payload for a loot pickup or a crate
 var kill_drawn := false
 var gb: Dictionary = {}  # squad: gear bonuses for this mission
@@ -102,7 +107,7 @@ func is_prop() -> bool:
 
 func is_pickup() -> bool:
 	## Loot on the ground and buried caches: bullets and blasts pass through them.
-	return kind == "loot" or kind == "cache" or kind == "relay" or kind == "pad"
+	return kind == "loot" or kind == "cache" or kind == "relay" or kind == "wreck" or kind == "pad"
 
 func is_body() -> bool:
 	## A dead Jackal left lying on the field: cover, and something to throw at its friends.

@@ -158,7 +158,7 @@ func _draw() -> void:
 			if evo != "":
 				body += " " + evo
 		"service":
-			title = "SERVICE"; name_ = opt.name; body = opt.text
+			title = opt.get("title", "SERVICE"); name_ = opt.name; body = opt.text
 	Art.text(self, title, Vector2(w / 2.0, 12), 8, Color.WHITE if not dim else Color("cccccc"), HORIZONTAL_ALIGNMENT_CENTER, 1)
 	# cost bubble
 	if kind == "card":

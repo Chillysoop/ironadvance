@@ -6,6 +6,8 @@ extends Node2D
 @onready var b: Battle = get_parent()
 
 const C_DARK := Color(0.05, 0.035, 0.03)
+const C_ALIEN := Color("c47bff")  # Vharr markers and labels
+const C_OOZE := Color("9df25c")
 
 func _draw() -> void:
 	if b.T == null:
@@ -21,6 +23,7 @@ func _draw() -> void:
 		Art.draw_gate(self, Vector2(b.gate.x, b.gate.y), b.gate.r, b.t, b.gate.chev, b.gate.open, b.gate.alpha, b.gate.spin, b.gate.burst)
 	for r in b.ropes:
 		draw_line(Vector2(r.x, r.y), Vector2(r.u.x, r.u.y - 20), Color("d8d0b8"), 1.0)
+	draw_acids()
 	for u in b.units:
 		if u.dead:
 			draw_unit(u)
@@ -183,6 +186,9 @@ func draw_unit(u: Unit) -> void:
 		"strongbox":
 			draw_strongbox(pos, white)
 			return
+		"wreck":
+			draw_wreck(u, pos)
+			return
 		"loot":
 			draw_loot(u, pos)
 			return
@@ -232,6 +238,12 @@ func draw_unit(u: Unit) -> void:
 	if u.type == "boss":
 		draw_boss(u, pos, white)
 		return
+	if u.type == "hive":
+		draw_hive(u, pos, white)
+		return
+	if u.type == "burrow":
+		draw_burrow(u, pos, white)
+		return
 	if u.type == "mg":
 		var pa := pick_anim(u)
 		Art.draw_char(self, u.sheet, "idle" if not u.dead else "die", pa[1], pos + Vector2(4, -8), -1, white, 0, u.alpha, u.gun_angle, not u.dead)
@@ -258,6 +270,8 @@ func draw_unit(u: Unit) -> void:
 		var glow := Color(1, 0.7, 0.24, 0.30) if u.adr >= 100 else Color(1, 0.48, 0.24, 0.20)
 		var r := 18.0 + sin(b.t / 6.0) * 2
 		draw_circle(pos + Vector2(0, -18), r, glow)
+	if u.weight == "hover" and not u.dead:
+		draw_pod(pos, white)
 	var kick := Vector2(-u.face * 2, 0) if u.pose == "recoil" else Vector2.ZERO
 	Art.draw_char(self, u.sheet, a[0], a[1], pos + kick, u.face, white, rot, u.alpha, u.gun_angle, a[2])
 	if not u.dead:
@@ -412,9 +426,27 @@ func draw_slug(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 	Art.text(self, "SV-001", pos + Vector2(0, -92), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 
+func draw_wreck(u: Unit, pos: Vector2) -> void:
+	## A burnt-out jeep on its rims. Stripped ones lose the panels and the glint.
+	var d := Color(0.05, 0.035, 0.03)
+	var hull := Color("5a4a3a") if u.stripped else Color("7a5a3a")
+	draw_rect(Rect2(pos.x - 17, pos.y - 14, 34, 10), d)
+	draw_rect(Rect2(pos.x - 16, pos.y - 13, 32, 8), hull)
+	draw_rect(Rect2(pos.x - 8, pos.y - 20, 14, 7), d)
+	draw_rect(Rect2(pos.x - 7, pos.y - 19, 12, 5), hull.darkened(0.2))
+	for wx in [-10, 10]:
+		draw_circle(pos + Vector2(wx, -4), 4.0, d)
+		draw_circle(pos + Vector2(wx, -4), 2.0, Color("3a3a3a"))
+	if not u.stripped:
+		draw_rect(Rect2(pos.x - 14, pos.y - 11, 6, 3), Color("9a6a3a"))
+		draw_rect(Rect2(pos.x + 4, pos.y - 11, 8, 2), Color("a8a8a8"))
+		if (b.t + u.id * 23) % 100 < 8:
+			draw_rect(Rect2(pos.x + 6, pos.y - 17, 2, 2), Color("53d4e2"))
+		Art.text(self, "SALVAGE", pos + Vector2(0, -26), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "pad"] or u.type == "boss" or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad"] or u.type == "boss" or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -428,15 +460,16 @@ func draw_plate(u: Unit) -> void:
 	draw_rect(Rect2(x - w / 2, y, roundf(w * u.hp / u.max_hp), 3), Color("ff4d3d"))
 	for k in range(1, 4):
 		draw_rect(Rect2(x - w / 2 + k * w / 4, y, 1, 3), C_DARK)
+	if u.pod > 0 and u.weight == "hover":
+		var pm: int = int(round(Data.ETYPES[u.type].pod * b.mission.hp_mul))
+		draw_rect(Rect2(x - w / 2 - 1, y + 4, w + 2, 4), C_DARK)
+		draw_rect(Rect2(x - w / 2, y + 5, roundf(w * u.pod / maxf(1, pm)), 2), C_ALIEN)
+	if u.weight != "" and u.elite == "":
+		Art.text(self, u.weight.to_upper(), Vector2(x, y - 4), 8, C_ALIEN, HORIZONTAL_ALIGNMENT_CENTER)
 	if u.elite != "":
 		draw_rect(Rect2(x - w / 2 - 2, y - 2, w + 4, 7), Color("ffd23a"), false, 1.0)
 		Art.text(self, Data.ELITES[u.elite].name, Vector2(x, y - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 	draw_statuses(u, x, y - (14 if u.elite != "" else 4))
-	if b.inspect and b.state == "player":
-		var it := b.intent_of(u)
-		var tw := Art.text_width(it, 8) + 6
-		draw_rect(Rect2(x - tw / 2, y - 24, tw, 12), Color(C_DARK, 0.85))
-		Art.text(self, it, Vector2(x, y - 14), 8, Color("ff8a80"), HORIZONTAL_ALIGNMENT_CENTER)
 	if u.type == "radio" and b.radio_t != null and u.active:
 		var col := Color("ff4d3d") if b.radio_t <= 1 else Color("ffd23a")
 		draw_texture_rect(Art.tex.ic_radio, Rect2(clampf(x, b.cam_x + 44, b.cam_x + 916) - 34, y - 16, 16, 16), false)
@@ -801,6 +834,58 @@ func draw_brackets(r: Rect2, col: Color) -> void:
 		draw_line(corner, corner + Vector2(l * sx, 0), col, 2.0)
 		draw_line(corner, corner + Vector2(0, l * sy), col, 2.0)
 
+func draw_hive(u: Unit, pos: Vector2, white: bool) -> void:
+	## Hive Pod: a ribbed violet egg sac, its glow quickening as the hatch timer runs down.
+	var a := u.alpha
+	if u.dead:
+		a *= 0.6
+	var n: int = u.fl.get("hatch", Data.ETYPES.hive.hatch)
+	var beat := 0.5 + 0.5 * sin(b.t / (4.0 if n <= 1 else 10.0))
+	var body := Color.WHITE if white else Color("7d3cb0")
+	draw_circle(pos + Vector2(0, -12), 15, Color(C_DARK, a))
+	draw_circle(pos + Vector2(0, -12), 13, Color(body, a))
+	draw_circle(pos + Vector2(-4, -15), 7, Color(Color("b06ae0"), a))
+	for k in 3:
+		draw_line(pos + Vector2(-10 + k * 10, -2), pos + Vector2(-6 + k * 6, -23), Color(Color("4a1f6e"), a), 2.0)
+	if not u.dead:
+		draw_circle(pos + Vector2(3, -10), 4 + beat * 2, Color(C_OOZE, 0.5 + 0.4 * beat))
+		draw_circle(pos + Vector2(-5, -6), 2 + beat, Color(C_OOZE, 0.4 + 0.4 * beat))
+	draw_rect(Rect2(pos.x - 14, pos.y - 2, 28, 3), Color(Color("4a1f6e"), a))
+
+func draw_burrow(u: Unit, pos: Vector2, white: bool) -> void:
+	## Skitter tunnel: a dirt mound around a dark hole, glowing eyes inside while waves are left.
+	var dirt := Color.WHITE if white else Color("8c6a46")
+	draw_rect(Rect2(pos.x - 17, pos.y - 9, 34, 9), C_DARK)
+	draw_rect(Rect2(pos.x - 16, pos.y - 8, 32, 8), dirt)
+	draw_rect(Rect2(pos.x - 11, pos.y - 13, 22, 5), dirt)
+	draw_rect(Rect2(pos.x - 8, pos.y - 10, 16, 8), C_DARK)
+	if not u.dead and u.fl.get("wave", 0) < Data.ETYPES.burrow.waves.size():
+		for k in 3:
+			if (b.t / 20 + k) % 3 != 0:
+				draw_rect(Rect2(pos.x - 6 + k * 5, pos.y - 7, 2, 1), C_OOZE)
+
+func draw_acids() -> void:
+	for a in b.acids:
+		var w: float = a.r * 2
+		for k in 3:
+			var c := Color(C_OOZE, 0.25 + 0.1 * k)
+			draw_rect(Rect2(a.x - w / 2 + k * 6, a.y - 3 + k, w - k * 12, 3), c)
+		if b.t % 20 < 10:
+			draw_rect(Rect2(a.x - 4 + (b.t % 40) / 4.0, a.y - 6, 2, 2), C_OOZE)
+
+func draw_pod(pos: Vector2, white: bool) -> void:
+	## The Squid Trooper's saucer: a steel dish under its tentacles, lights chasing round the rim.
+	var c := Color.WHITE if white else Color("8e939a")
+	draw_rect(Rect2(pos.x - 13, pos.y - 2, 26, 5), C_DARK)
+	draw_rect(Rect2(pos.x - 12, pos.y - 1, 24, 3), c)
+	draw_rect(Rect2(pos.x - 8, pos.y + 2, 16, 3), C_DARK)
+	draw_rect(Rect2(pos.x - 7, pos.y + 2, 14, 2), Color("5c6068") if not white else c)
+	for k in 4:
+		var on: bool = (b.t / 6 + k) % 4 == 0
+		draw_rect(Rect2(pos.x - 9 + k * 6, pos.y, 2, 1), C_OOZE if on else Color("3c3e46"))
+	var a := 0.25 + 0.15 * sin(b.t / 5.0)
+	draw_rect(Rect2(pos.x - 4, pos.y + 5, 8, 6), Color(C_OOZE, a))
+
 func draw_reticle(p: Vector2, col: Color) -> void:
 	var s := 7.0 + sin(b.t / 6.0)
 	draw_arc(p, s, 0, TAU, 16, col, 1.0)
@@ -840,6 +925,10 @@ func draw_hover() -> void:
 	if h.team == "enemy":
 		var E: Dictionary = Data.ETYPES[h.type]
 		lines = [E.name.to_upper(), "HP %d/%d" % [h.hp, h.max_hp], E.note]
+		if h.weight == "hover":
+			lines.append("POD %d: soaks damage first. Break it and it drops." % h.pod)
+		elif h.weight == "light":
+			lines.append("LIGHT: knockback sends it twice as far.")
 		if h.type == "boss":
 			lines.append("ARMOR PLATE %d" % h.plate if h.plate > 0 else "ARMOR CRACKED: TAKES +30%")
 		if h.elite != "":
@@ -852,6 +941,8 @@ func draw_hover() -> void:
 		lines = ["SAPPER CHARGE", "Blows when the Jackals move next.", "Shoot it to defuse. Blast 48."]
 	elif h.kind == "crate":
 		lines = ["SUPPLY CRATE", "Shoot it or blast it open. The loot pops out:", "careful, it can roll into a pit."]
+	elif h.kind == "wreck":
+		lines = ["WRECK" + (" (STRIPPED)" if h.stripped else ""), "Walk over it to strip it: +%d Salvage for HQ." % Data.WRECK_SALVAGE]
 	elif h.kind == "strongbox":
 		lines = ["JACKAL STRONGBOX", "Pry it open with a MELEE card: quiet.", "Blast it: free, but ALERT +1 and it may damage the loot."]
 	elif h.kind == "loot":

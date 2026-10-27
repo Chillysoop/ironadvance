@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, soldat.
+## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat.
 ## --mission=N picks the mission for bot.
 
 var out_dir := "user://shots"
@@ -621,6 +621,12 @@ func run() -> void:
 			await biomes()
 		"soldat":
 			await soldat()
+		"detours":
+			await detours()
+		"aliens":
+			await aliens()
+		"aliens2":
+			await aliens2()
 		"campaign":
 			Run.new_run()
 			for m in 3:
@@ -786,6 +792,201 @@ func hazards() -> void:
 	await frames_wait(20)
 	await shot("hz_crane_after")
 	check(boss != null and (boss.cracked or boss.hp < boss.max_hp), "the crane container hits the Boar (hp %d/%d cracked %s)" % [boss.hp, boss.max_hp, boss.cracked])
+
+func alien_field(b: Battle, x: float) -> Unit:
+	## Clear the field and stand one soldier at x for an alien test.
+	for e in b.units:
+		if e.team == "enemy" or e.is_prop() or e.kind == "pow":
+			e.dead = true; e.gone = true
+	var s: Unit = b.squad()[0]
+	for o in b.squad():
+		if o != s:
+			o.x = x - 200; o.y = b.T.stand_y(o.x, 0); o.air = false
+	s.x = x; s.y = b.T.stand_y(x, 0); s.air = false; s.hp = s.max_hp
+	cam_on(b, x + 120)
+	return s
+
+func flat_open(b: Battle, x: float, w: float) -> bool:
+	## Flat ground with open sky over it from x to x + w.
+	var y0 = b.T.stand_y(x, 0)
+	if y0 == null:
+		return false
+	for k in range(0, int(w), 8):
+		var y = b.T.stand_y(x + k, 0)
+		if y == null or absf(y - y0) > 4:
+			return false
+	return true
+
+func spawn_alien(b: Battle, type: String, x: float) -> Unit:
+	var e := b.mk_enemy(type, x, b.T.stand_y(x, 0))
+	e.active = true
+	b.units.append(e)
+	b.place_alien(e)
+	return e
+
+func aliens() -> void:
+	## The first Vharr: spawn casting by level, then each alien's marked move and its physics hook.
+	Run.new_run()
+	Run.level = Run.make_level("desert", 0)
+	var b: Battle = main.start_battle(0, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var types := b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
+	check(not types.has("nade"), "no Jackal Bombers spawn (level 1: %s)" % str(types))
+	check(types.has("grunt") and types.any(func(t): return Battle.ALIENS.has(t)), "level 1 keeps riflemen with a few Vharr advisors")
+	Run.level = Run.make_level("fortress", 1)
+	b = main.start_battle(1, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	types = b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
+	check(not types.has("grunt") and not types.has("nade") and types.has("skitter") and types.has("squid") and types.has("blinker"), "level 2 gives every rifleman slot to the Vharr (%s)" % str(types))
+	check(types.count("skitter") % 3 == 0, "Skitters come in packs of 3 (%d)" % types.count("skitter"))
+	b.speed = 2.0
+	# a flat stretch near the start for the duels
+	var x0 := 300.0
+	while not flat_open(b, x0 - 120, 420):
+		x0 += 20
+	# --- Skitter: closes in and pounces in one enemy phase
+	var s := alien_field(b, x0)
+	var sk := spawn_alien(b, "skitter", x0 + 200)
+	var hp0 := s.hp
+	await b.enemy_act(sk)
+	await until(func(): return b.settled(), 600)
+	await shot("alien_skitter")
+	check(s.hp < hp0 and absf(sk.x - s.x) < 30, "a Skitter pounces and bites in the same phase (hp %d -> %d)" % [hp0, s.hp])
+	# light: the same blast throws a Skitter twice as far as a Rifleman
+	var gr := spawn_alien(b, "grunt", x0 + 60)
+	var sk2 := spawn_alien(b, "skitter", x0 + 60)
+	sk2.hp = 99; gr.hp = 99
+	b.explode(x0 + 40, b.T.stand_y(x0 + 40, 0) - 10, 40, 1, s)
+	check(absf(sk2.vx) > absf(gr.vx) * 1.8, "light Skitter flies twice as far (vx %.1f vs %.1f)" % [sk2.vx, gr.vx])
+	await until(func(): return b.settled(), 900)
+	# --- Squid Trooper: hovers, glides and fires its ray in one phase
+	s = alien_field(b, x0)
+	var sq := spawn_alien(b, "squid", x0 + 260)
+	var gy: float = b.T.stand_y(sq.x, 0)
+	check(sq.y < gy - 80, "a Squid Trooper hovers (%d above the floor)" % (gy - sq.y))
+	sq.hold = true
+	hp0 = s.hp
+	await b.enemy_act(sq)
+	await until(func(): return b.settled(), 600)
+	await shot("alien_squid")
+	check(s.hp < hp0, "the Squid fires its ray the same phase (hp %d -> %d)" % [hp0, s.hp])
+	var hp1 := sq.hp
+	b.damage(sq, sq.pod, s)
+	check(sq.weight == "" and sq.hp == hp1, "the pod soaks damage first, then breaks")
+	await until(func(): return b.settled(), 600)
+	check(not sq.air and sq.hp < hp1, "the squid drops and takes crash damage (hp %d -> %d)" % [hp1, sq.hp])
+	# --- Blinker: teleports behind the soldier and claws
+	s = alien_field(b, x0 + 60)
+	var bl := spawn_alien(b, "blinker", x0 + 240)
+	hp0 = s.hp
+	await b.enemy_act(bl)
+	await shot("alien_blinker")
+	await until(func(): return b.settled(), 600)
+	check(s.hp < hp0, "a Blinker teleports in and claws the same phase (hp %d -> %d)" % [hp0, s.hp])
+	s = alien_field(b, x0 + 60)
+	var far := spawn_alien(b, "blinker", x0 + 500)
+	await b.enemy_act(far)
+	check(far.x > x0 + 300 and far.x < x0 + 500, "a Blinker farther than 360px walks closer instead (x %d)" % far.x)
+
+func aliens2() -> void:
+	## Step 3 of the alien plan: BREACH dial tags, the Swarm and Nest encounters, alien elites.
+	Run.new_run()
+	Run.mission = 1
+	Run.roll_dial()
+	check(Run.dial.all(func(id): return Run.dial_breach.has(id)), "the level 2 dial rolls a BREACH flag per biome")
+	Run.mission = 0
+	Run.roll_dial()
+	check(Run.dial.all(func(id): return not Run.dial_breach[id]), "level 1 never rolls a BREACH")
+	var lv := Run.make_level("fortress", 1, true)
+	check(lv.breach and lv.encounter in ["swarm", "nest"], "a level 2 level carries its breach flag and an encounter (%s)" % lv.encounter)
+	# the nest: three Hive Pods with staggered timers
+	lv.encounter = "nest"
+	Run.level = lv
+	var b: Battle = main.start_battle(1, lv)
+	await until(func(): return b.state == "player" and not b.busy)
+	var hives := b.units.filter(func(u): return u.type == "hive")
+	check(hives.size() == 3 and hives.map(func(h): return h.fl.hatch) == [2, 3, 4], "the Nest has 3 Hive Pods on staggered timers (%s)" % str(hives.map(func(h): return h.fl.get("hatch"))))
+	cam_on(b, hives[1].x)
+	await frames_wait(20)
+	await shot("alien2_nest")
+	b.speed = 2.0
+	var x0 := 300.0
+	while not flat_open(b, x0 - 120, 420):
+		x0 += 20
+	# hatching, then acid
+	var s := alien_field(b, x0)
+	var hv := spawn_alien(b, "hive", x0 + 200)
+	var count := func(): return b.units.filter(func(u): return u.type == "skitter" and not u.dead).size()
+	await b.enemy_act(hv)
+	check(count.call() == 0 and hv.fl.hatch == 1, "a Hive Pod counts down first")
+	await b.enemy_act(hv)
+	check(count.call() == 2, "then hatches two Skitters (%d)" % count.call())
+	s.x = hv.x + 10; s.y = b.T.stand_y(s.x, 0)
+	b.damage(hv, 99, s)
+	check(b.acids.size() == 1, "a dead Hive Pod leaves acid")
+	var hp0 := s.hp
+	b.tick_acids()
+	check(s.hp == hp0 - 3, "a soldier standing in acid takes 3 (hp %d -> %d)" % [hp0, s.hp])
+	# the swarm tunnel: waves 3, 4, 3, then it caves in
+	s = alien_field(b, x0)
+	var bu := spawn_alien(b, "burrow", x0 + 220)
+	var waves: Array = []
+	for i in 3:
+		var c0: int = count.call()
+		await b.enemy_act(bu)
+		waves.append(count.call() - c0)
+	await b.enemy_act(bu)
+	check(waves == [3, 4, 3] and bu.dead, "a tunnel sends waves %s and then caves in" % str(waves))
+	await until(func(): return b.settled(), 600)
+	await shot("alien2_swarm")
+	# elites
+	s = alien_field(b, x0)
+	var br := spawn_alien(b, "skitter", x0 + 200)
+	b.make_elite(br, "brood")
+	b.damage(br, 99, s)
+	check(count.call() == 2, "a BROOD Skitter splits into two (%d)" % count.call())
+	s = alien_field(b, x0)
+	var an := spawn_alien(b, "blinker", x0 + 120)
+	b.make_elite(an, "anchored")
+	an.hp = 99
+	b.explode(an.x - 30, an.y - 10, 40, 1, s)
+	check(absf(an.vx) < 0.01, "an ANCHORED alien is not knocked back")
+	var body := spawn_alien(b, "grunt", an.x + 30)
+	b.kill(body, s)
+	b.make_elite(an, "hungry")
+	an.max_hp = 99; an.hp = 50
+	await b.enemy_act(an)
+	check(an.hp >= 58 and body.gone, "a HUNGRY alien eats a body to heal (hp %d)" % an.hp)
+	s = alien_field(b, x0)
+	var al := spawn_alien(b, "squid", x0 + 200)
+	var mate := spawn_alien(b, "squid", x0 + 300)
+	b.make_elite(al, "alpha")
+	check(b.alpha_near(mate) and not b.alpha_near(al), "an ALPHA makes others of its kind nearby act twice")
+	check(Data.ELITES[b.pick_elite(true)].get("vharr", false) and not Data.ELITES[b.pick_elite(false)].get("vharr", false), "aliens and Jackals roll their own elites")
+	# breach: a Jackal goes for the nearest alien instead of a far soldier
+	s = alien_field(b, x0 - 100)
+	var j := spawn_alien(b, "grunt", x0 + 260)
+	var sk := spawn_alien(b, "skitter", x0 + 200)
+	b.breach = false
+	check(b.nearest_squad(j) == s, "outside a BREACH the Jackal targets your soldier")
+	b.breach = true
+	check(b.nearest_squad(j) == sk and b.nearest_squad(sk) == j, "in a BREACH the Jackal and the Skitter target each other")
+	sk.dead = true; sk.gone = true
+	var bk := spawn_alien(b, "blinker", x0 + 200)
+	bk.hp = 99; bk.max_hp = 99
+	for i in 3:
+		await b.enemy_act(j)
+		await until(func(): return b.settled(), 600)
+	check(bk.hp < 99, "the Jackal shoots the alien instead (hp 99 -> %d)" % bk.hp)
+	# Worms style: a Jackal with a shot already still moves before it fires
+	b.breach = false
+	s = alien_field(b, x0)
+	var mover := spawn_alien(b, "grunt", x0 + 200)
+	var mx := mover.x
+	hp0 = s.hp
+	await b.enemy_act(mover)
+	await until(func(): return b.settled(), 600)
+	check(absf(mover.x - mx) >= 30, "a Jackal with a clear shot still moves first (moved %d px)" % absf(mover.x - mx))
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.
@@ -1114,12 +1315,133 @@ func gate() -> void:
 	await frames_wait(20)
 	check(main.screen.get("mode") == "brief" and Run.mission == 1, "picking a biome briefs level 2")
 
+func detour_battle(id: String) -> Battle:
+	## A desert level whose mid camp offers only this detour; walks a soldier into camp and takes it.
+	Run.level = Run.make_level("desert", 0)
+	Run.level.detours = [id]
+	var b: Battle = main.start_battle(0, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var c: Dictionary = b.T.camps[0]
+	for e in b.units.filter(func(e): return e.team == "enemy" and e.x < c.x1 + 200):
+		e.dead = true
+		e.gone = true
+	var u: Unit = b.squad()[0]
+	u.x = c.fire + 20
+	u.y = b.T.stand_y(u.x, 0)
+	b.autopick = 0
+	await b.check_camp(u)
+	cam_on(b, b.T.yard[0] + 200)
+	await frames_wait(30)
+	await shot("detour_" + id)
+	check(b.detour.get("id") == id, "the mid camp starts the %s detour" % id)
+	return b
+
+func detours() -> void:
+	## Step 5: the mid-level camp offers 3 detours, each paying in its own currency.
+	var lv := Run.make_level("jungle", 0)
+	check(lv.detours.size() == 3 and lv.segments[4] == "yard" and lv.segments[3] == "camp", "a level has a yard after the mid camp and 3 detour offers")
+	Run.new_run()
+	Run.meta.salvage = 0
+	Run.meta.bio = 0
+	# the pick screen
+	Run.level = Run.make_level("desert", 0)
+	var b: Battle = main.start_battle(0, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var c: Dictionary = b.T.camps[0]
+	for e in b.units.filter(func(e): return e.team == "enemy" and e.x < c.x1 + 200):
+		e.dead = true
+		e.gone = true
+	var u0: Unit = b.squad()[0]
+	u0.x = c.fire + 20
+	u0.y = b.T.stand_y(u0.x, 0)
+	cam_on(b, c.fire)
+	b.check_camp(u0)
+	await frames_wait(90)
+	await shot("detour_pick")
+	b.hud.picked.emit(0)
+	await frames_wait(20)
+	check(b.detour.get("id") == Run.level.detours[0], "picking a detour card starts it")
+	main.clear()
+	# elite outpost
+	b = await detour_battle("elite")
+	var el: Array = b.units.filter(func(e): return e.detour and e.team == "enemy")
+	check(el.size() == 4 and el.all(func(e): return e.elite == b.detour.mod), "four elites share one modifier (%s)" % b.detour.mod)
+	for e in el:
+		e.dead = true
+	await b.check_detour()
+	check(b.detour.done and int(Run.meta.bio) == Data.ELITE_BIO and b.units.any(func(l): return l.kind == "loot" and l.loot.get("item", {}).get("tier", 0) >= 3), "clearing the outpost pays Bio-parts and an Epic item")
+	await frames_wait(20)
+	await shot("detour_elite_done")
+	main.clear()
+	# POW rescue: a dog tag back when nobody has fallen
+	Run.soldiers[1].tags = 0
+	b = await detour_battle("pow")
+	var pows: Array = b.units.filter(func(p): return p.detour and p.kind == "pow")
+	check(pows.size() == 3, "three prisoners in the yard")
+	for p in pows:
+		p.freed = true
+	await b.check_detour()
+	check(Run.soldiers[1].tags == 1, "freeing them all gives a dog tag back to whoever has fewest")
+	main.clear()
+	# POW rescue: a free recruit when a slot is empty
+	Run.soldiers[3].alive = false
+	b = await detour_battle("pow")
+	for p in b.units.filter(func(p): return p.detour and p.kind == "pow"):
+		p.freed = true
+	await b.check_detour()
+	check(Run.soldiers[3].alive and Run.soldiers[3].def.name != "ROOK", "...or a free recruit into the fallen slot (%s)" % Run.soldiers[3].def.name)
+	main.clear()
+	# POW rescue: too slow and they are gone
+	b = await detour_battle("pow")
+	for i in Data.POW_RESCUE_ROUNDS:
+		await b.detour_round()
+	check(b.detour.done and b.units.filter(func(p): return p.detour and p.kind == "pow").all(func(p): return p.gone), "after %d rounds the prisoners are moved out" % Data.POW_RESCUE_ROUNDS)
+	main.clear()
+	# salvage yard
+	b = await detour_battle("salvage")
+	var wrecks: Array = b.units.filter(func(w): return w.kind == "wreck")
+	check(wrecks.size() == 5, "five wrecks in the yard")
+	var u: Unit = b.squad()[0]
+	u.x = wrecks[0].x
+	u.y = b.T.stand_y(u.x, 0)
+	await frames_wait(10)
+	check(wrecks[0].stripped and int(Run.meta.salvage) == Data.WRECK_SALVAGE, "walking over a wreck strips it for salvage")
+	var n0: int = b.units.filter(func(e): return e.team == "enemy" and e.detour).size()
+	await b.detour_round()
+	check(b.units.filter(func(e): return e.team == "enemy" and e.detour).size() == n0 + 1, "a scavenger drifts in each round")
+	await frames_wait(20)
+	await shot("detour_salvage_scav")
+	for w in wrecks:
+		w.stripped = true
+	await b.check_detour()
+	check(b.detour.done, "stripping every wreck ends the yard")
+	main.clear()
+	# supply cache
+	b = await detour_battle("cache")
+	var sc0 := Run.scrip
+	var decks: int = Run.soldiers.reduce(func(a, s): return a + s.deck.size(), 0)
+	for e in b.units.filter(func(e): return e.detour and e.team == "enemy"):
+		e.dead = true
+	await b.check_detour()
+	await frames_wait(60)
+	check(Run.scrip > sc0 and Run.soldiers.reduce(func(a, s): return a + s.deck.size(), 0) == decks + 1, "the cache pays scrip and a card pick")
+	main.clear()
+	# old fixed missions have no yard: their mid camp still pays a camp pick
+	b = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	check(b.T.yard.is_empty(), "fixed missions have no detour yard")
+	main.clear()
+	# HQ shows the new currencies
+	main.show_hq(false)
+	await frames_wait(20)
+	await shot("detour_hq")
+
 func biomes() -> void:
 	## Step 4: a level is one biome. The gate dial offers two, the skipped one is burned, and each
 	## biome's rules are real: sway, sight, wind, hills, wet ground, fuel, mines, elites.
 	for id in Data.BIOMES:
 		var lv := Run.make_level(id, 0)
-		check(lv.segments.size() == 8 and lv.segments.count("camp") == 2 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)), "%s builds a full level" % id)
+		check(lv.segments.size() == 9 and lv.segments.count("camp") == 2 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)), "%s builds a full level" % id)
 	for i in Data.LEVELS.size():
 		check(Data.LEVELS[i].pool.size() >= 6 and Data.LEVELS[i].pool.all(func(k): return Data.BIOMES.has(k)), "level %d has a pool of 6+ biomes" % (i + 1))
 	# a whole run of dials: never a repeat, never a burned biome
@@ -1345,7 +1667,6 @@ func bot(mission: int, max_rounds: int, fresh := true) -> bool:
 		Run.new_run()
 	var b: Battle = main.start_battle(mission)
 	b.autopick = 0
-	b.debug = true
 	b.speed = 8.0
 	var res := {"done": false, "won": false, "line": ""}
 	b.mission_over.connect(func(w):

@@ -32,9 +32,10 @@ var qm_cache := {}         # the Quartermaster's shelf for this HQ visit
 var temp_luck := 0         # Luck that only lasts for the current mission
 var level := {}            # the generated mission for the level being played (biome + tier)
 var dial: Array = []       # the two biomes on the gate dial right now
+var dial_breach := {}      # biome id -> true when the dial shows it as a BREACH (Vharr and Jackals at war)
 var burned: Array = []     # biomes skipped or already played this run; they never come back
 var sway_mul := 1.0        # the current biome's sway rule, read by Data.card during a battle
-var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": []}   # kept across runs (W4, W5); memorial = the fallen
+var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "bio": 0}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
 const META_PATH := "user://meta.json"
 
 func _ready() -> void:
@@ -92,6 +93,9 @@ func roll_dial() -> Array:
 	var pool: Array = Data.LEVELS[mini(mission, Data.LEVELS.size() - 1)].pool.filter(func(b): return not burned.has(b))
 	pool.shuffle()
 	dial = pool.slice(0, 2)
+	dial_breach = {}
+	for b in dial:
+		dial_breach[b] = mission >= 1 and randf() < 0.5
 	return dial
 
 func pick_biome(id: String) -> void:
@@ -99,10 +103,10 @@ func pick_biome(id: String) -> void:
 	for b in dial:
 		if not burned.has(b):
 			burned.append(b)
-	level = make_level(id, mission)
+	level = make_level(id, mission, dial_breach.get(id, false))
 	dial = []
 
-func make_level(id: String, tier: int) -> Dictionary:
+func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	## One continuous level: a start, two stretches, a camp, two more stretches, a camp, the boss.
 	var bm: Dictionary = Data.BIOMES[id]
 	var lv: Dictionary = Data.LEVELS[mini(tier, Data.LEVELS.size() - 1)]
@@ -110,8 +114,12 @@ func make_level(id: String, tier: int) -> Dictionary:
 	pool.shuffle()
 	while pool.size() < 4:
 		pool.append(bm.segments[randi() % bm.segments.size()])
-	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules,
-		"segments": ["start", pool[0], pool[1], "camp", pool[2], pool[3], "camp", bm.get("arena", "arena")],
+	var detours: Array = Data.DETOURS.keys()
+	detours.shuffle()
+	# from level 2 on, one stretch after the mid camp holds a Vharr encounter (E1 Swarm or E2 Nest)
+	var enc: String = "" if tier < 1 else ["swarm", "nest"][randi() % 2]
+	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, 3), "breach": breach, "encounter": enc,
+		"segments": ["start", pool[0], pool[1], "camp", "yard", pool[2], pool[3], "camp", bm.get("arena", "arena")],
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
 
 func start_finale() -> void:
