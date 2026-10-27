@@ -19,6 +19,8 @@ var ghost := false           # hand only: a card is armed, so the hand sinks out
 var lift := 0.0
 var base_y := 0.0
 var chain := ""              # signature chain this card would complete right now (hand only)
+var badge := ""              # small purple pill on the top-right corner (e.g. fusion progress "2/3")
+var corner := ""             # tiny origin tag at the bottom-left (SHOP, LVL, GUN)
 
 const PAPER := Color("e4d6b0")
 const PAPER_D := Color("bba57c")
@@ -214,6 +216,13 @@ func _draw() -> void:
 		draw_rect(Rect2(w / 2.0 - 26, h - 16, 52, 16), INK)
 		draw_texture_rect(Art.tex.ic_coin, Rect2(w / 2.0 - 22, h - 12, 8, 8), false)
 		Art.text(self, str(price), Vector2(w / 2.0 + 8, h - 4), 8, Color("ffd23a") if not disabled else Color("8a7a40"), HORIZONTAL_ALIGNMENT_CENTER, 0)
+	if corner != "":
+		Art.text(self, corner, Vector2(1, -3), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 1)
+	if badge != "":
+		var bw := Art.text_width(badge, 8) + 8
+		draw_rect(Rect2(w - bw + 4, -7, bw, 13), INK)
+		draw_rect(Rect2(w - bw + 5, -6, bw - 2, 11), Color("8b63d9"))
+		Art.text(self, badge, Vector2(w + 4 - bw / 2.0, 4), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 1)
 	if label_top != "":
 		Art.text(self, label_top, Vector2(w / 2.0, -6), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 

@@ -6,6 +6,8 @@ extends Node
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
+const Services := preload("res://scripts/services.gd")
+
 var out_dir := "user://shots"
 var scenario := ""
 var main: Node
@@ -680,6 +682,8 @@ func run() -> void:
 			await hq_upgrades()
 		"doc":
 			await doc()
+		"dossier":
+			await dossier()
 		"aliens":
 			await aliens()
 		"aliens2":
@@ -756,6 +760,135 @@ func picker() -> void:
 	main.show_title()
 	await frames_wait(30)
 	await shot("picker_title")
+
+func dossier() -> void:
+	## The HQ Dossier: squad bar, soldiers you can click, and card services on the selected card
+	## with a before/after preview that only charges on CONFIRM.
+	Run.new_run()
+	Run.scrip = 600
+	var moss: Dictionary = Run.soldiers[0]
+	moss.hp = 9
+	check(moss.deck.all(func(c): return c.get("from", "") == "start"), "starting cards remember they came with the soldier")
+	moss.deck.append(Run.new_card("rifle", 0, "shop"))
+	main.show_hq(false)
+	await frames_wait(20)
+	var hq: Control = main.screen
+	hq.hover_troop = 0
+	await frames_wait(4)
+	await shot("dossier_hq")
+	check(Services.alert(moss) == "FUSE", "the squad bar flags Moss's three Rifle Shots")
+	hq.hover_troop = -1
+	hq.open_dossier(0)
+	await frames_wait(20)
+	await shot("dossier_deck")
+	var d: Control = hq.sub
+	check(d != null and d.idx == 0 and d.tab == "deck", "the Dossier opens on Moss's deck")
+	var rifles: Array = moss.deck.filter(func(c): return c.key == "rifle")
+	d.sel = rifles[0]
+	d.build()
+	await frames_wait(10)
+	await shot("dossier_selected")
+	var acts := Services.card_actions(moss, rifles[0])
+	check(acts.map(func(a): return a.id) == ["polish", "gunsmith", "fuse", "evolve", "burn"], "a selected card shows the five card services")
+	check(acts[0].ok and acts[0].line.contains("DMG 6-8 > 8-10"), "Polish says what it does: " + acts[0].line)
+	check(acts[2].ok and acts[3].why.contains("Scope"), "Fuse is ready, Evolve says what it needs: " + acts[3].why)
+	# polish through the preview: nothing is paid until CONFIRM
+	var before: int = Run.scrip
+	d.open_preview("polish")
+	await frames_wait(10)
+	await shot("dossier_polish_preview")
+	check(Run.scrip == before and Data.tier_of(rifles[0]) == 0, "opening the preview costs nothing")
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(Data.tier_of(rifles[0]) == 1 and Run.scrip == before - Services.price(Services.POLISH), "CONFIRM polishes the card and charges once")
+	# fuse needs three of one rarity again
+	moss.deck.append(Run.new_card("rifle", 0, "shop"))
+	var commons: Array = moss.deck.filter(func(c): return c.key == "rifle" and Data.tier_of(c) == 0)
+	check(commons.size() == 3, "three Common Rifle Shots for the fusion test")
+	var n0: int = moss.deck.size()
+	d.sel = commons[0]
+	d.build()
+	d.open_preview("fuse")
+	await frames_wait(10)
+	await shot("dossier_fuse_preview")
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(moss.deck.size() == n0 - 2 and d.sel != null and d.sel.get("from", "") == "fused" and Data.tier_of(d.sel) == 1, "Fuse turns three into one Uncommon and selects it")
+	# gunsmith: pick a mod card, then confirm
+	d.open_preview("gunsmith")
+	await frames_wait(10)
+	check(d.modal.confirm.disabled, "Gunsmith waits for a mod to be picked")
+	var opts: Array = d.modal.get_children().filter(func(o): return o is CardView)
+	opts[0].pressed.emit()
+	await frames_wait(6)
+	await shot("dossier_mod_preview")
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(d.sel.get("mods", []).size() == 1, "the picked mod lands on the card")
+	# evolve with an Epic Rifle Shot and the Scope kit
+	var epic := Run.new_card("rifle", 3, "shop")
+	moss.deck.append(epic)
+	var scope := Run.new_item("scope", 0)
+	Run.stash.append(scope)
+	Run.equip(moss, scope)
+	d.sel = epic
+	d.build()
+	check(Services.evolve_info(moss, epic).ok, "Epic Rifle Shot plus Scope can evolve")
+	d.open_preview("evolve")
+	await frames_wait(10)
+	await shot("dossier_evolve_preview")
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(epic.key == "lasergun", "Evolve makes the Laser Gun")
+	# burn
+	var n1: int = moss.deck.size()
+	d.sel = moss.deck.filter(func(c): return c.key == "pistol")[0]
+	d.build()
+	d.open_preview("burn")
+	await frames_wait(6)
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(moss.deck.size() == n1 - 1 and d.sel == null, "Burn takes the card out")
+	# filters, sort, upgraded preview
+	d.filt = "fuse"
+	d.build()
+	check(d.deck_list().all(func(c): return Services.fuse_group(moss, c).size() >= 2 or Services.evolve_rule(c).size() > 0), "the FUSE filter shows only cards with fusion or evolution progress")
+	d.filt = ""
+	d.sort = "rarity"
+	d.show_up = true
+	d.build()
+	await frames_wait(10)
+	await shot("dossier_upgraded")
+	d.show_up = false
+	# sheet and gear tabs
+	moss.perks.append("steady")
+	d.set_tab("sheet")
+	await frames_wait(10)
+	await shot("dossier_sheet")
+	var vest := Run.new_item(Run.random_item_id(["armor"]), 1)
+	Run.stash.append(vest)
+	d.gear_pick = {"where": "stash", "i": Run.stash.find(vest)}
+	d.set_tab("gear")
+	await frames_wait(10)
+	await shot("dossier_gear")
+	check(d.equip_preview(vest).size() > 0, "the gear tab previews what equipping changes")
+	d.cycle(1)
+	await frames_wait(10)
+	check(d.idx == 1 and d.gear_pick.is_empty(), "E flips to the next soldier")
+	await shot("dossier_hex_gear")
+	d.done.emit()
+	await frames_wait(10)
+	check(hq.idle(), "BACK returns to the HQ scene")
+	# read-only from the field: no service tiles
+	var ro: Control = load("res://scripts/dossier.gd").new()
+	ro.readonly = true
+	ro.idx = 2
+	main.add_child(ro)
+	ro.sel = Run.soldiers[2].deck[0]
+	ro.build()
+	await frames_wait(6)
+	check(not ro.get_children().any(func(o): return o.get_script() != null and o.get("why") != null), "a read-only Dossier shows no service buttons")
+	ro.queue_free()
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)

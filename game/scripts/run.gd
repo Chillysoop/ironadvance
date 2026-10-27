@@ -189,6 +189,8 @@ func evolutions(s: Dictionary) -> Array:
 
 func evolve(c: Dictionary, rule: Dictionary) -> void:
 	c.key = rule.into
+	c["from"] = "evolved"
+	c["got"] = mission + 1
 	c.erase("mods")
 	c.erase("nick")
 
@@ -232,7 +234,7 @@ func new_run() -> void:
 func make_soldier(d: Dictionary) -> Dictionary:
 	var deck: Array = []
 	for k in d.deck:
-		deck.append(new_card(k))
+		deck.append(new_card(k, -1, "start"))
 	return {
 		"key": d.key, "def": d, "hp": d.hp, "max_hp": d.hp, "alive": true,
 		"lvl": 1, "xp": 0, "deck": deck, "perks": [], "tags": Data.DOG_TAGS, "trait": "",
@@ -365,9 +367,14 @@ func fallen_slots() -> Array:
 			out.append(i)
 	return out
 
-func new_card(key: String, tier := -1) -> Dictionary:
+func new_card(key: String, tier := -1, from := "") -> Dictionary:
+	## from: where the card came from (start, shop, level, drop, fused, evolved), shown in the Dossier.
 	uid += 1
-	return {"id": uid, "key": key, "tier": Data.base_tier(key) if tier < 0 else maxi(tier, Data.base_tier(key))}
+	var c := {"id": uid, "key": key, "tier": Data.base_tier(key) if tier < 0 else maxi(tier, Data.base_tier(key))}
+	if from != "":
+		c["from"] = from
+		c["got"] = mission + 1
+	return c
 
 func luck_total() -> int:
 	var n := luck + (2 if has_gear("charm") else 0) + (1 if has_gear("dogtags") else 0) + (2 if has_cmd("rabbit") else 0) + temp_luck
@@ -580,7 +587,7 @@ func apply_option(s: Dictionary, o: Dictionary) -> String:
 	var t: int = o.get("tier", 0)
 	match o.kind:
 		"card":
-			var c := new_card(o.key, t)
+			var c := new_card(o.key, t, "level")
 			s.deck.append(c)
 			return "%s added %s %s to the deck." % [s.def.name, Data.tier_name(Data.tier_of(c)).capitalize(), Data.card(c).name]
 		"perk":
@@ -842,7 +849,7 @@ func fusable(s: Dictionary) -> Array:
 func fuse(s: Dictionary, g: Array) -> Dictionary:
 	for c in g:
 		s.deck.erase(c)
-	var c := new_card(g[0].key, Data.tier_of(g[0]) + 1)
+	var c := new_card(g[0].key, Data.tier_of(g[0]) + 1, "fused")
 	for o in g:
 		if o.get("mods", []).size():
 			c["mods"] = o.mods.duplicate()

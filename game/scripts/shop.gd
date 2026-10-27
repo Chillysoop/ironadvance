@@ -316,7 +316,7 @@ func buy_card(i: int) -> void:
 	var s := await choose_soldier("WHO GETS %s?" % Data.card(o).name.to_upper(), true, Rect2(24 + i * 112, 92, 104, 146))
 	if s.is_empty() or not pay(o.price):
 		return
-	s.deck.append(Run.new_card(o.key, o.tier))
+	s.deck.append(Run.new_card(o.key, o.tier, "shop"))
 	o["sold"] = true
 	say("%s added to %s's deck." % [Data.card(o).name, s.def.name])
 	build()
