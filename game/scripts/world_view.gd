@@ -215,6 +215,23 @@ func draw_unit(u: Unit) -> void:
 		"pad":
 			draw_pad(u, pos)
 			return
+		"m2":
+			# B6: a sandbagged M2 on a tripod, barrel toward the squad
+			var mc := Color.WHITE if white else Color("4a4f57")
+			draw_line(pos + Vector2(-8, 0), pos + Vector2(0, -12), C_DARK, 3.0)
+			draw_line(pos + Vector2(8, 0), pos + Vector2(0, -12), C_DARK, 3.0)
+			draw_rect(Rect2(pos.x - 7, pos.y - 18, 14, 8), C_DARK)
+			draw_rect(Rect2(pos.x - 6, pos.y - 17, 12, 6), mc)
+			draw_rect(Rect2(pos.x + u.face * 6 - (20 if u.face < 0 else 0), pos.y - 16, 20, 3), C_DARK)
+			draw_rect(Rect2(pos.x + u.face * 26 - 2, pos.y - 17, 3, 5), C_DARK)
+			draw_rect(Rect2(pos.x - 4, pos.y - 22, 6, 4), Color("6a5a3a"))
+			if u.hp < u.max_hp:
+				draw_rect(Rect2(pos.x - 12, pos.y - 28, 24, 3), C_DARK)
+				draw_rect(Rect2(pos.x - 11, pos.y - 27, 22.0 * u.hp / u.max_hp, 1), Color("ffb23e"))
+			var who: bool = b.squad_alive().any(func(s): return b.m2_near(s) == u)
+			if who:
+				Art.text(self, "M2", pos + Vector2(0, -32), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			return
 		"mine":
 			# a dished steel plate half buried in the dirt, its light blinking faster when someone is close
 			var near := b.squad_alive().any(func(s): return absf(s.x - u.x) < 70 and absf(s.y - u.y) < 40)
@@ -400,6 +417,13 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			Art.text(self, L.key, p + Vector2(1, 1), 16, Color("8a1a0a"), HORIZONTAL_ALIGNMENT_CENTER)
 		"scrip":
 			draw_texture_rect(Art.tex.ic_coin, Rect2(p.x - 6, p.y - 10, 12, 12), false)
+		"gun":
+			# B4: a dropped Jackal weapon, one shot of it for whoever grabs it
+			draw_circle(p + Vector2(0, -4), 10, Color(1, 0.82, 0.23, 0.2 + 0.15 * sin(b.t / 6.0)))
+			draw_rect(Rect2(p.x - 9, p.y - 7, 18, 5), C_DARK)
+			draw_rect(Rect2(p.x - 8, p.y - 6, 16, 3), Color("6c7078"))
+			draw_rect(Rect2(p.x - 4, p.y - 3, 3, 4), C_DARK)
+			Art.text(self, Data.CARDS[L.card].name.to_upper(), p + Vector2(0, -14), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		"trophy":
 			draw_circle(p + Vector2(0, -4), 11, Color(1, 0.7, 0.12, 0.3 + 0.2 * sin(b.t / 5.0)))
 			draw_texture_rect(Art.tex.ic_star, Rect2(p.x - 8, p.y - 12, 16, 16), false)
