@@ -215,6 +215,33 @@ func draw_unit(u: Unit) -> void:
 		"pad":
 			draw_pad(u, pos)
 			return
+		"jbox":
+			# T2: a grey junction box on a post, its cable snaking along the ground to the right
+			var on: bool = u.loot.on
+			var cab := Color("2a2a2e")
+			var pts := PackedVector2Array()
+			for i in u.loot.ys.size():
+				var wy: float = u.loot.ys[i]
+				if wy >= b.WATER_Y:
+					break
+				pts.append(Vector2(u.loot.x0 + i * 4.0, wy - 1))
+			if pts.size() > 1:
+				draw_polyline(pts, cab, 2.0)
+				if on:
+					# a pulse of current running down the line
+					var k: int = int((b.t / 2) % pts.size())
+					for d in 3:
+						var q := pts[(k + d * 9) % pts.size()]
+						draw_rect(Rect2(q.x - 1, q.y - 1, 2, 2), Color("bff6ff"))
+			draw_rect(Rect2(pos.x - 2, pos.y - 10, 4, 10), C_DARK)
+			draw_rect(Rect2(pos.x - 7, pos.y - 21, 14, 12), C_DARK)
+			draw_rect(Rect2(pos.x - 6, pos.y - 20, 12, 10), Color.WHITE if white else Color("7d858c"))
+			draw_rect(Rect2(pos.x - 3, pos.y - 18, 6, 4), Color("ffd23a") if on else Color("4a4f57"))
+			draw_rect(Rect2(pos.x - 1, pos.y - 17, 2, 2), C_DARK)
+			if on and (b.t / 6) % 2 == 0:
+				draw_rect(Rect2(pos.x + 3, pos.y - 13, 2, 2), Color("ff4d3d"))
+			draw_line(pos + Vector2(6, -12), pts[0] if pts.size() else pos, cab, 2.0)
+			return
 		"m2":
 			# B6: a sandbagged M2 on a tripod, barrel toward the squad
 			var mc := Color.WHITE if white else Color("4a4f57")
@@ -522,7 +549,7 @@ func draw_wreck(u: Unit, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad"] or u.type == "boss" or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox"] or u.type == "boss" or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -1109,6 +1136,8 @@ func draw_hover() -> void:
 	elif h.kind == "pad":
 		var B: Dictionary = Data.BONUSES[b.pad_bonus(h)]
 		lines = ["BONUS PAD: " + B.name, "READY: whoever stands on it takes it." if h.loot.ready else "Ready in %d round%s." % [h.loot.t, "" if h.loot.t == 1 else "s"], B.text, "Jackals race for it too."]
+	elif h.kind == "jbox":
+		lines = ["JUNCTION BOX: " + ("LIVE" if h.loot.on else "DEAD"), "Anyone standing on its cable: 4 damage, and Jackals are stunned.", "Once a round each. Knock Jackals onto it.", "Shoot or blast the box to cut the power."] if h.loot.on else ["JUNCTION BOX: DEAD", "The cable is safe to cross."]
 	elif h.kind == "mine":
 		lines = ["JACKAL MINE", "Your soldiers set it off by stepping on it.", "Jackals only trip it when they land on it: knock them onto it.", "Shoot or blast it to clear it. Blast 38."]
 	elif h.is_prop():

@@ -702,6 +702,8 @@ func run() -> void:
 			await soldat2()
 		"soldat3":
 			await soldat3()
+		"soldat4":
+			await soldat4()
 		"drill":
 			await drill()
 		"detours":
@@ -1901,6 +1903,117 @@ func soldat3() -> void:
 	if drop != null:
 		b.collect(s, drop)
 	check(s.hand.filter(func(c): return c.key == "hmg" and c.get("temp", false)).size() == n0 + 1, "walking over it gives one Heavy MG shot")
+
+func soldat4() -> void:
+	## Soldat round 2, terrain: sheet ice, rubber tarps and live wires.
+	Run.new_run()
+	var lvl := {"name": "SOLDAT YARD IV", "theme": "dusk", "segments": ["start", "trenches", "gully", "towers", "camp", "arena"],
+		"boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "", "rules": {"pads": 0, "ice": 1, "tarps": 1, "wires": 1}}
+	var b: Battle = main.start_battle(0, lvl)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	b.autopick = 0
+	b.wind = 0
+	var sq: Array = b.squad()
+	var s: Unit = sq[0]
+	# --- generation
+	check(b.T.ice_runs.size() == 1, "an ice rule lays a sheet of ice")
+	if b.T.ice_runs.size():
+		var ix: float = (b.T.ice_runs[0][0] + b.T.ice_runs[0][1]) / 2.0
+		check(b.T.mat(ix, b.T.stand_y(ix, 0) + 1) == Terrain.ICE, "its top is ice (%s, mat %d at %d)" % [str(b.T.ice_runs), b.T.mat(ix, b.T.stand_y(ix, 0) + 1), b.T.stand_y(ix, 0)])
+	check(b.T.tarps.size() == 1, "a tarps rule lays a rubber tarp")
+	if b.T.tarps.size():
+		var tx: float = (b.T.tarps[0][0] + b.T.tarps[0][1]) / 2.0
+		check(b.T.mat(tx, b.T.stand_y(tx, 0) + 1) == Terrain.RUBBER, "its top is rubber")
+	var boxes: Array = b.units.filter(func(o): return o.kind == "jbox")
+	check(boxes.size() == 1 and boxes[0].loot.on, "a wires rule puts down a live junction box (%d, %s)" % [boxes.size(), str(b.T.spawns.filter(func(sp): return sp[0] == "jbox"))])
+	for o in b.units:
+		if o.team == "enemy" or o.team == "neutral":
+			o.gone = true; o.dead = true
+	for o in sq:
+		if o != s:
+			ground_unit(b, o, 120)
+	flat_strip(b, 260, 700)
+	cam_on(b, 600)
+	ground_unit(b, s, 300)
+	b.sel = s
+	await until(func(): return b.settled(), 300)
+	var gy: float = s.y
+	# --- ice: a knocked-back Jackal skids on, and the preview knows
+	var e := b.mk_enemy("grunt", 380, gy); e.active = true; e.hp = 40; e.max_hp = 40
+	b.units.append(e)
+	var plain := b.sim_body(e, 4.0, -3.0)
+	b.T.fill_r(400, gy, 220, 8, Terrain.ICE)
+	b.T.flush()
+	var iced := b.sim_body(e, 4.0, -3.0)
+	check(iced.x > plain.x + 30, "on ice the landing point slides on (%d -> %d)" % [plain.x, iced.x])
+	e.vx = 4.0; e.vy = -3.0; e.air = true
+	await until(func(): return b.settled(), 600)
+	check(absf(e.x - iced.x) < 6 and not e.air, "the Jackal skids to where the preview said (%d vs %d)" % [e.x, iced.x])
+	check(e.x > 600, "and right off the end of the ice (%d)" % e.x)
+	ground_unit(b, s, 330)
+	var walk := b.sim_walk(s, 500, 300)
+	check(absf(walk.x - 500) < 6, "walking onto ice is careful: no skid (%d)" % walk.x)
+	e.dead = true; e.gone = true
+	# --- rubber: bounce, no fall damage; grenades bounce higher
+	b.T.fill_r(700, gy, 40, 4, Terrain.RUBBER)
+	b.T.flush()
+	var hp0 := s.hp
+	s.x = 720; s.y = gy - 160; s.air = true; s.vx = 0; s.vy = 0
+	await until(func(): return s.y > gy - 30, 300)
+	var top_y := gy
+	for f in 20:
+		await frames_wait(1)
+		top_y = minf(top_y, s.y)
+	check(top_y < gy - 60, "a soldier dropped on the tarp bounces back up (%d px)" % (gy - top_y))
+	await until(func(): return b.settled(), 600)
+	check(s.hp == hp0 and absf(s.y - gy) < 2, "and takes no fall damage (hp %d -> %d)" % [hp0, s.hp])
+	var g_rub := b.sim_grenade(720, gy - 60, 0, 0, 0, 90)
+	var g_dirt := b.sim_grenade(800, gy - 60, 0, 0, 0, 90)
+	check(peak_after_bounce(g_rub.pts, gy) < peak_after_bounce(g_dirt.pts, gy) - 20, "a grenade bounces far higher off rubber (peak %d vs %d)" % [gy - peak_after_bounce(g_rub.pts, gy), gy - peak_after_bounce(g_dirt.pts, gy)])
+	# --- live wire
+	var j = b.make_jbox(800)
+	check(j != null and j.loot.ys.size() > 20, "a junction box lays its cable")
+	var z := b.mk_enemy("grunt", 860, gy); z.active = true; z.hp = 20; z.max_hp = 20
+	b.units.append(z)
+	b.update_wires()
+	check(z.hp == 16 and z.has_st("stun"), "a Jackal on the live cable takes 4 and is stunned (hp %d)" % z.hp)
+	b.update_wires()
+	check(z.hp == 16, "once a round")
+	b.round_n += 1
+	b.update_wires()
+	check(z.hp == 12, "and again next round")
+	z.dead = true; z.gone = true
+	ground_unit(b, s, 760)
+	var sw := b.stop_before_mines(s, b.sim_walk(s, 900, 300))
+	check(sw.x < 810, "an automatic walk stops short of a live cable (%d)" % sw.x)
+	ground_unit(b, s, 870)
+	hp0 = s.hp
+	b.update_wires()
+	check(s.hp == hp0 - 4, "a soldier on the cable takes 4 too (%d -> %d)" % [hp0, s.hp])
+	await frames_wait(8)
+	await shot("soldat4_wire")
+	b.damage(j, 5, s)
+	check(not j.loot.on and not j.gone, "shooting the box cuts the power")
+	b.round_n += 1
+	hp0 = s.hp
+	b.update_wires()
+	check(s.hp == hp0, "a dead cable is safe")
+	check(Data.BIOMES.mountain.rules.get("ice", 0) > 0 and Data.BIOMES.delta.rules.get("tarps", 0) > 0 and Data.BIOMES.harbor.rules.get("tarps", 0) > 0 and Data.BIOMES.refinery.rules.get("wires", 0) > 0 and Data.BIOMES.fortress.rules.get("wires", 0) > 0, "ice in the Mountain Pass, tarps in the Delta and Harbor, wires in the Refinery and Fortress")
+	cam_on(b, 520)
+	await frames_wait(8)
+	await shot("soldat4_yard")
+
+func peak_after_bounce(pts: Array, gy: float) -> float:
+	## Highest point (smallest y) a grenade reaches after it first touches the ground.
+	var hit := false
+	var best := gy
+	for p in pts:
+		if not hit and p.y > gy - 8:
+			hit = true
+		elif hit:
+			best = minf(best, p.y)
+	return best
 
 func ground_unit(b: Battle, u: Unit, x: float, from_y := 0.0) -> void:
 	u.x = x; u.y = b.T.stand_y(x, from_y); u.air = false; u.vx = 0; u.vy = 0; u.walk = null

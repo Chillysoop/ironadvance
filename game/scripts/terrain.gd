@@ -7,6 +7,8 @@ const CELL := 4
 const ROWS := 135
 const GRATE := 5   # steel grating: soldiers stand on it, bullets, rockets and grenades go through
 const FENCE := 6   # chain-link: stops soldiers and Jackals, not bullets, rockets or grenades
+const ICE := 7     # sheet ice: anything that lands on it keeps sliding
+const RUBBER := 8  # rubber tarp: soldiers and grenades bounce off it, no fall damage
 const FLOOD_LIMIT := 5000
 
 var b  # the Battle that owns this terrain
@@ -34,6 +36,8 @@ var arena_x := 0
 var yard: Array = []     # [x0, x1] of the clearing after the mid camp, where a detour plays out
 var stretches: Array = []  # [x0, x1] of each fighting stretch, in order
 var camps: Array = []    # safe camps inside the level: {x0, x1, used}
+var ice_runs: Array = []  # [x0, x1] of each sheet of ice on the ground
+var tarps: Array = []     # [x0, x1] of each rubber tarp on the ground
 
 func _init(battle) -> void:
 	b = battle
@@ -158,6 +162,35 @@ func build(mission: Dictionary) -> void:
 					break
 				sx = randf_range(st[0], st[1])
 			spawns.append([{"fuel": "fuel", "mines": "mine", "pads": "pad"}[k], sx, {}])
+	# T2 surfaces: ice sheets, rubber tarps and live wires, each on clear ground in some stretch
+	ice_runs = []; tarps = []
+	var taken: Array = []
+	for k in ["ice", "tarps", "wires"]:
+		for i in int(rules.get(k, 0)):
+			if stretches.is_empty():
+				break
+			var w: float = {"ice": 160.0, "tarps": 40.0, "wires": 120.0}[k]
+			# every clear spot on an 8px grid, then one at random
+			var spots: Array = []
+			for st in stretches:
+				var cx: float = st[0]
+				while cx <= st[1] - w:
+					var lo := cx - 20
+					var hi := cx + w + 20
+					if not pits.any(func(p): return hi > p[0] and lo < p[1]) and not sandbags.any(func(sb): return sb + 20 > lo and sb < hi) \
+							and not structs.any(func(t): return struct_span(t)[1] > lo and struct_span(t)[0] < hi) and not taken.any(func(r): return r[1] > lo and r[0] < hi):
+						spots.append(cx)
+					cx += 8
+			if spots.is_empty():
+				continue  # nowhere clear enough on this map
+			var sx: float = spots[randi() % spots.size()]
+			taken.append([sx, sx + w])
+			if k == "ice":
+				ice_runs.append([sx, sx + w])
+			elif k == "tarps":
+				tarps.append([sx, sx + w])
+			else:
+				spawns.append(["jbox", sx, {}])
 	world_w = int(ceil(x / 160.0)) * 160
 	cols = world_w / CELL
 	var n := cols * ROWS
@@ -211,6 +244,13 @@ func build(mission: Dictionary) -> void:
 		var deep := top + 16 + int(hash2(cx, 7) * 4)
 		for cy in range(top, ROWS):
 			set_cell(cx, cy, 4 if cy > deep else 1)
+		for r in ice_runs:
+			if cxx >= r[0] and cxx < r[1]:
+				set_cell(cx, top, ICE)
+				set_cell(cx, top + 1, ICE)
+		for r in tarps:
+			if cxx >= r[0] and cxx < r[1]:
+				set_cell(cx, top, RUBBER)
 	for p in pits:
 		if open_pits.has(p):
 			continue
@@ -227,6 +267,18 @@ func build(mission: Dictionary) -> void:
 	img = Image.create_from_data(cols, ROWS, false, Image.FORMAT_RG8, data)
 	tex = ImageTexture.create_from_image(img)
 	dirty = false
+
+func struct_span(t: Dictionary) -> Array:
+	## Rough [x0, x1] a struct covers, for keeping ice, tarps and wires out from under it.
+	var xs: Array = []
+	for k in ["px", "x0", "x1", "x", "col", "bx", "post"]:
+		if t.has(k):
+			xs.append(float(t[k]))
+	if t.has("x") and t.has("w"):
+		xs.append(float(t.x + t.w))
+	if xs.is_empty():
+		return [-1e9, -1e9]
+	return [xs.min() - 24.0, xs.max() + 24.0]
 
 func shape_ground(g: Dictionary) -> void:
 	## raise a ridge (dh > 0) or dig a trench (dh < 0) between x0 and x1, with ramps of g.ramp px.

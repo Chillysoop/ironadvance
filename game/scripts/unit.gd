@@ -81,6 +81,7 @@ var fuel_max := 0
 var jetting := false
 var hang := false     # J4: held at the top of a jump for one mid-air shot
 var rolling := false  # J3: mid Combat Roll
+var slide := 0.0      # T2: still skidding across ice after a landing (px per frame)
 # squad only
 var s: Dictionary = {}  # persistent Run soldier record
 var def: Dictionary = {}

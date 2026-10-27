@@ -3,7 +3,7 @@ render_mode unshaded;
 
 // The terrain is a grid of 4x4 world-unit cells (R = material, G = scorch).
 // Each cell is shaded as 2x2 art pixels so it matches the sprites' pixel size.
-// Materials: 1 dirt, 2 concrete, 3 wood, 4 rock, 5 steel grating, 6 chain-link fence.
+// Materials: 1 dirt, 2 concrete, 3 wood, 4 rock, 5 steel grating, 6 chain-link fence, 7 ice, 8 rubber tarp.
 
 uniform vec2 cells = vec2(1600.0, 135.0);
 uniform vec2 cell_offset = vec2(0.0);   // world cell of texel (0,0); keeps patterns stable on debris
@@ -106,6 +106,17 @@ void fragment() {
 			if (seam) c = vec3(0.34, 0.22, 0.12);
 			if (mod(ap.x, 9.0) < 1.0 && !seam) c = vec3(0.4, 0.26, 0.13);
 			if (n > 0.95) c = vec3(0.7, 0.7, 0.66); // nail heads
+		} else if (m == 7) {
+			// sheet ice: pale blue, a white glaze on top and diagonal glints
+			c = vec3(0.62, 0.82, 0.93);
+			if (n < 0.15) c = vec3(0.52, 0.72, 0.86);
+			if (mod(ap.x - ap.y, 7.0) < 1.0) c = vec3(0.86, 0.95, 1.0);
+			if (up_e && sp.y == 0) c = vec3(0.95, 0.99, 1.0);
+		} else if (m == 8) {
+			// rubber tarp: black-green with a yellow hazard stripe along the top
+			c = vec3(0.16, 0.2, 0.17);
+			if (n > 0.9) c = vec3(0.22, 0.27, 0.23);
+			if (up_e && sp.y == 0) c = mod(floor(ap.x / 3.0), 2.0) < 1.0 ? vec3(0.95, 0.78, 0.2) : vec3(0.12, 0.12, 0.12);
 		} else {
 			vec2 q = floor(ap / vec2(5.0, 4.0));
 			float h2 = hash(q + vec2(floor(mod(q.y, 2.0)) * 0.5, 0.0));

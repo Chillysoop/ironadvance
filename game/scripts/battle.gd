@@ -182,6 +182,9 @@ func setup(idx: int, custom := {}) -> void:
 			var u := mk_unit(); u.team = "neutral"; u.kind = type; u.x = x; u.y = fy
 			u.w = 22 if type == "fuel" else 12; u.h = 30 if type == "fuel" else 6
 			units.append(u); continue
+		if type == "jbox":
+			make_jbox(x)
+			continue
 		if type == "m2":
 			var u := mk_unit(); u.team = "neutral"; u.kind = "m2"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.w = 26; u.h = 20
 			u.hp = 30; u.max_hp = 30; u.heavy = true; u.face = -1; u.loot = {"sq": -1, "en": -1}
@@ -540,7 +543,7 @@ func settled() -> bool:
 	for u in units:
 		if u.sunk or u.gone:
 			continue
-		if u.walk != null or u.zip != null or u.drill != null or (u.air and not u.para and not u.hang):
+		if u.walk != null or u.zip != null or u.drill != null or u.slide != 0 or (u.air and not u.para and not u.hang):
 			return false
 	return true
 
@@ -596,7 +599,7 @@ func sparks(x: float, y: float, n := 5) -> void:
 	for i in n:
 		part({"x": x, "y": y, "vx": (randf() - .5) * 4, "vy": -randf() * 3, "life": 14, "max": 14, "c": Color("fff3a0"), "s": 2.0, "g": 0.2, "fire": true})
 
-const MATCOL := {1: Color("86582f"), 2: Color("8e939a"), 3: Color("80562e"), 4: Color("62503f"), 5: Color("6f777f"), 6: Color("a9b0b6")}
+const MATCOL := {1: Color("86582f"), 2: Color("8e939a"), 3: Color("80562e"), 4: Color("62503f"), 5: Color("6f777f"), 6: Color("a9b0b6"), 7: Color("bfe6f5"), 8: Color("2a332c")}
 
 func debris(x: float, y: float, m: int, slow := false) -> void:
 	var c: Color = MATCOL.get(m, Color("888888"))
@@ -1211,6 +1214,14 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 			Sfx.play("splash")
 			log_msg("A fuel tank is leaking. It blows at the end of the next enemy phase.")
 		return
+	if tg.kind == "jbox":
+		if tg.loot.on:
+			tg.loot.on = false
+			tg.flash = 8
+			sparks(tg.x, tg.y - 10, 8)
+			Sfx.play("tick")
+			float_text(tg, "POWER CUT", Color("53d4e2"), true)
+		return
 	if tg.kind == "m2":
 		tg.hp -= amt
 		tg.flash = 8
@@ -1824,12 +1835,13 @@ func update_proj(p: Dictionary) -> void:
 					break
 				var sx := proj_solid(p, p.x, py)
 				var sy := proj_solid(p, px, p.y)
+				var rub := T.mat(p.x, p.y) == Terrain.RUBBER
 				p.x = px
 				p.y = py
 				if sx or not sy:
-					p.vx = -p.vx * 0.45
+					p.vx = -p.vx * (0.9 if rub else 0.45)
 				if sy or not sx:
-					p.vy = -p.vy * 0.4
+					p.vy = -p.vy * (0.95 if rub else 0.4)
 				p.vx *= 0.85
 				if absf(p.vy) > 1:
 					Sfx.play("tick")
@@ -1891,12 +1903,13 @@ func sim_grenade(sx: float, sy: float, vx: float, vy: float, wind_f: float, fram
 			if T.solid(x, y):
 				var hx := T.solid(x, py)
 				var hy := T.solid(px, y)
+				var rub := T.mat(x, y) == Terrain.RUBBER
 				x = px
 				y = py
 				if hx or not hy:
-					vx = -vx * 0.45
+					vx = -vx * (0.9 if rub else 0.45)
 				if hy or not hx:
-					vy = -vy * 0.4
+					vy = -vy * (0.95 if rub else 0.4)
 				vx *= 0.85
 				break
 		pts.append(Vector2(x, y))
@@ -2258,8 +2271,12 @@ func apply_recoil(u: Unit, v: Vector2) -> void:
 func sim_body(u: Unit, vx: float, vy: float, thrust = null, fuel := 0) -> Dictionary:
 	## Where a body thrown with (vx, vy) comes down, stepped exactly like physics() does.
 	## With a thrust target it also burns jet fuel toward that point first (Jet Boots preview).
-	var x := u.x
-	var y := u.y
+	return sim_body_xy(u, u.x, u.y, vx, vy, thrust, fuel)
+
+func sim_body_from(u: Unit, x: float, y: float, vx: float) -> Dictionary:
+	return sim_body_xy(u, x, y, vx, 0.0)
+
+func sim_body_xy(u: Unit, x: float, y: float, vx: float, vy: float, thrust = null, fuel := 0) -> Dictionary:
 	var pts: Array = []
 	for k in 600:
 		if thrust != null and fuel > 0:
@@ -2282,6 +2299,29 @@ func sim_body(u: Unit, vx: float, vy: float, thrust = null, fuel := 0) -> Dictio
 				var ly := floorf(ny / CELL) * CELL
 				while T.solid(x, ly - 1) and ly > 0:
 					ly -= CELL
+				var lm := T.mat(x, ly)
+				if lm == Terrain.RUBBER and vy > 2.5:
+					y = ly - 0.5
+					vy = -vy * 0.85
+					continue
+				if lm == Terrain.ICE and absf(vx) > 0.6:
+					# skid on: the ghost shows where the ice lets go of them
+					var v := clampf(vx * 0.9, -4.0, 4.0)
+					var fall := int(round((vy - 6.5) * 2.5)) if vy > 6.5 and thrust == null else 0
+					for f in 300:
+						var sl := ice_step(u, x, ly, v)
+						x = sl.x; ly = sl.y; v = sl.v
+						if f % 3 == 0:
+							pts.append(Vector2(x, ly))
+						if sl.air:
+							var rest := sim_body_from(u, x, ly, v)
+							pts.append_array(rest.pts)
+							rest.pts = pts
+							return rest
+						if v == 0:
+							break
+					pts.append(Vector2(x, ly))
+					return {"x": x, "y": ly, "pts": pts, "water": false, "fall": fall}
 				pts.append(Vector2(x, ly))
 				return {"x": x, "y": ly, "pts": pts, "water": false, "fall": int(round((vy - 6.5) * 2.5)) if vy > 6.5 and thrust == null else 0}
 			if vy < 0 and T.solid(x, ny - u.h):
@@ -5326,6 +5366,7 @@ func step() -> void:
 					float_text(p, "THANK YOU!", Color("62d26f"), true)
 					pow_queue.append({"pow": p, "u": u})
 	update_mines()
+	update_wires()
 	if pads.size():
 		check_pads()
 	for p in projs.duplicate():
@@ -5452,6 +5493,21 @@ func physics(u: Unit) -> void:
 		if not T.solid(u.x, u.y):
 			u.air = true
 			u.vy = maxf(u.vy, 0)
+			if u.slide != 0:
+				u.vx = u.slide  # skidded off the edge of the ice
+				u.slide = 0
+		elif u.slide != 0:
+			var sl := ice_step(u, u.x, u.y, u.slide)
+			u.x = sl.x; u.y = sl.y; u.slide = sl.v
+			if u.team == "squad" and (u.x < cam_x + 8 or u.x > cam_x + W - 8):
+				u.x = clampf(u.x, cam_x + 8, cam_x + W - 8)
+				u.slide = 0
+			if sl.air:
+				u.air = true
+				u.vx = sl.v
+				u.vy = 0
+				u.slide = 0
+			return
 		else:
 			return
 	u.vy = minf(u.vy + grav, 2.4 if u.para else 10.0)
@@ -5492,7 +5548,17 @@ func physics(u: Unit) -> void:
 				ly -= CELL
 			u.y = ly
 			var imp: float = u.vy
+			var lm := T.mat(u.x, ly)
+			if lm == Terrain.RUBBER and imp > 2.5 and not u.para:
+				# rubber tarp: straight back up, and the bounce eats the fall
+				u.y = ly - 0.5
+				u.vy = -imp * 0.85
+				if imp > 4:
+					Sfx.play("land", -4)
+					float_text(u, "BOING!", Color("ffd23a"))
+				continue
 			u.air = false
+			u.slide = clampf(u.vx * 0.9, -4.0, 4.0) if lm == Terrain.ICE and absf(u.vx) > 0.6 and not u.para else 0.0
 			u.vx = 0
 			u.vy = 0
 			if u.crash:
@@ -5527,6 +5593,28 @@ func physics(u: Unit) -> void:
 			float_at(u.x, WATER_Y - 30, (u.def.name + " DROWNED") if u.team == "squad" else "SPLASH!", Color("9fe3f0"), true)
 			kill(u, u.last_hit_by if u.last_hit_by != null and u.last_hit_by is Unit and u.last_hit_by.team == "squad" else null)
 
+func ice_step(u: Unit, x: float, y: float, v: float) -> Dictionary:
+	## One frame of a skid across ice: follow the surface a step up or down, stop at a wall,
+	## go airborne off a drop. Ice barely slows you; anything else stops you quickly.
+	var nx := x + v
+	var air := false
+	if nx < 4 or nx > world_w - 4 or T.solid(nx, y - u.h * 0.5) or T.solid(nx, y - 6):
+		return {"x": x, "y": y, "v": 0.0, "air": false}
+	var ny := y
+	if T.solid(nx, y - 1):
+		ny = y - CELL
+		if T.solid(nx, ny - 1):
+			return {"x": x, "y": y, "v": 0.0, "air": false}
+	elif not T.solid(nx, y):
+		if T.solid(nx, y + CELL):
+			ny = y + CELL
+		else:
+			air = true
+	v *= 0.975 if T.mat(nx, ny) == Terrain.ICE else 0.6
+	if absf(v) < 0.25 and not air:
+		v = 0.0
+	return {"x": nx, "y": ny, "v": v, "air": air}
+
 # ---------------------------------------------------------------- level hazards
 var mine_air := {}  # unit id -> was airborne last frame
 var mine_by := {}   # unit id -> who last sent it flying, kept past the landing that clears it
@@ -5550,7 +5638,7 @@ func stop_before_mines(u: Unit, sim: Dictionary) -> Dictionary:
 	var pts: Array = sim.pts
 	var cut := pts.size()
 	for i in pts.size():
-		if mine_under(u, pts[i][0], pts[i][1], 4) != null:
+		if mine_under(u, pts[i][0], pts[i][1], 4) != null or live_wire_at(pts[i][0], pts[i][1], 4) != null:
 			cut = i
 			break
 	if cut == pts.size():
@@ -5561,6 +5649,68 @@ func stop_before_mines(u: Unit, sim: Dictionary) -> Dictionary:
 	if pts.is_empty():
 		return {"pts": pts, "x": u.x, "y": u.y, "used": 0.0}
 	return {"pts": pts, "x": pts[-1][0], "y": pts[-1][1], "used": absf(pts[-1][0] - u.x)}
+
+func make_jbox(x: float):
+	## T2 live wire: a junction box with a sparking cable laid along the ground to its right.
+	var by = T.stand_y(x, T.ground_at(x) - 40)
+	if by == null:
+		return null
+	var u := mk_unit(); u.team = "neutral"; u.kind = "jbox"; u.x = x; u.y = by; u.w = 14; u.h = 20
+	u.hp = 1; u.max_hp = 1; u.heavy = true; u.face = 1
+	var ys: Array = []
+	var wx := x + 10.0
+	while wx <= x + 120.0:
+		var wy = T.stand_y(wx, T.ground_at(wx) - 40)
+		ys.append(wy if wy != null else float(WATER_Y))
+		wx += CELL
+	u.loot = {"x0": x + 10.0, "ys": ys, "on": true, "hit": {}}
+	units.append(u)
+	return u
+
+func wire_y(j: Unit, x: float):
+	## Height of a junction box's cable at x, or null if x is off its run.
+	var i := int(round((x - j.loot.x0) / CELL))
+	if i < 0 or i >= j.loot.ys.size():
+		return null
+	return j.loot.ys[i]
+
+func live_wire_at(x: float, y: float, pad := 0.0):
+	## The live junction box whose cable runs under (x, y), or null.
+	for j in units:
+		if j.kind == "jbox" and j.loot.on and not j.gone:
+			for dx in [-pad, 0.0, pad]:
+				var wy = wire_y(j, x + dx)
+				if wy != null and absf(y - wy) < 6:
+					return j
+	return null
+
+func update_wires() -> void:
+	## T2: anyone standing on a live cable gets 4 damage and (Jackals) a stun, once a round each.
+	for j in units:
+		if j.kind != "jbox" or not j.loot.on or j.gone:
+			continue
+		if t % 9 == 0:
+			var k: int = randi() % j.loot.ys.size()
+			sparks(j.loot.x0 + k * CELL, j.loot.ys[k] - 1, 1)
+		for u in units:
+			if u.dead or u.gone or u.sunk or u.air or u.is_prop() or u.is_pickup() or u.kind == "pow" or u.kind == "jbox" or u.kind == "m2" or u.weight == "hover":
+				continue
+			if u.kind != "soldier" and u.kind != "enemy":
+				continue
+			var wy = wire_y(j, u.x)
+			if wy == null or absf(u.y - wy) > 6 or j.loot.hit.get(u.id, -1) == round_n:
+				continue
+			j.loot.hit[u.id] = round_n
+			var by = u.last_hit_by if u.team == "enemy" else null
+			sparks(u.x, u.y - u.h / 2.0, 8)
+			Sfx.play("click", 0, 2.2)
+			float_text(u, "ZAP!", Color("53d4e2"), true)
+			var was := kill_how
+			kill_how = "ZAPPED"
+			damage(u, 4, by, {"status": true})
+			kill_how = was
+			if not u.dead:
+				add_status(u, "stun", 1, by)
 
 func update_mines() -> void:
 	## Jackal mines: your soldiers set them off by stepping on them. Jackals know where they
