@@ -232,7 +232,10 @@ class Screen extends Control:
 			while x < 960:
 				draw_texture_rect(tx, Rect2(x, L[2] - tx.get_height() * 2, w, tx.get_height() * 2), false)
 				x += w
-		draw_rect(Rect2(0, 480, 960, 60), Color(0.05, 0.035, 0.03, 0.85))
+		if mode == "title":
+			draw_title_stage()
+		else:
+			draw_rect(Rect2(0, 480, 960, 60), Color(0.05, 0.035, 0.03, 0.85))
 		match mode:
 			"title": draw_title()
 			"brief": draw_brief()
@@ -254,21 +257,72 @@ class Screen extends Control:
 			if s.has("tags") and s.alive:
 				Art.draw_tags(self, Vector2(x - 9, y + 36), s.tags)
 			i += 1
+	const HEROES := [  # key, x, feet y, scale, face, gun angle: a pyramid on the rubble, Rook on top
+		["hex", 314, 408, 2.5, -1, -0.15], ["moss", 392, 388, 2.75, -1, -0.35],
+		["vee", 574, 388, 2.75, 1, -0.3], ["rook", 480, 372, 3.0, 1, -0.55]]
+	func draw_title_stage() -> void:
+		## Key art: the backdrop sinks into dusk, the sun flares up behind the mound, and the
+		## squad stands on top as near-black silhouettes rimmed in hot light.
+		draw_rect(Rect2(0, 0, 960, 540), Color(0.07, 0.03, 0.09, 0.62))
+		for i in 8:  # darker toward the edges and the top
+			var a := 0.05 * (8 - i) / 8.0
+			draw_rect(Rect2(0, i * 12, 960, 12), Color(0.02, 0.01, 0.03, a * 3))
+			draw_rect(Rect2(i * 14, 0, 14, 540), Color(0.02, 0.01, 0.03, a * 2.5))
+			draw_rect(Rect2(946 - i * 14, 0, 14, 540), Color(0.02, 0.01, 0.03, a * 2.5))
+		var c := Vector2(480, 330)
+		var pulse := 1.0 + sin(t / 50.0) * 0.04
+		for r in [[300, 0.06], [220, 0.08], [150, 0.12], [96, 0.18], [60, 0.28]]:
+			draw_circle(c, r[0] * pulse, Color(1, 0.55, 0.25, r[1]))
+		draw_circle(c, 40, Color(1, 0.85, 0.55, 0.55))
+		for i in 9:  # god rays fanning up from behind the squad
+			var a := -PI / 2 + (i - 4) * 0.2 + sin(t / 240.0 + i) * 0.03
+			var w := 0.035 + 0.02 * (i % 2)
+			var L := 620.0
+			draw_colored_polygon(PackedVector2Array([c, c + Vector2(cos(a - w), sin(a - w)) * L, c + Vector2(cos(a + w), sin(a + w)) * L]), Color(1, 0.75, 0.45, 0.07))
+		for i in 26:  # embers and ash rising through the light
+			var age := fposmod(t * (0.6 + Terrain.hash2(i, 1) * 0.6) + Terrain.hash2(i, 2) * 540, 540.0)
+			var x := fposmod(Terrain.hash2(i, 3) * 960 + sin(age / 40.0 + i) * 20 + age * 0.15, 960.0)
+			var y := 540 - age
+			var col := Color(1, 0.6 + Terrain.hash2(i, 4) * 0.3, 0.3, 0.9 * (1 - age / 540.0)) if i % 3 else Color(0.5, 0.45, 0.5, 0.5)
+			draw_rect(Rect2(roundf(x), roundf(y), 2 if i % 4 else 4, 2 if i % 4 else 4), col)
+		var stage: Texture2D = bg("title_stage")
+		draw_texture_rect(stage, Rect2(0, 0, 960, 540), false)
+		draw_banner(Vector2(518, 372))
+		for h in HEROES:
+			var pos := Vector2(h[1], h[2])
+			var fr := (t / 14 + int(h[1])) % 4
+			# rim light: the flash sprite, warm, nudged toward the sun, then the body darkened over it
+			for o in [Vector2(0, -2), Vector2(-2 * h[4], -1), Vector2(2 * h[4], -1)]:
+				Art.draw_char(self, "sq_" + h[0], "idle", fr, pos + o, h[4], true, 0, 0.9, h[5], true, h[3], Color(1, 0.72, 0.42))
+			Art.draw_char(self, "sq_" + h[0], "idle", fr, pos, h[4], false, 0, 1.0, h[5], true, h[3], Color(0.94, 0.88, 0.9))
+		draw_rect(Rect2(0, 456, 960, 84), Color(0.03, 0.015, 0.03, 0.35))
+	func draw_banner(base: Vector2) -> void:
+		## The squad's flag planted on the peak, snapping in the wind.
+		draw_rect(Rect2(base.x - 1, base.y - 150, 4, 150), Color("120a10"))
+		draw_rect(Rect2(base.x, base.y - 150, 2, 150), Color("6a5a5a"))
+		for col in 26:
+			var k := col / 26.0
+			var wave := roundf(sin(t / 6.0 - col * 0.45) * 4 * k / 2) * 2
+			var x := base.x + 3 + col * 3
+			var y := base.y - 148 + wave + k * 4
+			var hgt := 40.0 - k * 6
+			draw_rect(Rect2(x, y, 3, hgt), Color("4c5c20") if col % 13 != 0 else Color("3c4818"))
+			draw_rect(Rect2(x, y, 3, 3), Color("f08a4a"))
+			if col >= 9 and col <= 15:
+				var sy := 14.0 - absf(col - 12) * 2
+				draw_rect(Rect2(x, y + hgt / 2 - sy / 2, 3, sy), Color("ffd23a"))
 	func draw_title() -> void:
-		var bob := sin(t / 20.0) * 3
-		Art.text(self, "IRON ADVANCE", Vector2(484, 124 + bob), 48, Color("8a2a14"), HORIZONTAL_ALIGNMENT_CENTER, 4)
-		Art.text(self, "IRON ADVANCE", Vector2(480, 120 + bob), 48, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 4)
-		Art.text(self, "TURN-BASED RUN AND GUN", Vector2(480, 156), 16, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER, 2)
-		squad_line(330, "run")
-		var lines := ["Aim every bullet. Lob every grenade. Knock towers onto the Jackals.",
-			"Get hurt to get angry: adrenaline supercharges your attacks.",
-			"Level up mid-mission, spend scrip at the quartermaster between missions."]
-		for i in lines.size():
-			Art.text(self, lines[i], Vector2(480, 210 + i * 18), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		var bob := sin(t / 20.0) * 2
+		Art.text(self, "IRON ADVANCE", Vector2(486, 98 + bob), 48, Color("1a0a08"), HORIZONTAL_ALIGNMENT_CENTER, 6)
+		Art.text(self, "IRON ADVANCE", Vector2(483, 95 + bob), 48, Color("b8401c"), HORIZONTAL_ALIGNMENT_CENTER, 5)
+		Art.text(self, "IRON ADVANCE", Vector2(480, 92 + bob), 48, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 4)
+		draw_rect(Rect2(300, 112 + bob, 360, 3), Color("ffd23a"))
+		draw_rect(Rect2(300, 115 + bob, 360, 2), Color("b8401c"))
+		Art.text(self, "TURN-BASED RUN AND GUN", Vector2(480, 140), 16, Color("ffb070"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 		var ver := FileAccess.get_file_as_string("res://version.txt").strip_edges()
 		Art.text(self, "BUILD " + (ver if ver != "" else "DEV"), Vector2(950, 530), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)
 		if t % 60 < 40:
-			Art.text(self, "3 MISSIONS  4 SOLDIERS  1 IRON BOAR TOO MANY", Vector2(480, 450), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "3 MISSIONS  4 SOLDIERS  1 IRON BOAR TOO MANY", Vector2(480, 528), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 	func draw_brief() -> void:
 		var m: Dictionary = Data.MISSIONS[Run.mission]
 		Art.text(self, "MISSION %d" % (Run.mission + 1), Vector2(480, 90), 16, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER, 2)
