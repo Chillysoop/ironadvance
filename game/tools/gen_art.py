@@ -2,11 +2,12 @@
 """Generates every sprite sheet, background and UI texture for Iron Advance.
 
 Run from the project root:  python3 tools/gen_art.py
-All art is authored here as tiny ASCII part maps plus palettes, composited per
+All art is authored here (Python 3 + Pillow + NumPy) as tiny ASCII part maps plus palettes, composited per
 animation frame and given a dark outer outline, so it stays consistent and is
 easy to tweak. One art pixel is drawn as 2x2 world units in game.
 """
 import json, math, os, random
+import numpy as np
 from PIL import Image, ImageDraw
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
@@ -841,13 +842,26 @@ def small_fx():
     outline(pc).save(os.path.join(OUT, 'sprites', 'parachute.png'))
 
 # ---------------------------------------------------------------- backgrounds (parallax, art px; drawn x2)
+# Every layer is painted as a flat silhouette first, then lit by shade(): a warm rim on the
+# sun side and along the tops, a dark core on the shadow side, and dithered haze toward the
+# base so each layer sinks into the one behind it, like the Metal Slug backdrops.
 THEMES = {
-    'dusk':   dict(sky=['#1b2440', '#3a2f5e', '#7a3a5e', '#d0704a', '#f0b060'], sun='#ffd890', far='#5a3a5a', mid='#3a2a44', near='#24182c', haze='#e08a5a'),
-    'jungle': dict(sky=['#0e2a30', '#1e4a4a', '#3a7a64', '#8ab07a', '#d8d8a0'], sun='#fff2c0', far='#2e5a4a', mid='#1e4234', near='#12281e', haze='#9ac08a'),
-    'night':  dict(sky=['#05060e', '#0e1430', '#1e2450', '#3a3a70', '#6a5a8a'], sun='#e8eef8', far='#262a4a', mid='#181a34', near='#0c0e1e', haze='#4a4a7a'),
+    'dusk': dict(sky=['#1b2440', '#3a2f5e', '#7a3a5e', '#d0704a', '#f0b060'], sun='#ffd890', haze='#e08a5a',
+                 far2='#8a4a64', far='#5e3858', far_lit='#b8605e', mid='#3a2a44', mid_lit='#7e4250', near='#24182c', near_lit='#5e2a34',
+                 win='#ffb060', fore='#120a12', fore_lit='#2e1620',
+                 cloud=['#3a2a52', '#56386a', '#9a4a66', '#e08a5a', '#ffd890']),
+    'jungle': dict(sky=['#0e2a30', '#1e4a4a', '#3a7a64', '#8ab07a', '#d8d8a0'], sun='#fff2c0', haze='#9ac08a',
+                   far2='#4a7a64', far='#2e5a4a', far_lit='#5e8a5e', mid='#1e4234', mid_lit='#3e6a40', near='#12281e', near_lit='#2e4e2a',
+                   win='#d8e0a0', fore='#06120a', fore_lit='#163018',
+                   cloud=['#4a7a6a', '#6a9a80', '#9ac08a', '#d8e0b0', '#fff8d8']),
+    'night': dict(sky=['#05060e', '#0e1430', '#1e2450', '#3a3a70', '#6a5a8a'], sun='#e8eef8', haze='#4a4a7a',
+                  far2='#2e3258', far='#20244a', far_lit='#3a4478', mid='#181a34', mid_lit='#2e3460', near='#0c0e1e', near_lit='#1e2444',
+                  win='#ffd23a', fore='#04040a', fore_lit='#121630',
+                  cloud=['#0e1230', '#161c40', '#222a54', '#3a4678', '#7a88b8']),
 }
 
 BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
+BAYER_NP = (np.array(BAYER, dtype=np.float32) + 0.5) / 16.0
 
 def gradient(w, h, stops):
     img = Image.new('RGBA', (w, h))
@@ -864,99 +878,625 @@ def gradient(w, h, stops):
             px[x, y] = c
     return img
 
+def mix(a, b, f):
+    a, b = rgb(a), rgb(b)
+    return tuple(int(round(a[i] + (b[i] - a[i]) * f)) for i in range(3)) + (255,)
+
+def hexc(c):
+    return '#%02x%02x%02x' % c[:3]
+
+def bayer_of(h, w):
+    return np.tile(BAYER_NP, (h // 4 + 1, w // 4 + 1))[:h, :w]
+
+def shade(img, body, lit, side=1, rim=2, dark=0.7):
+    """Recolour a silhouette: lit tops and a `rim`-px lit edge on the sun side (side=+1 means the
+    light comes from the right), a darker edge on the far side. Wraps horizontally (layers tile)."""
+    a = np.array(img)
+    m = a[..., 3] > 0
+    out = np.zeros_like(a)
+    b = np.array(rgb(body), dtype=np.uint8)
+    out[m] = b
+    above = np.vstack([np.zeros((1, m.shape[1]), bool), m[:-1]])
+    lit_m = m & ~above
+    for k in range(1, rim + 1):
+        lit_m |= m & ~np.roll(m, -k * side, axis=1)
+    shadow = m & ~np.roll(m, side, axis=1) & ~lit_m
+    out[shadow] = (b * dark).astype(np.uint8)
+    out[shadow, 3] = 255
+    out[lit_m] = np.array(rgb(lit), dtype=np.uint8)
+    return Image.fromarray(out, 'RGBA')
+
+def haze(img, col, y0, strength=0.75, levels=3):
+    """Dithered blend of every opaque pixel toward `col`, growing from row y0 to the bottom."""
+    a = np.array(img).astype(np.float32)
+    h, w = a.shape[:2]
+    ys = np.clip((np.arange(h) - y0) / max(1, h - 1 - y0), 0, 1)[:, None] * levels
+    lv = np.floor(ys + bayer_of(h, w))  # dithered step count
+    f = np.clip(lv / levels, 0, 1) * strength
+    c = np.array(rgb(col)[:3], dtype=np.float32)
+    m = a[..., 3] > 0
+    a[..., :3] = np.where(m[..., None], a[..., :3] + (c - a[..., :3]) * f[..., None], a[..., :3])
+    return Image.fromarray(a.astype(np.uint8), 'RGBA')
+
+def over(dst, src):
+    dst.alpha_composite(src)
+    return dst
+
+def palm(d, x, base, h, col, lean=4, fronds=6, span=16):
+    for i in range(h):
+        sx = x + int(math.sin(i / 14.0) * lean)
+        d.point((sx, base - i), fill=col)
+        d.point((sx + 1, base - i), fill=col)
+    tx, ty = x + int(math.sin(h / 14.0) * lean), base - h
+    for k in range(fronds):
+        a = -3.0 + k * (2.9 / max(1, fronds - 1)) * 1.05
+        for s in range(span):
+            px = tx + int(math.cos(a) * s)
+            py = ty + int(math.sin(a) * s * 0.6 + (s * s) / 30)
+            d.point((px, py), fill=col)
+            d.point((px, py + 1), fill=col)
+    d.ellipse([tx - 2, ty - 1, tx + 2, ty + 3], fill=col)
+
+def sky_layer(name, th):
+    W, H = 480, 270
+    sky = gradient(W, H, th['sky'])
+    d = ImageDraw.Draw(sky)
+    rnd = random.Random(3)
+    if name == 'night':
+        for _ in range(160):
+            x, y = rnd.randrange(W), rnd.randrange(170)
+            sky.putpixel((x, y), rgb('#ffffff') if rnd.random() < 0.25 else rgb('#8a90c0'))
+        # a faint milky band
+        for _ in range(500):
+            t = rnd.random()
+            x = int(t * W)
+            y = int(20 + t * 70 + rnd.gauss(0, 9))
+            if 0 <= y < H:
+                sky.putpixel((x, y), rgb('#2a3060'))
+    cx, cy = 350, (120 if name != 'night' else 60)
+    r = 26 if name != 'night' else 14
+    # dithered halo rings around the sun / moon
+    a = np.array(sky).astype(np.float32)
+    yy, xx = np.mgrid[0:H, 0:W]
+    dist = np.sqrt((xx - cx) ** 2 + ((yy - cy) * 1.1) ** 2)
+    glow = np.clip(1 - (dist - r) / (r * (3.2 if name != 'night' else 4.5)), 0, 1) ** 1.6
+    lv = np.floor(glow * 4 + bayer_of(H, W)) / 4 * (0.55 if name != 'night' else 0.35)
+    sc = np.array(rgb(th['sun'])[:3], dtype=np.float32)
+    a[..., :3] = a[..., :3] + (sc - a[..., :3]) * lv[..., None]
+    sky = Image.fromarray(a.astype(np.uint8), 'RGBA')
+    d = ImageDraw.Draw(sky)
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=rgb(th['sun']))
+    if name != 'night':
+        # heat-shimmer bands cutting the sun, Metal Slug style
+        for i in range(4):
+            d.line([(cx - r - 2, cy + 4 + i * 6), (cx + r + 2, cy + 4 + i * 6)], fill=rgb(th['sky'][3]), width=1 + i // 2)
+    else:
+        for (ox, oy, rr) in ((-4, -3, 3), (5, 2, 2), (-2, 6, 2), (3, -6, 1)):
+            d.ellipse([cx + ox - rr, cy + oy - rr, cx + ox + rr, cy + oy + rr], fill=rgb('#c8d0e0'))
+    # long flat cloud streaks low on the horizon
+    for i in range(7):
+        y = 150 + i * 12 + rnd.randint(-3, 3)
+        x0 = rnd.randint(-40, W)
+        ln = rnd.randint(60, 180)
+        col = mix(th['sky'][min(4, 2 + i // 3)], th['sun'], 0.25 if name != 'night' else 0.1)
+        d.line([(x0, y), (x0 + ln, y)], fill=col, width=1)
+        d.line([(x0 + 10, y + 1), (x0 + ln - 14, y + 1)], fill=mix(hexc(col), th['sky'][1], 0.3), width=1)
+    sky.save(os.path.join(OUT, 'bg', f'{name}_sky.png'))
+
+def cloud_layer(name, th):
+    """Tileable puffy clouds lit from the upper right: drawn drifting over the sky in game."""
+    LW, H = 512, 120
+    rnd = random.Random(21 if name != 'night' else 23)
+    mask = Image.new('L', (LW * 2, H), 0)
+    d = ImageDraw.Draw(mask)
+    n = 7 if name != 'night' else 5
+    for i in range(n):
+        x = int((i + rnd.random() * 0.6) * LW / n)
+        y = rnd.randint(18, 80)
+        w = rnd.randint(50, 110)
+        for k in range(rnd.randint(6, 11)):
+            px = x + rnd.randint(0, w)
+            pr = rnd.randint(7, 17) * (1.0 if abs(px - x - w / 2) < w / 3 else 0.7)
+            py = y - pr * 0.5 + rnd.randint(-3, 3)
+            for off in (0, LW):
+                d.ellipse([px + off - pr, py - pr * 0.75, px + off + pr, py + pr * 0.75], fill=255)
+        for off in (0, LW):
+            d.rectangle([x + off - 6, y, x + off + w + 6, y + 4], fill=255)  # flat bellies
+    m = np.array(mask)[:, :LW] | np.array(mask)[:, LW:]
+    m = m > 0
+    # distance-ish lighting: count empties up-right / down-left within a few px
+    lit = np.zeros(m.shape, np.float32)
+    for k in range(1, 6):
+        up = np.vstack([np.zeros((k, LW), bool), m[:-k]])
+        lit += (~up) * (1.0 / k)
+        lit += (~np.roll(m, -k, axis=1)) * (0.5 / k)
+        dn = np.vstack([m[k:], np.zeros((k, LW), bool)])
+        lit -= (~dn) * (0.9 / k)
+    tones = [rgb(c) for c in th['cloud']]
+    v = np.clip((lit + 1.6) / 3.6, 0, 0.999) * len(tones)
+    idx = np.clip(np.floor(v + bayer_of(H, LW) - 0.5), 0, len(tones) - 1).astype(int)
+    out = np.zeros((H, LW, 4), np.uint8)
+    pal = np.array(tones, np.uint8)
+    out[m] = pal[idx[m]]
+    img = Image.fromarray(out, 'RGBA')
+    img.save(os.path.join(OUT, 'bg', f'{name}_clouds.png'))
+
+def far_layer(name, th):
+    LW, H = 512, 170
+    img = Image.new('RGBA', (LW, H), (0, 0, 0, 0))
+    def ridge(hts, body, lit, top_lit):
+        lay = np.zeros((H, LW, 4), np.uint8)
+        bb, ll, tl = (np.array(rgb(c), np.uint8) for c in (body, lit, top_lit))
+        bay = bayer_of(H, LW)
+        for x in range(LW):
+            h = hts[x]
+            slope = hts[(x + 1) % LW] - hts[x - 1]
+            for y in range(H - h, H):
+                depth = y - (H - h)
+                c = bb
+                if slope < -0.4:  # faces the sun on the right
+                    if depth < 26 * min(1.0, -slope / 1.5) + 4 and bay[y, x] < 1 - depth / 30:
+                        c = ll
+                elif slope > 1.2 and depth < 3:
+                    c = (bb * 0.85).astype(np.uint8)
+                if depth == 0:
+                    c = tl
+                lay[y, x] = c
+                lay[y, x, 3] = 255
+        return Image.fromarray(lay, 'RGBA')
+    hb = [int(84 + 20 * math.sin(x / LW * math.pi * 2 * 3 + 2) + 10 * math.sin(x / LW * math.pi * 2 * 7) + 4 * math.sin(x / LW * math.pi * 2 * 17)) for x in range(LW)]
+    hf = [int(56 + 22 * math.sin(x / LW * math.pi * 2 * 2) + 13 * math.sin(x / LW * math.pi * 2 * 5 + 1) + 6 * math.sin(x / LW * math.pi * 2 * 11)) for x in range(LW)]
+    back = ridge(hb, hexc(mix(th['far2'], th['haze'], 0.35)), hexc(mix(th['far_lit'], th['haze'], 0.45)), hexc(mix(th['far_lit'], th['sun'], 0.3)))
+    back = haze(back, th['haze'], 40, 0.6)
+    over(img, back)
+    front = ridge(hf, th['far'], th['far_lit'], hexc(mix(th['far_lit'], th['sun'], 0.4)))
+    d = ImageDraw.Draw(front)
+    rnd = random.Random(5)
+    fc = rgb(th['far'])
+    for x in range(8, LW, 1):
+        top = H - hf[x]
+        if name == 'jungle' and x % 3 == 0:
+            r = 2 + (x * 7) % 3
+            d.ellipse([x - r, top - r, x + r, top + r], fill=fc)
+        elif name != 'jungle' and rnd.random() < 0.012:
+            # radio masts and pylons on the ridge
+            d.line([(x, top), (x, top - 14)], fill=fc)
+            d.line([(x - 3, top - 9), (x + 3, top - 9)], fill=fc)
+            if name == 'night':
+                d.point((x, top - 15), fill=rgb('#ff4d3d'))
+    front = shade(front, th['far'], hexc(mix(th['far_lit'], th['sun'], 0.4)), rim=1) if name == 'jungle' else front
+    front = haze(front, th['haze'], 90, 0.5)
+    over(img, front)
+    img.save(os.path.join(OUT, 'bg', f'{name}_far.png'))
+
+def building(d, x, base, w, h, col, rnd, broken=True):
+    top = base - h
+    pts = [(x, base), (x, top + rnd.randint(0, 6))]
+    if broken:
+        k = x
+        while k < x + w:
+            k2 = min(x + w, k + rnd.randint(3, 8))
+            pts.append((k, top + rnd.randint(0, 9)))
+            pts.append((k2, top + rnd.randint(0, 9)))
+            k = k2
+    else:
+        pts += [(x + w, top)]
+    pts += [(x + w, top + rnd.randint(0, 6)), (x + w, base)]
+    d.polygon(pts, fill=col)
+    return top
+
+def mid_layer(name, th):
+    LW, H = 512, 150
+    rnd = random.Random(11)
+    img = Image.new('RGBA', (LW, H), (0, 0, 0, 0))
+    # back row: smaller, hazier shapes
+    back = Image.new('RGBA', (LW, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(back)
+    bc = rgb(th['mid'])
+    x = -10
+    while x < LW:
+        if name == 'jungle':
+            r = rnd.randint(10, 22)
+            cy = H - 40 - rnd.randint(0, 30)
+            for k in range(3):
+                d.ellipse([x + k * r * 0.6 - r, cy - r + k * 3, x + k * r * 0.6 + r, cy + r + k * 3], fill=bc)
+            d.rectangle([x - r, cy, x + r * 2, H], fill=bc)
+            x += r + rnd.randint(4, 16)
+        else:
+            w = rnd.randint(14, 30)
+            building(d, x, H, w, rnd.randint(40, 90), bc, rnd, broken=name == 'dusk')
+            x += w + rnd.randint(1, 8)
+    back = shade(back, th['mid'], th['mid_lit'], rim=1)
+    back = haze(back, th['haze'], 0, 0.42, levels=2)
+    over(img, back)
+    # front row
+    fr = Image.new('RGBA', (LW, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(fr)
+    mc = rgb(th['mid'])
+    details = []  # (kind, x, y, w, h) painted after shading
+    x = 0
+    while x < LW - 20:
+        if name == 'jungle':
+            kind = rnd.choice(['tree', 'palm', 'tree', 'temple'] if x > 60 else ['tree', 'palm'])
+            if kind == 'tree':
+                r = rnd.randint(14, 24)
+                tx = x + r
+                ty = H - 50 - rnd.randint(0, 30)
+                d.rectangle([tx - 2, ty, tx + 2, H], fill=mc)
+                for k in range(5):
+                    ox = rnd.randint(-r, r)
+                    oy = rnd.randint(-r // 2, r // 3)
+                    rr = rnd.randint(r // 2, r)
+                    d.ellipse([tx + ox - rr, ty + oy - rr * 0.8, tx + ox + rr, ty + oy + rr * 0.8], fill=mc)
+                details.append(('leaves', tx - r, ty - r, r * 2, int(r * 1.4)))
+                x += r * 2 + rnd.randint(-4, 10)
+            elif kind == 'palm':
+                palm(d, x + 10, H, rnd.randint(70, 105), mc, lean=5, fronds=7, span=20)
+                x += 26 + rnd.randint(0, 12)
+            else:
+                w = rnd.randint(46, 64)
+                for k in range(5):
+                    st = k * 5
+                    d.rectangle([x + st, H - 14 - k * 12, x + w - st, H], fill=mc)
+                d.rectangle([x + w // 2 - 5, H - 82, x + w // 2 + 5, H - 60], fill=mc)
+                d.polygon([(x + w // 2 - 7, H - 82), (x + w // 2, H - 94), (x + w // 2 + 7, H - 82)], fill=mc)
+                details.append(('door', x + w // 2 - 3, H - 22, 6, 10))
+                x += w + rnd.randint(4, 12)
+        elif name == 'night':
+            kind = rnd.choice(['warehouse', 'crane', 'tank', 'block', 'warehouse'])
+            if kind == 'warehouse':
+                w = rnd.randint(50, 80)
+                h = rnd.randint(30, 46)
+                d.rectangle([x, H - h, x + w, H], fill=mc)
+                for k in range(0, w, 12):
+                    d.polygon([(x + k, H - h), (x + k + 12, H - h - 8), (x + k + 12, H - h)], fill=mc)
+                details.append(('windows', x + 3, H - h + 6, w - 6, h - 12))
+                x += w + rnd.randint(2, 10)
+            elif kind == 'crane':
+                cx0 = x + 10
+                for y in range(H - 110, H, 6):
+                    d.line([(cx0 - 4, y), (cx0 + 4, y + 6)], fill=mc)
+                    d.line([(cx0 + 4, y), (cx0 - 4, y + 6)], fill=mc)
+                d.line([(cx0 - 4, H - 110), (cx0 - 4, H)], fill=mc, width=2)
+                d.line([(cx0 + 4, H - 110), (cx0 + 4, H)], fill=mc, width=2)
+                d.rectangle([cx0 - 6, H - 118, cx0 + 10, H - 108], fill=mc)
+                d.line([(cx0 - 20, H - 116), (cx0 + 60, H - 116)], fill=mc, width=3)
+                d.line([(cx0, H - 130), (cx0 + 60, H - 116)], fill=mc)
+                d.line([(cx0, H - 130), (cx0 - 20, H - 116)], fill=mc)
+                d.line([(cx0 + 48, H - 116), (cx0 + 48, H - 80)], fill=mc)
+                d.rectangle([cx0 + 44, H - 80, cx0 + 52, H - 74], fill=mc)
+                details.append(('beacon', cx0, H - 131, 1, 1))
+                x += 70
+            elif kind == 'tank':
+                w = rnd.randint(30, 44)
+                h = rnd.randint(22, 34)
+                d.rectangle([x, H - h, x + w, H], fill=mc)
+                d.ellipse([x, H - h - 6, x + w, H - h + 6], fill=mc)
+                x += w + rnd.randint(4, 12)
+            else:
+                w = rnd.randint(18, 34)
+                h = rnd.randint(40, 96)
+                building(d, x, H, w, h, mc, rnd, broken=False)
+                details.append(('windows', x + 2, H - h + 6, w - 4, h - 10))
+                x += w + rnd.randint(2, 8)
+        else:
+            kind = rnd.choice(['block', 'block', 'tower', 'block'])
+            w = rnd.randint(18, 44)
+            h = rnd.randint(36, 104)
+            top = building(d, x, H, w, h, mc, rnd)
+            if kind == 'tower' and w > 24:
+                d.rectangle([x + w // 2 - 6, top - 16, x + w // 2 + 6, top - 6], fill=mc)
+                d.line([(x + w // 2 - 5, top - 6), (x + w // 2 - 5, top + 2)], fill=mc)
+                d.line([(x + w // 2 + 5, top - 6), (x + w // 2 + 5, top + 2)], fill=mc)
+            details.append(('windows', x + 3, top + 10, w - 6, h - 14))
+            if rnd.random() < 0.5:
+                details.append(('hole', x + rnd.randint(2, max(3, w - 14)), top + rnd.randint(8, max(9, h // 2)), rnd.randint(6, 12), rnd.randint(5, 10)))
+            x += w + rnd.randint(2, 12)
+    fr = shade(fr, th['mid'], th['mid_lit'], rim=2)
+    d = ImageDraw.Draw(fr)
+    hole_col = (0, 0, 0, 0)
+    dark = rgb(hexc(mix(th['mid'], '#000000', 0.35)))
+    for kind, x0, y0, w, h in details:
+        if kind == 'windows':
+            for wy in range(y0, y0 + h - 4, 7):
+                for wx in range(x0, x0 + w - 2, 5):
+                    r = rnd.random()
+                    if r < (0.28 if name == 'night' else 0.1):
+                        d.rectangle([wx, wy, wx + 1, wy + 2], fill=rgb(th['win']))
+                    elif r < 0.75:
+                        d.rectangle([wx, wy, wx + 1, wy + 2], fill=dark)
+        elif kind == 'hole':
+            d.ellipse([x0, y0, x0 + w, y0 + h], fill=hole_col)
+            for k in range(3):
+                rx = x0 + 2 + k * (w // 3)
+                d.line([(rx, y0 + h // 2), (rx + 1, y0 - 2)], fill=dark)
+        elif kind == 'leaves':
+            # little lit leaf clumps on the sun side of each crown
+            lc = rgb(th['mid_lit'])
+            dk = rgb(hexc(mix(th['mid'], '#000000', 0.25)))
+            px = fr.load()
+            for k in range(w * h // 18):
+                lx = x0 + rnd.randint(0, w)
+                ly = y0 + rnd.randint(0, h)
+                if 0 <= lx < LW - 3 and 0 <= ly < H - 1 and px[lx, ly][3] and px[lx + 2, ly][3]:
+                    c = lc if lx - x0 > w * 0.35 and rnd.random() < 0.7 else dk
+                    d.line([(lx, ly + 1), (lx + 1, ly), (lx + 2, ly + 1)], fill=c)
+        elif kind == 'door':
+            d.rectangle([x0, y0, x0 + w, y0 + h], fill=dark)
+        elif kind == 'beacon':
+            d.point((x0, y0), fill=rgb('#ff4d3d'))
+    fr = haze(fr, th['haze'], 80, 0.3)
+    over(img, fr)
+    img.save(os.path.join(OUT, 'bg', f'{name}_mid.png'))
+
+def near_layer(name, th):
+    LW, H = 512, 120
+    rnd = random.Random(17)
+    img = Image.new('RGBA', (LW, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    nc = rgb(th['near'])
+    G = 106
+    d.rectangle([0, G, LW, H], fill=nc)
+    for x in range(0, LW, 2):
+        d.line([(x, G), (x, G - int(4 + 3 * math.sin(x / 9.0) + 2 * math.sin(x / 3.1)))], fill=nc)
+    poles = []
+    kinds = {'dusk': ['palm', 'wreck', 'pole', 'wall', 'palm', 'pole'],
+             'jungle': ['palm', 'bush', 'hut', 'palm', 'bush', 'pole'],
+             'night': ['lamp', 'containers', 'fence', 'lamp', 'bollards', 'pole']}[name]
+    x = 10
+    while x < LW - 40:
+        kind = rnd.choice(kinds)
+        if kind == 'palm':
+            palm(d, x, G, rnd.randint(52, 84), nc)
+        elif kind == 'wreck':
+            d.polygon([(x, G), (x + 6, G - 12), (x + 40, G - 14), (x + 48, G)], fill=nc)
+            d.rectangle([x + 14, G - 24, x + 32, G - 14], fill=nc)
+            d.line([(x + 30, G - 20), (x + 54, G - 30)], fill=nc, width=2)
+            for k in range(6):
+                d.ellipse([x + 4 + k * 7, G - 6, x + 10 + k * 7, G], fill=nc)
+        elif kind == 'wall':
+            w = rnd.randint(30, 50)
+            pts = [(x, G), (x, G - rnd.randint(22, 34))]
+            for k in range(1, 6):
+                pts.append((x + w * k // 6, G - rnd.randint(8, 34)))
+            pts += [(x + w, G - rnd.randint(10, 20)), (x + w, G)]
+            d.polygon(pts, fill=nc)
+        elif kind == 'pole':
+            d.line([(x, G), (x, G - 62)], fill=nc, width=2)
+            d.line([(x - 8, G - 56), (x + 9, G - 56)], fill=nc)
+            d.line([(x - 6, G - 50), (x + 7, G - 50)], fill=nc)
+            poles.append(x)
+        elif kind == 'bush':
+            for k in range(7):
+                a = -2.9 + k * 0.45
+                for s in range(22):
+                    d.point((x + int(math.cos(a) * s), G - 6 + int(math.sin(a) * s * 0.9 + s * s / 40)), fill=nc)
+                    d.point((x + int(math.cos(a) * s), G - 5 + int(math.sin(a) * s * 0.9 + s * s / 40)), fill=nc)
+                    d.point((x + int(math.cos(a) * s) + 1, G - 5 + int(math.sin(a) * s * 0.9 + s * s / 40)), fill=nc)
+        elif kind == 'hut':
+            d.rectangle([x, G - 30, x + 30, G - 14], fill=nc)
+            d.polygon([(x - 6, G - 30), (x + 15, G - 44), (x + 36, G - 30)], fill=nc)
+            for px in (x + 2, x + 14, x + 27):
+                d.line([(px, G - 14), (px, G)], fill=nc, width=2)
+        elif kind == 'lamp':
+            d.line([(x, G), (x, G - 58)], fill=nc, width=2)
+            d.line([(x, G - 58), (x + 10, G - 60)], fill=nc, width=2)
+            d.rectangle([x + 8, G - 60, x + 13, G - 57], fill=nc)
+            d.point((x + 10, G - 56), fill=rgb(th['win']))
+            d.point((x + 11, G - 56), fill=rgb(th['win']))
+        elif kind == 'containers':
+            for k in range(rnd.randint(1, 3)):
+                w = rnd.randint(28, 40)
+                ox = rnd.randint(-4, 6)
+                d.rectangle([x + ox, G - 13 * (k + 1), x + ox + w, G - 13 * k - 1], fill=nc)
+        elif kind == 'fence':
+            for k in range(0, 44, 11):
+                d.line([(x + k, G), (x + k, G - 26)], fill=nc)
+            d.line([(x, G - 26), (x + 44, G - 26)], fill=nc)
+            for k in range(0, 44, 3):
+                d.line([(x + k, G - 26), (x + k + 6, G)], fill=nc)
+        elif kind == 'bollards':
+            for k in range(3):
+                d.rectangle([x + k * 10, G - 8, x + k * 10 + 4, G], fill=nc)
+                d.rectangle([x + k * 10 - 1, G - 9, x + k * 10 + 5, G - 7], fill=nc)
+        x += rnd.randint(50, 100)
+    # sagging wires between neighbouring poles (and across the wrap seam)
+    for i in range(len(poles)):
+        a = poles[i]
+        b = poles[(i + 1) % len(poles)] + (LW if i == len(poles) - 1 else 0)
+        for y0 in (56, 50):
+            for k in range(b - a):
+                f = k / max(1, b - a)
+                sag = math.sin(f * math.pi) * 9
+                d.point(((a + k) % LW, G - y0 + int(sag)), fill=nc)
+    img = shade(img, th['near'], th['near_lit'], rim=1)
+    img = haze(img, th['haze'], 80, 0.12, levels=2)
+    img.save(os.path.join(OUT, 'bg', f'{name}_near.png'))
+
+def fore_layer(name, th):
+    """Very dark, close silhouettes that slide past the bottom of the screen faster than the world."""
+    LW, H = 512, 48
+    rnd = random.Random(29)
+    img = Image.new('RGBA', (LW, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    fc = rgb(th['fore'])
+    d.rectangle([0, H - 8, LW, H], fill=fc)
+    x = 0
+    while x < LW:
+        kind = rnd.choice(['grass', 'grass', 'rubble', 'post'] if name != 'jungle' else ['fern', 'grass', 'fern', 'grass'])
+        if kind == 'grass':
+            for k in range(rnd.randint(5, 12)):
+                bx = x + rnd.randint(0, 22)
+                h = rnd.randint(8, 26)
+                lean = rnd.choice([-1, 1]) * rnd.random() * 0.5
+                for s in range(h):
+                    d.point((int(bx + lean * s * s / h), H - 8 - s), fill=fc)
+                    d.point((int(bx + 1 + lean * s * s / h), H - 8 - s), fill=fc)
+            x += rnd.randint(18, 40)
+        elif kind == 'fern':
+            for k in range(6):
+                a = -2.8 + k * 0.5
+                for s in range(26):
+                    d.point((x + int(math.cos(a) * s), H - 8 + int(math.sin(a) * s * 1.1 + s * s / 30)), fill=fc)
+                    d.point((x + int(math.cos(a) * s), H - 7 + int(math.sin(a) * s * 1.1 + s * s / 30)), fill=fc)
+            x += rnd.randint(30, 50)
+        elif kind == 'rubble':
+            for k in range(rnd.randint(3, 6)):
+                bx = x + rnd.randint(0, 30)
+                r = rnd.randint(3, 8)
+                d.polygon([(bx - r, H - 6), (bx - r + 2, H - 6 - r), (bx + r - 1, H - 7 - r // 2), (bx + r, H - 6)], fill=fc)
+            x += rnd.randint(30, 50)
+        else:
+            d.rectangle([x, H - 34, x + 3, H], fill=fc)
+            for k in range(0, 60, 2):  # barbed wire coil
+                y = H - 26 + int(math.sin(k / 3.0) * 4)
+                d.point((x + k, y), fill=fc)
+                d.point((x + k + 1, y + (1 if k % 6 == 0 else 0)), fill=fc)
+            x += rnd.randint(40, 70)
+    img = shade(img, th['fore'], th['fore_lit'], rim=1)
+    img.save(os.path.join(OUT, 'bg', f'{name}_fore.png'))
+
 def backgrounds():
     for name, th in THEMES.items():
-        W, H = 480, 270
-        sky = gradient(W, H, th['sky'])
-        d = ImageDraw.Draw(sky)
-        if name == 'night':
-            rnd = random.Random(3)
-            for _ in range(120):
-                x, y = rnd.randrange(W), rnd.randrange(150)
-                sky.putpixel((x, y), rgb('#ffffff') if rnd.random() < 0.3 else rgb('#8a90c0'))
-        cx, cy = 350, 120 if name != 'night' else 60
-        r = 26 if name != 'night' else 14
-        d.ellipse([cx - r - 10, cy - r - 10, cx + r + 10, cy + r + 10], fill=rgb(th['sun'])[:3] + (60,))
-        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=rgb(th['sun']))
-        if name != 'night':
-            for i in range(3):
-                d.line([(cx - r, cy + 6 + i * 7), (cx + r, cy + 6 + i * 7)], fill=rgb(th['sky'][3]), width=2)
-        sky.save(os.path.join(OUT, 'bg', f'{name}_sky.png'))
-        # far mountains / mesas (tileable 512 wide)
-        LW = 512
-        rnd = random.Random(11)
-        far = Image.new('RGBA', (LW, 160), (0, 0, 0, 0))
-        d = ImageDraw.Draw(far)
-        hts = []
-        for x in range(LW):
-            h = 70 + 30 * math.sin(x / LW * math.pi * 2 * 2) + 18 * math.sin(x / LW * math.pi * 2 * 5 + 1) + 8 * math.sin(x / LW * math.pi * 2 * 11)
-            hts.append(int(h))
-        for x, h in enumerate(hts):
-            d.line([(x, 160 - h), (x, 159)], fill=rgb(th['far']))
-            if x % 2 == 0 and hts[(x + 1) % LW] < h:
-                d.point((x, 160 - h), fill=rgb(th['haze']))
-        far.save(os.path.join(OUT, 'bg', f'{name}_far.png'))
-        # mid: ruined city / jungle canopy / harbor cranes
-        mid = Image.new('RGBA', (LW, 140), (0, 0, 0, 0))
-        d = ImageDraw.Draw(mid)
-        mc, lc = rgb(th['mid']), rgb(th['haze'])
-        x = 0
-        while x < LW:
-            if name == 'jungle':
-                w = rnd.randint(16, 30); h = rnd.randint(50, 100)
-                d.rectangle([x + w // 2 - 2, 140 - h, x + w // 2 + 1, 139], fill=mc)
-                for k in range(5):
-                    a = -2.6 + k * 0.55
-                    d.line([(x + w // 2, 140 - h), (x + w // 2 + math.cos(a) * 18, 140 - h + math.sin(a) * 10 + 8)], fill=mc, width=3)
-                d.rectangle([x, 120 - rnd.randint(0, 20), x + w, 139], fill=mc)
-            else:
-                w = rnd.randint(18, 44); h = rnd.randint(30, 96)
-                d.rectangle([x, 140 - h, x + w, 139], fill=mc)
-                # broken tops and windows
-                for k in range(rnd.randint(1, 4)):
-                    bx = x + rnd.randint(0, w - 4)
-                    d.rectangle([bx, 140 - h - rnd.randint(2, 8), bx + rnd.randint(2, 6), 140 - h], fill=mc)
-                for wy in range(140 - h + 6, 132, 8):
-                    for wx in range(x + 3, x + w - 3, 6):
-                        if rnd.random() < (0.35 if name == 'night' else 0.15):
-                            d.rectangle([wx, wy, wx + 1, wy + 2], fill=rgb('#ffd23a') if name == 'night' else lc)
-                if name == 'night' and rnd.random() < 0.3:
-                    cx0 = x + w // 2
-                    d.line([(cx0, 140 - h), (cx0, 140 - h - 30)], fill=mc, width=2)
-                    d.line([(cx0 - 20, 140 - h - 30), (cx0 + 26, 140 - h - 30)], fill=mc, width=2)
-            x += w + rnd.randint(2, 14)
-        mid.save(os.path.join(OUT, 'bg', f'{name}_mid.png'))
-        # near: silhouettes of wrecks, palms, poles
-        near = Image.new('RGBA', (LW, 110), (0, 0, 0, 0))
-        d = ImageDraw.Draw(near)
-        nc = rgb(th['near'])
-        d.rectangle([0, 96, LW, 110], fill=nc)
-        for x in range(0, LW, 2):
-            d.line([(x, 96), (x, 96 - int(4 + 3 * math.sin(x / 9.0) + 2 * math.sin(x / 3.1)))], fill=nc)
-        x = 10
-        while x < LW - 40:
-            kind = rnd.choice(['palm', 'wreck', 'pole', 'palm'])
-            if kind == 'palm':
-                h = rnd.randint(50, 80)
-                for i in range(h):
-                    d.point((x + int(math.sin(i / 14.0) * 4), 96 - i), fill=nc)
-                    d.point((x + 1 + int(math.sin(i / 14.0) * 4), 96 - i), fill=nc)
-                tx, ty = x + int(math.sin(h / 14.0) * 4), 96 - h
-                for k in range(6):
-                    a = -3.0 + k * 0.6
-                    for s in range(16):
-                        d.point((tx + int(math.cos(a) * s), ty + int(math.sin(a) * s * 0.6 + (s * s) / 30)), fill=nc)
-                        d.point((tx + int(math.cos(a) * s), ty + 1 + int(math.sin(a) * s * 0.6 + (s * s) / 30)), fill=nc)
-            elif kind == 'wreck':
-                d.polygon([(x, 96), (x + 8, 80), (x + 34, 78), (x + 44, 96)], fill=nc)
-                d.rectangle([x + 14, 70, x + 28, 80], fill=nc)
-                d.line([(x + 28, 74), (x + 46, 66)], fill=nc, width=2)
-            else:
-                d.line([(x, 96), (x, 40)], fill=nc, width=2)
-                d.line([(x - 8, 46), (x + 8, 46)], fill=nc)
-                d.line([(x + 8, 46), (x + 60, 58)], fill=nc)
-            x += rnd.randint(50, 110)
-        near.save(os.path.join(OUT, 'bg', f'{name}_near.png'))
+        sky_layer(name, th)
+        cloud_layer(name, th)
+        far_layer(name, th)
+        mid_layer(name, th)
+        near_layer(name, th)
+        fore_layer(name, th)
+
+# ---------------------------------------------------------------- ambient life: critters and set dressing
+def critters():
+    """10x8 art-px frames, facing right. Rows: crow, gull, parrot (stand, peck, flap up, flap down),
+    frog (sit, croak, hop, hop), rat (stand, sniff, run, run), butterfly (4 wing beats)."""
+    bird = [
+        ["..........", "......kk..", ".....kKEy.", "...kkKKK..", ".kkKKKKK..", "kKKKKKK...", ".....K....", "....KK...."],
+        ["..........", "..........", "...kkk....", ".kkKKKK...", "kKKKKKKKk.", ".....KKKEy", ".....K....", "....KK...."],
+        ["..k.......", "..kk...k..", "...kk.kk..", "....kKKEy.", "...kKKKK..", "..kKKKK...", "..........", ".........."],
+        ["..........", "..........", ".....kkEy.", ".kkkKKKK..", "kKKKKKKK..", "...kkk....", "..kk......", ".........."],
+    ]
+    frog = [
+        ["..........", "..........", "...E..E...", "..gggggg..", ".gGggggggg", "gGGgggggg.", ".gg.GG.gg.", ".........."],
+        ["..........", "..........", "...E..E...", "..gggggg..", ".gGgggggyg", "gGGggggyy.", ".gg.GG.gg.", ".........."],
+        ["..........", "....E..E..", "...gggggg.", "..gGgggggg", ".gGGggggg.", "gg..GG....", "g.........", ".........."],
+        ["..........", "..........", "....E..E..", "...gggggg.", ".gGGgggggg", "gG..ggggg.", "......gg..", ".........."],
+    ]
+    rat = [
+        ["..........", "..........", "......r...", "...rrrrrr.", "..rRRRRrrE", ".rRRRRRrrP", "t..r..r...", ".tt......."],
+        ["..........", "..........", ".......r..", "...rrrrrrr", "..rRRRRrrE", ".rRRRRRr.P", "t..r..r...", ".tt......."],
+        ["..........", "..........", "......r...", "...rrrrrr.", "..rRRRRrrE", "trRRRRRrrP", ".tr....r..", "..........."],
+        ["..........", "..........", "......r...", "...rrrrrr.", "..rRRRRrrE", ".rRRRRRrrP", "t...rr....", ".t........"],
+    ]
+    fly = [
+        ["..........", "..WW..WW..", ".WYWW.WYW.", "..WW..WW..", "....KK....", "...W..W...", "..........", ".........."],
+        ["..........", "..........", "..WWWWWW..", "..WYWWYW..", "....KK....", "...WWWW...", "..........", ".........."],
+        ["..........", "..........", "..........", "....WW....", "...WKKW...", "....WW....", "..........", ".........."],
+        ["..........", "..........", "..WWWWWW..", "..WYWWYW..", "....KK....", "...WWWW...", "..........", ".........."],
+    ]
+    rows = [
+        (bird, {'K': '#16141c', 'k': '#3a3a4e', 'E': '#e8e0d0', 'y': '#5a5a64'}, False),
+        (bird, {'K': '#f2f0ea', 'k': '#b8bcc8', 'E': '#18120e', 'y': '#ffb23e'}, True),
+        (bird, {'K': '#3aa04a', 'k': '#e04a3a', 'E': '#ffffff', 'y': '#ffd23a'}, True),
+        (frog, {'g': '#6ab03a', 'G': '#3a7a2a', 'E': '#ffe36a', 'y': '#e8e0a0'}, True),
+        (rat, {'r': '#7a6a5a', 'R': '#5a4a3e', 'E': '#ff4d3d', 'P': '#e8a0a0', 't': '#c08a80'}, True),
+        (fly, {'W': '#ffd23a', 'Y': '#ff7a3d', 'K': '#2a1c10'}, False),
+    ]
+    sheet = Image.new('RGBA', (12 * 4, 10 * len(rows)), (0, 0, 0, 0))
+    for r, (frames, pal, ol) in enumerate(rows):
+        P = {k: rgb(v) for k, v in pal.items()}
+        for i, rws in enumerate(frames):
+            cell = Image.new('RGBA', (12, 10), (0, 0, 0, 0))
+            stamp(cell, rws, 1, 1, P)
+            if ol:
+                cell = outline(cell)
+            sheet.alpha_composite(cell, (i * 12, r * 10))
+    sheet.save(os.path.join(OUT, 'sprites', 'critters.png'))
+
+def decor():
+    """Set dressing that stands on the ground but never blocks anything."""
+    P = {k: rgb(v) for k, v in {
+        'x': '#9a9660', 'X': '#74703e', 'Z': '#4e4a28', 'K': '#1e1810', 'Y': '#d8c890',
+        'R': '#c0402e', 'r': '#8a2a1e', 'W': '#ece6d0', 'w': '#b8b09a', 'T': '#7a4e28', 't': '#5a3418',
+        'M': '#4a4e58', 'm': '#7a808c', 'L': '#ffe8a0', 'G': '#5a6a3a', 'g': '#7a8a4a', 'B': '#3a3a42',
+    }.items()}
+    def mk(name, rows):
+        w = max(len(r) for r in rows)
+        img = Image.new('RGBA', (w + 2, len(rows) + 2), (0, 0, 0, 0))
+        stamp(img, rows, 1, 1, P)
+        outline(img).save(os.path.join(OUT, 'sprites', 'dc_' + name + '.png'))
+    mk('tent', [
+        "...........Y............",
+        "..........xXZ...........",
+        ".........xxXZZ..........",
+        "........xxXXZZZ.........",
+        ".......xxXXXZZZZ........",
+        "......xxXXXKZZZZZ.......",
+        ".....xxXXXKKKZZZZZ......",
+        "....xxXXXKKKKKZZZZZ.....",
+        "...xxXXXKKKKKKKZZZZZ....",
+        "..xxXXXKKKKKKKKKZZZZZ...",
+        ".xxXXXKKKKKKKKKKKZZZZZ..",
+        "YxxXXKKKKKKKKKKKKKZZZZY.",
+    ])
+    mk('sign', [
+        "WWWWWWWWWWWW",
+        "WRRRRRRRRRRw",
+        "WRRRWWWWRRRw",
+        "WRRWWWWWWRRw",
+        "WRRWKWWKWRRw",
+        "WRRRWWWWRRRw",
+        "WRRRWKWKRRRw",
+        "WRRRRRRRRRRw",
+        "wwwwwwwwwwww",
+        ".....Tt.....",
+        ".....Tt.....",
+        ".....Tt.....",
+        ".....Tt.....",
+        ".....Tt.....",
+    ])
+    mk('lamp', [
+        ".mMMMMm.",
+        "mLLLLLLM",
+        ".MMMMMM.",
+        "...mM...",
+    ] + ["...mM..."] * 26 + [
+        "..mMMM..",
+        ".mMMMMM.",
+    ])
+    mk('logs', [
+        "..t....t....",
+        ".tTt..tTt...",
+        "TTTTTTTTTTt.",
+        "tTTtTTTtTTTt",
+        ".BBBBBBBBBB.",
+    ])
+    mk('drum', [
+        ".rrrrrrr.",
+        "rRRRRRRRr",
+        "rrrrrrrrr",
+        "rRRRRRRRr",
+        "rRRrRRRRr",
+        "rrrrrrrrr",
+        "rRRRRRRRr",
+        "rRRRRrRRr",
+        ".rrrrrrr.",
+    ])
+    mk('flag', [
+        "RRRRRRRRRRR",
+        "RRRRWWWRRRr",
+        "RRRWKWKWRRr",
+        "RRRRWWWRRRr",
+        "RRRRWKWRRRr",
+        "rrrrrrrrrrr",
+    ])
+    mk('reeds', [
+        "..Y.....Y...",
+        "..G..Y..G...",
+        "..G..G..G.Y.",
+        ".gG..G.gG.G.",
+        ".gG.gG.gGgG.",
+        "gGGgGGgGGgGg",
+    ])
 
 # ---------------------------------------------------------------- UI textures (HUD frames, card frames, icons)
 def ui():
@@ -1053,6 +1593,8 @@ def main():
     explosion_sheet()
     small_fx()
     backgrounds()
+    critters()
+    decor()
     ui()
     with open(os.path.join(OUT, 'sprites', 'meta.json'), 'w') as f:
         json.dump(meta, f, indent=1)

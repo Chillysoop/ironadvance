@@ -29,10 +29,11 @@ The launcher is unsigned: on Windows choose More info → Run anyway; on macOS r
 
 ## Layout
 - `game/` the Godot project. `scripts/battle.gd` is the simulation, `terrain.gd` the destructible grid,
-  `world_view.gd` the world and in-world plates, `hud.gd` the HUD, `shop.gd` the Quartermaster,
+  `world_view.gd` the world and in-world plates, `backdrop.gd` the animated parallax sky,
+  `decor.gd` ground life (grass, set dressing, critters, cosmetic idle gunfire), `foreground.gd` close silhouettes and ambient particles, `hud.gd` the HUD, `shop.gd` the Quartermaster,
   `run.gd` campaign state (decks, XP, perks, gear, scrip), `data.gd` all cards, perks, gear, enemies and missions.
-- `game/tools/gen_art.py`, `gen_sfx.py` regenerate every sprite and sound (Python 3 + Pillow).
+- `game/tools/gen_art.py`, `gen_sfx.py` regenerate every sprite and sound (Python 3 + Pillow; gen_art.py also needs NumPy).
 - `game/tools/test_runner.gd` scripted tests and an autoplayer:
-  `godot --path game -- --iatest --scenario=flow --out=/tmp/shots` (title, start, aim, arc, topple, level, shop, flow, bot, campaign).
+  `godot --path game -- --iatest --scenario=flow --out=/tmp/shots` (title, start, aim, arc, topple, level, shop, flow, bot, campaign, alive).
 - `launcher/` the updater. Point it at another host with `--manifest=URL` or a `launcher.cfg` next to the executable
   (`[update]` / `manifest="..."`); `--offline` skips the check.
