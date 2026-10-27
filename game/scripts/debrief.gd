@@ -5,6 +5,7 @@ extends Control
 signal done
 
 const HudScript := preload("res://scripts/hud.gd")
+const HubUI := preload("res://scripts/hub_ui.gd")
 
 var medals: Array = []
 var crates: Array = []      # [{item, open_t (-1 closed), shown}]
@@ -31,13 +32,20 @@ func _ready() -> void:
 		for i in n:
 			crates.append({"item": Run.roll_item(1 if i == 2 else 0), "open_t": -1, "shown": false})
 	go = HudScript.PixButton.new()
-	go.text = "ONWARD" if no_command else "TO THE QUARTERMASTER"
+	go.text = "ONWARD" if no_command else "BACK TO HQ"
 	go.color = Color("ff4d3d")
 	go.size = Vector2(340, 40)
 	go.position = Vector2(310, 470)
 	go.disabled = true
 	go.pressed.connect(advance)
 	add_child(go)
+	var dz := HudScript.PixButton.new()  # S6: look at any deck before picking an order
+	dz.text = "SQUAD DOSSIER"
+	dz.color = Color("53d4e2")
+	dz.size = Vector2(170, 32)
+	dz.position = Vector2(24, 474)
+	dz.pressed.connect(func(): Sfx.play("click"); HubUI.field_dossier(self, 0))
+	add_child(dz)
 
 func advance() -> void:
 	## After the crates, the squad picks one commander perk; then on to the shop.

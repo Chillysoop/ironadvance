@@ -51,6 +51,20 @@ func load_meta() -> void:
 		for k in j:
 			meta[k] = j[k]
 
+func snapshot() -> Dictionary:
+	## Every bit of run state, deep-copied, for the practice range to put back afterwards (D5).
+	var snap := {}
+	for p in get_property_list():
+		if p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			var v = get(p.name)
+			snap[p.name] = v.duplicate(true) if v is Dictionary or v is Array else v
+	return snap
+
+func restore(snap: Dictionary) -> void:
+	for k in snap:
+		set(k, snap[k])
+	save_meta()  # anything the range wrote to disk is undone too
+
 func save_meta() -> void:
 	var f := FileAccess.open(META_PATH, FileAccess.WRITE)
 	if f != null:
@@ -118,20 +132,22 @@ func pick_biome(id: String) -> void:
 	dial_rerolled = false
 
 func make_level(id: String, tier: int, breach := false) -> Dictionary:
-	## One continuous level: a start, two stretches, a camp, two more stretches, a camp, the boss.
+	## One continuous level: a start, a stretch, a camp, the detour yard, a stretch, a camp, the boss.
 	var bm: Dictionary = Data.BIOMES[id]
 	var lv: Dictionary = Data.LEVELS[mini(tier, Data.LEVELS.size() - 1)]
 	var pool: Array = bm.segments.duplicate()
 	pool.shuffle()
-	while pool.size() < 4:
+	while pool.size() < 2:
 		pool.append(bm.segments[randi() % bm.segments.size()])
 	var detours: Array = Data.DETOURS.keys()
 	detours.shuffle()
 	var nd := 4 if hq("mess") >= 3 else 3
 	# from level 2 on, one stretch after the mid camp holds a Vharr encounter (E1 Swarm or E2 Nest)
 	var enc: String = "" if tier < 1 else ["swarm", "nest"][randi() % 2]
+	if tier >= 1 and (id == "desert" or id == "mountain"):
+		enc = "queen"  # Q2: the Burrow Queen owns the sand and the scree
 	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "breach": breach, "encounter": enc,
-		"segments": ["start", pool[0], pool[1], "camp", "yard", pool[2], pool[3], "camp", bm.get("arena", "arena")],
+		"segments": ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")],
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
 
 func start_finale() -> void:
@@ -850,6 +866,9 @@ func fuse(s: Dictionary, g: Array) -> Dictionary:
 	for c in g:
 		s.deck.erase(c)
 	var c := new_card(g[0].key, Data.tier_of(g[0]) + 1, "fused")
+	var k: int = g.reduce(func(a, o): return a + int(o.get("kills", 0)), 0)
+	if k > 0:
+		c["kills"] = k  # the fused card keeps the copies' kill count
 	for o in g:
 		if o.get("mods", []).size():
 			c["mods"] = o.mods.duplicate()

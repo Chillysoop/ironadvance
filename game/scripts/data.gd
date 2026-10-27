@@ -186,6 +186,7 @@ const TAGS := {
 # Legendary items made by a triple merge get a name and a unique line (M1).
 const LEGEND_NAMES := {"weapon": ["Old Faithful", "Widowmaker", "Last Word"], "armor": ["Old Iron", "Second Skin", "Hard Luck"], "kit": ["Lucky Break", "Sixth Sense", "Hot Hands"]}
 const LEGEND_BONUS := {"weapon": {"aim_dmg": 2}, "armor": {"armor_turn": 2}, "kit": {"luck": 1}}
+const NICK_KILLS := 10  # D4: kills that earn a card a nickname
 const CARD_NICKS := ["Old Faithful", "The Closer", "Sweet Talker", "Big Iron", "Last Call", "House Rules"]
 const FAB_PRICE := 70
 
@@ -658,6 +659,7 @@ const ETYPES := {
 	"grappler": {"name": "Grappler", "faction": "vharr", "hp": 22, "dmg": 6, "range": 360, "yank": 200, "speed": 40, "heavy": true, "score": 200, "w": 50, "h": 44, "note": "Heavy. Shoots its tongue at anyone in a clear line within 360px and yanks them up to 200px toward it, over ledges and into mines. Cover breaks the line."},
 	"bloater": {"name": "Bloater", "faction": "vharr", "hp": 18, "dmg": 12, "speed": 80, "radius": 40, "score": 150, "w": 40, "h": 46, "note": "Swells every turn and pops when it reaches you. Kill it and it pops anyway: knock it into its friends first. Blast radius grows from 40 to 80."},
 	"weaver": {"name": "Dome Weaver", "faction": "vharr", "hp": 10, "dmg": [2, 3], "range": 420, "speed": 70, "prefer": 300, "score": 175, "w": 26, "h": 56, "note": "Hangs back and covers an ally with a dome that stops bullets and blasts for 2 turns. Melee, crushing and slams go through. Kill the Weaver first."},
+	"queen": {"name": "Burrow Queen", "faction": "vharr", "weight": "buried", "hp": 70, "heavy": true, "tunnel": 380, "burst": 9, "bite": 10, "spit": 5, "score": 1500, "w": 60, "h": 84, "note": "Mini-boss. Tunnels under the arena, digging it up as she goes, and bursts out under you. Surfaced she bites or spits acid, then dives. Underground only blasts reach her: hit her while she's up, and drop rubble on her head for triple damage."},
 	"prism": {"name": "Prism Drone", "faction": "vharr", "weight": "hover", "hp": 12, "pod": 6, "dmg": 3, "range": 460, "speed": 60, "prefer": 260, "alt": 90, "score": 150, "w": 30, "h": 36, "note": "Floats slowly and turns its mirror toward you. Bullets that hit the mirror bounce off at the mirrored angle: bank shots off it. Hit it from behind, or use ARC and MELEE."},
 	"warden": {"name": "Gravity Warden", "faction": "vharr", "hp": 14, "dmg": 3, "speed": 60, "prefer": 340, "well": 140, "pull": 60, "score": 175, "w": 30, "h": 50, "note": "Keeps its distance and drops a gravity well on the squad. Everything in the well is pulled to its center each turn, and ARC shots bend toward it. Kill the Warden and the well collapses with a small blast."},
 	"stalker": {"name": "Phase Stalker", "faction": "vharr", "hp": 14, "dmg": 8, "speed": 140, "phase_move": 240, "score": 175, "w": 24, "h": 54, "note": "Phased every other turn: it walks through walls and bullets pass through it, blasts still hit. If it turns solid inside rock it is crushed, so bring the ceiling down on it."},
@@ -757,6 +759,9 @@ const SEGMENTS := {
 	"m2nest": {"w": 720, "sandbags": [300, 560], "pits": [], "structs": [],
 		"spawns": [["m2", 330], ["grunt", 352, {"hold": 1}], ["barrel", 420], ["grunt", 470], ["shield", 520], ["m2", 590], ["nade", 640, {"hold": 1}], ["radio", 690]]},
 	# a safe camp inside the level: a fire, two tents and a supply crate, no Jackals
+	# D5: the HQ practice range. Dummies on the flat, one up the tower, one behind a shield
+	"range": {"w": 820, "sandbags": [], "pits": [], "structs": [{"t": "tower", "x": 440, "h": 96}],
+		"spawns": [["grunt", 200], ["barrel", 290], ["shield", 340], ["grunt", 440, {"hold": 1}], ["grunt", 580], ["mg", 700]]},
 	"camp": {"w": 560, "sandbags": [60, 500], "pits": [], "camp": true, "structs": [], "spawns": []},
 	# the open clearing after the mid-level camp, where a detour plays out (empty if you press on)
 	"yard": {"w": 760, "sandbags": [], "pits": [], "yard": true, "structs": [], "spawns": []},

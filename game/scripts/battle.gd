@@ -40,6 +40,7 @@ var busy := false
 var round_n := 0
 var alert := 0
 var rounds_since_scroll := 0
+const STALL_ROUNDS := 3   # rounds on one screen before alert starts climbing (one fewer on threat 1)
 var wind := 0
 var score := 0
 var combo := 0
@@ -50,6 +51,7 @@ var mouse := Vector2(200, 300)
 var log_lines: Array = []
 var pow_queue: Array = []
 var lvl_queue: Array = []
+var dummies: Array = []       # practice range: [type, x] of each dummy, to stand them back up
 var boss_active := false
 var boss_dead := false
 var gate = null          # the gate home to HQ, opened after the boss falls
@@ -72,10 +74,13 @@ var act_card := ""       # name of the card behind the current action, for the k
 var pop_next := false    # the next kill was an overkill: the Jackal bursts instead of leaving a body
 var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0, "kia": 0, "max_alert": 0, "pows_total": 0, "loot": 0, "tags": 0, "best_combo": 0, "fallen": []}
 var act_once := {}        # tag-team combos that pay out once per action
+var squad_bonks := {}     # "id:id" or id -> tick of the last squadmate bonk for that pair or that soldier
+const BONK_RESET := 120   # ticks before the same two soldiers can bonk again
 var act_crushed := 0      # Jackals crushed by debris during the current action (DOMINO)
 var act_crush_at := Vector2.ZERO
 var crate_bump := 0       # kill combo x5: the next crate rolls one rarity higher
 var act_unit: Unit = null # who played the card that started the current action
+var act_inst = null       # the deck card behind the current action, credited with its kills (D4)
 var taunter: Unit = null  # Taunt: Jackals that can, shoot this soldier next phase
 var lazarus_used := false
 var last_hit_head := false
@@ -137,7 +142,7 @@ func setup(idx: int, custom := {}) -> void:
 	terrain_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var i := 0
 	for s in Run.soldiers:
-		if not s.alive:
+		if not s.alive or (mission.has("only") and s.key != mission.only):
 			continue
 		var x := 50.0 + i * 35
 		var u := mk_unit()
@@ -527,7 +532,12 @@ func _ready() -> void:
 
 func begin() -> void:
 	Sfx.play("start")
-	banner("MISSION %d START!" % (mission_idx + 1), Color("ffb23e"), mission.name)
+	if practice():
+		dummies = units.filter(func(e): return e.team == "enemy").map(func(e): return [e.type, e.x])
+		banner("PRACTICE RANGE", Color("62d26f"), "FREE. NOTHING HERE CARRIES OVER")
+		log_msg("The dummies never shoot back and come back when they are all down. LEAVE RANGE when you are done.")
+	else:
+		banner("MISSION %d START!" % (mission_idx + 1), Color("ffb23e"), mission.name)
 	if breach:
 		log_msg("BREACH: the Vharr and the Jackals are fighting each other. Each shoots whoever is nearest, so let them.")
 	activate_enemies()
@@ -536,6 +546,31 @@ func begin() -> void:
 		start_player_turn()
 
 # ---------------------------------------------------------------- helpers
+func practice() -> bool:
+	return mission.get("practice", false)
+
+func practice_round() -> void:
+	## D5: no enemy phase at the range. When every dummy is down, a fresh set stands up.
+	state = "enemy"
+	busy = true
+	ui_dirty = true
+	await wait(20)
+	if not units.any(func(e): return e.team == "enemy" and not e.dead):
+		for d in dummies:
+			var e := mk_enemy(d[0], d[1], T.stand_y(d[1], 0))
+			e.active = true
+			units.append(e)
+		banner("RANGE RESET", Color("62d26f"))
+		await wait(30)
+	start_player_turn()
+
+func leave_practice() -> void:
+	if state == "over":
+		return
+	state = "over"
+	busy = true
+	mission_over.emit(true)
+
 func squad() -> Array:
 	return units.filter(func(u): return u.team == "squad")
 
@@ -1148,7 +1183,7 @@ func walk_along(u: Unit, pts: Array) -> void:
 
 # ---------------------------------------------------------------- damage, adrenaline, xp, death
 func give_xp(u, n: int) -> void:
-	if u == null or not (u is Unit) or u.team != "squad" or u.dead or n <= 0:
+	if u == null or not (u is Unit) or u.team != "squad" or u.dead or n <= 0 or practice():
 		return
 	u.xp_gain += n
 	var gained := Run.add_xp(u.s, n)
@@ -1422,6 +1457,7 @@ func kill(tg: Unit, src) -> void:
 			bodies[0].soak = 0
 	if tg.team == "enemy":
 		stats.kills += 1
+		credit_card(src)
 		var base: int = Data.ETYPES[tg.type].score
 		if state == "player":
 			combo += 1
@@ -1472,6 +1508,9 @@ func kill(tg: Unit, src) -> void:
 		if Data.DROP_GUNS.has(tg.type) and not tg.gone:
 			# B4: the gun falls where it dies; whoever walks over it gets one shot of it
 			drop_loot(tg.x, tg.y - 12, {"type": "gun", "card": Data.DROP_GUNS[tg.type]}, 0.6)
+		if tg.type == "queen":
+			drop_loot(tg.x, tg.y - 40, {"type": "item", "item": Run.roll_item(2)}, 1.2)
+			banner("QUEEN SLAIN!", Color("9df25c"), "THE SAND GOES QUIET")
 		if tg.type == "warden":
 			for w in wells.filter(func(q): return q.by == tg):
 				booms.append({"t": 4, "x": w.x, "y": w.y, "r": 40.0, "dmg": 6, "owner": src if src is Unit and src.team == "squad" else null})
@@ -1535,6 +1574,17 @@ func kill(tg: Unit, src) -> void:
 			sel = al[0] if al.size() else null
 			card_idx = -1
 	ui_dirty = true
+
+func credit_card(src) -> void:
+	## D4: the card that made the kill keeps count for the run. Ten kills earn it a nickname.
+	if not (src is Unit) or src != act_unit or act_inst == null or state != "player" or act_inst.get("temp", false) or act_inst.get("od", false):
+		return
+	var c: Dictionary = act_inst
+	c["kills"] = int(c.get("kills", 0)) + 1
+	if c.kills == Data.NICK_KILLS and not c.has("nick"):
+		c["nick"] = Data.CARD_NICKS[randi() % Data.CARD_NICKS.size()]
+		float_text(src, "%s IS NOW \"%s\"" % [Data.card(c).name.to_upper(), c.nick.to_upper()], Color("ffd23a"), true)
+		log_msg("%s's %s has %d kills. The squad calls it \"%s\" now." % [src.def.name, Data.card(c).name, c.kills, c.nick])
 
 func feed_kill(tg: Unit, src) -> void:
 	## U1: one kill feed line, Metal Slug style: KILLER [HOW] VICTIM, with a stamp for the flashy ones.
@@ -1602,6 +1652,8 @@ func collision_dmg(u: Unit, amt: float, label: String) -> void:
 		d = int(ceil(d / 2.0))
 	if d < 1 or u.dead:
 		return
+	if debug:
+		print("[coll r%d] %s %s %d" % [round_n, u.def.key if u.team == "squad" else u.type, label, d])
 	float_text(u, label, Color("e8dcc2"))
 	shake += 2
 	Sfx.play("bonk")
@@ -1635,6 +1687,9 @@ func crush(u: Unit, d: int, cause, kvx: float, kvy: float) -> void:
 			give_xp(cause, 3)
 	if u.type == "boss":
 		crack_boss(u)
+	if u.type == "queen" and u.weight != "buried":
+		d *= 3
+		float_text(u, "CAVED IN!", Color("ffd23a"), true)
 	var was := kill_how
 	kill_how = "CRUSHED"
 	damage(u, d, cause, {"impact": true})
@@ -2038,6 +2093,7 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 			drop_hang(u)
 	act_unit = u
 	act_card = c.get("name", "")
+	act_inst = inst
 	u.played += 1
 	if ch != "":
 		chain(u, ch)
@@ -3239,6 +3295,13 @@ func detour_round() -> void:
 		detour.scav += 1
 		float_text(e, "SCAVENGER", Color("ff7a3d"), true)
 
+func stall_limit() -> int:
+	return STALL_ROUNDS - (1 if Run.threat_on(1) else 0)
+
+func stalled() -> bool:
+	## The line has sat on one screen long enough for alert to climb each enemy phase.
+	return rounds_since_scroll >= stall_limit()
+
 func scroll_to(tx: float, reason: String, who = null) -> void:
 	tx = clampf(tx, 0, world_w - W)
 	if tx <= cam_x + 4:
@@ -3330,6 +3393,10 @@ func activate_enemies() -> void:
 			if e.type == "radio" and radio_t == null:
 				radio_t = 3 + jammer_rounds()
 				log_msg("A radioman is calling for backup. Paratroopers in %d rounds unless you drop him." % radio_t)
+			if e.type == "queen":
+				banner("WARNING!!", Color("c47bff"), "THE BURROW QUEEN STIRS")
+				Sfx.play("alarm")
+				log_msg("Something huge is moving under the sand. Only blasts reach her down there: hit her when she surfaces, and bring the ruins down on her head.")
 			if e.type == "boss" and not boss_active:
 				boss_active = true
 				banner("WARNING!!", Color("ff4d3d"), "IRON BOAR APPROACHING")
@@ -3711,7 +3778,7 @@ func start_player_turn() -> void:
 		var al := squad_alive()
 		sel = al[-1] if al.size() else null
 	banner("ROUND %d" % round_n, Color.WHITE, ("WIND %s %d" % [">>" if wind > 0 else "<<", absi(wind)]) if wind else "NO WIND")
-	log_msg("Round %d. Alert %d/10.%s" % [round_n, alert, " The line has stalled: alert is rising." if rounds_since_scroll >= 2 else ""])
+	log_msg("Round %d. Alert %d/10.%s" % [round_n, alert, " The line has stalled: alert is rising." if stalled() else ""])
 	ui_dirty = true
 	resolve(func(): await wait(1))
 
@@ -3868,6 +3935,9 @@ func end_turn(force := false) -> void:
 	enemy_phase()
 
 func enemy_phase() -> void:
+	if practice():
+		await practice_round()
+		return
 	state = "enemy"
 	busy = true
 	ui_dirty = true
@@ -3988,7 +4058,7 @@ func enemy_phase() -> void:
 	rounds_since_scroll += 1
 	var before := alert
 	var calls := 0
-	if rounds_since_scroll >= (1 if Run.threat_on(1) else 2):
+	if stalled():
 		alert = mini(10, alert + 1)
 	var radios := units.filter(func(u): return u.type == "radio" and u.active and not u.dead)
 	if radios.is_empty():
@@ -4008,12 +4078,18 @@ func enemy_phase() -> void:
 		banner("ALERT %d" % alert, Color("ff4d3d"), "AIR SUPPORT AUTHORIZED" if alert >= 10 else ("THEY KNOW YOU ARE HERE" if alert >= 6 else "THE JACKALS ARE ORGANIZING"))
 		Sfx.play("alarm")
 		await wait(50)
-	if rounds_since_scroll >= 3 and alert >= 6 and not boss_dead and randf() < 0.4:
+	if rounds_since_scroll > stall_limit() and alert >= 6 and not boss_dead and randf() < 0.4:
 		calls += 1
 	if calls and not boss_dead:
 		var n := 1 + alert / 4
+		var shields := 0
 		for i in n:
-			var type: String = pick(["grunt", "grunt", "shield", "sapper"] if mission_idx == 0 else ["skitter", "blinker", "shield", "sapper"])
+			var drop: Array = ["grunt", "grunt", "shield", "sapper"] if mission_idx == 0 else ["skitter", "blinker", "shield", "sapper"]
+			if shields > 0:
+				drop.erase("shield")  # one riot shield per drop, so a stall doesn't wall the screen with them
+			var type: String = pick(drop)
+			if type == "shield":
+				shields += 1
 			var e := mk_enemy(type, cam_x + W - 60 - randf() * 240, -30.0 - i * 40)
 			e.active = true; e.heavy = false; e.air = true; e.para = true
 			units.append(e)
@@ -4417,6 +4493,9 @@ func enemy_act(e: Unit) -> void:
 			return
 		"prism":
 			await prism_act(e)
+			return
+		"queen":
+			await queen_act(e)
 			return
 		"warden":
 			await warden_act(e)
@@ -5094,6 +5173,75 @@ func overseer_act(e: Unit) -> void:
 		damage(tg, int(round(E.dmg * (1 + alert * 0.06))), e, {})
 		await wait(10)
 
+func queen_act(e: Unit) -> void:
+	## Q2 Burrow Queen. Buried: tunnel toward the nearest soldier, tearing up the ground, and burst out
+	## under them. Surfaced: bite whoever is close or spit acid at the nearest, then dive again.
+	var E: Dictionary = Data.ETYPES.queen
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	var dmul := 1 + alert * 0.06
+	if e.weight != "buried":
+		e.face = 1 if tg.x >= e.x else -1
+		e.pose = "throw"; e.pose_t = 18
+		if absf(tg.x - e.x) < e.w / 2.0 + 40 and absf(tg.y - e.y) < 60:
+			Sfx.play("slash")
+			await wait(8)
+			damage(tg, int(round(E.bite * dmul)), e, {"melee": true})
+		else:
+			Sfx.play("splash")
+			var c := e.center()
+			tracers.append({"x1": c.x, "y1": c.y - 20, "x2": tg.x, "y2": tg.y - 10, "c": Color("9df25c"), "t": 16})
+			await wait(10)
+			acids.append({"x": tg.x, "y": tg.y, "r": 36.0, "turns": 2})
+			damage(tg, int(round(E.spit * dmul)), e, {})
+			float_text(tg, "ACID!", Color("9df25c"), true)
+		await wait(14)
+		if e.dead:
+			return
+		e.weight = "buried"
+		dust(e.x, e.y - 6, Color("c9b38a"), 16)
+		Sfx.play("thud")
+		shake += 4
+		await wait(10)
+		return
+	var dir := signf(tg.x - e.x)
+	var tx: float = e.x + dir * minf(absf(tg.x - e.x), E.tunnel)
+	var dug := 0.0
+	while absf(tx - e.x) > 4 and not e.dead:
+		var stepx: float = minf(10.0, absf(tx - e.x))
+		e.x += dir * stepx
+		dug += stepx
+		var gy = T.stand_y(e.x, 0)
+		if gy != null and gy < WATER_Y - 4:
+			e.y = gy
+			shake = maxf(shake, 2.0)
+			if dug >= 30:
+				dug = 0.0
+				T.carve(e.x, gy + 6, 12, e)  # she leaves the arena torn up behind her
+				dust(e.x, gy, Color("c9b38a"), 4)
+		await wait(2)
+	if e.dead:
+		return
+	var gy2 = T.stand_y(e.x, 0)
+	if gy2 != null:
+		e.y = gy2
+	e.weight = ""
+	e.face = int(dir) if dir != 0 else e.face
+	e.pose = "throw"; e.pose_t = 24
+	Sfx.play("bigboom")
+	shake += 12
+	T.carve(e.x, e.y - 6, 30, e)
+	float_text(e, "BURROW QUEEN!", Color("c47bff"), true)
+	for o in units:
+		if o == e or o.dead or o.gone or o.sunk or o.is_pickup() or o.kind == "pow" or o.team == "neutral":
+			continue
+		if absf(o.x - e.x) < 50 + o.w / 2.0 and absf(o.y - e.y) < 70:
+			damage(o, int(round(E.burst * dmul)), e, {})
+			if not o.dead and not o.heavy and not o.immovable:
+				o.vx = signf(o.x - e.x if o.x != e.x else 1.0) * 3.5; o.vy = -6; o.air = true; o.walk = null; o.bumped = {e.id: true}; o.last_hit_by = e
+	await until(settled)
+
 func tick_acids() -> void:
 	## End of the enemy phase: anyone but the Vharr standing in Hive acid takes 3.
 	for a in acids:
@@ -5194,6 +5342,9 @@ func place_encounter(id: String) -> void:
 				h.fl["hatch"] = stagger + 1
 				stagger += 1
 		put.call("squid", 0.65)
+	elif id == "queen":
+		put.call("queen", 0.7)
+		put.call("skitter", 0.4)
 	elif id == "swarm":
 		put.call("burrow", 0.45)
 		var b2 = put.call("burrow", 0.8)
@@ -5555,6 +5706,18 @@ func body_collisions(u: Unit) -> void:
 		if u.jumping and o.team == u.team:
 			continue
 		if absf(o.x - u.x) < (o.w + u.w) / 2.0 and u.y > o.y - o.h and u.y - u.h < o.y:
+			var mates: bool = not u.rushing and u.team == "squad" and o.team == "squad"
+			var mate_hurt := true
+			if mates:
+				# one blast, one bonk: a pair of squadmates bonks once (no rebound bonks), it only hurts
+				# the one knocked into, and each soldier takes at most one squadmate bonk per blast
+				var pair := "%d:%d" % [mini(u.id, o.id), maxi(u.id, o.id)]
+				if t - int(squad_bonks.get(pair, -BONK_RESET)) < BONK_RESET:
+					continue
+				squad_bonks[pair] = t
+				mate_hurt = t - int(squad_bonks.get(o.id, -BONK_RESET)) >= BONK_RESET
+				if mate_hurt:
+					squad_bonks[o.id] = t
 			if u.bumped == null:
 				u.bumped = {}
 			u.bumped[o.id] = true
@@ -5573,6 +5736,8 @@ func body_collisions(u: Unit) -> void:
 				cause.energy += 1
 				draw_cards(cause, 1)
 				float_at(o.x, o.y - 60, "STRIKE!", Color("ffd23a"), true)
+			if debug:
+				print("[bonk r%d] %s -> %s dmg %d" % [round_n, u.def.key if u.team == "squad" else u.type, o.def.key if o.team == "squad" else o.type, dmg])
 			float_text(o, "SMASH" if u.rushing else "BONK", Color("ffd23a"), true)
 			Sfx.play("bonk")
 			shake += 3
@@ -5584,13 +5749,15 @@ func body_collisions(u: Unit) -> void:
 				o.walk = null
 				o.bumped = {u.id: true}
 				o.last_hit_by = cause
-			damage(o, dmg, cause, {})
+			if mate_hurt:
+				damage(o, dmg, cause, {})
 			if not u.rushing and cause != null and u.team == "enemy" and o.team == "enemy":
 				add_status(u, "stun", 1, cause)
 				add_status(o, "stun", 1, cause)
 				tag("pileup", o.x, o.y - o.h, false)
 			if not u.rushing:
-				collision_dmg(u, sp * (0.3 if o.team == u.team else 0.8), "BONK")
+				if not mates:
+					collision_dmg(u, sp * (0.3 if o.team == u.team else 0.8), "BONK")
 				if not ks(cause, "gauntlet"):
 					u.vx *= 0.35
 

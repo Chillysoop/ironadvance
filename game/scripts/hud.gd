@@ -22,6 +22,7 @@ var hand_x0 := 270.0      # left edge of the hand, so the action meter can sit b
 var targeting := false    # a card is armed: the hand ghosts out so it doesn't hide what you aim at
 
 const INK := Color(0.05, 0.035, 0.03)
+const HubUI := preload("res://scripts/hub_ui.gd")
 
 func setup(battle: Battle) -> void:
 	b = battle
@@ -93,6 +94,14 @@ func setup(battle: Battle) -> void:
 		bs.position = Vector2(830 + (i - (Run.belt_max() - 3)) * 41, 424)
 		bs.size = Vector2(38, 30)
 		root.add_child(bs)
+	if b.practice():
+		var lv := PixButton.new()
+		lv.text = "LEAVE RANGE"
+		lv.color = Color("62d26f")
+		lv.position = Vector2(830, 394)
+		lv.size = Vector2(122, 26)
+		lv.pressed.connect(func(): Sfx.play("click"); b.leave_practice())
+		root.add_child(lv)
 	modal = Control.new()
 	modal.set_anchors_preset(Control.PRESET_FULL_RECT)
 	modal.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -289,6 +298,15 @@ func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> 
 			bg.banish = not bg.banish
 			bn.text = "PICK ONE TO BANISH" if bg.banish else "BANISH (%d)" % Run.banishes)
 		modal.add_child(bn)
+	# S6: check any deck before picking
+	var who_i := 0
+	if who != null and who is Unit:
+		who_i = Run.soldiers.find(who.s)
+	elif n and opts[0].has("u"):
+		who_i = Run.soldiers.find(opts[0].u.s)
+	elif b.sel != null:
+		who_i = Run.soldiers.find(b.sel.s)
+	modal.add_child(dossier_button(Vector2(700, 392), maxi(0, who_i)))
 	modal.visible = true
 	Sfx.play("levelup" if kind == "level" else "select")
 	var r: int = await picked
@@ -334,7 +352,23 @@ func show_deck() -> void:
 	close.position = Vector2(430, 506)
 	close.pressed.connect(func(): modal.visible = false)
 	modal.add_child(close)
+	var dz := dossier_button(Vector2(540, 506), maxi(0, Run.soldiers.find(u.s)))
+	dz.pressed.connect(func(): modal.visible = false)
+	modal.add_child(dz)
 	modal.visible = true
+
+func dossier_button(pos: Vector2, i: int) -> PixButton:
+	var bt := PixButton.new()
+	bt.text = "DOSSIER"
+	bt.color = Color("53d4e2")
+	bt.size = Vector2(110, 26)
+	bt.position = pos
+	bt.pressed.connect(func(): Sfx.play("click"); open_dossier(i))
+	return bt
+
+func open_dossier(i: int) -> Control:
+	## S6: the HQ Dossier over the battle, read-only.
+	return HubUI.field_dossier(self, i)
 
 # ================================================================ widgets
 class PixButton extends Control:
@@ -590,10 +624,10 @@ class Overlay extends Control:
 			var key := "ui_bulb_off"
 			if on:
 				key = "ui_bulb_g" if i < 3 else ("ui_bulb_y" if i < 6 else "ui_bulb_r")
-			var flick := on and i == b.alert - 1 and b.rounds_since_scroll >= 2 and b.t % 20 < 10
+			var flick := on and i == b.alert - 1 and b.stalled() and b.t % 20 < 10
 			draw_texture_rect(Art.tex[key], Rect2(ax + i * 20, 6 if not flick else 5, 20, 24), false)
 		var info_x := ax + 206
-		if b.rounds_since_scroll >= 2 and b.state != "title":
+		if b.stalled() and b.state != "title":
 			Art.text(self, "STALLED!", Vector2(info_x, 15), 8, Color("ff4d3d") if b.t % 40 < 20 else Color("ff7a3d"))
 		if b.radio_t != null and b.state != "title":
 			draw_texture_rect(Art.tex.ic_radio, Rect2(info_x, 18, 10, 10), false)
@@ -619,7 +653,18 @@ class Overlay extends Control:
 		for u in b.units:
 			if u.type == "boss":
 				boss = u
-		if boss != null and b.boss_active and not boss.dead:
+		if boss == null or not b.boss_active:
+			for u in b.units:
+				if u.type == "queen" and u.active and not u.dead:
+					boss = u
+		if boss != null and boss.type == "queen":
+			var bw := 360.0
+			var bx := 480 - bw / 2
+			Art.text(self, "BURROW QUEEN" + ("  UNDERGROUND: BLASTS ONLY" if boss.weight == "buried" else "  SURFACED: HIT HER NOW"), Vector2(bx, 52), 8, Color("c47bff") if boss.weight == "buried" else Color("9df25c"))
+			draw_rect(Rect2(bx - 2, 56, bw + 4, 12), ink)
+			draw_rect(Rect2(bx, 58, bw, 8), Color("2a0d3a"))
+			draw_rect(Rect2(bx, 58, bw * boss.hp / float(boss.max_hp), 8), Color("b06ae0"))
+		elif boss != null and b.boss_active and not boss.dead:
 			var bw := 360.0
 			var bx := 480 - bw / 2
 			Art.text(self, "IRON BOAR" + ("  ARMORED: CRUSH IT TO CRACK" if boss.plate > 0 else "  ARMOR CRACKED"), Vector2(bx, 52), 8, Color("9fb4c9") if boss.plate > 0 else Color("ffb23e"))
@@ -629,7 +674,7 @@ class Overlay extends Control:
 			if boss.plate > 0:
 				draw_rect(Rect2(bx, 58, bw * minf(1, boss.plate / float(b.mission.plate)), 2), Color("9fb4c9"))
 		# log
-		var ly := 52.0 if boss == null or not b.boss_active else 84.0
+		var ly := 52.0 if boss == null or (not b.boss_active and boss.type != "queen") else 84.0
 		for i in b.log_lines.size():
 			var a := 0.55 + 0.45 * float(i + 1) / b.log_lines.size()
 			Art.text(self, b.log_lines[i], Vector2(10, ly + i * 14), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true)

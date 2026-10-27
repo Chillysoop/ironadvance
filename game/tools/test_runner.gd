@@ -2,11 +2,13 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad),
+## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
 const Services := preload("res://scripts/services.gd")
+const HubUI := preload("res://scripts/hub_ui.gd")
+const HudScript := preload("res://scripts/hud.gd")
 
 var out_dir := "user://shots"
 var scenario := ""
@@ -716,6 +718,10 @@ func run() -> void:
 			await doc()
 		"dossier":
 			await dossier()
+		"hub":
+			await hub()
+		"field":
+			await field()
 		"aliens":
 			await aliens()
 		"aliens2":
@@ -724,10 +730,14 @@ func run() -> void:
 			await aliens3()
 		"aliens4":
 			await aliens4()
+		"aliens5":
+			await aliens5()
 		"playtest":
 			await playtest()
 		"pinball":
 			await pinball()
+		"tuning":
+			await tuning()
 		"trailer":
 			await preload("res://tools/trailer.gd").new().run(self, clip_arg)
 		"campaign":
@@ -779,11 +789,6 @@ func picker() -> void:
 	sh.chosen.emit(-1)
 	await frames_wait(10)
 	check(not sh.stock_cards[1].get("sold", false) and sh.chooser == null, "cancelling a pick buys nothing")
-	sh.remove_card()
-	await frames_wait(20)
-	await shot("picker_remove")
-	sh.chosen.emit(-1)
-	await frames_wait(10)
 	sh.mode = "barracks"
 	sh.build()
 	sh.restore_tag()
@@ -925,6 +930,269 @@ func dossier() -> void:
 	await frames_wait(6)
 	check(not ro.get_children().any(func(o): return o.get_script() != null and o.get("why") != null), "a read-only Dossier shows no service buttons")
 	ro.queue_free()
+
+func field() -> void:
+	## PR 3 of the HQ hub: the gate loadout line (H5), all decks at once (D3), the Dossier
+	## from the field (S6) and the practice range that puts everything back (D5).
+	Run.new_run()
+	Run.scrip = 300
+	# --- H5
+	main.dial_gate()
+	await frames_wait(20)
+	await shot("field_dial")
+	var line: String = main.screen.loadout_line(Run.soldiers[0])
+	check(line.contains("cards of %d" % Run.soldiers[0].deck.size()), "the gate dial sums up each deck: " + line)
+	# --- D3
+	main.show_hq(false)
+	await frames_wait(20)
+	var hq: Control = main.screen
+	var bars: Array = hq.get_children().filter(func(c): return c is HubUI.SquadBar)
+	check(bars.size() == 1 and bars[0].has_all(), "the HQ squad bar has an ALL DECKS plate")
+	bars[0].all_decks.emit()
+	await frames_wait(20)
+	await shot("field_all_decks")
+	var d: Control = hq.sub
+	check(d != null and d.tab == "squad", "ALL DECKS opens every deck side by side")
+	check(d.deck_rows(Run.soldiers[0]).size() < Run.soldiers[0].deck.size(), "copies stack into one row (%d rows for %d cards)" % [d.deck_rows(Run.soldiers[0]).size(), Run.soldiers[0].deck.size()])
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = true
+	ev.position = d.squad_col(2).get_center()
+	d._gui_input(ev)
+	await frames_wait(6)
+	check(d.tab == "deck" and d.idx == 2, "clicking a column opens that soldier's deck")
+	d.done.emit()
+	await frames_wait(6)
+	# --- S6: the debrief
+	main.show_debrief({"score": 100, "kills": 3})
+	await frames_wait(10)
+	var db: Control = main.screen
+	var dz: Array = db.get_children().filter(func(c): return c is HudScript.PixButton and c.text == "SQUAD DOSSIER")
+	check(dz.size() == 1, "the debrief has a SQUAD DOSSIER button")
+	dz[0].pressed.emit()
+	await frames_wait(10)
+	var fd: Array = db.get_children().filter(func(c): return c.get_script() == load("res://scripts/dossier.gd"))
+	check(fd.size() == 1 and fd[0].readonly, "it opens the Dossier read-only")
+	fd[0].sel = Run.soldiers[0].deck[0]
+	fd[0].build()
+	await frames_wait(6)
+	await shot("field_debrief_dossier")
+	check(not fd[0].get_children().any(func(c): return c is HubUI.ActionTile), "no card services in the field")
+	check(not fd[0].get_children().any(func(c): return c is HudScript.PixButton and c.text.begins_with("PRACTICE RANGE")), "no practice range from the field")
+	fd[0].done.emit()
+	await frames_wait(6)
+	# --- S6: the level-up pick and the battle deck view
+	var lvl := {"name": "FIELD YARD", "theme": "dusk", "segments": ["start", "towers", "camp", "arena"],
+		"boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "", "rules": {"pads": 0}}
+	var b: Battle = main.start_battle(0, lvl)
+	await until(func(): return b.state == "player" and not b.busy)
+	var u: Unit = b.squad()[1]
+	b.hud.pick.call("level", "LEVEL UP!", "Pick one.", Run.level_options(u.s), u)
+	await frames_wait(10)
+	var pb: Array = b.hud.modal.get_children().filter(func(c): return c is HudScript.PixButton and c.text == "DOSSIER")
+	check(pb.size() == 1, "the level-up pick has a DOSSIER button")
+	pb[0].pressed.emit()
+	await frames_wait(10)
+	var hd: Array = b.hud.get_children().filter(func(c): return c.get_script() == load("res://scripts/dossier.gd"))
+	check(hd.size() == 1 and hd[0].readonly and hd[0].idx == Run.soldiers.find(u.s), "it opens on the soldier levelling up")
+	await shot("field_levelup_dossier")
+	var key := InputEventKey.new()
+	key.keycode = KEY_SPACE
+	key.pressed = true
+	hd[0]._input(key)
+	check(get_viewport().is_input_handled(), "keys stop at the Dossier and never reach the battle")
+	hd[0].done.emit()
+	b.hud.picked.emit(-1)
+	await frames_wait(10)
+	b.sel = u
+	b.hud.show_deck()
+	await frames_wait(6)
+	var db2: Array = b.hud.modal.get_children().filter(func(c): return c is HudScript.PixButton and c.text == "DOSSIER")
+	check(db2.size() == 1, "the battle deck view has a DOSSIER button")
+	b.hud.modal.visible = false
+	# --- D4: kills per card
+	var shooter: Unit = b.squad()[0]
+	var inst: Dictionary = shooter.hand.filter(func(c): return not c.get("temp", false))[0]
+	b.spend_card(shooter, shooter.hand.find(inst))
+	for k in Data.NICK_KILLS:
+		var dm := b.mk_enemy("grunt", shooter.x + 200 + k * 10, b.T.stand_y(shooter.x + 200, 0))
+		dm.active = true
+		b.units.append(dm)
+		b.damage(dm, 999, shooter)
+	check(int(inst.get("kills", 0)) == Data.NICK_KILLS and inst.has("nick"), "the played card counts its kills and earns a nickname at %d (%s)" % [Data.NICK_KILLS, inst.get("nick", "none")])
+	check(shooter.s.deck.has(inst), "the count lives on the deck card itself")
+	await until(func(): return not b.busy, 600)
+	var g3: Array = [Run.new_card("knife", 0), Run.new_card("knife", 0), Run.new_card("knife", 0)]
+	g3[0]["kills"] = 2
+	g3[2]["kills"] = 3
+	var sx: Dictionary = Run.soldiers[3]
+	sx.deck.append_array(g3)
+	var fz := Run.fuse(sx, g3)
+	check(int(fz.get("kills", 0)) == 5, "a fused card keeps the copies' kills")
+	main.show_hq(false)
+	await frames_wait(10)
+	main.screen.open_dossier(Run.soldiers.find(shooter.s))
+	await frames_wait(6)
+	main.screen.sub.sel = inst
+	main.screen.sub.build()
+	await frames_wait(6)
+	await shot("field_card_kills")
+	main.screen.sub.set_tab("squad")
+	await frames_wait(6)
+	await shot("field_top_card")
+	main.screen.sub.done.emit()
+	await frames_wait(4)
+	# --- D5: the practice range
+	main.show_hq(false)
+	await frames_wait(10)
+	var moss: Dictionary = Run.soldiers[0]
+	moss.hp = 9
+	var scrip0: int = Run.scrip
+	var deck0: int = moss.deck.size()
+	var hist0: int = Run.history.size()
+	main.screen.open_dossier(0)
+	await frames_wait(10)
+	var pr: Array = main.screen.sub.get_children().filter(func(c): return c is HudScript.PixButton and c.text.begins_with("PRACTICE RANGE"))
+	check(pr.size() == 1, "the HQ Dossier has a PRACTICE RANGE button")
+	await shot("field_practice_button")
+	pr[0].pressed.emit()
+	await frames_wait(4)
+	b = main.battle
+	await until(func(): return b.state == "player" and not b.busy)
+	check(b.squad().size() == 1 and b.squad()[0].s.key == moss.key, "only Moss goes to the range")
+	check(b.dummies.size() >= 4, "%d dummies stand on the range" % b.dummies.size())
+	await frames_wait(30)
+	await shot("field_range")
+	var me: Unit = b.squad()[0]
+	for e in b.units.filter(func(o): return o.team == "enemy" and not o.dead):
+		b.damage(e, 999, me)
+	await until(func(): return not b.busy, 600)
+	Run.scrip += 100
+	moss.deck.append(Run.new_card("rifle", 0, "shop"))
+	b.end_turn(true)
+	await until(func(): return b.state == "player" and not b.busy)
+	check(b.units.filter(func(o): return o.team == "enemy" and not o.dead).size() == b.dummies.size(), "the dummies stand back up when they are all down")
+	check(me.xp_gain == 0 and b.lvl_queue.is_empty(), "no XP at the range")
+	check(b.round_n == 2 and me.hp > 0, "no enemy phase: round 2 starts with Moss untouched")
+	await shot("field_range_reset")
+	b.leave_practice()
+	await frames_wait(20)
+	check(main.screen != null and main.screen.has_method("open_dossier") and main.screen.sub != null and main.screen.sub.idx == 0, "leaving the range comes back to Moss's Dossier at HQ")
+	check(Run.scrip == scrip0 and Run.soldiers[0].hp == 9 and Run.soldiers[0].deck.size() == deck0 and Run.history.size() == hist0, "everything the range touched is put back (scrip %d, HP %d, deck %d)" % [Run.scrip, Run.soldiers[0].hp, Run.soldiers[0].deck.size()])
+	await shot("field_back")
+
+func hub() -> void:
+	## The HQ hub: buildings with one job each, a nav strip between them, ready badges, the
+	## gate reminder, the walk, the Workshop's shortcuts and Patch Up at the Doc's Lab.
+	Run.new_run()
+	Run.meta["tips_off"] = false
+	Run.scrip = 500
+	Run.soldiers[0].hp = 9
+	Run.soldiers[2].deck.append(Run.new_card("frag", 0, "shop"))
+	Run.stash.append(Run.new_item("ghillie", 0))
+	Run.stash.append(Run.new_item("ghillie", 0))
+	main.show_hq(false)
+	await frames_wait(20)
+	var hq: Control = main.screen
+	var b: Dictionary = hq.badges()
+	check(b.get("qm", "") == "NEW STOCK" and b.has("workshop") and b.get("doc", "") == "HURT", "badges: new stock, fusions ready, someone hurt: %s" % b)
+	check(hq.reminders().any(func(l): return l.contains("scrip unspent")) and hq.reminders().any(func(l): return l.contains("MOSS")), "the gate reminds about scrip and Moss's HP")
+	hq.dial_btn.hover = true
+	await frames_wait(4)
+	await shot("hub_hq")
+	hq.dial_btn.hover = false
+	# walking to a building opens it after the squad gets there
+	hq.walk_to("qm")
+	await frames_wait(14)
+	await shot("hub_walk")
+	await until(func(): return hq.sub != null and is_instance_valid(hq.sub), 120)
+	await frames_wait(10)
+	var qm: Control = hq.sub
+	check(qm.get("mode") == "shop" and qm.bark == 0, "the walk ends in the Quartermaster, who explains the tent once")
+	await shot("hub_qm_bark")
+	check(hq.get_node_or_null("Nav") != null, "the nav strip sits over the building")
+	qm.bark = -1
+	qm.build()
+	check(not hq.badges().has("qm"), "the NEW STOCK badge clears after a visit")
+	qm.shelf_pick = 0
+	qm.build()
+	await frames_wait(6)
+	await shot("hub_qm")
+	var n_stash: int = Run.stash.size() + Run.belt.size()
+	qm.buy_shelf()
+	check(Run.stash.size() + Run.belt.size() == n_stash + 1, "the Quartermaster sells shelf items straight to the stash")
+	# drag a card onto a soldier
+	qm.buy_card(0)
+	await frames_wait(6)
+	var tp: Control = qm.chooser
+	tp.drag = {"opt": qm.stock_cards[0], "held": true}
+	await frames_wait(4)
+	await shot("hub_pick")
+	tp.picked.emit(1)
+	await frames_wait(6)
+	check(qm.stock_cards[0].get("sold", false) and Run.soldiers[1].deck.any(func(c): return c.get("from", "") == "shop"), "a shop card dropped on Hex goes in Hex's deck")
+	# the nav strip jumps between buildings
+	hq.go("workshop")
+	await frames_wait(10)
+	var ws: Control = hq.sub
+	check(ws.get_script() == load("res://scripts/workshop.gd"), "the nav strip opens the Workshop")
+	await shot("hub_workshop")
+	var svs: Array = ws.services()
+	check(svs[2][6] and svs[2][4].contains("VEE"), "Workshop FUSE lists Vee's ready Frags: " + svs[2][4])
+	check(not svs[3][6] and svs[3][5] != "", "Workshop EVOLVE says what it needs: " + svs[3][5])
+	ws.start_pick("polish")
+	await frames_wait(6)
+	check(ws.bar.pickable.size() == 4, "every soldier has a card to polish")
+	await shot("hub_workshop_pick")
+	ws.on_pick(0)
+	await frames_wait(10)
+	check(ws.sub != null and ws.sub.filt == "polish" and ws.sub.idx == 0, "picking Moss opens her Dossier filtered to polishable cards")
+	check(not hq.get_node("Nav").visible, "the nav strip steps aside while a Dossier is open")
+	ws.sub.done.emit()
+	await frames_wait(6)
+	var frags: Array = Run.soldiers[2].deck.filter(func(c): return c.key == "frag")
+	ws.open_dossier(2, "fuse", frags[0], "fuse")
+	await frames_wait(10)
+	await shot("hub_workshop_fuse")
+	ws.sub.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(Run.fusable(Run.soldiers[2]).is_empty(), "the READY NOW shortcut fuses Vee's Frags")
+	ws.sub.done.emit()
+	# Doc's Lab: Patch Up works before the lab is built
+	hq.go("doc")
+	await frames_wait(10)
+	await shot("hub_doc")
+	var patch: Control = hq.get_children().filter(func(c): return c.get("title") == "PATCH UP")[0]
+	patch.pressed.emit()
+	await frames_wait(6)
+	check(Run.soldiers[0].hp == Run.eff_max_hp(Run.soldiers[0]), "Patch Up at the Doc's Lab heals Moss")
+	# Armory: copy an item
+	hq.go("armory")
+	await frames_wait(10)
+	var arm: Control = hq.sub
+	arm.select({"where": "stash", "i": Run.stash.find(Run.stash.filter(func(it): return it.id == "ghillie")[0])})
+	await frames_wait(6)
+	await shot("hub_armory")
+	arm.copy_sel()
+	await frames_wait(6)
+	check(Run.stash.filter(func(it): return it.id == "ghillie").size() == 3 and Run.any_merge(), "COPY at the Armory finishes a triple")
+	check(hq.badges().get("armory", "") == "TRIPLE READY", "the Armory badge lights for the triple")
+	hq.go("barracks")
+	await frames_wait(10)
+	await shot("hub_barracks")
+	# keys: ESC goes home, W opens the Workshop
+	var esc := InputEventKey.new()
+	esc.keycode = KEY_ESCAPE
+	esc.pressed = true
+	hq._unhandled_input(esc)
+	await frames_wait(6)
+	check(hq.idle(), "ESC from a building goes home")
+	var w := InputEventKey.new()
+	w.keycode = KEY_W
+	w.pressed = true
+	hq._unhandled_input(w)
+	await frames_wait(6)
+	check(hq.sub != null and hq.sub.get_script() == load("res://scripts/workshop.gd"), "W opens the Workshop")
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)
@@ -1443,6 +1711,49 @@ func aliens4() -> void:
 	check(b.units.filter(func(u): return u.type == "skitter" and not u.dead).size() == sk0 + 1, "a Skitter bursts out of a dead Thrall")
 	b.kill(ov, s)
 	check(not b.is_thrall(j2) and j2.has_st("stun"), "killing the Overseer frees and stuns its Thralls")
+
+func aliens5() -> void:
+	## Q2 Burrow Queen: the desert and mountain mini-boss encounter.
+	Run.new_run()
+	check(Run.make_level("desert", 1).encounter == "queen" and Run.make_level("mountain", 2).encounter == "queen", "desert and mountain levels from level 2 hold the Burrow Queen")
+	check(Run.make_level("desert", 0).encounter == "" and Run.make_level("jungle", 1).encounter in ["swarm", "nest"], "level 1 and other biomes don't")
+	Run.level = Run.make_level("desert", 1)
+	var b: Battle = main.start_battle(1, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var qs := b.units.filter(func(u): return u.type == "queen")
+	check(qs.size() == 1 and qs[0].weight == "buried", "one Burrow Queen waits buried in the level")
+	if qs.is_empty():
+		return
+	var q: Unit = qs[0]
+	b.speed = 2.0
+	var x0 := 600.0
+	flat_strip(b, x0 - 160, 640)
+	var s := alien_field(b, x0)
+	q.dead = false; q.gone = false
+	q.x = x0 + 320; q.y = b.T.stand_y(q.x, 0); q.active = true
+	var tr := b.trace_bullet(x0 + 10, q.y - 20, 0.0, 500, 0, s, false)
+	check(not tr.hits.any(func(h): return h.u == q), "bullets pass over her while she's underground")
+	var hp0 := s.hp
+	var g0 = b.T.stand_y(x0 + 160, 0)
+	await b.enemy_act(q)
+	await until(func(): return b.settled(), 900)
+	await shot("alien5_queen_burst")
+	check(q.weight == "" and absf(q.x - x0) < 80 and s.hp < hp0, "she tunnels over and bursts out under the soldier (hp %d -> %d)" % [hp0, s.hp])
+	check(b.T.stand_y(x0 + 160, 0) != g0, "her tunnel tears up the ground on the way")
+	tr = b.trace_bullet(q.x - 200, q.y - q.h * 0.7, 0.0, 300, 0, s, false)
+	check(tr.hits.any(func(h): return h.u == q), "surfaced, she can be shot")
+	var qh := q.hp
+	b.crush(q, 5, s, 0, 0)
+	check(qh - q.hp == 15, "rubble on her head does triple damage (%d)" % (qh - q.hp))
+	var tot := func(): return b.squad_alive().reduce(func(a, u): return a + u.hp, 0)
+	hp0 = tot.call()
+	await b.enemy_act(q)
+	await until(func(): return b.settled(), 900)
+	await shot("alien5_queen_spit")
+	check(q.weight == "buried" and tot.call() < hp0, "next turn she bites or spits, then dives (squad hp %d -> %d)" % [hp0, tot.call()])
+	var loot0 := b.units.filter(func(u): return u.kind == "loot").size()
+	b.kill(q, s)
+	check(b.units.filter(func(u): return u.kind == "loot").size() > loot0, "she drops loot when she dies")
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.
@@ -2641,7 +2952,7 @@ func hq_upgrades() -> void:
 func detours() -> void:
 	## Step 5: the mid-level camp offers 3 detours, each paying in its own currency.
 	var lv := Run.make_level("jungle", 0)
-	check(lv.detours.size() == 3 and lv.segments[4] == "yard" and lv.segments[3] == "camp", "a level has a yard after the mid camp and 3 detour offers")
+	check(lv.detours.size() == 3 and lv.segments[3] == "yard" and lv.segments[2] == "camp", "a level has a yard after the mid camp and 3 detour offers")
 	Run.new_run()
 	Run.meta.salvage = 0
 	Run.meta.bio = 0
@@ -2743,7 +3054,7 @@ func biomes() -> void:
 	## biome's rules are real: sway, sight, wind, hills, wet ground, fuel, mines, elites.
 	for id in Data.BIOMES:
 		var lv := Run.make_level(id, 0)
-		check(lv.segments.size() == 9 and lv.segments.count("camp") == 2 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)), "%s builds a full level" % id)
+		check(lv.segments.size() == 7 and lv.segments.count("camp") == 2 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)), "%s builds a full level" % id)
 	for i in Data.LEVELS.size():
 		check(Data.LEVELS[i].pool.size() >= 6 and Data.LEVELS[i].pool.all(func(k): return Data.BIOMES.has(k)), "level %d has a pool of 6+ biomes" % (i + 1))
 	# a whole run of dials: never a repeat, never a burned biome
@@ -3282,3 +3593,66 @@ func pinball() -> void:
 		print("[pinball] gap ", gap, " squad hp lost ", hp0 - hp1, " per soldier ", sq.map(func(x): return x.hp))
 		main.clear()
 		await frames_wait(5)
+
+func tuning() -> void:
+	## The playtest tuning: one bonk per pair of squadmates per blast, a slower stall clock, shorter levels, one Shield per drop.
+	# a blast beside a bunched squad no longer chains into a pile of bonks
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	var sq := b.squad()
+	for i in sq.size():
+		ground_unit(b, sq[i], 200 + i * 16.0)
+	await frames_wait(5)
+	var hp0: int = sq.reduce(func(a, x): return a + x.hp, 0)
+	b.explode(180, sq[0].y - 6, 40, 10, null)
+	await frames_wait(200)
+	var lost: int = hp0 - sq.reduce(func(a, x): return a + x.hp, 0)
+	check(lost <= 22, "a 10-damage blast beside a bunched squad costs %d HP (was 29)" % lost)
+	main.clear()
+	await frames_wait(5)
+	# alert holds for two quiet rounds and climbs on the third
+	Run.new_run()
+	b = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	var alerts: Array = []
+	for r in 3:
+		b.end_turn(true)
+		await until(func(): return b.state == "player" and not b.busy)
+		alerts.append(b.alert)
+	check(alerts[0] == 0 and alerts[1] == 0 and alerts[2] == 1, "alert starts climbing on the third round without a scroll %s" % [alerts])
+	main.clear()
+	await frames_wait(5)
+	# levels are seven segments: start, stretch, camp, yard, stretch, camp, boss
+	var lv := Run.make_level("desert", 1)
+	check(lv.segments.size() == 7 and lv.segments[2] == "camp" and lv.segments[3] == "yard" and lv.segments[5] == "camp", "a level is seven segments %s" % [lv.segments])
+	# paradrops bring at most one Shield
+	Run.new_run()
+	Run.level = Run.make_level("fortress", 2)
+	b = main.start_battle(2, Run.current_mission())
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 16.0
+	var worst := 0
+	for r in 8:
+		for o in b.units:
+			if o.team == "enemy" and o.para:
+				o.dead = true; o.gone = true
+		for s in b.squad_alive():
+			s.hp = s.max_hp
+		b.alert = 9
+		b.rounds_since_scroll = 9
+		b.strikes = []
+		var before := b.units.size()
+		b.end_turn(true)
+		await until(func(): return (b.state == "player" and not b.busy) or b.state == "over")
+		if b.state == "over":
+			break
+		var drop: Array = b.units.slice(before).filter(func(o): return o.para)
+		worst = maxi(worst, drop.filter(func(o): return o.type == "shield").size())
+	check(worst <= 1, "a paradrop brings at most one Shield (most seen %d)" % worst)

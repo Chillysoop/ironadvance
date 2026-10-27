@@ -110,6 +110,22 @@ func start_battle(idx: int, custom := {}) -> Battle:
 	battle.begin()
 	return battle
 
+func start_practice(i: int) -> void:
+	## D5: one soldier, their deck as it stands, dummies that never shoot back. Everything the
+	## range touches (HP, scrip, cards, XP) is put back when you leave.
+	var snap := Run.snapshot()
+	var s: Dictionary = Run.soldiers[i]
+	var lv := {"name": "PRACTICE RANGE", "theme": "dusk", "segments": ["start", "range"], "boss_hp": 1, "plate": 0,
+		"hp_mul": 1.0, "brief": "", "rules": {"pads": 0}, "practice": true, "only": s.key}
+	var b := start_battle(0, lv)
+	b.mission_over.disconnect(_on_mission_over)
+	b.mission_over.connect(func(_w): end_practice(snap, i))
+
+func end_practice(snap: Dictionary, i: int) -> void:
+	Run.restore(snap)
+	show_hq(false)
+	screen.open_dossier(i)
+
 func _on_mission_over(won: bool) -> void:
 	var st: Dictionary = battle.stats.duplicate()
 	st["score"] = battle.score
@@ -412,10 +428,26 @@ class Screen extends Control:
 					draw_rect(Rect2(bx + k, row + 1, w, 7), {"long": Color("53d4e2"), "close": Color("ffb23e"), "arc": Color("ff4d3d")}[st])
 					k += w
 				draw_rect(Rect2(bx, row + 1, bw, 7), Color("6c7480"), false, 1)
+				Art.text(self, loadout_line(so), Vector2(x + 60, row + 21), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		var lx := 330.0
 		for lg in [["DECK BAR:", Color("9aa2ae")], ["LONG GUNS", Color("53d4e2")], ["CLOSE", Color("ffb23e")], ["EXPLOSIVES", Color("ff4d3d")]]:
 			Art.text(self, lg[0], Vector2(lx, 528), 8, lg[1])
 			lx += Art.text_width(lg[0], 8) + 18
+	func loadout_line(so: Dictionary) -> String:
+		## H5: what this soldier brings, in a few words: "8 AIM cards, Scoped Rifle".
+		var types := {}
+		for c in so.deck:
+			var ty: String = Data.card(c).type
+			types[ty] = types.get(ty, 0) + 1
+		var top := ""
+		for ty in types:
+			if top == "" or types[ty] > types[top]:
+				top = ty
+		var out := "%d %s cards of %d" % [types.get(top, 0), top, so.deck.size()]
+		var wp = so.equip.get("weapon")
+		if wp != null:
+			out += ", " + Data.item_name(wp)
+		return out
 	func draw_result() -> void:
 		var title := "MISSION COMPLETE!" if mode == "won" else ("THE JACKALS GO HOME" if mode == "final" else ("OUTPOST HOLDS" if mode == "outpost_lost" else "MISSION FAILED"))
 		var col := Color("62d26f") if mode != "lost" else Color("ff4d3d")

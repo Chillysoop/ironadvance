@@ -1932,6 +1932,26 @@ def overseer_frame(t=0, dy=0):
     d.point((22, y + 23), fill=vc('o') if t % 2 else vc('O'))
     return finish(img)
 
+def queen_frame(open_=0, dy=0):
+    """Burrow Queen: a huge armoured worm head reared out of the ground, crowned in bone."""
+    img, d = canvas()
+    for i, (cx, cy, r) in enumerate(((15, 28, 9), (16, 22, 9), (17, 16, 8))):
+        d.ellipse([cx - r, cy - r + dy, cx + r, cy + r + dy], fill=vc('A') if i % 2 else vc('a'))
+        d.arc([cx - r, cy - r + dy, cx + r, cy + r + dy], 200, 340, fill=vc('N'))   # plate rims
+    cx, cy = 18, 9 + dy
+    d.ellipse([cx - 9, cy - 7, cx + 9, cy + 7], fill=vc('a'))
+    for sx, sy in ((10, 3), (14, 0), (18, -1), (22, 1)):
+        d.polygon([(sx, sy + 5 + dy), (sx + 2, sy + dy), (sx + 4, sy + 5 + dy)], fill=vc('n'))   # bone crown
+    m = 2 + open_
+    d.ellipse([cx + 1, cy - m, cx + 12, cy + m + 1], fill=vc('K'))
+    for t in range(-m, m + 1, 2):
+        d.point((cx + 3, cy + t), fill=vc('n')); d.point((cx + 10, cy + t), fill=vc('n'))
+    d.ellipse([cx - 6, cy - 4, cx - 2, cy], fill=vc('o'))
+    d.point((cx - 4, cy - 2), fill=vc('K'))
+    for px, py in ((12, 22), (20, 25), (14, 30)):
+        d.point((px, py + dy), fill=vc('o'))                                           # ooze weeping between plates
+    return finish(img)
+
 def alien_sheet(name, F):
     """Writes a gunless 32x32 sheet from anim -> [image]; missing anims reuse idle."""
     for a in ANIMS:
@@ -2028,6 +2048,12 @@ def alien_frames():
         'run': [overseer_frame(i) for i in range(4)],
         'hurt': hurt(overseer_frame(1)),
         'die': dying(overseer_frame(0)),
+    })
+    meta['en_queen'] = alien_sheet('en_queen', {
+        'idle': [queen_frame(0), queen_frame(1), queen_frame(0, dy=1), queen_frame(1, dy=1)],
+        'throw': [queen_frame(3, dy=-1), queen_frame(4)],
+        'hurt': hurt(queen_frame(2)),
+        'die': dying(queen_frame(0)),
     })
     return meta
 
