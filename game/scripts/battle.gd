@@ -2470,7 +2470,7 @@ func make_camp(c: Dictionary) -> void:
 			log_msg("%s rejoins the squad at camp." % s.def.name)
 			i += 1
 		elif not s.dead:
-			var add := int(ceil(s.max_hp * Data.CAMP_HEAL))
+			var add := int(ceil(s.max_hp * Data.CAMP_HEAL)) + (5 if Run.hq("mess") >= 1 else 0)
 			s.hp = mini(s.max_hp, s.hp + add)
 			float_text(s, "+%d" % add, Color("62d26f"))
 	await wait(30)
@@ -2600,7 +2600,7 @@ func check_detour() -> void:
 	match detour.id:
 		"elite":
 			banner("OUTPOST TAKEN!", Color("62d26f"), "EPIC GEAR + %d BIO-PARTS" % Data.ELITE_BIO)
-			drop_loot(cx, T.ground_at(cx) - 40, {"type": "item", "item": Run.roll_item(3)})
+			drop_loot(cx, T.ground_at(cx) - 40, {"type": "item", "item": Run.roll_item(Data.TIER_MAX if Run.hq("armory") >= 3 else 3)})
 			Run.meta.bio = int(Run.meta.get("bio", 0)) + Data.ELITE_BIO
 			stats["bio"] = int(stats.get("bio", 0)) + Data.ELITE_BIO
 			log_msg("The outpost is ours: an Epic crate and %d Bio-parts for the Doc." % Data.ELITE_BIO)
@@ -2974,7 +2974,7 @@ func call_slug(by: Unit) -> void:
 	sl.x = clampf(by.x + 40, cam_x + 60, cam_x + W - 120); sl.y = -60.0; sl.air = true; sl.vy = 4.0
 	sl.w = 64; sl.h = 40; sl.hp = 99; sl.max_hp = 99; sl.face = 1
 	sl.last_hit_by = by
-	sl.loot = {"turns": 1, "by": by}
+	sl.loot = {"turns": 2 if Run.hq("motor") >= 2 else 1, "by": by}
 	units.append(sl)
 	banner("SV-001 SLUG!", Color("62d26f"), "METAL SLUG ON THE FIELD")
 	Sfx.play("power")
@@ -3065,11 +3065,14 @@ func start_player_turn() -> void:
 			grant_overdrive(s)
 	refresh_duos()
 	var al0 := squad_alive()
-	if round_n == 1 and Run.trophies.size() >= 3 and not slug_given and al0.size():
-		# L7: three Boar parts rebuilt the SV-001. It answers one call per mission.
+	if round_n == 1 and (Run.trophies.size() >= 3 or Run.hq("motor") >= 1) and not slug_given and al0.size():
+		# L7: three Boar parts rebuilt the SV-001, or the Motor Pool keeps it running. It answers one call
+		# per mission, two with Motor Pool 3.
 		slug_given = true
-		al0[0].hand.append({"id": -3, "key": "slugcall", "tier": Data.OD_TIER, "temp": true})
-		log_msg("The SV-001 Slug is on call this mission. The card is in %s's hand." % al0[0].def.name)
+		var calls := 2 if Run.hq("motor") >= 3 else 1
+		for i in mini(calls, al0.size()):
+			al0[i].hand.append({"id": -3 - i * 100, "key": "slugcall", "tier": Data.OD_TIER, "temp": true})
+		log_msg("The SV-001 Slug is on call this mission. The card is in %s's hand." % " and ".join(al0.slice(0, calls).map(func(x): return x.def.name)))
 	for u in units:
 		u.hit_sides = {}
 		if u.kind == "slug" and not u.gone:
@@ -4127,6 +4130,11 @@ func victory() -> void:
 	state = "over"
 	busy = true
 	banner("MISSION COMPLETE!", Color("62d26f"))
+	if boss_dead:
+		# the Boar's wreck is worth stripping for HQ
+		Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.BOSS_SALVAGE
+		stats["salvage"] = int(stats.get("salvage", 0)) + Data.BOSS_SALVAGE
+		Run.save_meta()
 	Sfx.play("levelup")
 	for s in squad_alive():
 		s.pose = "cheer"; s.pose_t = 200
