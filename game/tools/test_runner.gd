@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp.
+## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, soldat.
 ## --mission=N picks the mission for bot.
 
 var out_dir := "user://shots"
@@ -619,6 +619,8 @@ func run() -> void:
 			await camp()
 		"biomes":
 			await biomes()
+		"soldat":
+			await soldat()
 		"campaign":
 			Run.new_run()
 			for m in 3:
@@ -822,6 +824,217 @@ func camp() -> void:
 	cam_on(b, c2.fire)
 	await frames_wait(20)
 	await shot("camp_preboss")
+
+func ground_unit(b: Battle, u: Unit, x: float, from_y := 0.0) -> void:
+	u.x = x; u.y = b.T.stand_y(x, from_y); u.air = false; u.vx = 0; u.vy = 0; u.walk = null
+
+func soldat() -> void:
+	## The Soldat borrowings: grating and chain-link, bodies that stay, recoil with its ghost,
+	## bonus pads, Jet Boots.
+	Run.new_run()
+	var lvl := {"name": "SOLDAT YARD", "theme": "dusk", "segments": ["start", "catwalks", "fenceline", "camp", "arena"],
+		"boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "", "rules": {"pads": 2}}
+	var b: Battle = main.start_battle(0, lvl)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	b.autopick = 0  # level-ups from the test kills shouldn't cover the screenshots
+	for o in b.units:
+		if o.team == "neutral" and o.kind != "pad":
+			o.gone = true  # random crates and drums would get in the way of the measured shots and flights
+	var sq: Array = b.squad()
+	var s: Unit = sq[0]
+	# --- grating: stand on it, shoot through it, grenades fall through it
+	var cw := find_struct(b, "catwalk")
+	var top: float = cw.y
+	var mid: float = (cw.x0 + cw.x1) / 2.0
+	cam_on(b, mid)
+	check(b.T.mat(mid, top + 1) == Terrain.GRATE, "the catwalk deck is steel grating")
+	var up := b.mk_enemy("grunt", cw.x0 + 150, top)
+	b.units.append(up)
+	ground_unit(b, s, cw.x0 + 120, top + 8)
+	await frames_wait(30)
+	check(absf(up.y - top) < 2 and not up.air, "a Jackal stands on the grating (y %d, deck %d)" % [up.y, top])
+	var eye := Vector2(s.x + 6, s.y - s.h + 12)
+	var aim := atan2(up.y - up.h / 2.0 - eye.y, up.x - eye.x)
+	var tr := b.trace_bullet(eye.x, eye.y, aim, 2400, 0, s, false)
+	check(tr.hits.any(func(hh): return hh.u == up), "a bullet from below goes up through the grating into the Jackal")
+	var arc := b.sim_arc(up.x, top - 20, 0.0, 1.0, 0, 200)
+	check(arc.y > top + 12, "a grenade dropped on the grating falls through it (lands y %d, deck %d)" % [arc.y, top])
+	check(not b.ray_clear(eye.x, eye.y, eye.x, b.T.ground_at(eye.x) + 20) or true, "sight lines run")
+	await shot("soldat_catwalk")
+	# --- chain-link: blocks walking and vaulting, not bullets; a Hop clears it
+	var fs := find_struct(b, "fence")
+	cam_on(b, fs.x)
+	for o in b.units:
+		if o.team == "enemy" and absf(o.x - fs.x) < 200:
+			o.dead = true; o.gone = true
+	ground_unit(b, s, fs.x - 40)
+	var walk := b.sim_walk(s, fs.x + 80, 200)
+	check(walk.x < fs.x, "walking into the fence stops at it (got to %d, fence %d)" % [walk.x, fs.x])
+	var far := b.mk_enemy("grunt", fs.x + 70, b.T.stand_y(fs.x + 70, 0))
+	far.active = true
+	b.units.append(far)
+	eye = Vector2(s.x + 6, s.y - s.h + 12)
+	tr = b.trace_bullet(eye.x, eye.y, atan2(far.y - 20 - eye.y, far.x - eye.x), 2400, 0, s, false)
+	check(tr.hits.any(func(hh): return hh.u == far), "a bullet goes through the chain-link")
+	check(b.visibility(far, s) > 0, "Jackals can see and shoot through the chain-link")
+	await b.enemy_advance(far, fs.x - 80, 150)
+	check(far.x > fs.x, "a Jackal can't vault the fence (stopped at %d, fence %d)" % [far.x, fs.x])
+	await shot("soldat_fence")
+	far.dead = true; far.gone = true
+	await hop_to(b, s, fs.x + 60)
+	check(s.x > fs.x + 12, "a Hop clears the fence (landed %d, fence %d)" % [s.x, fs.x])
+	# --- bodies: they stay, stop a bullet, and get thrown into the living
+	var c0: Dictionary = b.T.camps[0]
+	cam_on(b, c0.fire)
+	await frames_wait(10)
+	var by: float = b.T.ground_at(c0.fire)
+	var body := b.mk_enemy("grunt", c0.fire - 60, b.T.stand_y(c0.fire - 60, 0)); body.active = true
+	var behind := b.mk_enemy("grunt", c0.fire - 20, b.T.stand_y(c0.fire - 20, 0)); behind.active = true
+	b.units.append(body); b.units.append(behind)
+	b.damage(body, 999, s)
+	await frames_wait(240)
+	check(body.is_body() and body.alpha > 0.9, "a dead Jackal's body stays on the field")
+	var hp_b := behind.hp
+	for o in b.units:
+		if o != body and o != behind and o.team != "squad" and o.x > body.x - 130 and o.x < body.x:
+			o.gone = true  # crates and barrels the map dropped in the line of fire
+	b.fire_bullet(s, body.x - 120, body.y - 6, 0.0, Data.card("rifle"), false)
+	await frames_wait(10)
+	check(behind.hp == hp_b and body.soak == 0, "the body stops the bullet meant for the Jackal behind it")
+	await until(func(): return b.settled(), 600)
+	var body2 := b.mk_enemy("grunt", c0.fire + 40, b.T.stand_y(c0.fire + 40, 0)); body2.active = true
+	var victim := b.mk_enemy("brute", c0.fire + 100, b.T.stand_y(c0.fire + 100, 0)); victim.active = true
+	b.units.append(body2); b.units.append(victim)
+	for o in b.units:
+		if o.team == "neutral" and o.x > c0.fire and o.x < c0.fire + 140:
+			o.gone = true
+	b.damage(body2, 999, s)
+	await frames_wait(10)
+	var hp_v := victim.hp
+	b.explode(body2.x - 16, body2.y - 2, 26, 1, s)
+	await frames_wait(8)
+	await shot("soldat_body_thrown")
+	await until(func(): return b.settled(), 900)
+	check(victim.hp < hp_v, "a blast throws a body into a Jackal and hurts it (%d -> %d; body %d,%d victim %d,%d)" % [hp_v, victim.hp, body2.x, body2.y, victim.x, victim.y])
+	for o in [body, behind, body2, victim]:
+		o.dead = true; o.gone = true
+	# --- recoil: a bazooka shoves the shooter back to exactly where the ghost said
+	ground_unit(b, s, c0.fire - 100)
+	b.state = "player"; b.busy = false
+	b.select_unit(s)
+	s.energy = 5
+	var bi := force_card(s, "bazooka")
+	var tgt := Vector2(s.x + 260, s.y - 30)
+	var hp0 := b.hand_pos(s)
+	var kv := b.recoil_vel(s, Data.card(s.hand[bi]), atan2(tgt.y - hp0.y, tgt.x - hp0.x))
+	var ghost := b.sim_body(s, kv.x, kv.y)
+	b.select_card(bi)
+	b.mouse = tgt
+	await frames_wait(4)
+	await shot("soldat_recoil_ghost")
+	var x0 := s.x
+	b.commit_aim(tgt)
+	await until(func(): return not b.busy, 900)
+	check(s.x < x0 - 6, "the bazooka kicks the shooter back (%d -> %d)" % [x0, s.x])
+	check(absf(s.x - ghost.x) < 6 and absf(s.y - ghost.y) < 6, "they land where the ghost showed (%d,%d vs ghost %d,%d)" % [s.x, s.y, ghost.x, ghost.y])
+	check(b.recoil_vel(s, Data.card("rifle"), 0.0) == Vector2.ZERO and b.recoil_vel(s, Data.card("snipe"), 0.0) != Vector2.ZERO, "rifles don't kick, Long Shot does")
+	# --- bonus pads
+	check(b.pads.size() >= 1, "the level has bonus pads (%d)" % b.pads.size())
+	var pd: Unit = b.pads[0]
+	ground_unit(b, pd, c0.fire + 60)  # on the flat camp ground, clear of fences and catwalk legs
+	cam_on(b, pd.x)
+	for o in b.units:
+		if o.team == "enemy" and absf(o.x - pd.x) < 300:
+			o.dead = true; o.gone = true
+	pd.loot.t = 1
+	pd.loot.ready = false
+	b.tick_pads()
+	check(pd.loot.ready, "a pad's bonus appears when its countdown runs out")
+	await frames_wait(6)
+	await shot("soldat_pad_ready")
+	var k := b.pad_bonus(pd)
+	ground_unit(b, s, pd.x - 50, pd.y - 30)
+	s.hp = s.max_hp - 20
+	var hp_s := s.hp
+	await b.walk_along(s, b.sim_walk(s, pd.x, 100).pts)
+	await frames_wait(4)
+	check(not pd.loot.ready and (s.has_st(k) or (k == "medkit" and s.hp > hp_s)), "a soldier who steps on it takes %s" % k)
+	await frames_wait(10)
+	await shot("soldat_pad_taken")
+	pd.loot.ready = true
+	var k2 := b.pad_bonus(pd)
+	ground_unit(b, s, pd.x - 200, pd.y - 30)
+	var racer := b.mk_enemy("grunt", pd.x + 90, b.T.stand_y(pd.x + 90, pd.y - 30)); racer.active = true
+	b.units.append(racer)
+	racer.hp = racer.max_hp - 5
+	var i0: int = pd.loot.i
+	b.state = "enemy"
+	await b.enemy_act(racer)
+	await until(func(): return b.settled(), 600)
+	check(pd.loot.i == i0 + 1 and absf(racer.x - pd.x) < 15, "a Jackal races to a ready pad and takes %s (at %d, pad %d)" % [k2, racer.x, pd.x])
+	s = sq[1]
+	ground_unit(b, s, pd.x - 120)
+	s.hp = s.max_hp
+	racer.st = {"berserk": 2}
+	s.armor = 0
+	var tank := b.mk_enemy("brute", s.x + 30, s.y); b.units.append(tank)
+	var hp_t := s.hp
+	b.damage(s, 4, racer)
+	check(hp_t - s.hp == 8, "Berserker doubles damage (%d)" % (hp_t - s.hp))
+	s.st = {"vest": 2}
+	s.armor = 0
+	hp_t = s.hp
+	b.damage(s, 8, racer)
+	check(hp_t - s.hp == 8, "a Vest halves it again (%d)" % (hp_t - s.hp))
+	s.st = {"cloak": 2}
+	check(not b.targetable(racer, s), "Predator can't be targeted")
+	s.st = {"flamegod": 2}
+	hp_t = s.hp
+	b.damage(s, 8, racer)
+	check(s.hp == hp_t, "Flamegod takes no damage")
+	s.st = {}
+	for o in [racer, tank]:
+		o.dead = true; o.gone = true
+	# --- Jet Boots
+	var it := Run.new_item("jetboots", 0)
+	Run.equip(s.s, it)
+	b.refresh_unit_gear(s)
+	check(s.fuel_max == 90 and s.fuel == 90, "Jet Boots give a fuel tank (%d)" % s.fuel_max)
+	ground_unit(b, s, c0.x0 + 40)
+	cam_on(b, s.x + 200)
+	b.state = "player"; b.busy = false
+	b.select_unit(s)
+	var jt := Vector2(s.x + 160, s.y - 220)
+	b.toggle_jet()
+	b.mouse = jt
+	await frames_wait(4)
+	await shot("soldat_jet_preview")
+	b.jet_armed = false
+	for o in b.units:
+		if o.team == "enemy" or (o.team == "neutral" and absf(o.x - s.x) < 300):
+			o.dead = true; o.gone = true  # nothing to bump into, like the preview assumes
+	var pred := b.sim_body(s, 0.0, 0.0, jt, s.fuel)
+	var jx0 := s.x
+	var jy0 := s.y
+	var top_y := [s.y]
+	var watch := func(): top_y[0] = minf(top_y[0], s.y)
+	b.tick.connect(watch)
+	b.resolve(func(): await b._act_jet(s, func(): return jt, func(): return true))
+	await frames_wait(40)
+	await shot("soldat_jet_flying")
+	await until(func(): return not b.busy, 1200)
+	b.tick.disconnect(watch)
+	check(top_y[0] < jy0 - 60 and s.x > jx0 + 40, "the jet flies up and over (rose %d px, moved %d px)" % [jy0 - top_y[0], s.x - jx0])
+	check(s.fuel == 0, "jetting burns the fuel")
+	check(absf(s.x - pred.x) < 10, "the jet preview's landing matches the flight (%d vs %d)" % [s.x, pred.x])
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	await until(func(): return not b.busy and b.settled(), 600)
+	b.start_player_turn()
+	await until(func(): return not b.busy, 600)
+	check(s.fuel == s.fuel_max, "fuel refills at the start of the next turn on the ground (%d/%d dead %s air %s round %d)" % [s.fuel, s.fuel_max, s.dead, s.air, b.round_n])
 
 func gate() -> void:
 	## Beating the boss opens the gate; the squad walks through and comes out at HQ.

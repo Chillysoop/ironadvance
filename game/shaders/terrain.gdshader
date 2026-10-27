@@ -3,7 +3,7 @@ render_mode unshaded;
 
 // The terrain is a grid of 4x4 world-unit cells (R = material, G = scorch).
 // Each cell is shaded as 2x2 art pixels so it matches the sprites' pixel size.
-// Materials: 1 dirt, 2 concrete, 3 wood, 4 rock.
+// Materials: 1 dirt, 2 concrete, 3 wood, 4 rock, 5 steel grating, 6 chain-link fence.
 
 uniform vec2 cells = vec2(1600.0, 135.0);
 uniform vec2 cell_offset = vec2(0.0);   // world cell of texel (0,0); keeps patterns stable on debris
@@ -39,6 +39,36 @@ void fragment() {
 		if (below == 1 && sp.y == 1 && mat_at(TEXTURE, cell + ivec2(0, -1)) == 0 && n < 0.45) {
 			c = grass_col * (n < 0.2 ? 1.15 : 0.95);
 			COLOR = vec4(c * tint, 1.0);
+		} else {
+			COLOR = vec4(0.0);
+		}
+	} else if (m == 5) {
+		// steel grating: a bright top rail and bottom rail, open slots between the bars
+		bool rim = mat_at(TEXTURE, cell + ivec2(0, -1)) != 5 && sp.y == 0;
+		bool base = mat_at(TEXTURE, cell + ivec2(0, 1)) != 5 && sp.y == 1;
+		if (!rim && !base && mod(ap.x, 3.0) >= 1.0) {
+			COLOR = vec4(0.0);
+		} else {
+			c = rim ? vec3(0.66, 0.7, 0.74) : vec3(0.3, 0.33, 0.37);
+			if (n > 0.94) c = vec3(0.55, 0.36, 0.24); // rust
+			float scorch = texelFetch(TEXTURE, clamp(cell, ivec2(0), ivec2(cells) - 1), 0).g;
+			COLOR = vec4(mix(c, vec3(0.1, 0.07, 0.05), scorch * 0.7) * tint, 1.0);
+		}
+	} else if (m == 6) {
+		// chain-link panel: posts at both edges, a top rail with barbed wire, diamond mesh between
+		bool edge_l = mat_at(TEXTURE, cell + ivec2(-1, 0)) != 6 && sp.x == 0;
+		bool edge_r = mat_at(TEXTURE, cell + ivec2(1, 0)) != 6 && sp.x == 1;
+		bool top = mat_at(TEXTURE, cell + ivec2(0, -1)) != 6;
+		bool wire = mod(ap.x + ap.y, 3.0) < 1.0 || mod(ap.x - ap.y, 3.0) < 1.0;
+		if (top) {
+			c = (sp.y == 0 && mod(ap.x, 2.0) < 1.0) ? vec3(0.42, 0.44, 0.47) : vec3(0.74, 0.77, 0.8);
+			COLOR = vec4(c * tint, (sp.y == 0 && mod(ap.x, 2.0) >= 1.0) ? 0.0 : 1.0);
+		} else if (edge_l || edge_r) {
+			c = vec3(0.5, 0.53, 0.57);
+			COLOR = vec4(c * tint, 1.0);
+		} else if (wire) {
+			c = vec3(0.78, 0.8, 0.83);
+			COLOR = vec4(c * tint, 0.9);
 		} else {
 			COLOR = vec4(0.0);
 		}

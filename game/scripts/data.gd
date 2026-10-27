@@ -34,6 +34,9 @@ const OD_TIER := 5
 # path, and how far depends on the gun. Index into LASER_LEN; gear can push a gun up a step.
 const FULL_RANGE := 2400
 const LASER_LEN := [140.0, 220.0, 420.0, 99999.0]
+# Recoil (Soldat-style, kept light): heavy guns shove the shooter back a step. The aim
+# preview shows a ghost of where they will land, so a kick off a roof is never a surprise.
+const RECOIL := {"sniper": 1.7, "mg": 1.4, "rocket": 2.3}
 const GUNS := {
 	"pistol": {"name": "PISTOL", "laser": 0},
 	"shotgun": {"name": "SHOTGUN", "laser": 0},
@@ -135,7 +138,24 @@ const STATUS := {
 	"supp": {"name": "SUPPRESSED", "short": "SUPP", "c": Color("c9d1da"), "text": "Half movement on its next turn."},
 	"mark": {"name": "MARKED", "short": "MARK", "c": Color("ff4d3d"), "text": "The next hit on it is a critical (x1.5)."},
 	"stun": {"name": "STUNNED", "short": "STUN", "c": Color("ffd23a"), "text": "Skips its next turn."},
+	# bonus pad powerups (Soldat): they last the rest of this turn and the holder's next one
+	"berserk": {"name": "BERSERKER", "short": "BERS", "c": Color("ff4d3d"), "text": "Deals double damage."},
+	"cloak": {"name": "PREDATOR", "short": "PRED", "c": Color("b48cff"), "text": "Can't be targeted, and bullets pass through, until it attacks."},
+	"flamegod": {"name": "FLAMEGOD", "short": "FLAME", "c": Color("ff9a3d"), "text": "Takes no damage. Its bullets set what they hit on fire."},
+	"vest": {"name": "VEST", "short": "VEST", "c": Color("9fb4c9"), "text": "Takes half damage."},
 }
+# Bonus pads (Soldat): a marked pad shows which bonus it will give and in how many rounds.
+# Whoever stands on it when it is ready takes it, soldier or Jackal. Then it starts over.
+const BONUSES := {
+	"berserk": {"name": "BERSERKER", "glyph": "B", "c": Color("ff4d3d"), "text": "Double damage for this turn and the next."},
+	"cloak": {"name": "PREDATOR", "glyph": "P", "c": Color("b48cff"), "text": "Invisible to the other side until you attack. Lasts this turn and the next."},
+	"flamegod": {"name": "FLAMEGOD", "glyph": "F", "c": Color("ff9a3d"), "text": "No damage taken, and your bullets set targets on fire. This turn and the next."},
+	"vest": {"name": "VEST", "glyph": "V", "c": Color("9fb4c9"), "text": "Half damage taken for this turn and the next."},
+	"medkit": {"name": "MEDKIT", "glyph": "+", "c": Color("62d26f"), "text": "Heals 15 at once."},
+}
+const BONUS_TURNS := 2
+const PAD_FIRST := [1, 2]   # rounds until each pad's first bonus (pads take turns)
+const PAD_RESET := 3        # rounds until a pad has its next bonus ready
 const TAGS := {
 	"skeet": {"name": "SKEET!", "text": "Shot a Jackal another soldier launched: double damage, +1 energy."},
 	"pileup": {"name": "PILE-UP", "text": "A launched body hit another Jackal: both stunned."},
@@ -204,6 +224,7 @@ const ITEMS := {
 	"riotshield": {"name": "Riot Shield", "slot": "armor", "keystone": "rook", "stats": {"hp": 4}, "text": "KEYSTONE: blocks 75% of bullets from the front."},
 	"ammobelt": {"name": "Ammo Belt", "slot": "kit", "keystone": "rook", "stats": {"move": 10}, "text": "KEYSTONE: Heavy MG fires 3 more rounds."},
 	"zantetsu": {"name": "Zantetsu Sword", "slot": "weapon", "keystone": "rook", "cards": ["knife", "knife"], "text": "KEYSTONE: adds 2 Knives. Knife sweeps every body in reach and cuts terrain."},
+	"jetboots": {"name": "Jet Boots", "slot": "kit", "stats": {"jet": 90}, "text": "Press J, then hold the mouse to fly toward the cursor. Fuel refills each turn you start on the ground."},
 	"guidance": {"name": "Guidance Chip", "slot": "kit", "stats": {"aim_dmg": 1}, "text": "Rockets think for themselves."},
 	"napalmmix": {"name": "Napalm Mix", "slot": "kit", "stats": {"blast": 0.06}, "text": "Sticky, smelly, very flammable."},
 	# Armory unlocks (W4): locked until a feat is done once, in any run
@@ -243,6 +264,7 @@ const STAT_FMT := {
 	"luck": "+%d squad Luck", "laser_step": "+%d laser step", "sway": "-%d%% sway", "regen": "Heal %d each turn",
 	"blast": "+%d%% blast size", "push_draw": "ON PUSH: draw %d", "kill_adr": "ON KILL: +%d adrenaline",
 	"laser_pct": "+%d%% laser length", "heal": "+%d healing", "fall_half": "Half fall damage", "aim_dmg": "+%d AIM damage",
+	"jet": "%d jet fuel",
 }
 const PCT_STATS := ["sway", "blast", "laser_pct"]
 const FLAT_STATS := ["kill_draw", "energy1", "luck", "laser_step", "push_draw", "fall_half"]
@@ -564,6 +586,9 @@ const SCREAMS := ["AAAGH!", "NOOO!", "URK!", "GYAAH!"]
 #   bridge: x0, x1 over open water, posts. Half-destroy any post and the whole deck drops.
 #   docks:  x0, x1 over open water, a plank pier on stone pilings every `pile` px.
 #   crane:  mast at x (h tall), jib reaching to `jib`, container (cw x ch) on a `rope` at `hook`.
+#   catwalk: x0, x1, dy above the ground. A steel grating deck on legs every `leg` px (default 96):
+#           you stand on it, bullets, rockets and grenades go through it. Ladder at the near end.
+#   fence:  x, h. Chain-link: blocks people (too tall for a Jackal to vault), not bullets or grenades.
 const SEGMENTS := {
 	"start": {"w": 460, "sandbags": [420], "structs": [], "pits": [], "spawns": []},
 	"towers": {"w": 840, "sandbags": [600], "pits": [[700, 776]],
@@ -619,6 +644,16 @@ const SEGMENTS := {
 		"structs": [{"t": "fort", "x": 260, "w": 190, "floors": 2, "fh": 64}],
 		"spawns": [["grunt", 210], ["mg", 300], ["fuel", 400], ["barrel", 420], ["nade", 320, {"hold": 1, "up": 84}], ["pow", 380, {"up": 84}], ["grunt", 420, {"hold": 1, "up": 84}],
 			["grunt", 360, {"hold": 1, "up": 148}], ["mine", 520], ["mine", 580], ["brute", 600], ["mine", 650], ["engineer", 700], ["radio", 760]]},
+	# a refinery yard under steel catwalks: shoot up through the grating, drop grenades down through it
+	"catwalks": {"w": 860, "sandbags": [120], "pits": [],
+		"structs": [{"t": "catwalk", "x0": 220, "x1": 500, "dy": 84}, {"t": "catwalk", "x0": 560, "x1": 720, "dy": 138, "leg": 80}],
+		"spawns": [["grunt", 300, {"hold": 1, "up": 100}], ["nade", 440, {"hold": 1, "up": 100}], ["fuel", 360], ["grunt", 400], ["shield", 520],
+			["grunt", 650, {"hold": 1, "up": 150}], ["brute", 690], ["radio", 800]]},
+	# a chain-link perimeter: they can shoot you through it and you them, but nobody walks through
+	"fenceline": {"w": 820, "sandbags": [150], "pits": [],
+		"structs": [{"t": "fence", "x": 280, "h": 72}, {"t": "fence", "x": 560, "h": 72}, {"t": "catwalk", "x0": 620, "x1": 740, "dy": 96}],
+		"spawns": [["grunt", 330, {"hold": 1}], ["shield", 380], ["barrel", 420], ["nade", 470, {"hold": 1}], ["grunt", 520], ["brute", 600],
+			["grunt", 680, {"hold": 1, "up": 110}], ["radio", 780]]},
 	# a safe camp inside the level: a fire, two tents and a supply crate, no Jackals
 	"camp": {"w": 560, "sandbags": [60, 500], "pits": [], "camp": true, "structs": [], "spawns": []},
 	"arena": {"w": 1200, "sandbags": [120, 360], "pits": [], "flat": true,
@@ -652,12 +687,12 @@ const BIOMES := {
 	"desert": {"name": "DESERT RUINS", "theme": "dusk", "favor": "long", "rough": "close",
 		"rules": {"sway": 0.6, "sight": 1.2, "amp": 0.4, "wind": 1.5},
 		"look": {"tint": Color(1.08, 0.98, 0.82), "grass": Color("c8a85a"), "sky": Color(1.0, 0.92, 0.78)},
-		"segments": ["trenches", "towers", "boulder", "gully", "overhang"],
+		"segments": ["trenches", "towers", "boulder", "gully", "overhang", "fenceline"],
 		"text": "Flat sand and clear air. Your aimed shots sway 40% less, but Jackals see 20% farther."},
 	"fortress": {"name": "FORTRESS TOWN", "theme": "dusk", "favor": "arc", "rough": "long",
 		"rules": {"sway": 1.3, "fuel": 2},
 		"look": {"tint": Color(0.9, 0.9, 0.94), "grass": Color("7a8a5a"), "sky": Color(0.86, 0.86, 0.92)},
-		"segments": ["fort", "warehouse", "bunker", "gauntlet", "fort"],
+		"segments": ["fort", "warehouse", "bunker", "gauntlet", "fort", "fenceline"],
 		"text": "Forts and warehouses wall to wall. Blow the floors out. Aimed shots sway 30% more."},
 	"jungle": {"name": "JUNGLE CANOPY", "theme": "jungle", "favor": "close", "rough": "long",
 		"rules": {"sway": 1.4, "sight": 0.7, "mines": 3},
@@ -667,12 +702,12 @@ const BIOMES := {
 	"delta": {"name": "FLOODED DELTA", "theme": "jungle", "favor": "close", "rough": "arc",
 		"rules": {"wet": true, "wind": 0.3, "mines": 2},
 		"look": {"tint": Color(0.86, 0.98, 1.04), "grass": Color("3a9a6a"), "sky": Color(0.84, 0.94, 1.0)},
-		"segments": ["river", "gully", "ridge", "docks"],
+		"segments": ["river", "gully", "ridge", "docks", "catwalks"],
 		"text": "Everything is soaked: fire does 1 damage and won't spread. Barely any wind."},
 	"refinery": {"name": "OIL REFINERY", "theme": "dusk", "favor": "arc", "rough": "close",
 		"rules": {"fuel": 5, "sight": 1.1},
 		"look": {"tint": Color(1.06, 0.9, 0.8), "grass": Color("8a7a3a"), "sky": Color(1.0, 0.8, 0.66)},
-		"segments": ["bunker", "mortar", "warehouse", "towers"],
+		"segments": ["bunker", "mortar", "warehouse", "towers", "catwalks"],
 		"text": "Fuel drums everywhere. Light them up, and don't stand next to one. Jackals see 10% farther."},
 	"mountain": {"name": "MOUNTAIN PASS", "theme": "dusk", "favor": "long", "rough": "arc",
 		"rules": {"amp": 2.0, "wind": 2.0, "sway": 0.8},
@@ -682,7 +717,7 @@ const BIOMES := {
 	"harbor": {"name": "NIGHT HARBOR", "theme": "night", "favor": "long", "rough": "arc", "arena": "pier",
 		"rules": {"sight": 0.8, "wind": 1.6},
 		"look": {},
-		"segments": ["docks", "warehouse", "gauntlet", "mortar"],
+		"segments": ["docks", "warehouse", "gauntlet", "mortar", "catwalks"],
 		"text": "Piers in the dark and a sea wind. Jackals see 20% less far. Wind is 60% stronger."},
 	"palace": {"name": "NINJA PALACE", "theme": "night", "favor": "close", "rough": "long",
 		"rules": {"sway": 1.6, "sight": 0.6, "elite": 0.2},
@@ -705,6 +740,14 @@ const THEMES := {
 	"jungle": {"water": [Color("0e3a34"), Color("2a8a6a")], "tint": Color(0.92, 1.02, 0.95), "grass": Color("4ca83a")},
 	"night": {"water": [Color("0a1830"), Color("24508a")], "tint": Color(0.62, 0.66, 0.86), "grass": Color("4a7a52")},
 }
+
+func recoil(c: Dictionary) -> float:
+	## How hard a card kicks its shooter back (0 for none).
+	if c.type == "AIM":
+		return RECOIL.get(c.get("gun", ""), 0.0)
+	if c.type == "LINE" and c.has("radius") and c.has("speed"):
+		return RECOIL.rocket
+	return 0.0
 
 func base_tier(key: String) -> int:
 	return int(CARDS[key].rarity)

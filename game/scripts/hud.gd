@@ -13,6 +13,7 @@ var end_btn: PixButton
 var next_btn: PixButton
 var move_btn: PixButton
 var deck_btn: PixButton
+var jet_btn: PixButton
 var modal: Control
 var cards: Array = []
 var tags: Array = []
@@ -62,6 +63,14 @@ func setup(battle: Battle) -> void:
 	move_btn.size = Vector2(58, 22)
 	move_btn.pressed.connect(func(): Sfx.play("click"); b.auto_advance())
 	root.add_child(move_btn)
+	jet_btn = PixButton.new()
+	jet_btn.text = "JET"
+	jet_btn.sub = "J"
+	jet_btn.color = Color("53d4e2")
+	jet_btn.size = Vector2(46, 26)
+	jet_btn.visible = false
+	jet_btn.pressed.connect(func(): b.toggle_jet())
+	root.add_child(jet_btn)
 	deck_btn = PixButton.new()
 	deck_btn.text = "DECK"
 	deck_btn.color = Color("53d4e2")
@@ -109,6 +118,9 @@ func refresh() -> void:
 	end_btn.disabled = not my_turn
 	next_btn.disabled = not my_turn
 	move_btn.disabled = not my_turn
+	jet_btn.visible = my_turn and u != null and not u.dead and u.fuel_max > 0
+	jet_btn.disabled = u == null or u.fuel <= 0
+	jet_btn.position = Vector2(maxf(160.0, hand_x0 - 52), 410)
 	# rebuild the hand when its contents change
 	var want: Array = []
 	if u != null and not u.dead and b.state == "player":
@@ -187,6 +199,8 @@ func hint_text() -> String:
 	var u := b.sel
 	if b.state != "player" or u == null:
 		return ""
+	if b.jet_armed:
+		return "JET BOOTS: hold the mouse button to fly toward the cursor. Let go to drop. Fuel %d/%d." % [u.fuel, u.fuel_max]
 	if b.card_idx >= 0 and b.card_idx < u.hand.size():
 		var c := Data.card(u.hand[b.card_idx])
 		if c.get("rush", false):

@@ -5,6 +5,8 @@ extends RefCounted
 
 const CELL := 4
 const ROWS := 135
+const GRATE := 5   # steel grating: soldiers stand on it, bullets, rockets and grenades go through
+const FENCE := 6   # chain-link: stops soldiers and Jackals, not bullets, rockets or grenades
 const FLOOD_LIMIT := 5000
 
 var b  # the Battle that owns this terrain
@@ -46,6 +48,15 @@ func solid(x: float, y: float) -> bool:
 	if y < 0 or y >= Data.H:
 		return false
 	return grid[int(y / CELL) * cols + int(x / CELL)] != 0
+
+func hard(x: float, y: float) -> bool:
+	## Solid to bullets, sight lines and thrown things: everything but grating and chain-link.
+	if x < 0 or x >= world_w:
+		return true
+	if y < 0 or y >= Data.H:
+		return false
+	var m := grid[int(y / CELL) * cols + int(x / CELL)]
+	return m != 0 and m != GRATE and m != FENCE
 
 func mat(x: float, y: float) -> int:
 	if x < 0 or x >= world_w or y < 0 or y >= Data.H:
@@ -129,17 +140,20 @@ func build(mission: Dictionary) -> void:
 		for sp in s.spawns:
 			spawns.append([sp[0], sp[1] + x, sp[2] if sp.size() > 2 else {}])
 		x += s.w
-	for k in ["fuel", "mines"]:
-		for i in int(rules.get(k, 0)):
+	var pad_order := stretches.duplicate()
+	pad_order.shuffle()  # bonus pads go one to a stretch
+	var walls := structs.filter(func(t): return t.t == "fence")
+	for k in ["fuel", "mines", "pads"]:
+		for i in int(rules.get(k, 2 if k == "pads" else 0)):
 			if stretches.is_empty():
 				break
-			var st: Array = stretches[randi() % stretches.size()]
+			var st: Array = pad_order[i % pad_order.size()] if k == "pads" else stretches[randi() % stretches.size()]
 			var sx := randf_range(st[0], st[1])
 			for tries in 8:
-				if not pits.any(func(p): return sx > p[0] - 24 and sx < p[1] + 24):
+				if not pits.any(func(p): return sx > p[0] - 24 and sx < p[1] + 24) and not walls.any(func(f): return absf(sx - f.x) < 40):
 					break
 				sx = randf_range(st[0], st[1])
-			spawns.append(["fuel" if k == "fuel" else "mine", sx, {}])
+			spawns.append([{"fuel": "fuel", "mines": "mine", "pads": "pad"}[k], sx, {}])
 	world_w = int(ceil(x / 160.0)) * 160
 	cols = world_w / CELL
 	var n := cols * ROWS
@@ -177,6 +191,10 @@ func build(mission: Dictionary) -> void:
 			flatten(s.x - 30, s.x + s.w + 10, 10)
 		if s.t == "crane":
 			flatten(s.x - 12, s.x + 24, 6)
+		if s.t == "catwalk":
+			flatten(s.x0 - 10, s.x1 + 10, 10)
+		if s.t == "fence":
+			flatten(s.x - 20, s.x + 24, 10)
 	for cx in cols:
 		var cxx := cx * CELL + 2
 		var in_pit := false
@@ -333,6 +351,23 @@ func build_struct(s: Dictionary) -> void:
 			var cy: float = top + 8 + s.rope
 			fill_r(s.hook - s.cw / 2.0, cy, s.cw, 4, 3)
 			fill_r(s.hook - s.cw / 2.0, cy + 4, s.cw, s.ch, 2)
+		"catwalk":
+			# a steel grating deck on steel legs, with a ladder up the near end. You stand on it,
+			# but bullets, rockets and grenades go straight through: shoot up through the floor.
+			var top: float = ground_at(s.x0) - s.dy
+			s["y"] = top
+			fill_r(s.x0, top, s.x1 - s.x0, 8, GRATE)
+			var px: float = s.x0
+			while px <= s.x1 - 8:
+				fill_r(px, top + 8, 8, ground_at(px + 4) - top, 4)
+				px += s.get("leg", 96)
+			fill_r(s.x1 - 8, top + 8, 8, ground_at(s.x1 - 4) - top, 4)
+			ladders.append({"x": s.x0 - 8, "top": top, "bot": ground_at(s.x0 - 8), "offx": s.x0 + 12})
+		"fence":
+			# chain-link on the ground: too tall for a Jackal to vault, low enough for a Hop.
+			# Bullets and grenades pass through it, people don't. Blasts and Brutes tear it down.
+			var g := ground_at(s.x + 6)
+			fill_r(s.x, g - s.h, 12, s.h + 8, FENCE)
 		"bunker":
 			var g := ground_at(s.x + 4)
 			var top: float = g - s.h
