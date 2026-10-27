@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards.
+## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags.
 ## --mission=N picks the mission for bot.
 
 var out_dir := "user://shots"
@@ -606,6 +606,8 @@ func run() -> void:
 				print("[levels] mission ", m, " width ", b.world_w, " structs ", b.T.structs.map(func(s): return s.t), " ladders ", b.T.ladders.size(), " mines ", b.units.filter(func(u): return u.kind == "mine").size())
 		"hazards":
 			await hazards()
+		"tags":
+			await tags()
 		"campaign":
 			Run.new_run()
 			for m in 3:
@@ -732,6 +734,78 @@ func hazards() -> void:
 	await frames_wait(20)
 	await shot("hz_crane_after")
 	check(boss != null and (boss.cracked or boss.hp < boss.max_hp), "the crane container hits the Boar (hp %d/%d cracked %s)" % [boss.hp, boss.max_hp, boss.cracked])
+
+func tags() -> void:
+	## Dog tags: going down spends a tag, going down with none is KIA for good, recruits fill the slot.
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	var u: Unit = b.squad()[0]
+	var s: Dictionary = u.s
+	check(s.tags == Data.DOG_TAGS, "soldiers start with %d dog tags" % Data.DOG_TAGS)
+	b.kill(u, null)
+	await frames_wait(40)
+	await shot("tags_down")
+	check(u.downed and s.tags == Data.DOG_TAGS - 1, "going down spends a tag")
+	check(b.stats.fallen.is_empty(), "a downed soldier is not counted as fallen")
+	b.sync_back()
+	check(s.alive and s.hp == int(ceil(Run.eff_max_hp(s) / 2.0)), "a downed soldier comes back next mission at half HP")
+	# second battle: out of tags, the same soldier dies for good and leaves gear and a legacy behind
+	s.tags = 0
+	s.perks.append(Data.BRANCHES[s.key][0].perks[0].id)
+	var it := Run.roll_item(0, ["armor"])
+	Run.equip(s, it)
+	var fallen_name: String = s.def.name
+	var mem_before: int = Run.meta.memorial.size()
+	b = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	u = b.squad().filter(func(x): return x.s == s)[0]
+	b.kill(u, null)
+	await frames_wait(40)
+	await shot("tags_kia")
+	check(not u.downed and b.stats.fallen == [fallen_name], "going down with no tags is KIA")
+	b.sync_back()
+	check(not s.alive, "the dead stay dead after the mission")
+	check(Run.meta.memorial.size() == mem_before + 1 and Run.meta.memorial[-1].name == fallen_name, "the fallen go on the Memorial")
+	check(Run.stash.has(it) and s.equip.armor == null, "their gear drops into the stash")
+	# the result screen names the dead
+	b.victory()
+	await until(func(): return main.screen != null and main.screen.get("mode") == "won", 2000)
+	await frames_wait(20)
+	await shot("tags_result")
+	# hospital gives a tag back to the living and does not raise the dead
+	var other: Dictionary = Run.soldiers[1]
+	other.tags = 0
+	main.go_stop("hospital")
+	await frames_wait(20)
+	await shot("tags_hospital")
+	check(other.tags == 1 and not s.alive, "hospital restores one tag and leaves the dead")
+	# recruits fill the fallen slot, with a legacy perk when the class has a tag on the wall
+	var slot: int = Run.fallen_slots()[0]
+	var offers := Run.recruit_offers(4)
+	var same: Array = offers.filter(func(o): return o.key == s.key)
+	check(same.is_empty() or not same[0].legacy.is_empty(), "recruits of the fallen's class carry a legacy perk")
+	var rec := Run.hire(slot, offers[0])
+	check(rec.alive and rec.tags == Data.DOG_TAGS and rec.lvl == 1 and rec.def.name == offers[0].name and rec.trait != "", "a recruit takes the slot fresh, with a trait")
+	check(Data.SQUAD_DEFS.all(func(d): return d.name != rec.def.name), "class defaults keep their names")
+	Run.soldiers[2].alive = false
+	Run.soldiers[3].tags = 1
+	Run.scrip = 999
+	main.show_shop()
+	await frames_wait(30)
+	await shot("tags_shop")
+	main.screen.recruit()
+	await frames_wait(20)
+	await shot("tags_recruit")
+	main.screen.chosen.emit(0)
+	await frames_wait(10)
+	check(Run.soldiers[2].alive, "the shop's RECRUIT service hires into the fallen slot")
+	var tags_before: int = Run.soldiers.reduce(func(n, x): return n + x.tags, 0)
+	main.screen.restore_tag()
+	await frames_wait(10)
+	main.screen.chosen.emit(0)
+	await frames_wait(10)
+	check(Run.soldiers.reduce(func(n, x): return n + x.tags, 0) == tags_before + 1, "the shop's DOG TAG service gives back one tag")
 
 func force_card(u: Unit, key: String) -> int:
 	for i in u.hand.size():
