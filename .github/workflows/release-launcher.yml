@@ -1,0 +1,51 @@
+# Builds the desktop launcher for Windows, macOS and Linux and puts it on the fixed
+# "launcher" release. The launcher only needs rebuilding when it changes or Godot is upgraded.
+name: Release launcher
+
+on:
+  push:
+    branches: [main]
+    paths: ["launcher/**", ".github/workflows/release-launcher.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.3"
+
+jobs:
+  launcher:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and export templates
+        run: |
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip && mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot && chmod +x godot
+          curl -sSL -o tpl.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          D="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$D"
+          unzip -q -j tpl.tpz templates/version.txt templates/windows_release_x86_64.exe templates/linux_release.x86_64 templates/macos.zip -d "$D"
+          rm tpl.tpz
+
+      - name: Export
+        run: |
+          ./godot --headless --path launcher --import || true
+          mkdir -p build/launcher/windows build/launcher/linux build/launcher/mac out
+          ./godot --headless --path launcher --export-release Windows "$PWD/build/launcher/windows/IronAdvance.exe"
+          ./godot --headless --path launcher --export-release Linux "$PWD/build/launcher/linux/IronAdvance.x86_64"
+          ./godot --headless --path launcher --export-release macOS "$PWD/build/launcher/mac/IronAdvance.zip"
+          (cd build/launcher/windows && zip -q -9 "$GITHUB_WORKSPACE/out/IronAdvance-Windows.zip" IronAdvance.exe)
+          (cd build/launcher/linux && zip -q -9 "$GITHUB_WORKSPACE/out/IronAdvance-Linux.zip" IronAdvance.x86_64)
+          cp build/launcher/mac/IronAdvance.zip out/IronAdvance-Mac.zip
+
+      - name: Publish to the "launcher" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view launcher >/dev/null 2>&1 || \
+            gh release create launcher --title "Iron Advance launcher" --latest=false \
+              --notes "Install once. Every launch downloads the newest game build and removes old ones."
+          gh release upload launcher out/*.zip --clobber

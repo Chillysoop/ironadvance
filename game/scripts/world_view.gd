@@ -1,0 +1,571 @@
+extends Node2D
+## Draws everything that lives in the world above the terrain: soldiers, props,
+## projectiles, particles, explosions, and the in-world HUD (unit plates, aim
+## lasers, move paths, floating text).
+
+@onready var b: Battle = get_parent()
+
+const C_DARK := Color(0.05, 0.035, 0.03)
+
+func _draw() -> void:
+	if b.T == null:
+		return
+	var cx := b.cam_x
+	draw_ladders(cx)
+	draw_strikes(cx)
+	for r in b.ropes:
+		draw_line(Vector2(r.x, r.y), Vector2(r.u.x, r.u.y - 20), Color("d8d0b8"), 1.0)
+	for u in b.units:
+		if u.dead:
+			draw_unit(u)
+	for u in b.units:
+		if not u.dead:
+			draw_unit(u)
+	draw_smokes()
+	draw_projs()
+	for tr in b.tracers:
+		var c: Color = tr.c
+		c.a = tr.t / 9.0
+		draw_line(Vector2(tr.x1, tr.y1), Vector2(tr.x2, tr.y2), c, 2.0)
+	draw_parts()
+	draw_fx()
+	for u in b.units:
+		draw_plate(u)
+	draw_targeting()
+	draw_texts()
+	draw_barks()
+	draw_hover()
+
+func on_screen(x: float, pad := 140.0) -> bool:
+	return x > b.cam_x - pad and x < b.cam_x + Battle.W + pad
+
+# ---------------------------------------------------------------- scenery
+func draw_ladders(_cx: float) -> void:
+	for L in b.T.ladders:
+		if not b.T.solid(L.offx, L.top + 2) or not on_screen(L.x):
+			continue
+		var x := roundf(L.x)
+		var top: float = L.top - 4
+		var hgt: float = L.bot - L.top + 4
+		draw_rect(Rect2(x - 7, top, 2, hgt), C_DARK)
+		draw_rect(Rect2(x + 5, top, 2, hgt), C_DARK)
+		draw_rect(Rect2(x - 6, top, 2, hgt), Color("8a5a2a"))
+		draw_rect(Rect2(x + 4, top, 2, hgt), Color("8a5a2a"))
+		var y: float = L.top
+		while y < L.bot:
+			draw_rect(Rect2(x - 6, y, 12, 2), Color("b88a4a"))
+			draw_rect(Rect2(x - 6, y + 2, 12, 1), C_DARK)
+			y += 8
+
+func draw_strikes(_cx: float) -> void:
+	for s in b.strikes:
+		var gy = b.T.stand_y(s.x, 0)
+		if gy == null:
+			gy = Battle.WATER_Y
+		var friendly: bool = s.get("friendly", false)
+		var col := Color("62d26f") if friendly else (Color("ff4d3d") if b.t % 20 < 10 else Color("ffb23e"))
+		draw_rect(Rect2(s.x - 48, 0, 96, gy), Color(col, 0.10))
+		draw_arc(Vector2(s.x, gy - 6), 20, 0, TAU, 24, col, 2.0)
+		draw_line(Vector2(s.x - 28, gy - 6), Vector2(s.x + 28, gy - 6), col, 2.0)
+		draw_line(Vector2(s.x, gy - 34), Vector2(s.x, gy + 22), col, 2.0)
+		Art.text(self, "!" if not friendly else "STRIKE", Vector2(s.x, gy - 40), 16 if not friendly else 8, col, HORIZONTAL_ALIGNMENT_CENTER)
+
+# ---------------------------------------------------------------- units
+func pick_anim(u: Unit) -> Array:
+	## [anim, frame, show_gun]
+	if u.dead:
+		return ["die", mini(4, u.dead_t / 5), false]
+	if u.pose == "hurt":
+		return ["hurt", (u.pose_t / 4) % 2, false]
+	if u.pose == "throw":
+		var n := 24
+		return ["throw", clampi((n - u.pose_t) / 6, 0, 3), true]
+	if u.pose == "cheer":
+		return ["cheer", (b.t / 10) % 2, false]
+	if u.para or u.air:
+		return ["jump", 0 if u.vy < 0 else 1, true]
+	if u.walk != null:
+		var i: int = mini(u.walk_i, u.walk.size() - 1)
+		if i >= 0 and u.walk[i].size() > 3:
+			return ["climb", (b.t / 8) % 2, false]
+		return ["run", (u.anim / 3) % 8, true]
+	return ["idle", (b.t / 14 + u.id) % 4, true]
+
+func draw_unit(u: Unit) -> void:
+	if u.gone or u.sunk or not on_screen(u.x):
+		return
+	var pos := Vector2(roundf(u.x), roundf(u.y))
+	var white: bool = u.flash > 0 and u.flash % 4 < 2
+	match u.kind:
+		"fuel":
+			var lk: bool = u.leak != null
+			draw_sprite("fuel_w" if (white or (lk and b.t % 20 < 10)) else "fuel", pos, Vector2(0.5, 1.0))
+			if lk:
+				Art.text(self, str(u.leak), pos + Vector2(0, -36), 16, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+				if b.t % 8 == 0:
+					b.part({"x": u.x + 8, "y": u.y - 6, "vx": 0.2, "vy": 0.5, "life": 30, "max": 30, "c": Color("ffe36a"), "s": 2.0, "g": 0.1})
+			return
+		"charge":
+			draw_sprite("charge", pos, Vector2(0.5, 1.0))
+			if b.t % 30 < 15:
+				draw_rect(Rect2(pos.x - 1, pos.y - 14, 4, 4), Color("ff4d3d"))
+			Art.text(self, "BOMB", pos + Vector2(0, -20), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			return
+		"barrel":
+			draw_sprite("barrel_w" if white else "barrel", pos, Vector2(0.5, 1.0))
+			return
+		"pow":
+			var fr := (b.t / 20) % 2
+			var face := -1
+			var jump := 0.0
+			if u.freed:
+				fr = 2 + (u.dead_t / 6) % 2
+				jump = absf(sin(u.dead_t / 6.0)) * 10
+				face = -1 if u.dead_t > 50 else 1
+			draw_set_transform(pos + Vector2(0, -jump), 0, Vector2(Art.PX * face, Art.PX))
+			draw_texture_rect_region(Art.tex.pow, Rect2(-12, -24, 24, 24), Rect2(fr * 24, 0, 24, 24))
+			draw_set_transform_matrix(Transform2D.IDENTITY)
+			if not u.freed:
+				Art.text(self, "HELP!", pos + Vector2(0, -44 + sin(b.t / 10.0) * 2), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+			return
+	if u.type == "boss":
+		draw_boss(u, pos, white)
+		return
+	if u.type == "mg":
+		var pa := pick_anim(u)
+		Art.draw_char(self, u.sheet, "idle" if not u.dead else "die", pa[1], pos + Vector2(4, -8), -1, white, 0, u.alpha, u.gun_angle, not u.dead)
+		draw_sprite("sandbags", pos + Vector2(-2, 0), Vector2(0.5, 1.0), u.alpha)
+		if u.muzzle > 0 and not u.dead:
+			draw_muzzle(Vector2(u.x - 22, u.y - 16), -1, 0)
+		return
+	if u.sheet == "":
+		return
+	var a := pick_anim(u)
+	var rot := 0.0
+	if u.air and not u.para and not u.dead and Vector2(u.vx, u.vy).length() > 3 and not u.leaping and not u.jumping:
+		rot = atan2(u.vy, u.vx) * 0.3 * u.face
+	if u.rushing:
+		rot = u.face * 0.5
+	if u.para:
+		draw_set_transform(pos + Vector2(0, -50), 0, Vector2(Art.PX, Art.PX))
+		var pt: Texture2D = Art.tex.parachute
+		draw_texture(pt, Vector2(-pt.get_width() / 2.0, -pt.get_height() / 2.0))
+		draw_set_transform_matrix(Transform2D.IDENTITY)
+	if u.team == "squad" and not u.dead and u.adr >= 50:
+		var glow := Color(1, 0.7, 0.24, 0.30) if u.adr >= 100 else Color(1, 0.48, 0.24, 0.20)
+		var r := 18.0 + sin(b.t / 6.0) * 2
+		draw_circle(pos + Vector2(0, -18), r, glow)
+	var kick := Vector2(-u.face * 2, 0) if u.pose == "recoil" else Vector2.ZERO
+	Art.draw_char(self, u.sheet, a[0], a[1], pos + kick, u.face, white, rot, u.alpha, u.gun_angle, a[2])
+	if not u.dead:
+		if u.shield:
+			# riot shield held out front
+			var sx := pos.x + u.face * 12
+			draw_rect(Rect2(sx - 3, pos.y - 30, 7, 28), C_DARK)
+			draw_rect(Rect2(sx - 2, pos.y - 29, 5, 26), Color.WHITE if white else Color("7d8590"))
+			draw_rect(Rect2(sx + (1 if u.face > 0 else -2), pos.y - 29, 2, 26), Color("c9d1da"))
+			draw_rect(Rect2(sx - 1, pos.y - 20, 3, 3), Color("2a6fb0"))
+		if u.muzzle > 0 and u.sheet != "en_brute":
+			var mo := Art.muzzle_offset(u.sheet, a[0], a[1], u.gun_angle)
+			draw_muzzle(pos + kick + Vector2(mo.x * u.face, mo.y), u.face, u.gun_angle)
+
+func draw_sprite(key: String, pos: Vector2, anchor: Vector2, alpha := 1.0, flip := false) -> void:
+	var tx: Texture2D = Art.tex[key]
+	var sz := Vector2(tx.get_width(), tx.get_height())
+	draw_set_transform(pos, 0, Vector2(Art.PX * (-1 if flip else 1), Art.PX))
+	draw_texture(tx, -sz * anchor, Color(1, 1, 1, alpha))
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+
+func draw_muzzle(p: Vector2, face: int, ang: float) -> void:
+	var tx: Texture2D = Art.tex.muzzle
+	var fr := (b.t / 2) % 3
+	draw_set_transform(p, ang * face, Vector2(Art.PX * face, Art.PX))
+	draw_texture_rect_region(tx, Rect2(0, -4, 12, 8), Rect2(fr * 12, 0, 12, 8))
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+
+func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
+	var tx: Texture2D = Art.tex.boss
+	var ph := int(u.tread / 3) % 2
+	var row := (0 if u.plate > 0 else 1) + (2 if white else 0)
+	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
+	# barrel behind the turret
+	var pv := b.boss_pivot(u)
+	var bt: Texture2D = Art.tex.boss_barrel
+	draw_set_transform(pv, u.aim_a, Vector2(-Art.PX, Art.PX))
+	draw_texture(bt, Vector2(-2, -bt.get_height() / 2.0), mod)
+	draw_set_transform(pos, 0, Vector2(Art.PX, Art.PX))
+	draw_texture_rect_region(tx, Rect2(-32, -40, 64, 40), Rect2(ph * 64, row * 40, 64, 40), mod)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	if u.muzzle > 0 and not u.dead:
+		draw_muzzle(b.muzzle(u), -1, -u.aim_a)
+	if u.dead and b.t % 6 == 0:
+		b.puff(u.x + randf_range(-40, 40), u.y - 60, 1.8)
+	if u.cracked and not u.dead and b.t % 10 == 0:
+		b.puff(u.x + randf_range(-20, 30), u.y - 50, 1.0)
+
+# ---------------------------------------------------------------- in-world HUD plates
+func draw_plate(u: Unit) -> void:
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel"] or u.type == "boss" or not on_screen(u.x, 40):
+		return
+	var x := roundf(u.x)
+	if u.team == "squad":
+		draw_squad_plate(u, x)
+		return
+	# enemy: segmented red bar over the head
+	var y := roundf(u.y - u.h - 10)
+	var w := 24.0
+	draw_rect(Rect2(x - w / 2 - 1, y - 1, w + 2, 5), C_DARK)
+	draw_rect(Rect2(x - w / 2, y, w, 3), Color("3a0d0d"))
+	draw_rect(Rect2(x - w / 2, y, roundf(w * u.hp / u.max_hp), 3), Color("ff4d3d"))
+	for k in range(1, 4):
+		draw_rect(Rect2(x - w / 2 + k * w / 4, y, 1, 3), C_DARK)
+	if u.type == "radio" and b.radio_t != null and u.active:
+		var col := Color("ff4d3d") if b.radio_t <= 1 else Color("ffd23a")
+		draw_texture_rect(Art.tex.ic_radio, Rect2(clampf(x, b.cam_x + 44, b.cam_x + 916) - 34, y - 16, 16, 16), false)
+		Art.text(self, "BACKUP %d" % b.radio_t, Vector2(clampf(x, b.cam_x + 44, b.cam_x + 916) - 14, y - 4), 8, col)
+
+func draw_squad_plate(u: Unit, x: float) -> void:
+	# dog-tag style plate at the feet: HP blocks, adrenaline flame bar, energy bolts
+	var y := roundf(u.y + 4)
+	var w := 34.0
+	var sel: bool = u == b.sel
+	draw_rect(Rect2(x - w / 2 - 2, y - 1, w + 4, 11), Color(C_DARK, 0.85))
+	draw_rect(Rect2(x - w / 2 - 2, y - 1, w + 4, 1), Color("9aa2ae") if sel else Color("4a505a"))
+	var segs := u.max_hp
+	var hpw := roundf(w * u.hp / float(u.max_hp))
+	var hc := Color("62d26f") if u.hp > u.max_hp * 0.5 else (Color("ffd23a") if u.hp > u.max_hp * 0.25 else Color("ff4d3d"))
+	draw_rect(Rect2(x - w / 2, y + 1, w, 4), Color("1e3a22"))
+	draw_rect(Rect2(x - w / 2, y + 1, hpw, 4), hc)
+	var k := 4
+	while k < segs:
+		draw_rect(Rect2(x - w / 2 + roundf(w * k / float(segs)), y + 1, 1, 4), Color(C_DARK, 0.8))
+		k += 4
+	var ac := Color("ffb23e") if u.adr >= 100 else Color("ff7a3d")
+	draw_rect(Rect2(x - w / 2, y + 6, roundf(w * u.adr / 100.0), 2), ac)
+	if u.adr >= 50:
+		draw_texture_rect(Art.tex.ic_flame, Rect2(x + w / 2 + 2, y - 2, 8, 8), false)
+	if u.armor > 0:
+		draw_texture_rect(Art.tex.ic_shield, Rect2(x - w / 2 - 12, y - 1, 8, 8), false)
+		Art.text(self, str(u.armor), Vector2(x - w / 2 - 14, y + 7), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_RIGHT)
+	if u.overwatch > 0:
+		Art.text(self, "OW", Vector2(x, y + 18), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+	if b.state == "player":
+		for i in u.energy:
+			draw_texture_rect(Art.tex.ic_bolt, Rect2(x - u.energy * 4.5 + i * 9, y - 12 - u.h - 8, 8, 8), false)
+	if sel and b.state == "player":
+		var by := u.y - u.h - 36 + sin(b.t / 8.0) * 2
+		var pts := PackedVector2Array([Vector2(x - 6, by), Vector2(x + 6, by), Vector2(x, by + 7)])
+		draw_colored_polygon(PackedVector2Array([Vector2(x - 7, by - 1), Vector2(x + 7, by - 1), Vector2(x, by + 8)]), C_DARK)
+		draw_colored_polygon(pts, Color("ffb23e"))
+		Art.text(self, "%s LV%d" % [u.def.name, u.s.lvl], Vector2(x, by - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+
+# ---------------------------------------------------------------- effects
+func draw_smokes() -> void:
+	for s in b.smokes:
+		for i in 9:
+			var a: float = i / 9.0 * TAU + b.t / 200.0 + s.seed
+			var r: float = s.r * 0.45
+			var g := 0.75 + i * 0.015
+			draw_circle(Vector2(s.x + cos(a) * r * 0.9, s.y + sin(a) * r * 0.55), s.r * 0.5, Color(g, g, g + 0.03, 0.42))
+
+func draw_projs() -> void:
+	for p in b.projs:
+		var pos := Vector2(roundf(p.x), roundf(p.y))
+		match p.kind:
+			"rocket":
+				var a := atan2(p.vy, p.vx)
+				draw_set_transform(pos, a, Vector2.ONE)
+				draw_rect(Rect2(-9, -3, 14, 6), C_DARK)
+				draw_rect(Rect2(-8, -2, 12, 4), Color("d8d0b8"))
+				draw_rect(Rect2(3, -2, 3, 4), Color("ff4d3d"))
+				draw_rect(Rect2(-14 - (b.t % 3) * 2, -2, 6 + (b.t % 3) * 2, 4), Color("ffb23e"))
+				draw_rect(Rect2(-12, -1, 4, 2), Color("fff3b0"))
+				draw_set_transform_matrix(Transform2D.IDENTITY)
+			"bomb":
+				draw_rect(Rect2(pos.x - 5, pos.y - 11, 10, 16), C_DARK)
+				draw_rect(Rect2(pos.x - 4, pos.y - 10, 8, 14), Color("3a3a3a"))
+				draw_rect(Rect2(pos.x - 7, pos.y - 13, 14, 4), Color("7a7a7a"))
+				draw_rect(Rect2(pos.x - 1, pos.y + 2, 2, 2), Color("ff4d3d"))
+			_:
+				var col := Color("2a2a2a")
+				if p.cluster:
+					col = Color("b8322a")
+				elif p.kind == "frag":
+					col = Color("4a6a2a")
+				elif p.kind == "smoke":
+					col = Color("9aa0a8")
+				elif p.kind == "egren":
+					col = Color("6a4a2a")
+				elif p.kind == "beacon":
+					col = Color("62d26f") if b.t % 10 < 5 else Color("2a6a34")
+				var r := 5.0 if p.kind == "shell" else (3.0 if p.mini else 4.0)
+				draw_rect(Rect2(pos.x - r - 1, pos.y - r - 1, r * 2 + 2, r * 2 + 2), C_DARK)
+				draw_rect(Rect2(pos.x - r, pos.y - r, r * 2, r * 2), col)
+				draw_rect(Rect2(pos.x - r, pos.y - r, 2, 2), Color(1, 1, 1, 0.5))
+				if p.fuse != null and not p.mini:
+					draw_rect(Rect2(pos.x - 1, pos.y - r - 3, 2, 2), Color("fff3a0") if b.t % 6 < 3 else Color("ff4d3d"))
+					Art.text(self, "%.1f" % (p.fuse / 60.0), pos + Vector2(0, -12), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+
+func draw_parts() -> void:
+	for p in b.parts:
+		if not on_screen(p.x, 40):
+			continue
+		var a: float = float(p.life) / p.max
+		if p.get("ring", false):
+			draw_arc(Vector2(p.x, p.y), p.r, 0, TAU, 32, Color(1, 0.94, 0.78, a), 3.0)
+			continue
+		var c: Color = p.c
+		if p.get("smoke", false):
+			c.a = a * 0.5
+		else:
+			c.a = minf(1, a * 1.5)
+		var s: float = roundf(p.s)
+		if p.get("plus", false):
+			draw_rect(Rect2(roundf(p.x) - 1, roundf(p.y) - 3, 2, 6), c)
+			draw_rect(Rect2(roundf(p.x) - 3, roundf(p.y) - 1, 6, 2), c)
+			continue
+		draw_rect(Rect2(roundf(p.x - s / 2), roundf(p.y - s / 2), s, s), c)
+
+func draw_fx() -> void:
+	for f in b.fx:
+		if f.t < 0:
+			continue
+		var pos := Vector2(roundf(f.x), roundf(f.y))
+		match f.kind:
+			"boom":
+				var fr := clampi(int(f.t * 14 / f.dur), 0, 13)
+				var s: float = Art.PX * f.sc * 0.5
+				draw_set_transform(pos, 0, Vector2(s, s))
+				draw_texture_rect_region(Art.tex.explosion, Rect2(-24, -32, 48, 48), Rect2(fr * 48, 0, 48, 48))
+				draw_set_transform_matrix(Transform2D.IDENTITY)
+			"puff":
+				var fr := clampi(int(f.t * 6 / f.dur), 0, 5)
+				var s: float = Art.PX * f.sc * 0.5
+				draw_set_transform(pos, 0, Vector2(s, s))
+				draw_texture_rect_region(Art.tex.puff, Rect2(-6, -6, 12, 12), Rect2(fr * 12, 0, 12, 12), Color(1, 1, 1, 0.8))
+				draw_set_transform_matrix(Transform2D.IDENTITY)
+			"slash":
+				var fr := clampi(int(f.t * 3 / f.dur), 0, 2)
+				var s: float = Art.PX * f.sc * 0.5
+				draw_set_transform(pos, 0, Vector2(s * f.face, s))
+				draw_texture_rect_region(Art.tex.slash, Rect2(-10, -10, 20, 20), Rect2(fr * 20, 0, 20, 20))
+				draw_set_transform_matrix(Transform2D.IDENTITY)
+
+# ---------------------------------------------------------------- targeting overlays
+func draw_targeting() -> void:
+	if b.state != "player" or b.busy:
+		return
+	var u: Unit = b.sel
+	if u == null or u.dead:
+		return
+	var m: Vector2 = b.mouse
+	var pz := b.cam_x + Battle.W * 0.72
+	if b.cam_x < b.world_w - Battle.W:
+		var yy := 48.0
+		while yy < Battle.H:
+			draw_rect(Rect2(pz, yy, 2, 6), Color(1, 0.7, 0.24, 0.5))
+			yy += 12
+		draw_rect(Rect2(pz, 40, Battle.W * 0.28, Battle.H - 40), Color(1, 0.7, 0.24, 0.05))
+		Art.text(self, "PUSH ZONE >>", Vector2(pz + 8, 58), 8, Color("ffb23e"))
+	if b.card_idx < 0:
+		if u.move_left > 1:
+			var L := b.sim_walk(u, u.x - u.move_left, u.move_left)
+			var R := b.sim_walk(u, u.x + u.move_left, u.move_left)
+			for s in [L, R]:
+				var i := 0
+				while i < s.pts.size():
+					draw_rect(Rect2(s.pts[i][0] - 1, s.pts[i][1] - 2, 2, 2), Color(0.38, 0.82, 0.44, 0.55))
+					i += 3
+				if s.pts.size():
+					draw_rect(Rect2(s.x - 1, s.y - 12, 2, 12), Color("62d26f"))
+			var hov = b.unit_at_p(m)
+			var LD = b.ladder_at(m) if hov == null else null
+			var pl = b.plan_climb(u, LD) if LD != null else null
+			if LD != null and absf(u.y - LD.top) >= 8:
+				if pl != null:
+					var i := 0
+					while i < pl.pts.size():
+						draw_rect(Rect2(pl.pts[i][0] - 1, pl.pts[i][1] - 3, 3, 3), Color.WHITE)
+						i += 4
+					Art.draw_char(self, u.sheet, "idle", 0, Vector2(LD.offx, LD.top), u.face, false, 0, 0.45)
+					Art.text(self, "CLIMB %dpx" % int(pl.cost), Vector2(LD.offx, LD.top - 44), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+				else:
+					Art.text(self, "LADDER: OUT OF REACH", Vector2(LD.x, LD.top - 14), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif hov == null:
+				var sim := b.sim_walk(u, m.x, u.move_left)
+				if sim.pts.size():
+					var i := 0
+					while i < sim.pts.size():
+						draw_rect(Rect2(sim.pts[i][0] - 1, sim.pts[i][1] - 3, 3, 3), Color.WHITE)
+						i += 4
+					Art.draw_char(self, u.sheet, "idle", 0, Vector2(sim.x, sim.y), -1 if sim.x < u.x else 1, false, 0, 0.45)
+					Art.text(self, "%dpx" % int(sim.used), Vector2(sim.x, sim.y - 44), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+		return
+	if b.card_idx >= u.hand.size():
+		return
+	var inst: Dictionary = u.hand[b.card_idx]
+	var c := Data.card(inst)
+	var sc: bool = u.adr >= 50 and not inst.get("od", false)
+	match c.type:
+		"AIM":
+			var aa := b.aim_angle(u, c, m)
+			var tr := b.trace_bullet(aa.mx, aa.my, aa.a, c.range, c.get("bounce", 0) + b.bounce_bonus(u, sc), u, c.get("pierce", false))
+			for i in tr.segs.size():
+				var s: Array = tr.segs[i]
+				if i == 0:
+					draw_line(Vector2(s[0], s[1]), Vector2(s[2], s[3]), Color(1, 0.24, 0.24, 0.95), 2.0)
+				else:
+					draw_dashed_line(Vector2(s[0], s[1]), Vector2(s[2], s[3]), Color(1, 0.35, 0.35, 0.6), 1.0, 5.0)
+			for p in tr.pings:
+				draw_rect(Rect2(p.x - 2, p.y - 2, 4, 4), Color.WHITE)
+			if c.has("spread") and c.has("pellets"):
+				for d in [-c.spread, c.spread]:
+					draw_line(Vector2(aa.mx, aa.my), Vector2(aa.mx + cos(aa.a + d) * c.range, aa.my + sin(aa.a + d) * c.range), Color(1, 0.35, 0.35, 0.35), 1.0)
+			for hh in tr.hits:
+				var tg: Unit = hh.u
+				var col := Color("ffb23e") if hh.head else Color("ff4d3d")
+				draw_brackets(Rect2(tg.x - tg.w / 2 - 4, tg.y - tg.h - 4, tg.w + 8, tg.h + 8), col)
+				var lab := "BODY"
+				if tg.kind == "fuel": lab = "LEAK"
+				elif tg.kind == "charge": lab = "DEFUSE"
+				elif tg.is_prop(): lab = "BOOM"
+				elif hh.head: lab = "HEAD!"
+				elif tg.shield and hh.dx > 0: lab = "SHIELD"
+				elif tg.type == "boss" and tg.plate > 0: lab = "ARMOR"
+				Art.text(self, lab, Vector2(tg.x, tg.y - tg.h - 22), 16 if hh.head else 8, col, HORIZONTAL_ALIGNMENT_CENTER)
+			if tr.hits.is_empty():
+				var ls: Array = tr.segs[-1]
+				var em: int = tr.end.m if tr.end != null else 0
+				var lab := "MISS"
+				if em == 3: lab = "CHIPS WOOD"
+				elif em == 1: lab = "DIGS DIRT"
+				elif em: lab = "BLOCKED"
+				Art.text(self, lab, Vector2(ls[2], ls[3] - 10), 8, Color("ffd23a") if em == 3 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+			var sw := b.sway_of(u, c)
+			Art.text(self, "STEADY" if sw < 0.01 else ("WILD SWAY" if sw > 0.06 else ("SWAY  [SHIFT] HOLD" if not b.aim_hold else "HOLDING")), Vector2(aa.mx, u.y + 30), 8, Color("ff7a3d") if sw > 0.06 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+			draw_reticle(m, Color(1, 0.3, 0.3))
+		"ARC":
+			var v := b.aim_vel(u, m)
+			var sim := b.sim_arc(v.hx, v.hy, v.vx, v.vy, c.get("wind", 1.0), 40)
+			for i in sim.pts.size():
+				if i % 2 == 0:
+					var p: Vector2 = sim.pts[i]
+					draw_rect(Rect2(p.x - 1, p.y - 1, 3, 3), Color(1, 1, 1, 1 - i / 44.0))
+			draw_line(Vector2(v.hx, v.hy), Vector2(v.hx + v.vx * 5, v.hy + v.vy * 5), Color("ffb23e"), 2.0)
+			var px := u.x - 20
+			var py := u.y + 22
+			draw_rect(Rect2(px, py, 40, 6), C_DARK)
+			draw_rect(Rect2(px + 1, py + 1, roundf(38 * v.pw / 13), 4), Color.from_hsv((120 - v.pw / 13 * 120) / 360.0, 0.9, 0.95))
+			Art.text(self, "PWR", Vector2(px - 4, py + 7), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
+		"LINE":
+			if c.get("grapple", false):
+				var gs := b.grapple_spot(u, m, c.range)
+				draw_dashed_line(Vector2(gs.hx, gs.hy), Vector2(gs.ax, gs.ay), Color("62d26f") if gs.ok else Color("ff4d3d"), 1.0, 4.0)
+				if gs.ok:
+					Art.draw_char(self, u.sheet, "idle", 0, Vector2(gs.x, gs.y), u.face, false, 0, 0.5)
+				else:
+					Art.text(self, "NO GRIP", Vector2(gs.ax, gs.ay - 10), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif c.get("jump", false) or c.get("rush", false):
+				var v := b.jump_vel(u, m) if c.get("jump", false) else b.rush_vel(u, m)
+				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50)
+				for i in sim.pts.size():
+					if i % 2 == 0:
+						var p: Vector2 = sim.pts[i]
+						draw_rect(Rect2(p.x - 1, p.y - 1, 3, 3), Color("62d26f") if c.get("jump", false) else Color("ffb23e"))
+			else:
+				var hp_ := b.hand_pos(u)
+				var a := atan2(m.y - hp_.y, m.x - hp_.x)
+				var end := b.cast_ray(hp_.x, hp_.y, a, 900)
+				draw_dashed_line(hp_, Vector2(end.x, end.y), Color(1, 0.48, 0.24, 0.9), 2.0, 8.0)
+				if end.hit:
+					var R: float = c.radius * (1.2 if sc else 1.0) * b.blast_scale(u)
+					draw_arc(Vector2(end.x, end.y), R, 0, TAU, 32, Color("ff7a3d"), 2.0)
+					var al := b.squad_alive().filter(func(s): return Vector2(s.x - end.x, s.y - s.h / 2.0 - end.y).length() < R + s.w / 2.0)
+					if al.size():
+						for s in al:
+							draw_brackets(Rect2(s.x - s.w / 2 - 4, s.y - s.h - 4, s.w + 8, s.h + 8), Color("ff4d3d"))
+						Art.text(self, "YOU ARE IN THE BLAST" if al.has(u) else "ALLY IN BLAST", Vector2(end.x, end.y - R - 8), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+				draw_reticle(m, Color("ff7a3d"))
+		"MELEE", "ALLY":
+			var lst: Array
+			if c.type == "MELEE":
+				lst = b.units.filter(func(tg): return b.melee_valid(u, tg, c))
+			else:
+				lst = b.squad_alive().filter(func(tg): return b.ally_valid(u, tg, c))
+			var col := Color("ff4d3d") if c.type == "MELEE" else Color("62d26f")
+			for tg in lst:
+				draw_arc(Vector2(tg.x, tg.y - tg.h / 2.0), tg.h * 0.75, 0, TAU, 28, col, 2.0)
+			if lst.is_empty():
+				Art.text(self, "NO ENEMY IN REACH" if c.type == "MELEE" else "NO SQUADMATE IN RANGE", Vector2(u.x, u.y + 30), 8, col, HORIZONTAL_ALIGNMENT_CENTER)
+			if c.type == "ALLY":
+				draw_rect(Rect2(u.x - c.range, u.y - 80, c.range * 2, 100), Color(0.38, 0.82, 0.44, 0.35), false, 1.0)
+
+func draw_brackets(r: Rect2, col: Color) -> void:
+	var l := 6.0
+	for corner in [r.position, Vector2(r.end.x, r.position.y), Vector2(r.position.x, r.end.y), r.end]:
+		var sx := 1.0 if corner.x == r.position.x else -1.0
+		var sy := 1.0 if corner.y == r.position.y else -1.0
+		draw_line(corner, corner + Vector2(l * sx, 0), col, 2.0)
+		draw_line(corner, corner + Vector2(0, l * sy), col, 2.0)
+
+func draw_reticle(p: Vector2, col: Color) -> void:
+	var s := 7.0 + sin(b.t / 6.0)
+	draw_arc(p, s, 0, TAU, 16, col, 1.0)
+	for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+		draw_line(p + d * (s - 3), p + d * (s + 4), col, 1.0)
+
+# ---------------------------------------------------------------- text
+func draw_texts() -> void:
+	for tx in b.texts:
+		var x: float = (tx.u.x if tx.u != null else tx.x)
+		var y: float = tx.y - tx.t * 0.6
+		var al: float = (70 - tx.t) / 20.0 if tx.t > 50 else 1.0
+		var sz := 16 if tx.big else 8
+		if tx.big and tx.t < 6:
+			y -= (6 - tx.t)
+		Art.text(self, tx.text, Vector2(x, y), sz, tx.c, HORIZONTAL_ALIGNMENT_CENTER, 2, false, al)
+
+func draw_barks() -> void:
+	for bk in b.barks:
+		var u: Unit = bk.u
+		if u.dead:
+			continue
+		var w := Art.text_width(bk.text, 16, true) + 14
+		var x := u.x
+		var y := u.y - u.h - 52
+		var bx := clampf(x - w / 2, b.cam_x + 4, b.cam_x + Battle.W - w - 4)
+		draw_rect(Rect2(bx - 1, y - 19, w + 2, 24), C_DARK)
+		draw_rect(Rect2(bx, y - 18, w, 22), Color("efe7d2"))
+		draw_colored_polygon(PackedVector2Array([Vector2(x - 4, y + 4), Vector2(x + 4, y + 4), Vector2(x, y + 10)]), Color("efe7d2"))
+		Art.text(self, bk.text, Vector2(bx + 7, y - 2), 16, C_DARK, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+
+func draw_hover() -> void:
+	var h = b.unit_at_p(b.mouse)
+	if h == null or h.kind == "pow" or (b.card_idx >= 0 and b.state == "player"):
+		return
+	var lines: Array = []
+	if h.team == "enemy":
+		var E: Dictionary = Data.ETYPES[h.type]
+		lines = [E.name.to_upper(), "HP %d/%d" % [h.hp, h.max_hp], E.note]
+		if h.type == "boss":
+			lines.append("ARMOR PLATE %d" % h.plate if h.plate > 0 else "ARMOR CRACKED: TAKES +30%")
+	elif h.kind == "fuel":
+		lines = ["FUEL TANK", ("Leaking: blows after %d more enemy phase(s)." % h.leak) if h.leak != null else "Shoot it: it leaks and blows in 2 turns.", "Blast it: it goes up now. Blast 84."]
+	elif h.kind == "charge":
+		lines = ["SAPPER CHARGE", "Blows when the Jackals move next.", "Shoot it to defuse. Blast 48."]
+	elif h.is_prop():
+		lines = ["FUEL BARREL", "Explodes when hit. Blast 44."]
+	else:
+		lines = ["%s  %s  LV%d" % [h.def.name, h.def.cls.to_upper(), h.s.lvl], "HP %d/%d   ADRENALINE %d" % [h.hp, h.max_hp, h.adr], "ENERGY %d   MOVE %dpx" % [h.energy, int(h.move_left)]]
+	var w := 0.0
+	for l in lines:
+		w = maxf(w, Art.text_width(l, 16, true))
+	w += 16
+	var x := clampf(h.x - w / 2, b.cam_x + 4, b.cam_x + Battle.W - w - 4)
+	var y := maxf(46, h.y - h.h - 34 - lines.size() * 16 - 10)
+	var hgt := lines.size() * 16 + 8
+	draw_rect(Rect2(x - 1, y - 1, w + 2, hgt + 2), C_DARK)
+	draw_rect(Rect2(x, y, w, hgt), Color(0.1, 0.11, 0.13, 0.94))
+	draw_rect(Rect2(x, y, w, 2), Color("ff4d3d") if h.team == "enemy" else Color("ffb23e"))
+	for i in lines.size():
+		Art.text(self, lines[i], Vector2(x + 8, y + 18 + i * 16), 16, Color.WHITE if i == 0 else Color("d7cfbb"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
