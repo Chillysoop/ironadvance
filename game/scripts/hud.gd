@@ -1,7 +1,7 @@
 extends CanvasLayer
 ## Battle HUD: a riveted metal top bar (score, scrip, alert sirens, radio clock,
 ## wind sock), dog-tag roster, the card hand rising from the bottom edge, the
-## END TURN plunger, banners and the pick-one modal for rewards and level-ups.
+## NEXT / MOVE / END TURN buttons, banners and the pick-one modal for rewards and level-ups.
 
 signal picked(i: int)
 
@@ -10,6 +10,8 @@ var overlay: Control
 var hand_box: Control
 var roster_box: Control
 var end_btn: PixButton
+var next_btn: PixButton
+var move_btn: PixButton
 var deck_btn: PixButton
 var modal: Control
 var cards: Array = []
@@ -37,26 +39,41 @@ func setup(battle: Battle) -> void:
 	hand_box = Control.new()
 	hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(hand_box)
+	# NEXT is the big plunger now; END TURN and MOVE (auto-advance) are small buttons above it
+	next_btn = PixButton.new()
+	next_btn.text = "NEXT"
+	next_btn.sub = "SPACE"
+	next_btn.color = Color("ff4d3d")
+	next_btn.position = Vector2(830, 502)
+	next_btn.size = Vector2(122, 32)
+	next_btn.pressed.connect(func(): Sfx.play("click"); b.next_unit())
+	root.add_child(next_btn)
 	end_btn = PixButton.new()
 	end_btn.text = "END TURN"
-	end_btn.sub = "SPACE"
-	end_btn.color = Color("ff4d3d")
-	end_btn.position = Vector2(830, 488)
-	end_btn.size = Vector2(122, 44)
+	end_btn.color = Color("9aa2ae")
+	end_btn.position = Vector2(894, 478)
+	end_btn.size = Vector2(58, 22)
 	end_btn.pressed.connect(func(): Sfx.play("click"); b.end_turn())
 	root.add_child(end_btn)
+	move_btn = PixButton.new()
+	move_btn.text = "MOVE"
+	move_btn.color = Color("62d26f")
+	move_btn.position = Vector2(830, 478)
+	move_btn.size = Vector2(58, 22)
+	move_btn.pressed.connect(func(): Sfx.play("click"); b.auto_advance())
+	root.add_child(move_btn)
 	deck_btn = PixButton.new()
 	deck_btn.text = "DECK"
 	deck_btn.color = Color("53d4e2")
-	deck_btn.position = Vector2(830, 458)
-	deck_btn.size = Vector2(58, 24)
+	deck_btn.position = Vector2(830, 456)
+	deck_btn.size = Vector2(58, 20)
 	deck_btn.pressed.connect(show_deck)
 	root.add_child(deck_btn)
 	var mute := PixButton.new()
 	mute.text = "SND"
 	mute.color = Color("9aa2ae")
-	mute.position = Vector2(894, 458)
-	mute.size = Vector2(58, 24)
+	mute.position = Vector2(894, 456)
+	mute.size = Vector2(58, 20)
 	mute.pressed.connect(func(): Sfx.muted = not Sfx.muted; mute.text = "MUTE" if Sfx.muted else "SND")
 	root.add_child(mute)
 	for i in Run.belt_max():
@@ -90,6 +107,8 @@ func refresh() -> void:
 	var u := b.sel
 	var my_turn := b.state == "player" and not b.busy
 	end_btn.disabled = not my_turn
+	next_btn.disabled = not my_turn
+	move_btn.disabled = not my_turn
 	# rebuild the hand when its contents change
 	var want: Array = []
 	if u != null and not u.dead and b.state == "player":
@@ -135,17 +154,23 @@ func refresh() -> void:
 func _process(_d: float) -> void:
 	if b == null:
 		return
-	# the END TURN plunger says how many soldiers can still act, and asks twice if any can
+	# NEXT says how many soldiers can still act; once nobody can, it turns into END TURN.
+	# The small END TURN button still asks twice while anyone can act.
 	var n := b.ready_count() if b.state == "player" else 0
 	if b.end_confirm_t > 0:
-		end_btn.sub = "PRESS AGAIN"
+		end_btn.text = "AGAIN?"
 		end_btn.color = Color("ffd23a") if b.t % 16 < 8 else Color("ff4d3d")
-	elif n > 0 and b.state == "player":
-		end_btn.sub = "%d CAN ACT" % n
-		end_btn.color = Color("ff4d3d")
 	else:
-		end_btn.sub = "SPACE"
-		end_btn.color = Color("ff4d3d") if b.t % 40 < 20 or b.state != "player" else Color("ff7a3d")
+		end_btn.text = "END TURN"
+		end_btn.color = Color("9aa2ae")
+	if n > 0:
+		next_btn.text = "NEXT"
+		next_btn.sub = "%d CAN ACT" % n
+		next_btn.color = Color("ff4d3d")
+	else:
+		next_btn.text = "END TURN"
+		next_btn.sub = "SPACE"
+		next_btn.color = Color("ff4d3d") if b.t % 40 < 20 or b.state != "player" else Color("ff7a3d")
 
 func preview_cost() -> int:
 	## Energy the hovered (or armed) card would spend, for the blinking bolts.

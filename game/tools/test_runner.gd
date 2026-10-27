@@ -562,6 +562,39 @@ func run() -> void:
 				b.explode(b.cam_x + 500, b.T.ground_at(b.cam_x + 500) - 4, 20, 0, null)
 				await frames_wait(12)
 				await shot("alive_m%d_blast" % m)
+		"turnqol":
+			Run.new_run()
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			await frames_wait(10)
+			await shot("qol_buttons")
+			var sq: Array = b.squad_alive()
+			b.sel = sq[0]
+			var order: Array = []
+			for i in 4:
+				b.next_unit()
+				order.append(b.sel.def.key)
+			print("[qol] next order from ", sq[0].def.key, ": ", order)
+			sq[1].hand.append(Run.new_card("sprint"))
+			sq[1].hand.append(Run.new_card("frag"))
+			var x0: Array = sq.map(func(u): return int(u.x))
+			var e0: Array = sq.map(func(u): return u.energy)
+			b.auto_advance()
+			await until(func(): return not b.busy, 2000)
+			print("[qol] move x ", x0, " -> ", sq.map(func(u): return int(u.x)))
+			print("[qol] energy ", e0, " -> ", sq.map(func(u): return u.energy), " move_left ", sq.map(func(u): return int(u.move_left)))
+			print("[qol] frag kept ", sq[1].hand.any(func(c): return c.key == "frag"), " sprint used ", not sq[1].hand.any(func(c): return c.key == "sprint"))
+			await frames_wait(20)
+			await shot("qol_after_move")
+			for u in sq:
+				u.energy = 0; u.move_left = 0; u.hand = []
+			b.ui_dirty = true
+			await frames_wait(10)
+			print("[qol] ready ", b.ready_count(), " next label ", main.hud.next_btn.text)
+			await shot("qol_end")
+			b.next_unit()
+			await frames_wait(10)
+			print("[qol] state after NEXT with nobody ready ", b.state)
 		"bot":
 			await bot(mission_arg, 70)
 		"levels":

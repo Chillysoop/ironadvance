@@ -3640,6 +3640,57 @@ func world_click(p: Vector2) -> void:
 		else:
 			do_move(u, p.x)
 
+func next_unit() -> void:
+	## NEXT: jump to the next soldier who can still act; with nobody left, it ends the turn.
+	if state != "player" or busy:
+		return
+	if ready_count() == 0:
+		end_turn(true)
+		return
+	var a := squad_alive()
+	var i := a.find(sel)
+	for k in range(1, a.size() + 1):
+		var cand: Unit = a[(i + k) % a.size()]
+		if can_act(cand) and (cand != sel or k == a.size()):
+			select_unit(cand)
+			return
+
+func is_mobility(c: Dictionary) -> bool:
+	return c.type == "SELF" and (c.has("move") or c.has("rally")) and not c.get("od", false)
+
+func auto_advance() -> void:
+	## MOVE: every soldier spends spare energy on Sprint, Dash and Rally, then walks as far east as
+	## they can, front man first so nobody trips over a squadmate. Attack cards are left alone.
+	if state != "player" or busy:
+		return
+	resolve(func(): await _act_advance())
+
+func _act_advance() -> void:
+	var sq := squad_alive()
+	# rallies first, so the movement they hand out is there for everyone else's walk
+	for pass_ in ["rally", "move"]:
+		for u in sq:
+			var played := true
+			while played and not u.dead:
+				played = false
+				for i in u.hand.size():
+					var c := Data.card(u.hand[i])
+					if is_mobility(c) and c.has(pass_) and card_cost(u, u.hand[i]) <= u.energy:
+						await _act_self(u, i, c)
+						await wait(6)
+						played = true
+						break
+	sq.sort_custom(func(a, b2): return a.x > b2.x)
+	for u in sq:
+		if u.dead or u.move_left <= 1:
+			continue
+		var sim := sim_walk(u, u.x + u.move_left, u.move_left)
+		if sim.pts.is_empty():
+			continue
+		sel = u
+		await _act_walk(u, sim.pts, sim.used)
+	ui_dirty = true
+
 func cycle_unit(d: int) -> void:
 	## TAB skips soldiers who have nothing left to do, unless nobody can act.
 	var a := squad_alive()
@@ -3682,5 +3733,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 			cycle_unit(-1)
 		elif ev.keycode >= KEY_1 and ev.keycode <= KEY_9:
 			select_card(ev.keycode - KEY_1)
-		elif ev.keycode == KEY_SPACE or ev.keycode == KEY_ENTER:
+		elif ev.keycode == KEY_SPACE:
+			next_unit()
+		elif ev.keycode == KEY_ENTER:
 			end_turn()
+		elif ev.keycode == KEY_M:
+			auto_advance()
