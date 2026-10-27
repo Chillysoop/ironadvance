@@ -724,6 +724,9 @@ func hazards() -> void:
 	climber.x = cl.x - 16; climber.y = b.T.stand_y(climber.x, cl.bot - 30); climber.air = false
 	cam_on(b, climber.x + 200)
 	var y0 := climber.y
+	for o in b.units:
+		if o.kind == "crate" and absf(o.x - cl.offx) < 120:
+			o.gone = true  # a random supply crate on the ledge would bump the hop
 	await hop_to(b, climber, cl.offx + 20)
 	check(climber.y < y0 - 30, "one hop gets a soldier up the %dpx ridge cliff (y %d -> %d)" % [cl.bot - cl.top, y0, climber.y])
 	check(climber.move_left == 0, "a hop uses the rest of the soldier's movement")
@@ -750,12 +753,17 @@ func hazards() -> void:
 	await until(func(): return m1.gone or (not e.air and e.vx == 0), 400)
 	await until(func(): return b.settled(), 800)
 	check(m1.gone, "a Jackal knocked onto a mine sets it off (landed %d, mine %d)" % [e.x, m1.x])
-	var walker := b.mk_enemy("grunt", mines[2].x - 30, b.T.stand_y(mines[2].x - 30, mines[2].y - 40))
+	for o in b.units:
+		if o.is_body():
+			o.gone = true  # bodies from that blast can land on a mine too; this check is about walking
+	# that Jackal's body can be thrown onto the next mine and set it off: walk over one still armed
+	var m2: Unit = mines.filter(func(m): return not m.primed and not m.gone and m != m0 and m != m1)[0]
+	var walker := b.mk_enemy("grunt", m2.x - 30, b.T.stand_y(m2.x - 30, m2.y - 40))
 	b.units.append(walker)
-	var ws := b.sim_walk(walker, mines[2].x + 30, 80)
+	var ws := b.sim_walk(walker, m2.x + 30, 80)
 	await b.walk_along(walker, ws.pts)
 	await frames_wait(30)
-	check(not mines[2].primed, "a Jackal walking over its own mine leaves it alone")
+	check(not m2.primed, "a Jackal walking over its own mine leaves it alone")
 	# crane: shoot the cable, the container drops on the Boar
 	Run.new_run()
 	b = main.start_battle(2)
