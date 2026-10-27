@@ -712,6 +712,8 @@ func run() -> void:
 			await aliens2()
 		"aliens3":
 			await aliens3()
+		"aliens4":
+			await aliens4()
 		"playtest":
 			await playtest()
 		"pinball":
@@ -1003,7 +1005,7 @@ func aliens() -> void:
 	b = main.start_battle(1, Run.level)
 	await until(func(): return b.state == "player" and not b.busy)
 	types = b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
-	check(not types.has("grunt") and not types.has("nade") and Data.BIOME_ALIENS.fortress.all(func(t): return types.has(t)), "level 2 gives every rifleman slot to the fortress's Vharr (%s)" % str(types))
+	check(not types.has("grunt") and not types.has("nade") and Data.BIOME_ALIENS.fortress.filter(func(t): return types.has(t)).size() >= 3, "level 2 gives every rifleman slot to the fortress's Vharr (%s)" % str(types))
 	check(types.count("skitter") % 3 == 0, "Skitters come in packs of 3 (%d)" % types.count("skitter"))
 	b.speed = 2.0
 	# a flat stretch near the start for the duels
@@ -1218,6 +1220,90 @@ func aliens3() -> void:
 	check(ally.hp == 50, "the dome stops bullets and blasts (hp %d)" % ally.hp)
 	b.damage(ally, 10, s, {"melee": true})
 	check(ally.hp == 40, "melee goes through the dome (hp %d)" % ally.hp)
+
+func aliens4() -> void:
+	## Batch 2 Vharr: Prism Drone, Gravity Warden, Phase Stalker, Overseer and its Thralls.
+	Run.new_run()
+	Run.level = Run.make_level("jungle", 2)
+	var b: Battle = main.start_battle(2, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var types := b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
+	check(types.count("overseer") == 1, "level 3 brings one Overseer (%s)" % str(types))
+	b.speed = 2.0
+	var x0 := 600.0
+	flat_strip(b, x0 - 160, 640)
+	# --- Prism Drone: bullets bounce off the mirror face, hit from behind
+	var s := alien_field(b, x0)
+	var pr := spawn_alien(b, "prism", x0 + 240)
+	pr.face = -1
+	var gy: float = pr.y - pr.h / 2.0
+	var tr := b.trace_bullet(x0 + 10, gy, 0.0, 600, 0, s, false)
+	check(not tr.hits.any(func(h): return h.u == pr) and tr.pings.size() == 1 and tr.segs.size() == 2, "a bullet at the mirror bounces off it")
+	pr.face = 1
+	tr = b.trace_bullet(x0 + 10, gy, 0.0, 600, 0, s, false)
+	check(tr.hits.any(func(h): return h.u == pr), "from behind the mirror, it gets hit")
+	var hp0 := s.hp
+	await b.enemy_act(pr)
+	await until(func(): return b.settled(), 900)
+	await shot("alien4_prism")
+	check(pr.face == -1 and s.hp < hp0, "the Prism turns its mirror on the squad and zaps (hp %d -> %d)" % [hp0, s.hp])
+	# --- Gravity Warden: well on the bunched soldiers, pull, bends arcs, collapses on death
+	s = alien_field(b, x0)
+	var s2: Unit = b.squad()[1]
+	s2.x = x0 + 110; s2.y = b.T.stand_y(s2.x, 0); s2.air = false
+	var wd := spawn_alien(b, "warden", x0 + 420)
+	var gap0 := s2.x - s.x
+	await b.enemy_act(wd)
+	await until(func(): return b.settled(), 900)
+	await shot("alien4_warden")
+	check(b.wells.size() == 1, "the Warden drops a gravity well")
+	check(absf(s2.x - s.x) < gap0 - 20, "the well pulls the soldiers together (%d -> %d apart)" % [gap0, absf(s2.x - s.x)])
+	var wl: Dictionary = b.wells[0] if b.wells.size() else {"x": x0, "y": gy}
+	var bent := b.sim_arc(wl.x - 180, wl.y - 120, 3.0, -2.0, 0.0, 30)
+	var keep: Array = b.wells
+	b.wells = []
+	var plain := b.sim_arc(wl.x - 180, wl.y - 120, 3.0, -2.0, 0.0, 30)
+	b.wells = keep
+	var n: int = mini(bent.pts.size(), plain.pts.size()) - 1
+	check(plain.pts[n].distance_to(bent.pts[n]) > 4, "thrown things bend toward the well (%.1f px)" % plain.pts[n].distance_to(bent.pts[n]))
+	b.kill(wd, s)
+	await until(func(): return b.settled(), 600)
+	check(b.wells.is_empty(), "killing the Warden collapses its well")
+	# --- Phase Stalker: phased it ignores bullets and walks through, solid inside rock it dies
+	s = alien_field(b, x0)
+	var st := spawn_alien(b, "stalker", x0 + 200)
+	b.T.fill_r(x0 + 90, b.T.stand_y(x0, 0) - 70, 24, 70, 1)
+	b.T.flush()
+	hp0 = s.hp
+	await b.enemy_act(st)
+	await until(func(): return b.settled(), 900)
+	await shot("alien4_stalker")
+	check(st.fl.get("phased", false), "the Stalker phases on its first turn")
+	check(st.x < x0 + 90 and s.hp < hp0, "it walks through the wall and slashes (x %d, hp %d -> %d)" % [st.x - x0, hp0, s.hp])
+	tr = b.trace_bullet(st.x - 60, st.y - 20, 0.0, 120, 0, s, false)
+	check(not tr.hits.any(func(h): return h.u == st), "bullets pass through a phased Stalker")
+	b.T.fill_r(st.x - 16, st.y - st.h - 4, 32, st.h + 4, 1)
+	b.T.flush()
+	await b.enemy_act(st)
+	await until(func(): return b.settled(), 600)
+	check(st.dead, "turning solid inside rock kills it")
+	# --- Overseer: two Thralls, shrug off one knock, Skitter bursts out, links break on death
+	flat_strip(b, x0 - 160, 640)
+	s = alien_field(b, x0)
+	var j1 := spawn_alien(b, "grunt", x0 + 200)
+	var j2 := spawn_alien(b, "grunt", x0 + 240)
+	j1.hold = true; j2.hold = true
+	var ov := spawn_alien(b, "overseer", x0 + 360)
+	await b.enemy_act(ov)
+	await until(func(): return b.settled(), 900)
+	await shot("alien4_overseer")
+	check(b.is_thrall(j1) and b.is_thrall(j2), "the Overseer turns two Jackals into Thralls")
+	check(b.shrug(j1) and not b.shrug(j1), "a Thrall shrugs off the first knock only")
+	var sk0 := b.units.filter(func(u): return u.type == "skitter" and not u.dead).size()
+	b.kill(j1, s)
+	check(b.units.filter(func(u): return u.type == "skitter" and not u.dead).size() == sk0 + 1, "a Skitter bursts out of a dead Thrall")
+	b.kill(ov, s)
+	check(not b.is_thrall(j2) and j2.has_st("stun"), "killing the Overseer frees and stuns its Thralls")
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.

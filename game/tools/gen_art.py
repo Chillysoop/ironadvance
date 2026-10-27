@@ -1845,6 +1845,79 @@ def weaver_frame(step=0, dy=0, cast=False):
     d.point((26, arm_y - 1 + dy), fill=vc('o'))
     return finish(img)
 
+def prism_frame(t=0, dy=0):
+    """Prism Drone: a floating crystal with a silvered mirror face turned forward."""
+    img, d = canvas()
+    y = 4 + dy
+    d.polygon([(14, y), (22, y + 10), (14, y + 24), (6, y + 10)], fill=vc('a'))     # crystal body
+    d.polygon([(14, y + 2), (18, y + 10), (14, y + 20)], fill=vc('L'))
+    d.polygon([(22, y + 4), (27, y + 10), (22, y + 18)], fill=rgb('#c9e8f0'))        # mirror
+    d.line([(23, y + 6), (23, y + 15)], fill=rgb('#ffffff'))
+    d.line([(26, y + 9), (26, y + 11)], fill=rgb('#8ff0ff'))
+    d.ellipse([11, y + 8, 16, y + 13], fill=vc('o'))                                 # core
+    d.point((13, y + 10), fill=rgb('#d8ffb0'))
+    for k, fx in enumerate((8, 14, 20)):
+        fy = y + 25 + ((k + t) % 2)
+        d.line([(fx, fy), (fx, fy + 2)], fill=vc('o') if (k + t) % 2 else vc('O'))   # thruster motes
+    return finish(img)
+
+def warden_frame(step=0, dy=0, cast=False):
+    """Gravity Warden: squat and armoured, a dark well-orb held in a ring of hands."""
+    img, d = canvas()
+    lo = 1 if step % 2 else 0
+    d.line([(11, 24), (10 - lo, 31)], fill=vc('d'), width=3)
+    d.line([(20, 24), (21 + lo, 31)], fill=vc('d'), width=3)
+    d.ellipse([6, 10 + dy, 25, 28 + dy], fill=vc('A'))                               # body
+    d.ellipse([8, 11 + dy, 23, 22 + dy], fill=vc('a'))
+    d.rectangle([9, 18 + dy, 22, 20 + dy], fill=vc('N'))                             # bone belt
+    d.ellipse([10, 2 + dy, 21, 12 + dy], fill=vc('a'))                               # head
+    d.line([(16, 7 + dy), (21, 7 + dy)], fill=vc('o'))
+    ox, oy = (24, 4 + dy) if cast else (25, 15 + dy)
+    d.line([(20, 14 + dy), (ox - 2, oy + 2)], fill=vc('a'), width=2)
+    d.ellipse([ox - 4, oy - 4, ox + 4, oy + 4], fill=vc('K'))                        # the orb
+    d.arc([ox - 5, oy - 5, ox + 5, oy + 5], 200 + step * 40, 340 + step * 40, fill=rgb('#c47bff'))
+    d.point((ox, oy), fill=rgb('#e2b8ff'))
+    return finish(img)
+
+def stalker_frame(step=0, dy=0, slash=False):
+    """Phase Stalker: lean and hunched, one long blade arm."""
+    img, d = canvas()
+    lx = [(13, 19), (12, 20), (14, 18), (11, 21)][step % 4]
+    d.line([(15, 19 + dy), (lx[0], 25 + dy), (lx[0] - 2, 31)], fill=vc('A'), width=2)
+    d.line([(17, 19 + dy), (lx[1], 25 + dy), (lx[1] + 2, 31)], fill=vc('A'), width=2)
+    d.polygon([(11, 8 + dy), (20, 6 + dy), (19, 20 + dy), (13, 20 + dy)], fill=vc('a'))   # hunched torso
+    for ry in (11, 14, 17):
+        d.line([(13, ry + dy), (18, ry + dy)], fill=vc('A'))
+    d.polygon([(16, 1 + dy), (24, 4 + dy), (17, 8 + dy)], fill=vc('a'))                  # wedge head
+    d.point((21, 4 + dy), fill=rgb('#8ff0ff')); d.point((22, 4 + dy), fill=rgb('#8ff0ff'))
+    if slash:
+        d.line([(19, 9 + dy), (25, 5 + dy)], fill=vc('A'), width=2)
+        d.line([(25, 5 + dy), (31, 1 + dy)], fill=vc('n'), width=2)                      # blade raised
+    else:
+        d.line([(19, 10 + dy), (23, 16 + dy)], fill=vc('A'), width=2)
+        d.line([(23, 16 + dy), (29, 22 + dy)], fill=vc('n'), width=2)                    # blade low
+    d.line([(12, 10 + dy), (9, 17 + dy)], fill=vc('A'), width=2)
+    return finish(img)
+
+def overseer_frame(t=0, dy=0):
+    """Overseer: a veined brain in a glass tank on a small saucer, trailing feeders."""
+    img, d = canvas()
+    y = 1 + dy
+    for i, tx in enumerate((11, 16, 21)):
+        sw = ((i + t) % 3) - 1
+        d.line([(tx, y + 24), (tx + sw, y + 28), (tx - sw, 31)], fill=vc('A'))
+    d.ellipse([5, y + 19, 27, y + 26], fill=vc('G'))                                  # saucer
+    d.line([(7, y + 22), (25, y + 22)], fill=vc('g'))
+    d.ellipse([7, y, 25, y + 21], fill=rgb('#3a6a78'))                                # glass tank
+    d.ellipse([9, y + 4, 23, y + 17], fill=rgb('#ff8fd8'))                            # brain
+    for vx, vy in ((12, 8), (16, 6), (19, 10), (14, 13), (18, 14)):
+        d.point((vx, y + vy), fill=rgb('#c0408f'))
+    d.line([(16, y + 5), (16, y + 16)], fill=rgb('#c0408f'))
+    d.arc([7, y, 25, y + 21], 200, 260, fill=rgb('#d8f6ff'))                           # glass glint
+    d.point((10, y + 4), fill=rgb('#ffffff'))
+    d.point((22, y + 23), fill=vc('o') if t % 2 else vc('O'))
+    return finish(img)
+
 def alien_sheet(name, F):
     """Writes a gunless 32x32 sheet from anim -> [image]; missing anims reuse idle."""
     for a in ANIMS:
@@ -1914,6 +1987,33 @@ def alien_frames():
         'throw': [weaver_frame(0, cast=True), weaver_frame(1, cast=True)],
         'hurt': hurt(weaver_frame(0)),
         'die': dying(weaver_frame(0)),
+    })
+    meta['en_prism'] = alien_sheet('en_prism', {
+        'idle': [prism_frame(i, dy=(1 if i in (2, 3) else 0)) for i in range(4)],
+        'run': [prism_frame(i) for i in range(4)],
+        'hurt': hurt(prism_frame(1)),
+        'die': dying(prism_frame(0)),
+    })
+    meta['en_warden'] = alien_sheet('en_warden', {
+        'idle': [warden_frame(i, dy=(1 if i in (2, 3) else 0)) for i in range(4)],
+        'run': [warden_frame(i, dy=i % 2) for i in range(4)],
+        'throw': [warden_frame(0, cast=True), warden_frame(1, cast=True)],
+        'hurt': hurt(warden_frame(0)),
+        'die': dying(warden_frame(0)),
+    })
+    meta['en_stalker'] = alien_sheet('en_stalker', {
+        'idle': [stalker_frame(0), stalker_frame(0), stalker_frame(0, dy=1), stalker_frame(0, dy=1)],
+        'run': [stalker_frame(i) for i in range(4)],
+        'jump': [stalker_frame(3)],
+        'throw': [stalker_frame(0, slash=True), stalker_frame(0, slash=True)],
+        'hurt': hurt(stalker_frame(2)),
+        'die': dying(stalker_frame(2)),
+    })
+    meta['en_overseer'] = alien_sheet('en_overseer', {
+        'idle': [overseer_frame(i, dy=(1 if i in (2, 3) else 0)) for i in range(4)],
+        'run': [overseer_frame(i) for i in range(4)],
+        'hurt': hurt(overseer_frame(1)),
+        'die': dying(overseer_frame(0)),
     })
     return meta
 

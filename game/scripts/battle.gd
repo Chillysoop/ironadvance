@@ -95,6 +95,7 @@ var charm_used := 0
 var autopick := -1        # tests: pick this option index in every modal instead of waiting
 var theme := "dusk"
 var breach := false       # BREACH biome: the Vharr and the Jackals are at war with each other too
+var wells: Array = []     # Gravity Warden wells: {x, y, r, by}
 var acids: Array = []     # acid pools from burst Hive Pods: {x, y, r, turns}
 var detour := {}          # the camp detour being played: {id, x0, x1, done, left, scav, mod}
 var th := {}              # the theme colors, with the biome's look laid over them
@@ -452,12 +453,36 @@ func cast_foot(n: int) -> String:
 	var tier := 2 if mission.get("finale", false) else mission_idx
 	if tier == 0:
 		return "grunt" if n % 4 != 3 else pool[(n / 4) % pool.size()]
+	if tier >= 2 and n == 1:
+		return "overseer"  # from level 3 an Overseer runs the Jackals that are left
 	return pool[n % pool.size()]
 
 func place_alien(u: Unit) -> void:
 	## A hovering alien starts at its altitude instead of on the floor.
 	if u.weight == "hover" and u.y != null:
 		u.y = hover_y(u, u.x, u.y)
+
+func is_thrall(u: Unit) -> bool:
+	return u.elite == "thrall" or u.fl.get("thrall", false)
+
+func shrug(u: Unit) -> bool:
+	## H6 Thrall: the parasite holds it upright through the first knockback.
+	if u.dead or not is_thrall(u) or u.fl.get("shrugged", false):
+		return false
+	u.fl["shrugged"] = true
+	float_text(u, "SHRUGS IT OFF", Color("9df25c"))
+	return true
+
+func well_acc(x: float, y: float) -> Vector2:
+	## The pull of every Gravity Warden well on a thrown thing at x, y.
+	var a := Vector2.ZERO
+	for w in wells:
+		var d := Vector2(w.x - x, w.y - y)
+		var reach: float = w.r * 1.6
+		var L := d.length()
+		if L < reach and L > 4:
+			a += d / L * 0.16 * (1.0 - L / reach)
+	return a
 
 func kb(u: Unit) -> float:
 	## Knockback multiplier for a weight class: light aliens fly twice as far.
@@ -799,7 +824,7 @@ func unit_at_point(x: float, y: float, shooter, travelled: float, skip: Dictiona
 			if x >= u.x - u.w / 2.0 and x <= u.x + u.w / 2.0 and y >= u.y - u.h and y <= u.y:
 				return u
 			continue
-		if u.dead or u.gone or u.sunk or u.kind == "pow" or u.is_pickup() or u.weight == "buried":
+		if u.dead or u.gone or u.sunk or u.kind == "pow" or u.is_pickup() or u.weight == "buried" or u.fl.get("phased", false):
 			continue
 		if u.has_st("cloak") and shooter != null and shooter.team != u.team:
 			continue  # PREDATOR: rounds pass right through the shimmer
@@ -835,6 +860,16 @@ func trace_bullet(x: float, y: float, ang: float, max_len: float, bounces: int, 
 			segs.append([sx, sy, nx, ny])
 			return {"segs": segs, "hits": hits, "pings": pings, "ping_d": ping_d, "len": trav, "end": null}
 		var u = unit_at_point(nx, ny, shooter, trav, skip)
+		if u != null and u.type == "prism" and dx * u.face < 0:
+			# the Prism Drone's mirror face: the round bounces off it like off stone, free of charge
+			dx = -dx
+			skip[u.id] = true
+			segs.append([sx, sy, px, py])
+			pings.append(Vector2(px, py))
+			ping_d.append(trav)
+			sx = px
+			sy = py
+			continue
 		if u != null:
 			hits.append({"u": u, "x": nx, "y": ny, "dx": dx, "d": trav, "head": not u.heavy and not u.is_prop() and ny < u.y - u.h * 0.72})
 			skip[u.id] = true
@@ -968,7 +1003,7 @@ func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: boo
 			add_status(tg, "mark", 2, a)
 		if not tg.dead and (c.get("burn", false) or a.has_st("flamegod")):
 			add_status(tg, "burn", 2, a)
-		if c.has("knock") and not tg.heavy and not tg.dead and not tg.is_prop():
+		if c.has("knock") and not tg.heavy and not tg.dead and not tg.is_prop() and not shrug(tg):
 			tg.vx = signf(hh.dx if hh.dx != 0 else 1.0) * c.knock * kb(tg)
 			tg.vy = -3
 			tg.air = true
@@ -1365,6 +1400,20 @@ func kill(tg: Unit, src) -> void:
 			var sw: int = tg.fl.get("swell", 0)
 			booms.append({"t": 6, "x": tg.x, "y": tg.y - tg.h / 2.0, "r": Data.ETYPES.bloater.radius + 10.0 * sw, "dmg": Data.ETYPES.bloater.dmg, "owner": src if src is Unit and src.team == "squad" else null})
 			float_text(tg, "POP!", Color("9df25c"), true)
+		if tg.type == "warden":
+			for w in wells.filter(func(q): return q.by == tg):
+				booms.append({"t": 4, "x": w.x, "y": w.y, "r": 40.0, "dmg": 6, "owner": src if src is Unit and src.team == "squad" else null})
+				float_at(w.x, w.y - 20, "WELL COLLAPSES!", Color("c47bff"), true)
+			wells = wells.filter(func(q): return q.by != tg)
+		if tg.type == "overseer":
+			for o in units:
+				if o.fl.get("link", -1) == tg.id and not o.dead:
+					o.fl.erase("link"); o.fl.erase("thrall")
+					add_status(o, "stun", 1)
+					float_text(o, "FREED", Color("ffd23a"), true)
+		if is_thrall(tg):
+			spawn_skitter(tg.x, tg.y)
+			float_text(tg, "IT BURSTS OUT!", Color("9df25c"), true)
 		if tg.type == "hive":
 			acids.append({"x": tg.x, "y": tg.y, "r": 40.0, "turns": 2})
 			float_text(tg, "ACID!", Color("9df25c"), true)
@@ -1494,6 +1543,8 @@ func collision_dmg(u: Unit, amt: float, label: String) -> void:
 
 func crush(u: Unit, d: int, cause, kvx: float, kvy: float) -> void:
 	## Called by the terrain when falling or toppling debris lands on a body.
+	if u.fl.get("phased", false):
+		return  # rubble settles right through a phased Stalker (and buries it)
 	if debug:
 		print("[crush r%d] %s %s d=%d" % [round_n, u.team, u.type, d])
 	if u.team == "squad" and u.def.key == "rook":
@@ -1588,7 +1639,7 @@ func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> vo
 		var dm := maxi(1, int(round(dmg * f))) + bonus
 		if u == owner:
 			dm = 0 if u.perk("blastproof") or (u.team == "squad" and Run.implanted(u.s, "asbestos")) else maxi(1, int(round(dm * 0.4)))
-		if not u.heavy and not u.is_prop() and not u.immovable and u.dome <= 0 and u.weight != "buried":
+		if not u.heavy and not u.is_prop() and not u.immovable and u.dome <= 0 and u.weight != "buried" and not shrug(u):
 			var ang := atan2(cy - y - 6, cx - x)
 			var k := ((1 - d / r) * 6 + 2.5) * kb(u)
 			if u == owner and u.perk("kinetic"):
@@ -1709,6 +1760,9 @@ func update_proj(p: Dictionary) -> void:
 			p.vy = sin(cur) * sp
 	p.vx += wind * 0.006 * p.wind
 	p.vy += grav * p.grav
+	if p.grav > 0 and wells.size():
+		var wa := well_acc(p.x, p.y)
+		p.vx += wa.x; p.vy += wa.y
 	var n := maxi(1, int(ceil(Vector2(p.vx, p.vy).length() / 2.0)))
 	for i in n:
 		var px: float = p.x
@@ -1773,6 +1827,9 @@ func sim_arc(sx: float, sy: float, vx: float, vy: float, wind_f: float, steps: i
 	for i in steps:
 		vx += wind * 0.006 * wind_f
 		vy += grav
+		if wells.size():
+			var wa := well_acc(x, y)
+			vx += wa.x; vy += wa.y
 		x += vx
 		y += vy
 		pts.append(Vector2(x, y))
@@ -1788,6 +1845,9 @@ func sim_grenade(sx: float, sy: float, vx: float, vy: float, wind_f: float, fram
 	for f in frames:
 		vx += wind * 0.006 * wind_f
 		vy += grav
+		if wells.size():
+			var wa := well_acc(x, y)
+			vx += wa.x; vy += wa.y
 		var n := maxi(1, int(ceil(Vector2(vx, vy).length() / 2.0)))
 		for i in n:
 			var px := x
@@ -3942,6 +4002,18 @@ func enemy_act(e: Unit) -> void:
 		"burrower":
 			await burrower_act(e)
 			return
+		"prism":
+			await prism_act(e)
+			return
+		"warden":
+			await warden_act(e)
+			return
+		"stalker":
+			await stalker_act(e)
+			return
+		"overseer":
+			await overseer_act(e)
+			return
 		"grappler":
 			await grappler_act(e)
 			return
@@ -4432,6 +4504,171 @@ func weaver_act(e: Unit) -> void:
 	if b != null:
 		await enemy_shoot(e, b.t, E)
 
+func prism_act(e: Unit) -> void:
+	## Drift to its preferred range with the mirror turned on the nearest soldier, then zap.
+	var E: Dictionary = Data.ETYPES.prism
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	var want: float = tg.x + (E.prefer if e.x >= tg.x else -E.prefer)
+	if absf(want - e.x) > 20 and not e.hold:
+		if e.weight == "hover":
+			await hover_move(e, want, E.speed)
+		else:
+			await enemy_advance(e, want, E.speed * 0.5)
+	if e.dead or e.air:
+		return
+	tg = nearest_squad(e)
+	if tg == null:
+		return
+	e.face = 1 if tg.x >= e.x else -1
+	var c := e.center()
+	if dist(e, tg) <= E.range and ray_clear(c.x, c.y, tg.x, tg.y - tg.h / 2.0):
+		await wait(6)
+		Sfx.play("snipe")
+		tracers.append({"x1": c.x, "y1": c.y, "x2": tg.x, "y2": tg.y - tg.h / 2.0, "c": Color("8ff0ff"), "t": 12})
+		damage(tg, int(round(E.dmg * (1 + alert * 0.06))), e, {})
+		await wait(10)
+
+func warden_act(e: Unit) -> void:
+	## Keep its distance, drop the well on the most bunched-up soldiers, and pull everything in it.
+	var E: Dictionary = Data.ETYPES.warden
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	if not e.hold:
+		await enemy_advance(e, tg.x + (E.prefer if e.x >= tg.x else -E.prefer), E.speed)
+	if e.dead or e.air:
+		return
+	var best = null
+	var best_n := -1
+	for s in foes_of(e):
+		var n := foes_of(e).filter(func(o): return absf(o.x - s.x) < E.well).size()
+		if best == null or n > best_n or (n == best_n and absf(s.x - e.x) < absf(best.x - e.x)):
+			best = s
+			best_n = n
+	if best == null:
+		return
+	wells = wells.filter(func(q): return q.by != e)
+	var well := {"x": best.x, "y": best.y - 20.0, "r": float(E.well), "by": e}
+	wells.append(well)
+	e.face = 1 if best.x >= e.x else -1
+	e.pose = "throw"; e.pose_t = 18
+	Sfx.play("power")
+	float_at(well.x, well.y - 40, "GRAVITY WELL", Color("c47bff"), true)
+	await wait(16)
+	await pull_well(well)
+
+func pull_well(w: Dictionary) -> void:
+	## Everything loose in the well hops up to its pull toward the center.
+	var E: Dictionary = Data.ETYPES.warden
+	var moved := false
+	for u in units:
+		if u.dead or u.gone or u.sunk or u.heavy or u.immovable or u.is_pickup() or u.kind == "pow" or u == w.by:
+			continue
+		if u.weight == "hover" or u.weight == "buried" or u.type == "boss":
+			continue
+		var dx: float = w.x - u.x
+		if absf(dx) > w.r or absf(u.y - w.y) > w.r or absf(dx) < 10:
+			continue
+		var pull := minf(float(E.pull), absf(dx) - 6)
+		u.vx = signf(dx) * pull / 36.0 * kb(u)
+		u.vy = -3.5
+		u.air = true
+		u.walk = null
+		u.bumped = {}
+		u.last_hit_by = w.by
+		moved = true
+	if moved:
+		await wait(4)
+		await until(settled)
+
+func stalker_act(e: Unit) -> void:
+	## The Phase Stalker flips between phased and solid every turn. Phased it walks straight through
+	## rock; turning solid inside rock kills it. Either way it slashes whoever it ends up next to.
+	var E: Dictionary = Data.ETYPES.stalker
+	var phased: bool = not e.fl.get("phased", false)
+	e.fl["phased"] = phased
+	e.alpha = 0.45 if phased else 1.0
+	if not phased and (T.solid(e.x, e.y - e.h * 0.5) or T.solid(e.x, e.y - e.h + 4)):
+		float_text(e, "SOLID IN THE ROCK!", Color("ff7a3d"), true)
+		Sfx.play("thud")
+		damage(e, e.hp, null, {"impact": true})
+		return
+	float_text(e, "PHASED" if phased else "SOLID", Color("8ff0ff") if phased else Color("c47bff"))
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	if not e.hold:
+		var side := 1.0 if e.x >= tg.x else -1.0
+		if phased:
+			var tx: float = tg.x + side * 24
+			tx = e.x + clampf(tx - e.x, -E.phase_move, E.phase_move)
+			var ty = T.stand_y(tx, tg.y - 60)
+			if ty == null or ty >= WATER_Y - 4:
+				ty = T.stand_y(tx, 0)
+			if ty != null and ty < WATER_Y - 4:
+				var pts: Array = []
+				var n := int(maxf(1, absf(tx - e.x) / 3.0))
+				for k in range(1, n + 1):
+					pts.append([lerpf(e.x, tx, float(k) / n), lerpf(e.y, ty, float(k) / n), false])
+				Sfx.play("power")
+				await walk_along(e, pts)
+		else:
+			await enemy_advance(e, tg.x + side * 24, E.speed)
+	if e.dead:
+		return
+	tg = nearest_squad(e)
+	if tg != null and absf(tg.x - e.x) < 44 and absf(tg.y - e.y) < 44:
+		e.face = 1 if tg.x >= e.x else -1
+		e.pose = "throw"; e.pose_t = 14
+		Sfx.play("slash")
+		await wait(6)
+		damage(tg, int(round(E.dmg * (1 + alert * 0.06))), e, {"melee": true})
+		await wait(10)
+
+func overseer_act(e: Unit) -> void:
+	## Link up to two Jackals as Thralls, hang back behind them, and lash out at the nearest soldier.
+	var E: Dictionary = Data.ETYPES.overseer
+	var linked := units.filter(func(o): return o.fl.get("link", -1) == e.id and not o.dead)
+	if linked.size() < E.links:
+		var free := units.filter(func(o): return o.team == "enemy" and not o.dead and o.active and faction(o) == "jackal" and o.type != "boss" and not o.fl.has("link") and absf(o.x - e.x) < 460)
+		free.sort_custom(func(a, b2): return absf(a.x - e.x) < absf(b2.x - e.x))
+		for o in free.slice(0, E.links - linked.size()):
+			o.fl["link"] = e.id
+			o.fl["thrall"] = true
+			float_text(o, "THRALL", Color("9df25c"), true)
+			linked.append(o)
+		if free.size():
+			Sfx.play("power")
+			await wait(12)
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	var away := 1.0 if e.x >= tg.x else -1.0
+	var anchor: float = tg.x + away * 320
+	if linked.size():
+		anchor = linked.map(func(o): return o.x).reduce(func(a, b2): return a + b2, 0.0) / linked.size() + away * 90
+	if absf(anchor - e.x) > 20 and not e.hold:
+		if e.weight == "hover":
+			await hover_move(e, anchor, E.speed)
+		else:
+			await enemy_advance(e, anchor, E.speed * 0.5)
+	if e.dead or e.air:
+		return
+	tg = nearest_squad(e)
+	if tg == null:
+		return
+	var c := e.center()
+	if dist(e, tg) <= E.range and ray_clear(c.x, c.y, tg.x, tg.y - tg.h / 2.0):
+		e.face = 1 if tg.x >= e.x else -1
+		await wait(6)
+		Sfx.play("power")
+		for k in 2:
+			tracers.append({"x1": c.x, "y1": c.y + k * 2, "x2": tg.x, "y2": tg.y - tg.h / 2.0, "c": Color("ff6ad5") if k else Color("c47bff"), "t": 14})
+		damage(tg, int(round(E.dmg * (1 + alert * 0.06))), e, {})
+		await wait(10)
+
 func tick_acids() -> void:
 	## End of the enemy phase: anyone but the Vharr standing in Hive acid takes 3.
 	for a in acids:
@@ -4873,7 +5110,7 @@ func body_collisions(u: Unit) -> void:
 	if (sp < 3 and not u.rushing) or u.leaping:
 		return  # a vault is footwork, not a tackle
 	for o in units:
-		if o == u or o.dead or o.gone or o.sunk or o.kind == "pow" or o.para or o.is_pickup() or u.is_pickup() or o.weight == "buried":
+		if o == u or o.dead or o.gone or o.sunk or o.kind == "pow" or o.para or o.is_pickup() or u.is_pickup() or o.weight == "buried" or o.fl.get("phased", false):
 			continue
 		if (u.kind == "slug" and o.team == "squad") or (o.kind == "slug" and u.team != "enemy"):
 			continue  # the Slug rolls over Jackals, never its own crew
@@ -4976,7 +5213,7 @@ func physics(u: Unit) -> void:
 			u.vy = 0
 			if u.crash:
 				u.crash = false
-				collision_dmg(u, 5, "CRASH")
+				collision_dmg(u, Data.ETYPES[u.type].get("crash", 5) if u.kind == "enemy" else 5, "CRASH")
 			if u.para:
 				u.para = false
 			elif imp > 6.5 and not u.rushing and not u.jumping and not u.leaping:
