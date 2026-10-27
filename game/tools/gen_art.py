@@ -398,6 +398,9 @@ def build_body(key, pal, legs='stand', bob=0, lean=0, arms=None, head_dy=0, face
         head = [r for r in head]
         head[5] = head[5].replace('e', 'K')
         head[7] = head[7][:5] + 'K' + head[7][6:]
+    elif face == 'blink':
+        head = [r for r in head]
+        head[5] = head[5].replace('e', 'z')
     stamp(img, head, 5 + lean, 3 + bob + head_dy, pal)
     if arms:
         rows, ax, ay = arm_rows(arms)
@@ -463,10 +466,11 @@ def char_frames(key, pal):
     """Returns dict anim -> list of (image, shoulder(x,y), gun_visible)."""
     F = {}
     sx, sy = SHOULDER
-    F['idle'] = [(build_body(key, pal, 'stand', 0), (sx, sy), True),
-                 (build_body(key, pal, 'stand', 0), (sx, sy), True),
-                 (build_body(key, pal, 'stand2', 1), (sx, sy + 1), True),
-                 (build_body(key, pal, 'stand2', 1), (sx, sy + 1), True)]
+    # idle: a slow breath with a blink at the end of the cycle (12 frames, drawn ~10 ticks each)
+    st0 = (build_body(key, pal, 'stand', 0), (sx, sy), True)
+    st1 = (build_body(key, pal, 'stand2', 1), (sx, sy + 1), True)
+    bl = (build_body(key, pal, 'stand', 0, face='blink'), (sx, sy), True)
+    F['idle'] = [st0, st0, st0, st1, st1, st1, st0, st0, st0, st1, st1, bl]
     run = []
     for i, (lg, b) in enumerate([('run0', 0), ('run1', 1), ('run2', 1), ('run3', 0)] * 2):
         flip_legs = i >= 4
@@ -487,12 +491,16 @@ def char_frames(key, pal):
     F['climb'] = [(build_body(key, pal, 'run1', 0, arms='climb'), (sx, sy), False),
                   (build_body(key, pal, 'run3', 1, arms='climb'), (sx, sy + 1), False)]
     F['crouch'] = [(build_body(key, pal, 'crouch', 2), (sx, sy + 2), True)]
-    # death: knocked back, then flat on the ground
+    # death, Metal Slug style: the hit snaps them back, they fly arms up, slam flat, bounce once
+    # and lie still (6 frames)
     die = []
-    base = build_body(key, pal, 'jump', 0, face='ouch', arms='hurt')
-    for i, ang in enumerate([20, 45, 70, 90, 90]):
-        im = settle(base.rotate(ang, resample=Image.NEAREST, center=(12, 14), expand=False), 1 if i == 3 else 0)
-        die.append((im, (sx, sy), False))
+    hit = build_body(key, pal, 'stand2', 0, lean=-1, arms='hurt', face='ouch')
+    fly = build_body(key, pal, 'jump', 0, face='ouch', arms='cheer')
+    flat = build_body(key, pal, 'jump', 0, face='ouch', arms='hurt')
+    kick = build_body(key, pal, 'run1', 0, face='ouch', arms='cheer')
+    for im, ang, lift in ((hit, 8, 0), (fly, 30, 5), (fly, 62, 4), (flat, 90, 0), (kick, 96, 2), (flat, 90, 0)):
+        r = settle(im.rotate(ang, resample=Image.NEAREST, center=(12, 14), expand=False), lift)
+        die.append((r, (sx, sy), False))
     F['die'] = die
     out = {}
     for a, fr in F.items():
@@ -804,27 +812,54 @@ def explosion_sheet():
     sheet.save(os.path.join(OUT, 'sprites', 'explosion.png'))
 
 def small_fx():
-    # muzzle flash: 3 frames 12x8
-    mf = Image.new('RGBA', (36, 8), (0, 0, 0, 0))
+    # muzzle flash: 3 frames 16x12, a hot white core in a four-point star, then a cone, then sparks
+    mf = Image.new('RGBA', (48, 12), (0, 0, 0, 0))
     d = ImageDraw.Draw(mf)
-    Y, W, O = rgb('#ffd23a'), rgb('#ffffff'), rgb('#ff8a2a')
-    d.polygon([(0, 3), (6, 0), (11, 3), (6, 7)], fill=O); d.polygon([(0, 3), (5, 1), (8, 3), (5, 6)], fill=Y); d.line([(0, 3), (5, 3)], fill=W)
-    d.polygon([(12, 3), (16, 1), (21, 3), (16, 5)], fill=O); d.line([(12, 3), (17, 3)], fill=Y)
-    d.polygon([(24, 3), (27, 2), (30, 3), (27, 4)], fill=Y)
+    Y, W, O, R = rgb('#ffd23a'), rgb('#ffffff'), rgb('#ff8a2a'), rgb('#e04a2a')
+    d.polygon([(0, 6), (5, 0), (7, 4), (15, 6), (7, 8), (5, 11)], fill=R)
+    d.polygon([(0, 6), (5, 2), (7, 5), (13, 6), (7, 7), (5, 10)], fill=O)
+    d.polygon([(0, 6), (4, 3), (10, 6), (4, 9)], fill=Y)
+    d.ellipse([1, 4, 6, 8], fill=W)
+    d.polygon([(16, 6), (21, 3), (31, 6), (21, 9)], fill=O)
+    d.polygon([(16, 6), (21, 4), (27, 6), (21, 8)], fill=Y)
+    d.line([(16, 6), (22, 6)], fill=W)
+    for (x, y) in ((34, 5), (37, 3), (38, 8), (41, 6), (44, 4)):
+        d.point((x, y), fill=Y)
+        d.point((x + 1, y), fill=O)
     mf.save(os.path.join(OUT, 'sprites', 'muzzle.png'))
-    # smoke puff: 6 frames 12x12
-    sp = Image.new('RGBA', (72, 12), (0, 0, 0, 0))
-    d = ImageDraw.Draw(sp)
+    # smoke puff: 6 frames 16x16, a lumpy cloud lit from above that swells and breaks apart
+    sp = Image.new('RGBA', (96, 16), (0, 0, 0, 0))
+    lumps = [(0, 1, 1.0), (-3, 2, 0.75), (3, 2, 0.8), (-1, -2, 0.7), (2, -2, 0.6)]
+    tones = [(246, 242, 232), (206, 202, 196), (150, 146, 144), (98, 94, 96)]
+    rng = np.random.default_rng(7)
+    noise = rng.random((16, 16))
     for i in range(6):
-        r = 2 + i
-        g = 230 - i * 22
-        c = (g, g, g - 6, 255)
-        d.ellipse([i * 12 + 6 - r, 6 - r, i * 12 + 6 + r, 6 + r], fill=c)
-        if i > 2:
-            for k in range(0, 12, 2):
-                for j in range(0, 12, 2):
-                    if (k + j + i) % 4 == 0:
-                        sp.putpixel((i * 12 + k, j), (0, 0, 0, 0))
+        cell = Image.new('L', (16, 16), 0)
+        d = ImageDraw.Draw(cell)
+        base = 2.4 + i * 0.55
+        spread = 1 + i * 0.12
+        for ox, oy, k in lumps:
+            r = base * k
+            cx, cy = 8 + ox * spread, 8 + oy * spread - i * 0.3
+            d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=255)
+        m = np.array(cell) > 0
+        m &= noise > (0, 0, 0.08, 0.25, 0.45, 0.65)[i]  # breaks apart as it ages
+        out = np.zeros((16, 16, 4), np.uint8)
+        for y in range(16):
+            for x in range(16):
+                if not m[y, x]:
+                    continue
+                if y == 0 or not m[y - 1, x]:
+                    t = 0
+                elif y < 15 and not m[y + 1, x]:
+                    t = 3 if i < 3 else 2
+                elif y < 14 and not m[y + 2, x]:
+                    t = 2
+                else:
+                    t = 1
+                t = min(3, t + (1 if i >= 4 else 0))
+                out[y, x] = (*tones[t], 255)
+        sp.alpha_composite(Image.fromarray(out, 'RGBA'), (i * 16, 0))
     sp.save(os.path.join(OUT, 'sprites', 'puff.png'))
     # shell casing / spark / debris bits 3x3 etc. drawn in code; slash arc 3 frames 20x20
     sl = Image.new('RGBA', (60, 20), (0, 0, 0, 0))
