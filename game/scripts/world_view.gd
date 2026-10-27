@@ -817,7 +817,7 @@ func draw_targeting() -> void:
 					Art.text(self, "CAN'T DRILL THERE", Vector2(u.x, u.y - u.h - 8), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.get("jump", false) or c.get("rush", false):
 				var v := b.jump_vel(u, m, c.get("jpow", 1.0)) if c.get("jump", false) else b.rush_vel(u, m)
-				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50, true)
+				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50)
 				for i in sim.pts.size():
 					if i % 2 == 0:
 						var p: Vector2 = sim.pts[i]

@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
+## Scenarios: title, start, aim, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -424,6 +424,8 @@ func run() -> void:
 			main.show_shop()
 			await frames_wait(20)
 			await shot("shop")
+		"picker":
+			await picker()
 		"flow":
 			# title -> brief -> each mission (forced win) -> results -> shop -> next brief
 			main.show_title()
@@ -678,6 +680,49 @@ func find_struct(b: Battle, t: String) -> Dictionary:
 			return s
 	return {}
 
+func picker() -> void:
+	## The Quartermaster's soldier picks: buying a card or picking whose deck to work on lights up
+	## the squad tiles along the bottom instead of opening a popup.
+	Run.new_run()
+	Run.scrip = 400
+	Run.soldiers[0].hp = 10
+	Run.soldiers[2].tags = 1
+	main.show_shop()
+	await frames_wait(20)
+	await shot("picker_shop")
+	var sh: Control = main.screen
+	var o: Dictionary = sh.stock_cards[0]
+	var before: int = Run.soldiers[1].deck.size()
+	sh.buy_card(0)
+	await frames_wait(20)
+	await shot("picker_buy")
+	sh.chosen.emit(1)
+	await frames_wait(10)
+	check(Run.soldiers[1].deck.size() == before + 1 and o.get("sold", false), "buying a card puts it in the picked soldier's deck")
+	await shot("picker_bought")
+	sh.buy_card(1)
+	await frames_wait(10)
+	sh.chosen.emit(-1)
+	await frames_wait(10)
+	check(not sh.stock_cards[1].get("sold", false) and sh.chooser == null, "cancelling a pick buys nothing")
+	sh.remove_card()
+	await frames_wait(20)
+	await shot("picker_remove")
+	sh.chosen.emit(-1)
+	await frames_wait(10)
+	sh.mode = "barracks"
+	sh.build()
+	sh.restore_tag()
+	await frames_wait(20)
+	await shot("picker_tag")
+	var tags: int = Run.soldiers[2].tags
+	sh.chosen.emit(0)
+	await frames_wait(10)
+	check(Run.soldiers[2].tags == tags + 1, "the dog tag goes to the only soldier missing one")
+	main.show_title()
+	await frames_wait(30)
+	await shot("picker_title")
+
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)
 
@@ -797,6 +842,30 @@ func hazards() -> void:
 	await b.walk_along(walker, ws.pts)
 	await frames_wait(30)
 	check(not m2.primed, "a Jackal walking over its own mine leaves it alone")
+	# the MOVE button and the after-wave drag never walk a soldier onto a mine
+	var walker_s: Unit = b.squad_alive()[0]
+	for o in b.squad_alive():
+		if o != walker_s:
+			o.x = maxf(0, m2.x - 400)  # out of the way so only one soldier walks
+	walker_s.x = m2.x - 30; walker_s.y = b.T.stand_y(walker_s.x, m2.y - 40); walker_s.air = false
+	walker_s.move_left = 200; walker_s.energy = 0
+	b.cam_x = maxf(0, m2.x - 300); b.cam_tx = b.cam_x
+	b.busy = false
+	b.auto_advance()
+	await until(func(): return not b.busy, 600)
+	await frames_wait(30)
+	check(not m2.primed and walker_s.x < m2.x, "MOVE stops short of an armed mine (soldier %d, mine %d)" % [walker_s.x, m2.x])
+	var al := b.squad_alive()
+	var dragged: Unit = al[0]
+	var lane := b.cam_x + 16
+	var lane_mine := b.mk_unit()
+	lane_mine.team = "neutral"; lane_mine.kind = "mine"; lane_mine.w = 12; lane_mine.h = 6
+	lane_mine.x = lane; lane_mine.y = b.T.stand_y(lane, b.T.ground_at(lane) - 40)
+	b.units.append(lane_mine)
+	dragged.x = lane - 200; dragged.y = lane_mine.y; dragged.air = false
+	b.drag_stragglers()
+	await frames_wait(30)
+	check(not lane_mine.primed and absf(dragged.x - lane_mine.x) > dragged.w / 2.0 + 5, "dragging a straggler forward skips past a mine (soldier %d, mine %d)" % [dragged.x, lane_mine.x])
 	# crane: shoot the cable, the container drops on the Boar
 	Run.new_run()
 	b = main.start_battle(2)
@@ -1212,7 +1281,7 @@ func soldat() -> void:
 	var tr := b.trace_bullet(eye.x, eye.y, aim, 2400, 0, s, false)
 	check(tr.hits.any(func(hh): return hh.u == up), "a bullet from below goes up through the grating into the Jackal")
 	var arc := b.sim_arc(up.x, top - 20, 0.0, 1.0, 0, 200)
-	check(arc.y > top + 12, "a grenade dropped on the grating falls through it (lands y %d, deck %d)" % [arc.y, top])
+	check(arc.end and arc.y <= top + 4, "the throw preview lands a grenade on the grating (y %d, deck %d)" % [arc.y, top])
 	check(not b.ray_clear(eye.x, eye.y, eye.x, b.T.ground_at(eye.x) + 20) or true, "sight lines run")
 	await shot("soldat_catwalk")
 	# --- chain-link: blocks walking and vaulting, not bullets; a Hop clears it
@@ -1231,6 +1300,14 @@ func soldat() -> void:
 	tr = b.trace_bullet(eye.x, eye.y, atan2(far.y - 20 - eye.y, far.x - eye.x), 2400, 0, s, false)
 	check(tr.hits.any(func(hh): return hh.u == far), "a bullet goes through the chain-link")
 	check(b.visibility(far, s) > 0, "Jackals can see and shoot through the chain-link")
+	var nade: Dictionary = b.mk_proj({"kind": "grenade", "x": fs.x - 30, "y": b.T.ground_at(fs.x) - 40, "vx": 6.0, "vy": -1.0, "bounce": true, "fuse": 9999})
+	for i in 80:
+		b.update_proj(nade)
+	check(nade.x < fs.x, "a grenade bounces off the chain-link (ended at %d, fence %d)" % [nade.x, fs.x])
+	var drop: Dictionary = b.mk_proj({"kind": "grenade", "x": mid + 20, "y": top - 60, "vx": 0.0, "vy": 0.0, "bounce": true, "fuse": 9999})
+	for i in 120:
+		b.update_proj(drop)
+	check(drop.y <= top + 2 and not drop.dead, "a grenade lands on the grating instead of falling through (y %d, deck %d)" % [drop.y, top])
 	await b.enemy_advance(far, fs.x - 80, 150)
 	check(far.x > fs.x, "a Jackal can't vault the fence (stopped at %d, fence %d)" % [far.x, fs.x])
 	await shot("soldat_fence")
