@@ -1637,109 +1637,251 @@ def ui():
 
 # ---------------------------------------------------------------- Vharr aliens
 # Violet skin, ooze-green glow and pale bone, so they never read as Jackals at a glance.
-VHARR = {'a': '#b06ae0', 'A': '#7d3cb0', 'd': '#4a1f6e', 'o': '#9df25c', 'O': '#5fbf2a', 'n': '#e8dcc2', 'N': '#b8aa8c'}
+# Drawn as shapes on a 32x32 frame, then lit from the upper left (a pale rim on top-left edges,
+# a dark band on bottom-right ones) and outlined like everything else.
+VHARR = {'a': '#b06ae0', 'A': '#7d3cb0', 'd': '#4a1f6e', 'L': '#e2b8ff', 'o': '#9df25c', 'O': '#5fbf2a',
+         'n': '#e8dcc2', 'N': '#b8aa8c', 'g': '#a8acb4', 'G': '#6c7078', 'K': '#1c1410'}
+AW = AH = 32
 
-SKITTER = {
-    'body': [
-        "....nnnnnn......",
-        "..nnNNNNNNnn....",
-        ".nNaaaaaaaaNn...",
-        "nNaaAAaaAAaaaoo.",
-        "NaaaaaaaaaaaaoOd",
-        ".dAAAAAAAAAAAAd.",
-    ],
-    'legs0': ["..d..d...d..d...", ".d..d...d..d....", "d..d...d..d....."],
-    'legs1': ["..d..d...d..d...", "...d..d...d..d..", "....d..d...d..d."],
-    'pounce': ["dd...d..d...dd..", "................", "................"],
-}
-BLINKER = [
-    "....aaaa....",
-    "...aaaaAa...",
-    "...aaaaoo...",
-    "...aaaaaa...",
-    "....dAAd....",
-    "...nnnnnn...",
-    "..aAnNNnAa..",
-    ".aA.aAAa.Aa.",
-    ".a..aAAa..a.",
-    "a...aAAa...a",
-    "o...dAAd...o",
-    ".....AA.....",
-    "....a..a....",
-    "....a..a....",
-    "...a....a...",
-    "...a....a...",
-    "..dd....dd..",
-]
-BLINKER_RUN = ["....a..a....", "...a...a....", "..a.....a...", ".dd.....a...", "........dd..", "............"]
-SQUID = [
-    "....aaaaaa....",
-    "..aaaaaaaaaa..",
-    ".aaAaaaaaaaaa.",
-    ".aAAaaaaaaoOa.",
-    "aaAAaaaaaaooaa",
-    "aAAAAaaaaaaaaa",
-    ".dAAAAAAAAAAd.",
-    "..d.a.a.a.a.dk",
-    ".a..a.a.a..akk",
-    "a..a..a..a..a.",
-]
-SQUID_WIGGLE = [".a..a..a..a.d.", "..a..a.a..a..a", ".a.a...a.a..a."]
+def vc(k):
+    return rgb(VHARR[k])
+
+def lit(img, body_cols):
+    """Rim-light the shapes: pixels of a body colour with open space up-left get the light tone,
+    with open space down-right get the dark tone. body_cols maps base colour -> (light, dark)."""
+    src = img.load()
+    out = img.copy()
+    o = out.load()
+    w, h = img.size
+    for y in range(h):
+        for x in range(w):
+            c = src[x, y]
+            if c[3] == 0 or c not in body_cols:
+                continue
+            hi, lo = body_cols[c]
+            def empty(X, Y):
+                return not (0 <= X < w and 0 <= Y < h) or src[X, Y][3] == 0
+            if empty(x - 1, y) or empty(x, y - 1):
+                o[x, y] = hi
+            elif empty(x + 1, y) or empty(x, y + 1) or empty(x + 1, y + 1):
+                o[x, y] = lo
+    return out
+
+SKIN = {vc('a'): (vc('L'), vc('A')), vc('A'): (vc('a'), vc('d')), vc('N'): (vc('n'), vc('G'))}
+
+def canvas():
+    img = Image.new('RGBA', (AW, AH), (0, 0, 0, 0))
+    return img, ImageDraw.Draw(img)
+
+def finish(img):
+    return lit(img, SKIN)
+
+def skitter_frame(step=0, air=False, dy=0):
+    img, d = canvas()
+    y0 = 23 + dy
+    # legs first, behind the body
+    for i, lx in enumerate((10, 13, 17, 20)):
+        if air:
+            d.line([(lx, y0 + 5), (lx - 2, y0 + 7)], fill=vc('d'))
+        else:
+            off = (1 if (i + step) % 2 else -1)
+            d.line([(lx, y0 + 4), (lx + off, 31)], fill=vc('d'))
+    d.ellipse([8, y0, 22, y0 + 7], fill=vc('A'))
+    d.ellipse([9, y0 - 1, 20, y0 + 4], fill=vc('a'))        # carapace
+    for px in (12, 16):
+        d.line([(px, y0), (px - 1, y0 + 4)], fill=vc('A'))   # plate seams
+    d.ellipse([19, y0 + 1, 25, y0 + 6], fill=vc('A'))       # head
+    d.point((23, y0 + 2), fill=vc('o')); d.point((23, y0 + 3), fill=vc('O'))
+    d.line([(25, y0 + 4), (26, y0 + 6)], fill=vc('n'))       # mandibles
+    for sx in (11, 15, 18):
+        d.point((sx, y0), fill=vc('N'))                      # bony spines
+    return finish(img)
+
+def squid_frame(w=0, dy=0, gun=True):
+    img, d = canvas()
+    y0 = 6 + dy
+    for i, tx in enumerate((9, 12, 15, 18, 21, 24)):
+        sway = ((i + w) % 3) - 1
+        d.line([(tx, y0 + 14), (tx + sway, y0 + 19), (tx - sway, 30)], fill=vc('A'))
+    d.ellipse([6, y0, 27, y0 + 17], fill=vc('a'))            # dome
+    d.ellipse([9, y0 + 2, 18, y0 + 8], fill=vc('L'))         # sheen
+    d.line([(8, y0 + 12), (26, y0 + 12)], fill=vc('A'))     # brow ridge
+    d.ellipse([19, y0 + 7, 25, y0 + 12], fill=vc('n'))       # eye
+    d.ellipse([21, y0 + 8, 24, y0 + 11], fill=vc('o'))
+    d.point((23, y0 + 9), fill=vc('K'))
+    if gun:
+        d.rectangle([22, y0 + 15, 30, y0 + 17], fill=vc('g'))
+        d.rectangle([29, y0 + 14, 31, y0 + 18], fill=vc('G'))
+        d.point((31, y0 + 16), fill=vc('o'))
+    return finish(img)
+
+def blinker_frame(step=0, dy=0, claw=False):
+    img, d = canvas()
+    y = dy
+    # legs
+    lx = [(14, 17), (13, 19), (15, 16), (12, 20)][step % 4]
+    d.line([(15, 19 + y), (lx[0], 25 + y), (lx[0] - 1, 31)], fill=vc('A'), width=2)
+    d.line([(17, 19 + y), (lx[1], 25 + y), (lx[1] + 1, 31)], fill=vc('A'), width=2)
+    # torso and bone collar
+    d.polygon([(12, 9 + y), (21, 9 + y), (19, 20 + y), (14, 20 + y)], fill=vc('a'))
+    d.line([(12, 10 + y), (21, 10 + y)], fill=vc('N'), width=2)
+    for ry in (13, 15, 17):
+        d.line([(14, ry + y), (19, ry + y)], fill=vc('A'))
+    # arms: long, ending in glowing claws
+    reach = 8 if claw else 0
+    d.line([(20, 11 + y), (24 + reach // 2, 16 + y), (26 + reach, 20 + y - reach // 2)], fill=vc('A'), width=2)
+    d.line([(13, 11 + y), (10, 17 + y), (11, 22 + y)], fill=vc('A'), width=2)
+    for cx, cy in ((27 + reach, 21 + y - reach // 2), (11, 23 + y)):
+        d.point((cx, cy), fill=vc('o')); d.point((cx + 1, cy), fill=vc('o')); d.point((cx, cy + 1), fill=vc('O'))
+    # long skull, eyes forward
+    d.ellipse([12, 0 + y, 22, 9 + y], fill=vc('a'))
+    d.ellipse([14, 1 + y, 18, 4 + y], fill=vc('L'))
+    d.line([(19, 4 + y), (22, 4 + y)], fill=vc('o'))
+    d.point((22, 5 + y), fill=vc('O'))
+    return finish(img)
+
+def burrower_frame(open_=0, dy=0):
+    """The Burrower reared up out of its hole: ringed segments, a bony maw."""
+    img, d = canvas()
+    segs = [(16, 27), (17, 22), (18, 17), (19, 12)]
+    for i, (cx, cy) in enumerate(segs):
+        r = 8 - i
+        d.ellipse([cx - r, cy - r + dy, cx + r, cy + r + dy], fill=vc('A') if i % 2 else vc('a'))
+        d.line([(cx - r + 1, cy + dy), (cx + r - 1, cy + dy)], fill=vc('d'))
+    cx, cy = 20, 6 + dy
+    d.ellipse([cx - 6, cy - 5, cx + 6, cy + 5], fill=vc('a'))
+    # maw: bone teeth around a dark mouth, wider when open
+    m = 2 + open_
+    d.ellipse([cx - 1, cy - m, cx + 7, cy + m], fill=vc('K'))
+    for t in range(-m, m + 1, 2):
+        d.point((cx + 1, cy + t), fill=vc('n'))
+        d.point((cx + 6, cy + t), fill=vc('n'))
+    d.point((cx - 3, cy - 2), fill=vc('o'))
+    return finish(img)
+
+def grappler_frame(mouth=0, dy=0):
+    """A squat, heavy frog-thing anchored on four splayed limbs."""
+    img, d = canvas()
+    d.line([(6, 26), (2, 31)], fill=vc('A'), width=2)
+    d.line([(26, 26), (30, 31)], fill=vc('A'), width=2)
+    d.line([(10, 28), (8, 31)], fill=vc('d'), width=2)
+    d.line([(22, 28), (24, 31)], fill=vc('d'), width=2)
+    d.ellipse([3, 9 + dy, 29, 30], fill=vc('A'))
+    d.ellipse([5, 8 + dy, 27, 24 + dy], fill=vc('a'))
+    for wx in (9, 15, 21):
+        d.ellipse([wx, 12 + dy, wx + 3, 15 + dy], fill=vc('N'))   # warts
+    d.line([(13, 20 + dy), (29, 20 + dy - mouth)], fill=vc('K'))
+    if mouth:
+        d.polygon([(14, 20 + dy), (29, 20 + dy - mouth), (29, 21 + dy + mouth)], fill=vc('K'))
+        d.line([(16, 21 + dy), (28, 21 + dy)], fill=rgb('#e05a8a'))
+    d.ellipse([20, 9 + dy, 25, 14 + dy], fill=vc('n'))
+    d.ellipse([22, 10 + dy, 24, 13 + dy], fill=vc('o'))
+    return finish(img)
+
+def bloater_frame(step=0, dy=0):
+    """A walking sac of ooze on stubby legs; the game scales it up as it swells."""
+    img, d = canvas()
+    lo = 1 if step % 2 else 0
+    d.line([(11, 26), (10 - lo, 31)], fill=vc('d'), width=2)
+    d.line([(20, 26), (21 + lo, 31)], fill=vc('d'), width=2)
+    d.ellipse([4, 6 + dy, 27, 29 + dy], fill=vc('a'))
+    d.ellipse([8, 8 + dy, 16, 14 + dy], fill=vc('L'))
+    for px, py, r in ((19, 12, 2), (11, 20, 3), (21, 22, 2), (15, 25, 1)):
+        d.ellipse([px - r, py - r + dy, px + r, py + r + dy], fill=vc('o'))
+        d.point((px - r + 1, py - r + 1 + dy), fill=rgb('#d8ffb0'))
+    d.ellipse([20, 15 + dy, 25, 19 + dy], fill=vc('n'))
+    d.point((23, 17 + dy), fill=vc('K'))
+    return finish(img)
+
+def weaver_frame(step=0, dy=0, cast=False):
+    """Dome Weaver: thin and robed, a crest that holds the emitter crystal."""
+    img, d = canvas()
+    d.polygon([(11, 14 + dy), (21, 14 + dy), (24, 31), (8, 31)], fill=vc('A'))   # robe
+    d.line([(12, 18 + dy), (10, 31)], fill=vc('d'))
+    d.line([(20, 18 + dy), (22, 31)], fill=vc('d'))
+    d.line([(16, 16 + dy), (16, 31)], fill=vc('a'))
+    d.ellipse([11, 5 + dy, 21, 15 + dy], fill=vc('a'))                           # head
+    d.polygon([(13, 6 + dy), (16, -1 + dy if dy > 0 else 0), (19, 6 + dy)], fill=vc('N'))   # crest
+    glow = vc('o') if (step % 2 or cast) else vc('O')
+    d.ellipse([14, 1 + dy, 18, 5 + dy], fill=glow)
+    d.line([(18, 10 + dy), (21, 10 + dy)], fill=vc('o'))                         # eye slit
+    arm_y = 9 if cast else 18
+    d.line([(20, 16 + dy), (25, arm_y + dy)], fill=vc('a'), width=2)
+    d.point((26, arm_y - 1 + dy), fill=vc('o'))
+    return finish(img)
 
 def alien_sheet(name, F):
-    """Writes a gunless 24x24 sheet like the brute's, from anim -> [image]; missing anims reuse idle."""
-    pal = palette(VHARR)
+    """Writes a gunless 32x32 sheet from anim -> [image]; missing anims reuse idle."""
     for a in ANIMS:
         F.setdefault(a, F['idle'])
     cols = max(len(v) for v in F.values())
     rows = len(ANIMS)
-    sheet = Image.new('RGBA', (cols * FW, rows * 2 * FH), (0, 0, 0, 0))
-    meta = {'frame': [FW, FH], 'anchor': [12, 24], 'anims': {}, 'flash_row_offset': rows}
+    sheet = Image.new('RGBA', (cols * AW, rows * 2 * AH), (0, 0, 0, 0))
+    meta = {'frame': [AW, AH], 'anchor': [16, 32], 'anims': {}, 'flash_row_offset': rows}
     for r, a in enumerate(ANIMS):
         fr = [outline(im) for im in F[a]]
-        meta['anims'][a] = {'row': r, 'n': len(fr), 'shoulder': [[12, 12]] * len(fr), 'gun': [False] * len(fr)}
+        meta['anims'][a] = {'row': r, 'n': len(fr), 'shoulder': [[16, 16]] * len(fr), 'gun': [False] * len(fr)}
         for c, im in enumerate(fr):
-            sheet.paste(im, (c * FW, r * FH))
-            sheet.paste(flash_white(im), (c * FW, (r + rows) * FH))
+            sheet.paste(im, (c * AW, r * AH))
+            sheet.paste(flash_white(im), (c * AW, (r + rows) * AH))
     sheet.save(os.path.join(OUT, 'sprites', name + '.png'))
     return meta
 
 def alien_frames():
-    pal = palette(VHARR)
-    def frame(parts):
-        img = Image.new('RGBA', (FW, FH), (0, 0, 0, 0))
-        for rows, ox, oy in parts:
-            stamp(img, rows, ox, oy, pal)
-        return img
     def dying(base):
-        return [settle(base.rotate(a, resample=Image.NEAREST, center=(12, 18))) for a in (30, 60, 90, 120, 180)]
+        return [settle(base.rotate(a, resample=Image.NEAREST, center=(16, 22))) for a in (30, 60, 90, 120, 180)]
+    def hurt(im):
+        return [im.transform(im.size, Image.AFFINE, (1, 0, 1, 0, 1, 0), resample=Image.NEAREST)]
     meta = {}
-    # skitter: a low crab-bug, 7 px tall
-    sk = lambda legs, dy=0: frame([(SKITTER['body'], 4, 15 + dy), (SKITTER[legs], 4, 21 + dy)])
     meta['en_skitter'] = alien_sheet('en_skitter', {
-        'idle': [sk('legs0'), sk('legs0'), sk('legs1'), sk('legs1')],
-        'run': [sk('legs0'), sk('legs1', -1), sk('legs0'), sk('legs1', -1)],
-        'jump': [sk('pounce', -1), sk('pounce')],
-        'hurt': [sk('legs1')],
-        'die': dying(sk('legs1')),
+        'idle': [skitter_frame(0), skitter_frame(0), skitter_frame(1, dy=1), skitter_frame(1, dy=1)],
+        'run': [skitter_frame(i % 2, dy=-(i % 2)) for i in range(6)],
+        'jump': [skitter_frame(air=True, dy=-2), skitter_frame(air=True)],
+        'hurt': hurt(skitter_frame(1)),
+        'die': dying(skitter_frame(1)),
     })
-    # blinker: tall and thin, glowing claws
-    bl = lambda legs=None, dy=0: frame([(BLINKER if legs is None else BLINKER[:11] + legs, 6, 7 + dy)])
-    meta['en_blinker'] = alien_sheet('en_blinker', {
-        'idle': [bl(), bl(), bl(dy=1), bl(dy=1)],
-        'run': [bl(BLINKER_RUN), bl(), bl(BLINKER_RUN, 1), bl()],
-        'jump': [bl(BLINKER_RUN)],
-        'throw': [bl(), bl(dy=1)],
-        'die': dying(bl()),
-    })
-    # squid trooper: a Mars-People dome with a little ray gun; the saucer pod is drawn in game under it
-    sq = lambda wig=None, dy=0: frame([(SQUID if wig is None else SQUID[:9] + [wig], 5, 14 + dy)])
     meta['en_squid'] = alien_sheet('en_squid', {
-        'idle': [sq(), sq(SQUID_WIGGLE[0]), sq(SQUID_WIGGLE[1], -1), sq(SQUID_WIGGLE[2], -1)],
-        'run': [sq(SQUID_WIGGLE[0]), sq(SQUID_WIGGLE[1]), sq(SQUID_WIGGLE[2]), sq()],
-        'die': dying(sq(SQUID_WIGGLE[2])),
+        'idle': [squid_frame(i, dy=(1 if i in (2, 3) else 0)) for i in range(4)],
+        'run': [squid_frame(i) for i in range(6)],
+        'hurt': hurt(squid_frame(1)),
+        'die': dying(squid_frame(2, gun=False)),
+    })
+    meta['en_blinker'] = alien_sheet('en_blinker', {
+        'idle': [blinker_frame(0), blinker_frame(0), blinker_frame(0, dy=1), blinker_frame(0, dy=1)],
+        'run': [blinker_frame(i) for i in range(4)],
+        'jump': [blinker_frame(3)],
+        'throw': [blinker_frame(0, claw=True), blinker_frame(0, claw=True)],
+        'hurt': hurt(blinker_frame(2)),
+        'die': dying(blinker_frame(2)),
+    })
+    meta['en_burrower'] = alien_sheet('en_burrower', {
+        'idle': [burrower_frame(0), burrower_frame(1), burrower_frame(0, dy=1), burrower_frame(1, dy=1)],
+        'throw': [burrower_frame(3, dy=-2), burrower_frame(3)],
+        'hurt': hurt(burrower_frame(2)),
+        'die': dying(burrower_frame(0)),
+    })
+    meta['en_grappler'] = alien_sheet('en_grappler', {
+        'idle': [grappler_frame(0), grappler_frame(0), grappler_frame(0, dy=1), grappler_frame(0, dy=1)],
+        'run': [grappler_frame(0, dy=i % 2) for i in range(4)],
+        'throw': [grappler_frame(3), grappler_frame(5)],
+        'hurt': hurt(grappler_frame(2)),
+        'die': dying(grappler_frame(2)),
+    })
+    meta['en_bloater'] = alien_sheet('en_bloater', {
+        'idle': [bloater_frame(0), bloater_frame(0, dy=1), bloater_frame(0, dy=1), bloater_frame(0)],
+        'run': [bloater_frame(i, dy=i % 2) for i in range(4)],
+        'hurt': hurt(bloater_frame(1)),
+        'die': dying(bloater_frame(0)),
+    })
+    meta['en_weaver'] = alien_sheet('en_weaver', {
+        'idle': [weaver_frame(i, dy=(1 if i in (2, 3) else 0)) for i in range(4)],
+        'run': [weaver_frame(i, dy=i % 2) for i in range(4)],
+        'throw': [weaver_frame(0, cast=True), weaver_frame(1, cast=True)],
+        'hurt': hurt(weaver_frame(0)),
+        'die': dying(weaver_frame(0)),
     })
     return meta
+
 
 def main():
     os.makedirs(os.path.join(OUT, 'sprites'), exist_ok=True)

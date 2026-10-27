@@ -440,10 +440,12 @@ func cast_foot(n: int) -> String:
 	## Who fills the nth plain rifleman or bomber slot. The Jackals' pact with the Vharr goes bad over
 	## a run: level 1 keeps its riflemen with every fourth slot a Vharr advisor, later levels and the
 	## finale give every slot to the Vharr. Bombers are gone either way.
+	## Each biome sends its own Vharr (Data.BIOME_ALIENS).
+	var pool: Array = Data.BIOME_ALIENS.get(mission.get("biome", ""), ALIENS)
 	var tier := 2 if mission.get("finale", false) else mission_idx
 	if tier == 0:
-		return "grunt" if n % 4 != 3 else ALIENS[(n / 4) % ALIENS.size()]
-	return ALIENS[n % ALIENS.size()]
+		return "grunt" if n % 4 != 3 else pool[(n / 4) % pool.size()]
+	return pool[n % pool.size()]
 
 func place_alien(u: Unit) -> void:
 	## A hovering alien starts at its altitude instead of on the floor.
@@ -784,7 +786,7 @@ func unit_at_point(x: float, y: float, shooter, travelled: float, skip: Dictiona
 			if x >= u.x - u.w / 2.0 and x <= u.x + u.w / 2.0 and y >= u.y - u.h and y <= u.y:
 				return u
 			continue
-		if u.dead or u.gone or u.sunk or u.kind == "pow" or u.is_pickup():
+		if u.dead or u.gone or u.sunk or u.kind == "pow" or u.is_pickup() or u.weight == "buried":
 			continue
 		if u.has_st("cloak") and shooter != null and shooter.team != u.team:
 			continue  # PREDATOR: rounds pass right through the shimmer
@@ -1180,6 +1182,12 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 				float_text(tg, "ARMOR", Color("9fb4c9"))
 		else:
 			amt = int(round(amt * 1.3))
+	if tg.dome > 0 and not o.get("melee", false) and not o.get("impact", false) and not o.get("status", false):
+		float_text(tg, "DOME", Color("9df25c"))
+		sparks(tg.x, tg.y - tg.h / 2.0, 3)
+		return
+	if tg.weight == "buried" and o.get("blast", false):
+		amt = maxi(1, amt / 2)  # the ground above takes half of it
 	if tg.pod > 0 and tg.weight == "hover":
 		var pb := mini(tg.pod, amt)
 		tg.pod -= pb
@@ -1334,6 +1342,10 @@ func kill(tg: Unit, src) -> void:
 				src.kill_drawn = true
 				draw_cards(src, int(src.g("kill_draw")))
 				float_text(src, "SPARE MAG: DRAW", Color("53d4e2"))
+		if tg.type == "bloater" and tg.fl.get("swell", 0) >= 0:
+			var sw: int = tg.fl.get("swell", 0)
+			booms.append({"t": 6, "x": tg.x, "y": tg.y - tg.h / 2.0, "r": Data.ETYPES.bloater.radius + 10.0 * sw, "dmg": Data.ETYPES.bloater.dmg, "owner": src if src is Unit and src.team == "squad" else null})
+			float_text(tg, "POP!", Color("9df25c"), true)
 		if tg.type == "hive":
 			acids.append({"x": tg.x, "y": tg.y, "r": 40.0, "turns": 2})
 			float_text(tg, "ACID!", Color("9df25c"), true)
@@ -1400,7 +1412,7 @@ func collision_dmg(u: Unit, amt: float, label: String) -> void:
 	var src = u.last_hit_by if u.last_hit_by != null and u.last_hit_by != u else null
 	if src != null and src is Unit and src.perk("bulldozer"):
 		d *= 2
-	damage(u, d, src, {})
+	damage(u, d, src, {"impact": true})
 
 func crush(u: Unit, d: int, cause, kvx: float, kvy: float) -> void:
 	## Called by the terrain when falling or toppling debris lands on a body.
@@ -1422,7 +1434,7 @@ func crush(u: Unit, d: int, cause, kvx: float, kvy: float) -> void:
 			give_xp(cause, 3)
 	if u.type == "boss":
 		crack_boss(u)
-	damage(u, d, cause, {})
+	damage(u, d, cause, {"impact": true})
 	if not u.heavy and not u.is_prop() and not u.dead:
 		u.vx = kvx
 		u.vy = kvy
@@ -1495,7 +1507,7 @@ func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> vo
 		var dm := maxi(1, int(round(dmg * f))) + bonus
 		if u == owner:
 			dm = 0 if u.perk("blastproof") or (u.team == "squad" and Run.implanted(u.s, "asbestos")) else maxi(1, int(round(dm * 0.4)))
-		if not u.heavy and not u.is_prop() and not u.immovable:
+		if not u.heavy and not u.is_prop() and not u.immovable and u.dome <= 0 and u.weight != "buried":
 			var ang := atan2(cy - y - 6, cx - x)
 			var k := ((1 - d / r) * 6 + 2.5) * kb(u)
 			if u == owner and u.perk("kinetic"):
@@ -1522,7 +1534,7 @@ func mk_proj(o: Dictionary) -> Dictionary:
 
 func unit_hit(p: Dictionary):
 	for u in units:
-		if u.dead or u.gone or u.kind == "pow" or u.is_pickup():
+		if u.dead or u.gone or u.kind == "pow" or u.is_pickup() or u.weight == "buried":
 			continue
 		if u == p.owner and p.age < 24:
 			continue
@@ -3350,6 +3362,9 @@ func enemy_phase() -> void:
 				e.hp = mini(e.max_hp, e.hp + 4)
 				float_text(e, "+4", Color("62d26f"))
 	tick_statuses("enemy")
+	for u in units:
+		if u.dome > 0:
+			u.dome -= 1
 	await until(settled)
 	if strikes.size():
 		var friendly := strikes.filter(func(s): return s.get("friendly", false))
@@ -3775,6 +3790,18 @@ func enemy_act(e: Unit) -> void:
 		"blinker":
 			await blinker_act(e)
 			return
+		"burrower":
+			await burrower_act(e)
+			return
+		"grappler":
+			await grappler_act(e)
+			return
+		"bloater":
+			await bloater_act(e)
+			return
+		"weaver":
+			await weaver_act(e)
+			return
 	if E.get("sapper", false):
 		var tg = nearest_squad(e)
 		if tg == null:
@@ -4119,6 +4146,142 @@ func blinker_act(e: Unit) -> void:
 		if not tt.dead and not tt.immovable and not tt.heavy:
 			tt.vx = e.face * E.knock * kb(tt); tt.vy = -3.5; tt.air = true; tt.walk = null; tt.bumped = null; tt.last_hit_by = e
 		await until(settled)
+
+func burrower_act(e: Unit) -> void:
+	## Dive, tunnel up to 300px toward the nearest target digging a trench, and burst out under it.
+	var E: Dictionary = Data.ETYPES.burrower
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	if e.weight != "buried":
+		e.weight = "buried"
+		dust(e.x, e.y - 4, Color("c9b38a"), 10)
+		Sfx.play("thud")
+		await wait(10)
+	var dir := signf(tg.x - e.x)
+	var tx: float = e.x + dir * minf(absf(tg.x - e.x), E.tunnel)
+	var dug := 0.0
+	while absf(tx - e.x) > 4 and not e.dead:
+		var stepx: float = minf(12.0, absf(tx - e.x))
+		e.x += dir * stepx
+		dug += stepx
+		var gy = T.stand_y(e.x, 0)
+		if gy != null and gy < WATER_Y - 4:
+			e.y = gy
+			if dug >= 24:
+				dug = 0.0
+				T.carve(e.x, gy + 3, 6, e)
+				dust(e.x, gy, Color("c9b38a"), 2)
+		await wait(2)
+	if e.dead:
+		return
+	var gy2 = T.stand_y(e.x, 0)
+	if gy2 != null:
+		e.y = gy2
+	e.weight = ""
+	e.face = int(dir) if dir != 0 else e.face
+	e.pose = "throw"; e.pose_t = 16
+	Sfx.play("bigboom")
+	shake += 6
+	T.carve(e.x, e.y - 4, 16, e)
+	for o in units:
+		if o == e or o.dead or o.gone or o.sunk or o.is_pickup() or o.kind == "pow" or o.team == "neutral":
+			continue
+		if absf(o.x - e.x) < 30 + o.w / 2.0 and absf(o.y - e.y) < 40:
+			damage(o, int(round(E.dmg * (1 + alert * 0.06))), e, {})
+			if not o.dead and not o.heavy and not o.immovable:
+				o.vx = signf(o.x - e.x if o.x != e.x else 1.0) * 2.5; o.vy = -7; o.air = true; o.walk = null; o.last_hit_by = e
+	await until(settled)
+
+func grappler_act(e: Unit) -> void:
+	## Tongue the nearest target in a clear line within range and yank it in; bite if it lands close.
+	var E: Dictionary = Data.ETYPES.grappler
+	var tg = null
+	var mouth := Vector2.ZERO
+	for o in foes_of(e):
+		if Vector2(o.x - e.x, o.y - e.y).length() > E.range or o.heavy or o.immovable:
+			continue
+		var m := Vector2(e.x + (20 if o.x >= e.x else -20), e.y - 22)
+		if not ray_clear(m.x, m.y, o.x, o.y - o.h / 2.0):
+			continue
+		if tg == null or absf(o.x - e.x) < absf(tg.x - e.x):
+			tg = o
+			mouth = m
+	if tg == null:
+		var near = nearest_squad(e)
+		if near != null:
+			await enemy_advance(e, near.x, E.speed)
+		return
+	e.face = 1 if tg.x >= e.x else -1
+	e.pose = "throw"; e.pose_t = 20
+	Sfx.play("slash")
+	ropes.append({"x": mouth.x, "y": mouth.y, "u": tg, "t": 40, "c": Color("e05a8a")})
+	await wait(12)
+	var gap: float = absf(tg.x - e.x) - (e.w + tg.w) / 2.0
+	var pull := minf(E.yank, maxf(0.0, gap))
+	if pull > 8:
+		tg.vx = -e.face * pull / 36.0
+		tg.vy = -3.5
+		tg.air = true
+		tg.walk = null
+		tg.bumped = {e.id: true}
+		tg.last_hit_by = e
+		float_text(tg, "YANKED!", Color("e05a8a"), true)
+		await until(func(): return not tg.air or tg.dead or tg.sunk)
+	if not tg.dead and absf(tg.x - e.x) < 50 and absf(tg.y - e.y) < 40:
+		Sfx.play("slash")
+		damage(tg, int(round(E.dmg * (1 + alert * 0.06))), e, {"melee": true})
+	await until(settled)
+
+func bloater_act(e: Unit) -> void:
+	## Swell, waddle at the nearest target, and pop on it when it gets there.
+	var E: Dictionary = Data.ETYPES.bloater
+	var sw: int = mini(4, e.fl.get("swell", 0) + 1)
+	e.fl["swell"] = sw
+	e.w = E.w + sw * 4
+	e.h = E.h + sw * 4
+	float_text(e, "SWELLS", Color("9df25c"))
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	if absf(tg.x - e.x) > 34:
+		await enemy_advance(e, tg.x, E.speed, func():
+			return foes_of(e).any(func(o): return absf(o.x - e.x) < 40 and absf(o.y - e.y) < 40))
+	if e.dead or e.air:
+		return
+	if foes_of(e).any(func(o): return absf(o.x - e.x) < 44 and absf(o.y - e.y) < 40):
+		booms.append({"t": 1, "x": e.x, "y": e.y - e.h / 2.0, "r": E.radius + 10.0 * sw, "dmg": E.dmg, "owner": null})
+		e.fl["swell"] = -99  # it popped itself: kill() must not pop it again
+		kill(e, null)
+		await until(settled)
+
+func weaver_act(e: Unit) -> void:
+	## Keep its distance, dome the ally nearest your squad, and take a potshot.
+	var E: Dictionary = Data.ETYPES.weaver
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	if not e.hold:
+		await enemy_advance(e, tg.x + (E.prefer if e.x >= tg.x else -E.prefer), E.speed)
+	if e.dead or e.air:
+		return
+	var best = null
+	for o in units:
+		if o == e or o.team != "enemy" or o.dead or not o.active or o.dome > 0 or o.type == "boss" or Data.ETYPES[o.type].get("static", false):
+			continue
+		if absf(o.x - e.x) > 260:
+			continue
+		if best == null or absf(o.x - tg.x) < absf(best.x - tg.x):
+			best = o
+	if best != null:
+		e.pose = "throw"; e.pose_t = 18
+		Sfx.play("power")
+		best.dome = 2
+		float_text(best, "DOMED", Color("9df25c"), true)
+		await wait(14)
+	var b = best_shot(e, foes_of(e), E.range)
+	if b != null:
+		await enemy_shoot(e, b.t, E)
 
 func tick_acids() -> void:
 	## End of the enemy phase: anyone but the Vharr standing in Hive acid takes 3.
@@ -4558,7 +4721,7 @@ func body_collisions(u: Unit) -> void:
 	if (sp < 3 and not u.rushing) or u.leaping:
 		return  # a vault is footwork, not a tackle
 	for o in units:
-		if o == u or o.dead or o.gone or o.sunk or o.kind == "pow" or o.para or o.is_pickup() or u.is_pickup():
+		if o == u or o.dead or o.gone or o.sunk or o.kind == "pow" or o.para or o.is_pickup() or u.is_pickup() or o.weight == "buried":
 			continue
 		if (u.kind == "slug" and o.team == "squad") or (o.kind == "slug" and u.team != "enemy"):
 			continue  # the Slug rolls over Jackals, never its own crew

@@ -682,6 +682,8 @@ func run() -> void:
 			await aliens()
 		"aliens2":
 			await aliens2()
+		"aliens3":
+			await aliens3()
 		"playtest":
 			await playtest()
 		"pinball":
@@ -945,6 +947,13 @@ func flat_open(b: Battle, x: float, w: float) -> bool:
 			return false
 	return true
 
+func flat_strip(b: Battle, x: float, w: float) -> void:
+	## Level a strip of open ground from x to x + w for a duel test.
+	var y0: float = Data.WATER_Y - 96
+	b.T.fill_r(x, 0, w, y0, 0)
+	b.T.fill_r(x, y0, w, Data.WATER_Y - y0 + 8, 1)
+	b.T.flush()
+
 func spawn_alien(b: Battle, type: String, x: float) -> Unit:
 	var e := b.mk_enemy(type, x, b.T.stand_y(x, 0))
 	e.active = true
@@ -960,12 +969,12 @@ func aliens() -> void:
 	await until(func(): return b.state == "player" and not b.busy)
 	var types := b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
 	check(not types.has("nade"), "no Jackal Bombers spawn (level 1: %s)" % str(types))
-	check(types.has("grunt") and types.any(func(t): return Battle.ALIENS.has(t)), "level 1 keeps riflemen with a few Vharr advisors")
+	check(types.has("grunt") and types.any(func(t): return Data.BIOME_ALIENS.desert.has(t)), "level 1 keeps riflemen with a few Vharr advisors")
 	Run.level = Run.make_level("fortress", 1)
 	b = main.start_battle(1, Run.level)
 	await until(func(): return b.state == "player" and not b.busy)
 	types = b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
-	check(not types.has("grunt") and not types.has("nade") and types.has("skitter") and types.has("squid") and types.has("blinker"), "level 2 gives every rifleman slot to the Vharr (%s)" % str(types))
+	check(not types.has("grunt") and not types.has("nade") and Data.BIOME_ALIENS.fortress.all(func(t): return types.has(t)), "level 2 gives every rifleman slot to the fortress's Vharr (%s)" % str(types))
 	check(types.count("skitter") % 3 == 0, "Skitters come in packs of 3 (%d)" % types.count("skitter"))
 	b.speed = 2.0
 	# a flat stretch near the start for the duels
@@ -1115,6 +1124,71 @@ func aliens2() -> void:
 	await b.enemy_act(mover)
 	await until(func(): return b.settled(), 600)
 	check(absf(mover.x - mx) >= 30, "a Jackal with a clear shot still moves first (moved %d px)" % absf(mover.x - mx))
+
+func aliens3() -> void:
+	## More Vharr: Burrower, Grappler, Bloater, Dome Weaver, and the biome alien pools.
+	Run.new_run()
+	for id in Data.BIOME_ALIENS:
+		check(Data.BIOME_ALIENS[id].all(func(t): return Data.ETYPES.has(t)), "%s has a valid alien pool" % id)
+	Run.level = Run.make_level("desert", 1)
+	var b: Battle = main.start_battle(1, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var types := b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
+	check(types.has("burrower") and not types.has("blinker"), "the desert sends Burrowers, not Blinkers")
+	b.speed = 2.0
+	var x0 := 600.0
+	flat_strip(b, x0 - 160, 620)
+	# --- Burrower: can't be shot while buried, tunnels and bursts out under you
+	var s := alien_field(b, x0)
+	var bw := spawn_alien(b, "burrower", x0 + 260)
+	check(bw.weight == "buried", "a Burrower starts buried")
+	var hit := b.trace_bullet(x0 + 100, bw.y - 10, 0.0, 400, 0, s, false)
+	check(not hit.hits.any(func(h): return h.u == bw), "bullets pass over a buried Burrower")
+	var hp0 := s.hp
+	await b.enemy_act(bw)
+	await until(func(): return b.settled(), 900)
+	await shot("alien3_burrower")
+	check(bw.weight == "" and absf(bw.x - x0) < 80 and s.hp < hp0, "it tunnels over and bursts out under the soldier (hp %d -> %d, x %d, %s)" % [hp0, s.hp, bw.x - x0, bw.weight])
+	# --- Grappler: yanks a soldier in a clear line toward it
+	s = alien_field(b, x0)
+	var gp := spawn_alien(b, "grappler", x0 + 300)
+	var sx := s.x
+	await b.enemy_act(gp)
+	await until(func(): return b.settled(), 900)
+	await shot("alien3_grappler")
+	check(s.x > sx + 100, "a Grappler yanks the soldier toward it (x %d -> %d)" % [sx, s.x])
+	# --- Bloater: swells, waddles in, pops on you
+	s = alien_field(b, x0)
+	var bl := spawn_alien(b, "bloater", x0 + 120)
+	hp0 = s.hp
+	for i in 3:
+		if bl.dead:
+			break
+		await b.enemy_act(bl)
+		await until(func(): return b.settled(), 900)
+	check(bl.dead and s.hp < hp0, "a Bloater walks up and pops on the soldier (hp %d -> %d)" % [hp0, s.hp])
+	s = alien_field(b, x0)
+	var bl2 := spawn_alien(b, "bloater", x0 + 260)
+	var jk := spawn_alien(b, "grunt", x0 + 290)
+	jk.hp = 99; jk.max_hp = 99
+	b.kill(bl2, s)
+	await until(func(): return b.settled(), 900)
+	check(jk.hp < 99, "killing a Bloater pops it on its neighbours (Jackal hp %d)" % jk.hp)
+	# --- Dome Weaver: domes an ally; bullets and blasts stop, melee goes through
+	s = alien_field(b, x0)
+	var wv := spawn_alien(b, "weaver", x0 + 360)
+	var ally := spawn_alien(b, "grunt", x0 + 200)
+	ally.hold = true
+	ally.hp = 50; ally.max_hp = 50
+	await b.enemy_act(wv)
+	await until(func(): return b.settled(), 900)
+	await shot("alien3_weaver")
+	check(ally.dome > 0, "the Weaver domes the ally nearest the squad")
+	b.damage(ally, 10, s, {})
+	b.damage(ally, 10, s, {"blast": true})
+	check(ally.hp == 50, "the dome stops bullets and blasts (hp %d)" % ally.hp)
+	b.damage(ally, 10, s, {"melee": true})
+	check(ally.hp == 40, "melee goes through the dome (hp %d)" % ally.hp)
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.
