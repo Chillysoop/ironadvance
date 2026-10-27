@@ -5,7 +5,7 @@ extends RefCounted
 
 var id := 0
 var team := ""        # squad, enemy, neutral
-var kind := ""        # soldier, enemy, pow, barrel, fuel, charge
+var kind := ""        # soldier, enemy, pow, barrel, fuel, charge, mine
 var type := ""        # enemy type key
 var sheet := ""       # sprite sheet key
 var x := 0.0
@@ -92,7 +92,7 @@ func center() -> Vector2:
 	return Vector2(x, y - h / 2.0)
 
 func is_prop() -> bool:
-	return kind == "barrel" or kind == "fuel" or kind == "charge" or kind == "crate" or kind == "strongbox"
+	return kind == "barrel" or kind == "fuel" or kind == "charge" or kind == "crate" or kind == "strongbox" or kind == "mine"
 
 func is_pickup() -> bool:
 	## Loot on the ground and buried caches: bullets and blasts pass through them.

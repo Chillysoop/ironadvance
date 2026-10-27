@@ -530,7 +530,14 @@ const SCREAMS := ["AAAGH!", "NOOO!", "URK!", "GYAAH!"]
 
 # ---------------------------------------------------------------- level segments
 # Each segment is laid out in its own local x space (0 = segment start). A mission strings
-# segments together. Structures: over, tower, boulder, bunker, ledge.
+# segments together. Structures: over, tower, boulder, bunker, ledge, fort, bridge, docks, crane.
+# "ground" reshapes the terrain under a segment: dh > 0 raises a ridge, dh < 0 digs a trench,
+# ramp 0 makes a cliff (it gets a ladder). Spawn option "up" places a unit that many px above
+# the base ground, for fort floors and girders.
+#   fort:   x, w, floors, fh (floor height). Wooden walls and floors, concrete roof, inner ladders.
+#   bridge: x0, x1 over open water, posts. Half-destroy any post and the whole deck drops.
+#   docks:  x0, x1 over open water, a plank pier on stone pilings every `pile` px.
+#   crane:  mast at x (h tall), jib reaching to `jib`, container (cw x ch) on a `rope` at `hook`.
 const SEGMENTS := {
 	"start": {"w": 460, "sandbags": [420], "structs": [], "pits": [], "spawns": []},
 	"towers": {"w": 840, "sandbags": [600], "pits": [[700, 776]],
@@ -551,18 +558,57 @@ const SEGMENTS := {
 	"gauntlet": {"w": 900, "sandbags": [210, 1020 - 900], "pits": [[780, 848]],
 		"structs": [{"t": "over", "px": 436, "x0": 256, "x1": 444, "h": 80}, {"t": "tower", "x": 570, "h": 90}],
 		"spawns": [["pow", 120], ["brute", 280], ["sapper", 320], ["shield", 350], ["brute", 410], ["grunt", 570, {"hold": 1}], ["radio", 660]]},
+	# Worms-style dug-in line: a foxhole for you, a ridge for them with a fuel barrel by the rifleman
+# on top, and their own trench behind it
+	"trenches": {"w": 800, "sandbags": [262, 604], "pits": [],
+		"ground": [{"x0": 150, "x1": 250, "dh": -26, "ramp": 18}, {"x0": 400, "x1": 580, "dh": 36, "ramp": 70}, {"x0": 640, "x1": 730, "dh": -20, "ramp": 18}],
+		"structs": [],
+		"spawns": [["grunt", 300], ["nade", 450], ["barrel", 500], ["grunt", 530, {"hold": 1}], ["grunt", 690], ["shield", 760]]},
+	# SteamWorld Heist-style outpost: three floors of Jackals, a POW on the top floor
+	"fort": {"w": 760, "sandbags": [190], "pits": [],
+		"structs": [{"t": "fort", "x": 300, "w": 136, "floors": 3, "fh": 54}],
+		"spawns": [["grunt", 240], ["barrel", 324], ["grunt", 370, {"hold": 1, "up": 10}], ["nade", 330, {"hold": 1, "up": 74}],
+			["pow", 340, {"up": 128}], ["grunt", 405, {"hold": 1, "up": 128}], ["radio", 380, {"hold": 1, "up": 182}], ["brute", 560]]},
+	# a gully with a plank bridge: drop it while they are on it
+	"gully": {"w": 720, "sandbags": [520], "pits": [],
+		"structs": [{"t": "bridge", "x0": 240, "x1": 440, "posts": [306, 374]}],
+		"spawns": [["pow", 110], ["grunt", 340, {"hold": 1}], ["shield", 400], ["barrel", 470], ["nade", 560, {"hold": 1}], ["grunt", 620], ["radio", 670]]},
+	# a raised jungle ridge sown with mines
+	"ridge": {"w": 820, "sandbags": [], "pits": [],
+		"ground": [{"x0": 260, "x1": 600, "dh": 46, "ramp": 0}, {"x0": 600, "x1": 640, "dh": 46, "ramp": 90}],
+		"structs": [{"t": "tower", "x": 470, "h": 70}],
+		"spawns": [["mine", 140], ["mine", 196], ["grunt", 300, {"hold": 1}], ["mine", 352], ["nade", 410, {"hold": 1}], ["pow", 440], ["grunt", 470, {"hold": 1}], ["mine", 530], ["nade", 600], ["mine", 690], ["sapper", 720], ["radio", 780]]},
+	# the long river bridge, mortar fire from the far bank
+	"river": {"w": 960, "sandbags": [590], "pits": [],
+		"structs": [{"t": "bridge", "x0": 180, "x1": 500, "posts": [260, 340, 420]}, {"t": "ledge", "x": 680, "w": 96, "dy": 92, "post": 760}],
+		"spawns": [["grunt", 300, {"hold": 1}], ["shield", 380, {"hold": 1}], ["grunt", 460], ["fuel", 540], ["mine", 620], ["brute", 650], ["nade", 720, {"hold": 1, "up": 120}], ["mortarcrew", 860, {"hold": 1}], ["radio", 900]]},
+	# harbor pier over open water: steel girders above, a crane container over the middle
+	"docks": {"w": 1000, "sandbags": [], "pits": [],
+		"structs": [{"t": "docks", "x0": 120, "x1": 880, "pile": 76}, {"t": "ledge", "x": 290, "w": 110, "dy": 76, "post": 392},
+			{"t": "ledge", "x": 600, "w": 104, "dy": 96, "post": 696}, {"t": "crane", "x": 916, "h": 170, "jib": 470, "hook": 520, "rope": 46, "cw": 52, "ch": 26}],
+		"spawns": [["barrel", 200], ["grunt", 340, {"hold": 1, "up": 100}], ["shield", 450], ["grunt", 520, {"hold": 1, "up": 10}], ["sapper", 560], ["nade", 650, {"hold": 1, "up": 120}],
+			["barrel", 740], ["grunt", 800], ["radio", 950]]},
+	# a two-floor warehouse with an ammo dump on the ground floor and a minefield out back
+	"warehouse": {"w": 820, "sandbags": [170], "pits": [],
+		"structs": [{"t": "fort", "x": 260, "w": 190, "floors": 2, "fh": 64}],
+		"spawns": [["grunt", 210], ["mg", 300], ["fuel", 400], ["barrel", 420], ["nade", 320, {"hold": 1, "up": 84}], ["pow", 380, {"up": 84}], ["grunt", 420, {"hold": 1, "up": 84}],
+			["grunt", 360, {"hold": 1, "up": 148}], ["mine", 520], ["mine", 580], ["brute", 600], ["mine", 650], ["engineer", 700], ["radio", 760]]},
 	"arena": {"w": 1200, "sandbags": [120, 360], "pits": [], "flat": true,
 		"structs": [{"t": "tower", "x": 580, "h": 96}, {"t": "tower", "x": 760, "h": 110}, {"t": "boulder", "col": 850, "colH": 236, "bx": 960, "rope": 18, "r": 32}],
 		"spawns": [["grunt", 580, {"hold": 1}], ["grunt", 760, {"hold": 1}], ["boss", 960]]},
+	# the harbor's boss arena: the flagship BOAR parks under a loaded crane
+	"pier": {"w": 1200, "sandbags": [120, 360], "pits": [], "flat": true,
+		"structs": [{"t": "tower", "x": 560, "h": 96}, {"t": "ledge", "x": 700, "w": 96, "dy": 100, "post": 780}, {"t": "crane", "x": 1080, "h": 230, "jib": 880, "hook": 960, "rope": 30, "cw": 72, "ch": 34}],
+		"spawns": [["grunt", 560, {"hold": 1}], ["nade", 740, {"hold": 1, "up": 120}], ["mine", 640], ["mine", 840], ["boss", 960]]},
 }
 
 const MISSIONS := [
-	{"name": "THE JACKAL LINE", "theme": "dusk", "segments": ["start", "towers", "boulder", "bunker", "arena"],
-	 "boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "Punch through the Jackal forward line and scrap the IRON BOAR guarding the road east."},
-	{"name": "RIVER CROSSING", "theme": "jungle", "segments": ["start", "overhang", "mortar", "towers", "arena"],
-	 "boss_hp": 160, "plate": 46, "hp_mul": 1.15, "brief": "The Jackals dug a mortar line along the river. Their second BOAR is waiting at the ford."},
-	{"name": "IRON HARBOR", "theme": "night", "segments": ["start", "gauntlet", "bunker", "overhang", "mortar", "arena"],
-	 "boss_hp": 210, "plate": 60, "hp_mul": 1.3, "brief": "Night raid on the harbor. Take down the flagship BOAR and the Jackal army goes home."},
+	{"name": "THE JACKAL LINE", "theme": "dusk", "segments": ["start", "trenches", "fort", "gully", "boulder", "arena"],
+	 "boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "Clear the trenches, storm the outpost and cross the gully before the IRON BOAR closes the road east."},
+	{"name": "RIVER CROSSING", "theme": "jungle", "segments": ["start", "ridge", "overhang", "river", "mortar", "arena"],
+	 "boss_hp": 160, "plate": 46, "hp_mul": 1.15, "brief": "The ridge is mined and the river bridge is held. Their second BOAR is waiting at the ford."},
+	{"name": "IRON HARBOR", "theme": "night", "segments": ["start", "docks", "warehouse", "gauntlet", "pier"],
+	 "boss_hp": 210, "plate": 60, "hp_mul": 1.3, "brief": "Night raid on the harbor. Fight along the piers, gut the warehouse, and drop a crane load on the flagship BOAR."},
 ]
 
 const THEMES := {
