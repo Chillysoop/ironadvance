@@ -7,6 +7,9 @@ signal dial
 const HudScript := preload("res://scripts/hud.gd")
 const ShopScript := preload("res://scripts/shop.gd")
 const ArmoryScript := preload("res://scripts/armory.gd")
+const DossierScript := preload("res://scripts/dossier.gd")
+const HubUI := preload("res://scripts/hub_ui.gd")
+const Services := preload("res://scripts/services.gd")
 
 const GROUND := 430.0
 const GATE := Vector2(480, 340)
@@ -19,6 +22,7 @@ var memorial_open := false
 var upgrades_open := false
 var doc_open := false
 var held := {}              # textures must stay referenced until the frame renders
+var hover_troop := -1       # the soldier in the scene under the mouse
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -30,6 +34,10 @@ func build() -> void:
 	for c in get_children():
 		c.queue_free()
 	sub = null
+	var bar := HubUI.SquadBar.new()
+	bar.position = Vector2(16, 76)
+	bar.picked.connect(open_dossier)
+	add_child(bar)
 	var spots := [
 		["QUARTERMASTER", "CARDS  GEAR  UPGRADES", 40, open_shop.bind("shop"), Color("ffb23e")],
 		["BARRACKS", "RECRUITS  DOG TAGS", 230, open_shop.bind("barracks"), Color("62d26f")],
@@ -150,6 +158,51 @@ func open_upgrades() -> void:
 	close.pressed.connect(func(): upgrades_open = false; build())
 	add_child(close)
 
+func open_dossier(i: int) -> void:
+	## S1: a soldier's sheet, gear and deck, from the squad bar, a click on them, or 1-4.
+	Sfx.play("click")
+	var d: Control = DossierScript.new()
+	d.idx = i
+	d.done.connect(func(): build())
+	add_child(d)
+	sub = d
+
+func idle() -> bool:
+	## True when the HQ scene itself is showing (no building screen or board open).
+	return (sub == null or not is_instance_valid(sub)) and not memorial_open and not upgrades_open and not doc_open
+
+func troop_x(i: int) -> float:
+	var n: int = Run.soldiers.filter(func(s): return s.alive).size()
+	return 480 + (i - (n - 1) / 2.0) * 46
+
+func troop_at(p: Vector2) -> int:
+	## Index into Run.soldiers of the soldier standing at p, or -1.
+	var al: Array = Run.soldiers.filter(func(s): return s.alive)
+	for i in al.size():
+		if absf(p.x - troop_x(i)) < 20 and p.y > GROUND - 64 and p.y < GROUND + 20:
+			return Run.soldiers.find(al[i])
+	return -1
+
+func _gui_input(ev: InputEvent) -> void:
+	if not idle():
+		return
+	if ev is InputEventMouseMotion:
+		hover_troop = troop_at(ev.position)
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if hover_troop >= 0 else Control.CURSOR_ARROW
+	elif ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+		var k := troop_at(ev.position)
+		if k >= 0:
+			accept_event()
+			hover_troop = -1
+			open_dossier(k)
+
+func _unhandled_input(ev: InputEvent) -> void:
+	if not idle() or not (ev is InputEventKey and ev.pressed and not ev.echo):
+		return
+	if ev.keycode >= KEY_1 and ev.keycode <= KEY_4 and ev.keycode - KEY_1 < Run.soldiers.size():
+		get_viewport().set_input_as_handled()
+		open_dossier(ev.keycode - KEY_1)
+
 func next_mission_n() -> int:
 	return Run.history.size() + 1
 
@@ -234,13 +287,16 @@ func _draw() -> void:
 	var al: Array = Run.soldiers.filter(func(s): return s.alive)
 	for i in al.size():
 		var s: Dictionary = al[i]
-		var x := 480 + (i - (al.size() - 1) / 2.0) * 46
+		var x := troop_x(i)
 		var a := 1.0
 		if arrived and t < 70:
 			a = clampf((t - 10 - i * 10) / 20.0, 0, 1)
 		Art.draw_char(self, "sq_" + s.key, "idle", (t / 12 + i) % 4, Vector2(x, GROUND), 1 if x < 480 else -1, false, 0, a, 0, true, 1.4)
 		if a >= 1.0:
-			Art.text(self, s.def.name, Vector2(x, GROUND + 16), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+			var on := Run.soldiers.find(s) == hover_troop
+			Art.text(self, s.def.name, Vector2(x, GROUND + 16), 8, Color("ffd23a") if on else Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	if hover_troop >= 0 and idle():
+		draw_troop_card(Run.soldiers[hover_troop], troop_x(al.find(Run.soldiers[hover_troop])))
 	# header
 	draw_rect(Rect2(0, 0, 960, 70), Color(0.05, 0.035, 0.03, 0.75))
 	Art.text(self, "IRON ADVANCE HQ", Vector2(24, 34), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
@@ -259,6 +315,19 @@ func _draw() -> void:
 		draw_upgrades_panel()
 	elif doc_open:
 		draw_doc_panel()
+
+func draw_troop_card(s: Dictionary, x: float) -> void:
+	## H1: hovering a soldier in the scene shows who they are and what's waiting for them.
+	var r := Rect2(clampf(x - 110, 8, 732), GROUND - 150, 220, 70)
+	draw_rect(r, Color(0.05, 0.035, 0.03, 0.95))
+	draw_rect(r, Color("ffd23a"), false, 2.0)
+	Art.text(self, "%s  %s" % [s.def.name, s.def.cls.to_upper()], r.position + Vector2(8, 16), 8, Color.WHITE)
+	Art.text(self, "HP %d/%d   DECK %d   LV%d" % [s.hp, Run.eff_max_hp(s), s.deck.size(), s.lvl], r.position + Vector2(8, 32), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+	var al := Services.alert(s)
+	var tip: String = {"FUSE": "3 copies ready to fuse", "EVOLVE": "a card can evolve", "HURT": "hurt: patch up at the QM"}.get(al, "")
+	if tip != "":
+		Art.text(self, tip, r.position + Vector2(8, 46), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+	Art.text(self, "Click or press %d for the Dossier" % (Run.soldiers.find(s) + 1), r.position + Vector2(8, 62), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 
 func draw_quartermaster() -> void:
 	## A supply tent with crates stacked beside it.

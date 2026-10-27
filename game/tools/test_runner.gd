@@ -6,6 +6,8 @@ extends Node
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
+const Services := preload("res://scripts/services.gd")
+
 var out_dir := "user://shots"
 var scenario := ""
 var main: Node
@@ -706,6 +708,8 @@ func run() -> void:
 			await hq_upgrades()
 		"doc":
 			await doc()
+		"dossier":
+			await dossier()
 		"aliens":
 			await aliens()
 		"aliens2":
@@ -786,6 +790,135 @@ func picker() -> void:
 	main.show_title()
 	await frames_wait(30)
 	await shot("picker_title")
+
+func dossier() -> void:
+	## The HQ Dossier: squad bar, soldiers you can click, and card services on the selected card
+	## with a before/after preview that only charges on CONFIRM.
+	Run.new_run()
+	Run.scrip = 600
+	var moss: Dictionary = Run.soldiers[0]
+	moss.hp = 9
+	check(moss.deck.all(func(c): return c.get("from", "") == "start"), "starting cards remember they came with the soldier")
+	moss.deck.append(Run.new_card("rifle", 0, "shop"))
+	main.show_hq(false)
+	await frames_wait(20)
+	var hq: Control = main.screen
+	hq.hover_troop = 0
+	await frames_wait(4)
+	await shot("dossier_hq")
+	check(Services.alert(moss) == "FUSE", "the squad bar flags Moss's three Rifle Shots")
+	hq.hover_troop = -1
+	hq.open_dossier(0)
+	await frames_wait(20)
+	await shot("dossier_deck")
+	var d: Control = hq.sub
+	check(d != null and d.idx == 0 and d.tab == "deck", "the Dossier opens on Moss's deck")
+	var rifles: Array = moss.deck.filter(func(c): return c.key == "rifle")
+	d.sel = rifles[0]
+	d.build()
+	await frames_wait(10)
+	await shot("dossier_selected")
+	var acts := Services.card_actions(moss, rifles[0])
+	check(acts.map(func(a): return a.id) == ["polish", "gunsmith", "fuse", "evolve", "burn"], "a selected card shows the five card services")
+	check(acts[0].ok and acts[0].line.contains("DMG 6-8 > 8-10"), "Polish says what it does: " + acts[0].line)
+	check(acts[2].ok and acts[3].why.contains("Scope"), "Fuse is ready, Evolve says what it needs: " + acts[3].why)
+	# polish through the preview: nothing is paid until CONFIRM
+	var before: int = Run.scrip
+	d.open_preview("polish")
+	await frames_wait(10)
+	await shot("dossier_polish_preview")
+	check(Run.scrip == before and Data.tier_of(rifles[0]) == 0, "opening the preview costs nothing")
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(Data.tier_of(rifles[0]) == 1 and Run.scrip == before - Services.price(Services.POLISH), "CONFIRM polishes the card and charges once")
+	# fuse needs three of one rarity again
+	moss.deck.append(Run.new_card("rifle", 0, "shop"))
+	var commons: Array = moss.deck.filter(func(c): return c.key == "rifle" and Data.tier_of(c) == 0)
+	check(commons.size() == 3, "three Common Rifle Shots for the fusion test")
+	var n0: int = moss.deck.size()
+	d.sel = commons[0]
+	d.build()
+	d.open_preview("fuse")
+	await frames_wait(10)
+	await shot("dossier_fuse_preview")
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(moss.deck.size() == n0 - 2 and d.sel != null and d.sel.get("from", "") == "fused" and Data.tier_of(d.sel) == 1, "Fuse turns three into one Uncommon and selects it")
+	# gunsmith: pick a mod card, then confirm
+	d.open_preview("gunsmith")
+	await frames_wait(10)
+	check(d.modal.confirm.disabled, "Gunsmith waits for a mod to be picked")
+	var opts: Array = d.modal.get_children().filter(func(o): return o is CardView)
+	opts[0].pressed.emit()
+	await frames_wait(6)
+	await shot("dossier_mod_preview")
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(d.sel.get("mods", []).size() == 1, "the picked mod lands on the card")
+	# evolve with an Epic Rifle Shot and the Scope kit
+	var epic := Run.new_card("rifle", 3, "shop")
+	moss.deck.append(epic)
+	var scope := Run.new_item("scope", 0)
+	Run.stash.append(scope)
+	Run.equip(moss, scope)
+	d.sel = epic
+	d.build()
+	check(Services.evolve_info(moss, epic).ok, "Epic Rifle Shot plus Scope can evolve")
+	d.open_preview("evolve")
+	await frames_wait(10)
+	await shot("dossier_evolve_preview")
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(epic.key == "lasergun", "Evolve makes the Laser Gun")
+	# burn
+	var n1: int = moss.deck.size()
+	d.sel = moss.deck.filter(func(c): return c.key == "pistol")[0]
+	d.build()
+	d.open_preview("burn")
+	await frames_wait(6)
+	d.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(moss.deck.size() == n1 - 1 and d.sel == null, "Burn takes the card out")
+	# filters, sort, upgraded preview
+	d.filt = "fuse"
+	d.build()
+	check(d.deck_list().all(func(c): return Services.fuse_group(moss, c).size() >= 2 or Services.evolve_rule(c).size() > 0), "the FUSE filter shows only cards with fusion or evolution progress")
+	d.filt = ""
+	d.sort = "rarity"
+	d.show_up = true
+	d.build()
+	await frames_wait(10)
+	await shot("dossier_upgraded")
+	d.show_up = false
+	# sheet and gear tabs
+	moss.perks.append("steady")
+	d.set_tab("sheet")
+	await frames_wait(10)
+	await shot("dossier_sheet")
+	var vest := Run.new_item(Run.random_item_id(["armor"]), 1)
+	Run.stash.append(vest)
+	d.gear_pick = {"where": "stash", "i": Run.stash.find(vest)}
+	d.set_tab("gear")
+	await frames_wait(10)
+	await shot("dossier_gear")
+	check(d.equip_preview(vest).size() > 0, "the gear tab previews what equipping changes")
+	d.cycle(1)
+	await frames_wait(10)
+	check(d.idx == 1 and d.gear_pick.is_empty(), "E flips to the next soldier")
+	await shot("dossier_hex_gear")
+	d.done.emit()
+	await frames_wait(10)
+	check(hq.idle(), "BACK returns to the HQ scene")
+	# read-only from the field: no service tiles
+	var ro: Control = load("res://scripts/dossier.gd").new()
+	ro.readonly = true
+	ro.idx = 2
+	main.add_child(ro)
+	ro.sel = Run.soldiers[2].deck[0]
+	ro.build()
+	await frames_wait(6)
+	check(not ro.get_children().any(func(o): return o.get_script() != null and o.get("why") != null), "a read-only Dossier shows no service buttons")
+	ro.queue_free()
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)
@@ -1472,7 +1605,7 @@ func soldat2() -> void:
 	## The second round of Soldat borrowings: overkill pops, the kill feed, fuse choice,
 	## the Cluster and Grenade Kit bonuses, thin air.
 	Run.new_run()
-	var lvl := {"name": "SOLDAT YARD II", "theme": "dusk", "segments": ["start", "ridge", "camp", "arena"],
+	var lvl := {"name": "SOLDAT YARD II", "theme": "dusk", "segments": ["start", "ridge", "towers", "camp", "arena"],
 		"boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "", "rules": {"pads": 2}}
 	var b: Battle = main.start_battle(0, lvl)
 	await until(func(): return b.state == "player" and not b.busy)
@@ -1572,6 +1705,95 @@ func soldat2() -> void:
 	b.grav = Battle.GRAV
 	var a0 := b.sim_arc(s.x, s.y - 30, 4.0, -4.0, 0, 300)
 	check(a1.x > a0.x, "and so does a throw (%d vs %d)" % [a1.x - s.x, a0.x - s.x])
+	await soldat2_moves(b, s)
+
+func soldat2_moves(b: Battle, s: Unit) -> void:
+	## J3 Combat Roll, J4 mid-air shots, J5 Jet Jackals.
+	for o in b.units:
+		if o.team == "enemy" or o.team == "neutral" and o.kind != "pad":
+			o.gone = true; o.dead = true
+	b.projs.clear()
+	b.sel = s
+	ground_unit(b, s, 300)
+	cam_on(b, 420)
+	await until(func(): return b.settled(), 300)
+	# --- J3 roll: through a crawl-height gap that walking can't pass
+	var gy: float = s.y
+	b.T.fill_r(280, gy - 80, 300, 80, 0)  # a flat yard so the slab's gap is exactly crawl height
+	b.T.fill_r(280, gy, 300, 40, 1)
+	b.T.fill_r(380, gy - 30, 40, 12, 2)
+	b.T.flush()
+	var walk := b.sim_walk(s, s.x + 150, 150)
+	check(walk.x < 380, "walking can't get under the low slab (stopped at %d)" % walk.x)
+	s.energy = 5
+	var ri := force_card(s, "roll")
+	var rc := Data.card(s.hand[ri])
+	var rp := b.roll_path(s, rc, Vector2(s.x + 200, s.y))
+	check(rp.x > 420, "a Combat Roll goes under it (ends at %d)" % rp.x)
+	var mv0 := s.move_left
+	await b.resolve(func(): await b._act_roll(s, ri, rc, Vector2(s.x + 200, s.y)))
+	check(absf(s.x - rp.x) < 3 and s.move_left == mv0 and s.h == 34, "the roll lands where the preview said, costs no movement, and stands back up (x %d vs %d)" % [s.x, rp.x])
+	check(s.has_st("roll"), "the roller is ROLLING")
+	await shot("soldat2_roll")
+	var j := b.mk_enemy("grunt", s.x + 180, b.T.stand_y(s.x + 180, 0)); j.active = true
+	b.units.append(j)
+	var hp0 := s.hp
+	await b.enemy_shoot(j, s, {"dmg": [4, 4], "shots": 1, "range": 460})
+	await until(func(): return b.settled(), 300)
+	check(s.hp == hp0 and not s.has_st("roll"), "the next Jackal shot goes over the roller's head (hp %d -> %d)" % [hp0, s.hp])
+	j.dead = true; j.gone = true
+	# --- J4 mid-air shot from the top of a jump
+	ground_unit(b, s, 300)
+	await until(func(): return b.settled(), 300)
+	s.energy = 6
+	s.adr = 0
+	var t2 := b.mk_enemy("grunt", s.x + 150, b.T.stand_y(s.x + 150, 0)); t2.active = true; t2.hp = 1; t2.max_hp = 1
+	b.units.append(t2)
+	var ai := force_card(s, "rifle")
+	var ji := force_card(s, "jumppack")
+	await b.resolve(func(): await b._act_jump(s, ji, Vector2(s.x + 40, s.y - 200)))
+	check(s.hang and s.air and not b.busy, "a Jump Pack stops at the top of its arc for a shot (hang %s air %s)" % [s.hang, s.air])
+	var y_top := s.y
+	await frames_wait(20)
+	check(absf(s.y - y_top) < 1, "and stays up there while you aim")
+	await shot("soldat2_topgun")
+	ai = force_card(s, "rifle")
+	b.aim_hold = true
+	var tp := Vector2(t2.x, t2.y - t2.h / 2.0)
+	await b.resolve(func(): await b._act_aim(s, ai, Data.card(s.hand[ai]), tp, false))
+	b.aim_hold = false
+	check(not s.hang and not s.air, "after the shot the soldier drops and lands")
+	check(t2.dead and b.feed.size() and b.feed[-1].stamp.contains("TOP GUN"), "a mid-air kill is a TOP GUN (%s, %s)" % [t2.dead, b.feed[-1].stamp if b.feed.size() else ""])
+	await b.resolve(func(): await b._act_jump(s, force_card(s, "jumppack"), Vector2(s.x + 40, s.y - 200)))
+	check(s.hang, "hanging again")
+	b.world_click(Vector2(s.x + 100, s.y + 160))
+	await until(func(): return not s.air, 300)
+	check(not s.hang and not s.air, "clicking the ground lets go and drops")
+	# --- J5 Jet Jackals
+	var tw := find_struct(b, "tower")
+	cam_on(b, tw.x)
+	ground_unit(b, s, tw.x - 260)
+	var g0: float = b.T.ground_at(tw.x - 120)
+	var jt := b.mk_enemy("jetter", tw.x - 120, b.T.stand_y(tw.x - 120, 0)); jt.active = true
+	b.units.append(jt)
+	var r = b.jet_roost(jt)
+	check(r != null and r.y < g0 - 40, "a Jet Jackal picks a roof above the ground (%s, ground %d)" % [str(r), g0])
+	s.overwatch = 0
+	await b.jetter_act(jt)
+	await until(func(): return b.settled(), 600)
+	check(not jt.dead and jt.y < g0 - 40, "it jets up onto it (y %d, ground %d)" % [jt.y, g0])
+	await shot("soldat2_jetter")
+	var jt2 := b.mk_enemy("jetter", tw.x - 120, b.T.stand_y(tw.x - 120, 0)); jt2.active = true; jt2.hp = 30; jt2.max_hp = 30
+	b.units.append(jt2)
+	var roost = b.jet_roost(jt2)
+	jt.dead = true; jt.gone = true
+	b.jet_fly(jt2, roost)
+	await until(func(): return jt2.y < roost.y - 20 or not jt2.jetting, 300)
+	var hp1 := jt2.hp
+	b.damage(jt2, 1, s)
+	check(jt2.crash and not jt2.jetting, "a hit in flight knocks its pack out")
+	await until(func(): return not jt2.air, 400)
+	check(jt2.hp < hp1 - 1, "and it crashes (hp %d -> %d)" % [hp1, jt2.hp])
 
 func ground_unit(b: Battle, u: Unit, x: float, from_y := 0.0) -> void:
 	u.x = x; u.y = b.T.stand_y(x, from_y); u.air = false; u.vx = 0; u.vy = 0; u.walk = null
@@ -1722,7 +1944,7 @@ func soldat() -> void:
 	var hp_s := s.hp
 	await b.walk_along(s, b.sim_walk(s, pd.x, 100).pts)
 	await frames_wait(4)
-	check(not pd.loot.ready and (s.has_st(k) or (k == "medkit" and s.hp > hp_s)), "a soldier who steps on it takes %s" % k)
+	check(not pd.loot.ready and (s.has_st(k) or (k == "medkit" and s.hp > hp_s) or (k == "nadekit" and s.hand.any(func(c): return c.key == "frag" and c.get("temp", false)))), "a soldier who steps on it takes %s" % k)
 	await frames_wait(10)
 	await shot("soldat_pad_taken")
 	pd.loot.ready = true

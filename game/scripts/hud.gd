@@ -211,8 +211,12 @@ func hint_text() -> String:
 		return ""
 	if b.jet_armed:
 		return "JET BOOTS: hold the mouse button to fly toward the cursor. Let go to drop. Fuel %d/%d." % [u.fuel, u.fuel_max]
+	if u.hang and b.card_idx < 0:
+		return "TOP GUN: %s hangs at the top of the jump. Play an attack card for one mid-air shot (a kill is +15 adrenaline). Click the ground or ESC to drop." % u.def.name
 	if b.card_idx >= 0 and b.card_idx < u.hand.size():
 		var c := Data.card(u.hand[b.card_idx])
+		if c.get("roll", false):
+			return "COMBAT ROLL: click left or right of %s. Rolls through crawl-height gaps without using movement; the next Jackal shot goes over your head." % u.def.name
 		if c.get("rush", false):
 			return "OVERDRIVE: aim the launch. Anyone in the way gets smashed into the scenery."
 		if c.get("drill", false):
