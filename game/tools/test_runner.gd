@@ -619,6 +619,8 @@ func run() -> void:
 			await camp()
 		"biomes":
 			await biomes()
+		"detours":
+			await detours()
 		"campaign":
 			Run.new_run()
 			for m in 3:
@@ -893,12 +895,133 @@ func gate() -> void:
 	await frames_wait(20)
 	check(main.screen.get("mode") == "brief" and Run.mission == 1, "picking a biome briefs level 2")
 
+func detour_battle(id: String) -> Battle:
+	## A desert level whose mid camp offers only this detour; walks a soldier into camp and takes it.
+	Run.level = Run.make_level("desert", 0)
+	Run.level.detours = [id]
+	var b: Battle = main.start_battle(0, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var c: Dictionary = b.T.camps[0]
+	for e in b.units.filter(func(e): return e.team == "enemy" and e.x < c.x1 + 200):
+		e.dead = true
+		e.gone = true
+	var u: Unit = b.squad()[0]
+	u.x = c.fire + 20
+	u.y = b.T.stand_y(u.x, 0)
+	b.autopick = 0
+	await b.check_camp(u)
+	cam_on(b, b.T.yard[0] + 200)
+	await frames_wait(30)
+	await shot("detour_" + id)
+	check(b.detour.get("id") == id, "the mid camp starts the %s detour" % id)
+	return b
+
+func detours() -> void:
+	## Step 5: the mid-level camp offers 3 detours, each paying in its own currency.
+	var lv := Run.make_level("jungle", 0)
+	check(lv.detours.size() == 3 and lv.segments[4] == "yard" and lv.segments[3] == "camp", "a level has a yard after the mid camp and 3 detour offers")
+	Run.new_run()
+	Run.meta.salvage = 0
+	Run.meta.bio = 0
+	# the pick screen
+	Run.level = Run.make_level("desert", 0)
+	var b: Battle = main.start_battle(0, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var c: Dictionary = b.T.camps[0]
+	for e in b.units.filter(func(e): return e.team == "enemy" and e.x < c.x1 + 200):
+		e.dead = true
+		e.gone = true
+	var u0: Unit = b.squad()[0]
+	u0.x = c.fire + 20
+	u0.y = b.T.stand_y(u0.x, 0)
+	cam_on(b, c.fire)
+	b.check_camp(u0)
+	await frames_wait(90)
+	await shot("detour_pick")
+	b.hud.picked.emit(0)
+	await frames_wait(20)
+	check(b.detour.get("id") == Run.level.detours[0], "picking a detour card starts it")
+	main.clear()
+	# elite outpost
+	b = await detour_battle("elite")
+	var el: Array = b.units.filter(func(e): return e.detour and e.team == "enemy")
+	check(el.size() == 4 and el.all(func(e): return e.elite == b.detour.mod), "four elites share one modifier (%s)" % b.detour.mod)
+	for e in el:
+		e.dead = true
+	await b.check_detour()
+	check(b.detour.done and int(Run.meta.bio) == Data.ELITE_BIO and b.units.any(func(l): return l.kind == "loot" and l.loot.get("item", {}).get("tier", 0) >= 3), "clearing the outpost pays Bio-parts and an Epic item")
+	await frames_wait(20)
+	await shot("detour_elite_done")
+	main.clear()
+	# POW rescue: a dog tag back when nobody has fallen
+	Run.soldiers[1].tags = 0
+	b = await detour_battle("pow")
+	var pows: Array = b.units.filter(func(p): return p.detour and p.kind == "pow")
+	check(pows.size() == 3, "three prisoners in the yard")
+	for p in pows:
+		p.freed = true
+	await b.check_detour()
+	check(Run.soldiers[1].tags == 1, "freeing them all gives a dog tag back to whoever has fewest")
+	main.clear()
+	# POW rescue: a free recruit when a slot is empty
+	Run.soldiers[3].alive = false
+	b = await detour_battle("pow")
+	for p in b.units.filter(func(p): return p.detour and p.kind == "pow"):
+		p.freed = true
+	await b.check_detour()
+	check(Run.soldiers[3].alive and Run.soldiers[3].def.name != "ROOK", "...or a free recruit into the fallen slot (%s)" % Run.soldiers[3].def.name)
+	main.clear()
+	# POW rescue: too slow and they are gone
+	b = await detour_battle("pow")
+	for i in Data.POW_RESCUE_ROUNDS:
+		await b.detour_round()
+	check(b.detour.done and b.units.filter(func(p): return p.detour and p.kind == "pow").all(func(p): return p.gone), "after %d rounds the prisoners are moved out" % Data.POW_RESCUE_ROUNDS)
+	main.clear()
+	# salvage yard
+	b = await detour_battle("salvage")
+	var wrecks: Array = b.units.filter(func(w): return w.kind == "wreck")
+	check(wrecks.size() == 5, "five wrecks in the yard")
+	var u: Unit = b.squad()[0]
+	u.x = wrecks[0].x
+	u.y = b.T.stand_y(u.x, 0)
+	await frames_wait(10)
+	check(wrecks[0].stripped and int(Run.meta.salvage) == Data.WRECK_SALVAGE, "walking over a wreck strips it for salvage")
+	var n0: int = b.units.filter(func(e): return e.team == "enemy" and e.detour).size()
+	await b.detour_round()
+	check(b.units.filter(func(e): return e.team == "enemy" and e.detour).size() == n0 + 1, "a scavenger drifts in each round")
+	await frames_wait(20)
+	await shot("detour_salvage_scav")
+	for w in wrecks:
+		w.stripped = true
+	await b.check_detour()
+	check(b.detour.done, "stripping every wreck ends the yard")
+	main.clear()
+	# supply cache
+	b = await detour_battle("cache")
+	var sc0 := Run.scrip
+	var decks: int = Run.soldiers.reduce(func(a, s): return a + s.deck.size(), 0)
+	for e in b.units.filter(func(e): return e.detour and e.team == "enemy"):
+		e.dead = true
+	await b.check_detour()
+	await frames_wait(60)
+	check(Run.scrip > sc0 and Run.soldiers.reduce(func(a, s): return a + s.deck.size(), 0) == decks + 1, "the cache pays scrip and a card pick")
+	main.clear()
+	# old fixed missions have no yard: their mid camp still pays a camp pick
+	b = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	check(b.T.yard.is_empty(), "fixed missions have no detour yard")
+	main.clear()
+	# HQ shows the new currencies
+	main.show_hq(false)
+	await frames_wait(20)
+	await shot("detour_hq")
+
 func biomes() -> void:
 	## Step 4: a level is one biome. The gate dial offers two, the skipped one is burned, and each
 	## biome's rules are real: sway, sight, wind, hills, wet ground, fuel, mines, elites.
 	for id in Data.BIOMES:
 		var lv := Run.make_level(id, 0)
-		check(lv.segments.size() == 8 and lv.segments.count("camp") == 2 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)), "%s builds a full level" % id)
+		check(lv.segments.size() == 9 and lv.segments.count("camp") == 2 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)), "%s builds a full level" % id)
 	for i in Data.LEVELS.size():
 		check(Data.LEVELS[i].pool.size() >= 6 and Data.LEVELS[i].pool.all(func(k): return Data.BIOMES.has(k)), "level %d has a pool of 6+ biomes" % (i + 1))
 	# a whole run of dials: never a repeat, never a burned biome

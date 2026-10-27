@@ -80,6 +80,7 @@ var acc := 0.0
 var charm_used := 0
 var autopick := -1        # tests: pick this option index in every modal instead of waiting
 var theme := "dusk"
+var detour := {}          # the camp detour being played: {id, x0, x1, done, left, scav, mod}
 var th := {}              # the theme colors, with the biome's look laid over them
 var rules := {}           # the biome's rules: sway, sight, wind, amp, wet, fuel, mines, elite
 var world_w := 6400
@@ -2219,6 +2220,15 @@ func make_camp(c: Dictionary) -> void:
 			s.hp = mini(s.max_hp, s.hp + add)
 			float_text(s, "+%d" % add, Color("62d26f"))
 	await wait(30)
+	if c == T.camps[0] and T.yard.size() and mission.has("detours"):
+		await pick_detour()
+	else:
+		await camp_pick(c)
+	stats["camps"] = int(stats.get("camps", 0)) + 1
+	busy = false
+	ui_dirty = true
+
+func camp_pick(c: Dictionary) -> void:
 	var opts: Array = Data.CAMP_PICKS.map(func(p): return {"kind": "service", "name": p.name, "text": p.text, "id": p.id})
 	var ch := await ask("camp", "MAKE CAMP", "The downed are back on their feet and everyone patched up a little. Pick one more.", opts)
 	match opts[maxi(ch, 0)].id:
@@ -2241,9 +2251,157 @@ func make_camp(c: Dictionary) -> void:
 			for s in squad_alive():
 				s.energy += 1
 			Sfx.play("power")
-	stats["camps"] = int(stats.get("camps", 0)) + 1
+
+# ---------------------------------------------------------------- camp detours
+func detour_text(id: String) -> String:
+	var t: String = Data.DETOURS[id].text
+	if id == "pow":
+		return t % Data.POW_RESCUE_ROUNDS
+	if id == "salvage":
+		return t % Data.WRECK_SALVAGE
+	return t
+
+func pick_detour() -> void:
+	## The mid-level camp: pick one side job for the clearing ahead, or press on.
+	var opts: Array = mission.detours.map(func(id): return {"kind": "service", "title": "DETOUR", "icon": Data.DETOURS[id].icon, "name": Data.DETOURS[id].name, "text": "%s PAYS: %s" % [detour_text(id), Data.DETOURS[id].pays], "id": id})
+	opts.append({"kind": "service", "title": "NO DETOUR", "icon": "ic_boot", "name": "PRESS ON", "text": "Leave the clearing empty and keep moving.", "id": ""})
+	var ch := await ask("detour", "PICK A DETOUR", "The clearing past camp has room for one side job. Each pays in a different currency.", opts)
+	var id: String = opts[ch].id if ch >= 0 else ""  # skipping the pick means pressing on
+	if id != "":
+		start_detour(id)
+
+func start_detour(id: String) -> void:
+	var x0: float = T.yard[0]
+	var x1: float = T.yard[1]
+	detour = {"id": id, "x0": x0, "x1": x1, "done": false, "left": Data.POW_RESCUE_ROUNDS, "scav": 0, "mod": ""}
+	match id:
+		"elite":
+			detour.mod = Data.ELITES.keys()[randi() % Data.ELITES.size()]
+			for sp in [["grunt", 300], ["shield", 400], ["nade", 560], ["brute", 650]]:
+				detour_enemy(sp[0], x0 + sp[1], detour.mod)
+		"pow":
+			var pi := randi()
+			for dx in [220, 430, 620]:
+				var p := mk_unit(); p.team = "neutral"; p.kind = "pow"; p.x = x0 + dx; p.y = T.stand_y(p.x, 0); p.face = -1
+				p.pow_name = Data.POW_NAMES[pi % Data.POW_NAMES.size()]; pi += 1
+				p.detour = true
+				stats.pows_total += 1
+				units.append(p)
+			detour_enemy("grunt", x0 + 320, "")
+			detour_enemy("grunt", x0 + 530, "")
+		"salvage":
+			for i in 5:
+				var w := mk_unit(); w.team = "neutral"; w.kind = "wreck"; w.x = x0 + 130 + i * 125; w.y = T.stand_y(w.x, 0)
+				w.w = 34; w.h = 18; w.hp = 1; w.max_hp = 1; w.detour = true
+				units.append(w)
+		"cache":
+			for sp in [["grunt", 300], ["grunt", 470], ["nade", 600]]:
+				detour_enemy(sp[0], x0 + sp[1], "")
+			var cu := mk_unit(); cu.team = "neutral"; cu.kind = "crate"; cu.x = x0 + 660; cu.y = T.stand_y(cu.x, 0); cu.w = 16; cu.h = 14; cu.hp = 1; cu.max_hp = 1
+			units.append(cu)
+	var D: Dictionary = Data.DETOURS[id]
+	banner(D.name, Color("ffb23e"), "PAYS: " + D.pays)
+	log_msg("Detour: %s %s" % [D.name.capitalize(), detour_text(id)])
+	stats["detour"] = id
+	activate_enemies()
+	ui_dirty = true
+
+func detour_enemy(type: String, x: float, mod: String) -> Unit:
+	var u := mk_enemy(type, x, T.stand_y(x, 0))
+	u.detour = true
+	if mod != "":
+		make_elite(u, mod)
+	units.append(u)
+	return u
+
+func strip_wreck(w: Unit, u: Unit) -> void:
+	w.stripped = true
+	Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.WRECK_SALVAGE
+	stats["salvage"] = int(stats.get("salvage", 0)) + Data.WRECK_SALVAGE
+	float_text(w, "+%d SALVAGE" % Data.WRECK_SALVAGE, Color("53d4e2"), true)
+	dust(w.x, w.y, Color("8a7a6a"), 6)
+	Sfx.play("coin")
+	log_msg("%s strips a wreck: +%d salvage for HQ." % [u.def.name, Data.WRECK_SALVAGE])
+
+func check_detour() -> void:
+	## Pays out a detour the moment its job is done.
+	if detour.is_empty() or detour.done:
+		return
+	match detour.id:
+		"elite", "cache":
+			if units.any(func(e): return e.detour and e.team == "enemy" and not e.dead):
+				return
+		"pow":
+			if units.any(func(p): return p.detour and p.kind == "pow" and not p.freed):
+				return
+		"salvage":
+			if units.any(func(w): return w.kind == "wreck" and not w.stripped):
+				return
+	detour.done = true
+	busy = true
+	await wait(20)
+	var cx: float = (detour.x0 + detour.x1) / 2.0
+	match detour.id:
+		"elite":
+			banner("OUTPOST TAKEN!", Color("62d26f"), "EPIC GEAR + %d BIO-PARTS" % Data.ELITE_BIO)
+			drop_loot(cx, T.ground_at(cx) - 40, {"type": "item", "item": Run.roll_item(3)})
+			Run.meta.bio = int(Run.meta.get("bio", 0)) + Data.ELITE_BIO
+			stats["bio"] = int(stats.get("bio", 0)) + Data.ELITE_BIO
+			log_msg("The outpost is ours: an Epic crate and %d Bio-parts for the Doc." % Data.ELITE_BIO)
+		"pow":
+			var slots := Run.fallen_slots()
+			if slots.size():
+				var o: Dictionary = Run.recruit_offers(1)[0]
+				var s := Run.hire(slots[0], o)
+				banner("ALL PRISONERS FREE!", Color("62d26f"), "%s JOINS THE SQUAD AT HQ" % s.def.name)
+				log_msg("%s, a freed %s, signs up. They will be waiting at HQ." % [s.def.name, s.def.cls])
+			else:
+				var need: Array = squad_alive().filter(func(u): return u.s.tags < Data.DOG_TAGS)
+				need.sort_custom(func(a, b): return a.s.tags < b.s.tags)
+				if need.size():
+					need[0].s.tags += 1
+					banner("ALL PRISONERS FREE!", Color("62d26f"), "%s GETS A DOG TAG BACK" % need[0].def.name)
+					float_text(need[0], "+1 DOG TAG", Color("62d26f"), true)
+				else:
+					banner("ALL PRISONERS FREE!", Color("62d26f"), "+50 SCRIP")
+					give_scrip(50, cx, T.ground_at(cx) - 40)
+		"salvage":
+			banner("YARD STRIPPED!", Color("62d26f"), "%d SALVAGE FOR HQ" % int(stats.get("salvage", 0)))
+		"cache":
+			banner("CACHE SECURED!", Color("62d26f"), "+80 SCRIP AND A CARD")
+			give_scrip(80, cx, T.ground_at(cx) - 40)
+			await wait(30)
+			await supply_drop("SUPPLY CACHE", null)
+	Run.save_meta()
+	Sfx.play("levelup")
+	await wait(40)
 	busy = false
 	ui_dirty = true
+
+func detour_round() -> void:
+	## After each enemy phase: the prisoner clock ticks and scavengers drift into the yard.
+	if detour.is_empty() or detour.done:
+		return
+	if detour.id == "pow":
+		detour.left -= 1
+		var left: Array = units.filter(func(p): return p.detour and p.kind == "pow" and not p.freed and not p.gone)
+		if detour.left <= 0:
+			for p in left:
+				p.gone = true
+				dust(p.x, p.y, Color("b9a27a"), 6)
+			detour.done = true
+			banner("THE PRISONERS ARE GONE", Color("ff7a3d"), "MOVED OUT BEFORE YOU GOT THERE")
+			await wait(40)
+		else:
+			for p in left:
+				float_text(p, "%d ROUND%s LEFT" % [detour.left, "" if detour.left == 1 else "S"], Color("ffb23e"), true)
+	elif detour.id == "salvage" and detour.scav < 4 and squad_alive().any(func(s): return s.x > detour.x0 - 200) and units.any(func(w): return w.kind == "wreck" and not w.stripped):
+		var x := minf(detour.x1 + 60, cam_x + W - 30)
+		var e := mk_enemy("grunt", x, T.stand_y(x, 0))
+		e.active = true; e.detour = true
+		units.append(e)
+		detour.scav += 1
+		float_text(e, "SCAVENGER", Color("ff7a3d"), true)
 
 func scroll_to(tx: float, reason: String, who = null) -> void:
 	tx = clampf(tx, 0, world_w - W)
@@ -2457,7 +2615,9 @@ func post_action() -> void:
 		Run.lvl_rerolls += 1
 		log_msg("%s: %s" % [q.pow.pow_name, sp.get("text", "LUCK +1. Your loot just got better.")])
 		await wait(40)
-		await supply_drop("%s says thanks" % q.pow.pow_name, null if q.u.dead else q.u)
+		if not q.pow.detour:
+			await supply_drop("%s says thanks" % q.pow.pow_name, null if q.u.dead else q.u)
+	await check_detour()
 	while loot_queue.size():
 		var lq: Dictionary = loot_queue.pop_front()
 		if lq.u.dead:
@@ -2798,6 +2958,8 @@ func enemy_phase() -> void:
 		pow_queue.pop_front()
 		score += 500
 		stats.pows += 1
+	await check_detour()
+	await detour_round()
 	if squad_alive().is_empty():
 		game_over()
 		return
@@ -3469,6 +3631,8 @@ func step() -> void:
 			for p in units:
 				if p.kind == "loot" and not p.gone and not p.sunk and absf(p.x - u.x) < 22 and absf(p.y - u.y) < 30:
 					collect(u, p)
+				if p.kind == "wreck" and not p.stripped and absf(p.x - u.x) < 28 and absf(p.y - u.y) < 30:
+					strip_wreck(p, u)
 				if p.kind == "pow" and not p.freed and absf(p.x - u.x) < 26 and absf(p.y - u.y) < 30:
 					p.freed = true
 					p.dead_t = 0

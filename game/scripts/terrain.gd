@@ -29,6 +29,7 @@ var spawns: Array = []
 var chunks: Array = []
 var bridges: Array = []  # standing bridge structs: posts are checked after every carve
 var arena_x := 0
+var yard: Array = []     # [x0, x1] of the clearing after the mid camp, where a detour plays out
 var camps: Array = []    # safe camps inside the level: {x0, x1, used}
 
 func _init(battle) -> void:
@@ -94,13 +95,15 @@ func build(mission: Dictionary) -> void:
 	var x := 0
 	var shapes: Array = []
 	var open_pits: Array = []
-	pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear(); camps.clear()
+	pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear(); camps.clear(); yard = []
 	arena_x = 1 << 20  # outposts have no arena
 	var rules: Dictionary = mission.get("rules", {})
 	var stretches: Array = []   # fighting stretches, where a biome's extra fuel and mines go
 	for sname in mission.segments:
 		var s: Dictionary = Data.SEGMENTS[sname]
-		if sname != "start" and not s.get("camp", false) and not s.get("flat", false):
+		if s.get("yard", false):
+			yard = [x, x + s.w]
+		elif sname != "start" and not s.get("camp", false) and not s.get("flat", false):
 			stretches.append([x + 60, x + s.w - 60])
 		if s.get("flat", false):
 			arena_x = x
