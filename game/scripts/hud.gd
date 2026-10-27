@@ -59,11 +59,11 @@ func setup(battle: Battle) -> void:
 	mute.size = Vector2(58, 24)
 	mute.pressed.connect(func(): Sfx.muted = not Sfx.muted; mute.text = "MUTE" if Sfx.muted else "SND")
 	root.add_child(mute)
-	for i in Data.BELT_MAX:
+	for i in Run.belt_max():
 		var bs := BeltSlot.new()
 		bs.hud = self
 		bs.idx = i
-		bs.position = Vector2(830 + i * 41, 424)
+		bs.position = Vector2(830 + (i - (Run.belt_max() - 3)) * 41, 424)
 		bs.size = Vector2(38, 30)
 		root.add_child(bs)
 	modal = Control.new()
@@ -129,6 +129,7 @@ func refresh() -> void:
 		cv.selected = b.card_idx == i
 		cv.disabled = not my_turn or u.energy < cv.cost
 		cv.supercharged = u.adr >= 50 and not inst.get("od", false) and Data.is_attack(c)
+		cv.chain = b.chain_ready(u, inst) if my_turn else ""
 	overlay.queue_redraw()
 
 func _process(_d: float) -> void:
@@ -200,15 +201,37 @@ func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> 
 		elif o.has("u"):
 			cv.label_top = "TO %s" % o.u.def.name
 		var idx := i
-		cv.pressed.connect(func(): Sfx.play("coin"); picked.emit(idx))
+		cv.pressed.connect(func():
+			Sfx.play("coin")
+			picked.emit(-100 - idx if bg.banish else idx))
 		modal.add_child(cv)
 	var skip := PixButton.new()
-	skip.text = {"level": "SKIP (NO BONUS)", "loot": "TO STASH"}.get(kind, "SKIP")
+	skip.text = {"level": "SKIP +15$", "loot": "TO STASH"}.get(kind, "SKIP")
 	skip.color = Color("9aa2ae")
-	skip.size = Vector2(170 if kind == "level" else (120 if kind == "loot" else 90), 26)
+	skip.size = Vector2(120 if kind in ["level", "loot"] else 90, 26)
 	skip.position = Vector2(480 - skip.size.x / 2, 392)
 	skip.pressed.connect(func(): picked.emit(-1))
 	modal.add_child(skip)
+	if kind == "level":
+		# P4: reroll the three options, or banish one from this soldier's pool for the run
+		var rr := PixButton.new()
+		rr.text = "REROLL (%d)" % Run.lvl_rerolls
+		rr.color = Color("53d4e2")
+		rr.size = Vector2(120, 26)
+		rr.position = Vector2(480 - 60 - 130, 392)
+		rr.disabled = Run.lvl_rerolls <= 0
+		rr.pressed.connect(func(): picked.emit(-2))
+		modal.add_child(rr)
+		var bn := PixButton.new()
+		bn.text = "BANISH (%d)" % Run.banishes
+		bn.color = Color("ff7a3d")
+		bn.size = Vector2(120, 26)
+		bn.position = Vector2(480 + 60 + 10, 392)
+		bn.disabled = Run.banishes <= 0
+		bn.pressed.connect(func():
+			bg.banish = not bg.banish
+			bn.text = "PICK ONE TO BANISH" if bg.banish else "BANISH (%d)" % Run.banishes)
+		modal.add_child(bn)
 	modal.visible = true
 	Sfx.play("levelup" if kind == "level" else "select")
 	var r: int = await picked
@@ -228,7 +251,8 @@ func show_deck() -> void:
 	var bg := ModalBG.new()
 	bg.title = "%s  LV%d  %s" % [u.def.name, u.s.lvl, u.def.cls.to_upper()]
 	var perks: Array = u.s.perks.map(func(p): return Data.perk(u.def.key, p).name)
-	bg.sub = "%s: %s   Abilities: %s" % [u.def.trait[0], u.def.trait[1], ", ".join(perks) if perks.size() else "none yet"]
+	var arch: Array = Run.archetypes(u.s).map(func(a): return "%s %s" % [a[0], ["I", "II", "III"][a[1] - 1]])
+	bg.sub = "%s: %s   Abilities: %s%s" % [u.def.trait[0], u.def.trait[1], ", ".join(perks) if perks.size() else "none yet", ("   (" + ", ".join(arch) + ")") if arch.size() else ""]
 	bg.who = u
 	bg.kind = "deck"
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -263,6 +287,7 @@ class PixButton extends Control:
 	var color := Color("ffb23e")
 	var disabled := false
 	var hover := false
+	var small := false        # force the small font on a tall button
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		mouse_entered.connect(func(): hover = true; queue_redraw())
@@ -289,7 +314,7 @@ class PixButton extends Control:
 		var ty := (h - 2) / 2.0 + 5 + press
 		if sub != "":
 			ty -= 5
-		Art.text(self, text, Vector2(w / 2.0, ty), 8 if h < 30 else 16, Color.WHITE if not disabled else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+		Art.text(self, text, Vector2(w / 2.0, ty), 8 if h < 30 or small else 16, Color.WHITE if not disabled else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 		if sub != "":
 			Art.text(self, sub, Vector2(w / 2.0, ty + 12), 8, Color(1, 1, 1, 0.7), HORIZONTAL_ALIGNMENT_CENTER, 1)
 
@@ -395,6 +420,7 @@ class ModalBG extends Control:
 	var sub := ""
 	var who = null
 	var kind := ""
+	var banish := false
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
 	func _process(_d: float) -> void:

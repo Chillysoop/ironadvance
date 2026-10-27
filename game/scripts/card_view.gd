@@ -17,6 +17,7 @@ var hotkey := ""
 var hover := false
 var lift := 0.0
 var base_y := 0.0
+var chain := ""              # signature chain this card would complete right now (hand only)
 
 const PAPER := Color("e4d6b0")
 const PAPER_D := Color("bba57c")
@@ -135,10 +136,13 @@ func _draw() -> void:
 			name_ = c.name
 			stat = Data.stat_line(c)
 			body = c.text
+			if c.get("mod_names", []).size():
+				body = "[%s] %s" % [", ".join(c.mod_names), body]
 		"stat":
 			title = "STAT BOOST"; name_ = opt.name; body = opt.text
 		"perk":
-			title = "ABILITY"; name_ = opt.name; body = opt.text
+			title = opt.get("title", "ABILITY" if not opt.has("ptier") else Data.PERK_TIER[opt.ptier])
+			name_ = opt.name; body = opt.text
 		"gear":
 			title = "SQUAD GEAR"; name_ = opt.name; body = opt.text
 		"item":
@@ -150,6 +154,9 @@ func _draw() -> void:
 			body = d.text
 			if d.has("set"):
 				body += " SET: %s." % Data.SETS[d.set].name
+			var evo := Data.evolve_hint(it.id)
+			if evo != "":
+				body += " " + evo
 		"service":
 			title = "SERVICE"; name_ = opt.name; body = opt.text
 	Art.text(self, title, Vector2(w / 2.0, 12), 8, Color.WHITE if not dim else Color("cccccc"), HORIZONTAL_ALIGNMENT_CENTER, 1)
@@ -195,6 +202,11 @@ func _draw() -> void:
 	if hand_mode and not dim and cost == 0 and kind == "card" and not selected:
 		var pulse := 0.35 + 0.25 * sin(Time.get_ticks_msec() / 220.0)
 		draw_rect(Rect2(0, 0, w, h - 2), Color(0.38, 0.82, 0.44, pulse), false, 1.0)
+	if chain != "" and not dim:
+		var cp := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 120.0)
+		draw_rect(Rect2(-2, -2, w + 4, h + 2), Color(0.88, 0.69, 1.0, cp), false, 2.0)
+		draw_rect(Rect2(0, -14, w, 12), Color(0.2, 0.1, 0.3, 0.9))
+		Art.text(self, chain, Vector2(w / 2.0, -4), 8, Color("e0b0ff"), HORIZONTAL_ALIGNMENT_CENTER)
 	if price >= 0:
 		draw_rect(Rect2(w / 2.0 - 26, h - 16, 52, 16), INK)
 		draw_texture_rect(Art.tex.ic_coin, Rect2(w / 2.0 - 22, h - 12, 8, 8), false)

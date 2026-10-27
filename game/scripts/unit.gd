@@ -65,6 +65,7 @@ var gb: Dictionary = {}  # squad: gear bonuses for this mission
 var st: Dictionary = {}  # statuses (Data.STATUS key -> turns left)
 var st_by: Dictionary = {}  # who applied each status, for kill credit
 var hit_sides: Dictionary = {}  # this round: squad unit id -> side they hit from (CROSSFIRE)
+var rico := false     # Ricochet Body: already bounced off a wall this flight
 # squad only
 var s: Dictionary = {}  # persistent Run soldier record
 var def: Dictionary = {}
@@ -80,6 +81,10 @@ var attacked := false
 var aim_discount := false
 var played := 0       # cards played this turn (momentum)
 var last_cost := 0    # energy paid for the last card (SKY DIVER refund)
+var seq: Array = []   # [key, type] of each card played this turn (signature chains)
+var fl: Dictionary = {}  # per-turn flags for chains and perks
+var payback := 0      # Juggernaut capstone: armor carried into the next hit
+var immovable := false
 var second_wind := false
 var xp_gain := 0
 
@@ -91,7 +96,7 @@ func is_prop() -> bool:
 
 func is_pickup() -> bool:
 	## Loot on the ground and buried caches: bullets and blasts pass through them.
-	return kind == "loot" or kind == "cache"
+	return kind == "loot" or kind == "cache" or kind == "relay"
 
 func has_st(k: String) -> bool:
 	return st.get(k, 0) > 0

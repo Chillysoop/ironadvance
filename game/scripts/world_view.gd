@@ -125,6 +125,12 @@ func draw_unit(u: Unit) -> void:
 		"loot":
 			draw_loot(u, pos)
 			return
+		"relay":
+			draw_relay(u, pos)
+			return
+		"slug":
+			draw_slug(u, pos, white)
+			return
 		"cache":
 			# a glint in the dirt every couple of seconds
 			var gy: float = b.T.ground_at(u.x)
@@ -258,9 +264,38 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 	if u.cracked and not u.dead and b.t % 10 == 0:
 		b.puff(u.x + randf_range(-20, 30), u.y - 50, 1.0)
 
+func draw_relay(u: Unit, pos: Vector2) -> void:
+	## W3: a radio mast. Blinks red until a soldier ends a turn on it, then flies a green pennant.
+	var taken: bool = u.loot.taken
+	var metal := Color("6c7480")
+	draw_rect(Rect2(pos.x - 1, pos.y - 34, 3, 34), metal)
+	draw_line(pos + Vector2(-7, 0), pos + Vector2(0, -20), metal, 2)
+	draw_line(pos + Vector2(8, 0), pos + Vector2(1, -20), metal, 2)
+	draw_rect(Rect2(pos.x - 6, pos.y - 30, 6, 6), Color("9aa2ae"))
+	var lit := Color("62d26f") if taken else (Color("ff4d3d") if b.t % 40 < 20 else Color("5a1a14"))
+	draw_rect(Rect2(pos.x - 1, pos.y - 38, 3, 3), lit)
+	if taken:
+		draw_colored_polygon(PackedVector2Array([pos + Vector2(2, -34), pos + Vector2(14, -31), pos + Vector2(2, -28)]), Color("62d26f"))
+	else:
+		var bf: Dictionary = Data.RELAY_BUFFS[u.loot.buff]
+		Art.text(self, "RELAY: " + bf.name, pos + Vector2(0, -44), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+
+func draw_slug(u: Unit, pos: Vector2, white: bool) -> void:
+	## The SV-001: the Boar's chassis, repainted in squad green and facing east.
+	var tx: Texture2D = Art.tex.boss
+	var ph := int(u.tread / 3) % 2
+	var mod := Color(0.62, 1.0, 0.6) if not white else Color(1.6, 1.6, 1.6)
+	var bt: Texture2D = Art.tex.boss_barrel
+	draw_set_transform(pos + Vector2(10, -30), -0.25, Vector2(Art.PX, Art.PX))
+	draw_texture(bt, Vector2(-2, -bt.get_height() / 2.0), mod)
+	draw_set_transform(pos, 0, Vector2(-Art.PX, Art.PX))
+	draw_texture_rect_region(tx, Rect2(-32, -40, 64, 40), Rect2(ph * 64, 0, 64, 40), mod)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	Art.text(self, "SV-001", pos + Vector2(0, -92), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache"] or u.type == "boss" or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug"] or u.type == "boss" or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":

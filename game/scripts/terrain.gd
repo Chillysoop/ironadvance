@@ -89,6 +89,7 @@ func build(mission: Dictionary) -> void:
 	# lay segments end to end
 	var x := 0
 	pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear()
+	arena_x = 1 << 20  # outposts have no arena
 	for sname in mission.segments:
 		var s: Dictionary = Data.SEGMENTS[sname]
 		if sname == "arena":

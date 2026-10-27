@@ -75,11 +75,13 @@ func build() -> void:
 		var idx := i
 		tile.pressed.connect(func(): select({"where": "stash", "i": idx}))
 		add_child(tile)
-	for i in Data.BELT_MAX:
+	for i in Run.belt_max():
 		var tile := ItemTile.new()
 		tile.item = Run.belt[i] if i < Run.belt.size() else null
 		tile.empty_label = "BELT"
-		tile.position = Vector2(470 + i * 110, 222)
+		var bw := 110 if Run.belt_max() <= 3 else 82
+		tile.tw = bw - 6
+		tile.position = Vector2(470 + i * bw, 222)
 		tile.selected = pick.get("where", "") == "belt" and pick.i == i
 		var idx := i
 		tile.pressed.connect(func(): select({"where": "belt", "i": idx}))
@@ -148,7 +150,7 @@ func build_actions(it) -> void:
 	if where == "equip":
 		x = action("UNEQUIP", Color("9aa2ae"), unequip_sel, x)
 	if where == "stash" and slot_kind == "belt":
-		x = action("TO BELT", Color("62d26f"), func(): move_belt(true), x, Run.belt.size() >= Data.BELT_MAX)
+		x = action("TO BELT", Color("62d26f"), func(): move_belt(true), x, Run.belt.size() >= Run.belt_max())
 	if where == "belt":
 		x = action("TO STASH", Color("9aa2ae"), func(): move_belt(false), x)
 	x = merge_actions(it, x)
@@ -365,8 +367,9 @@ class ItemTile extends Control:
 	var sold := false
 	var mystery := false
 	var black := false
+	var tw := 104
 	func _ready() -> void:
-		size = Vector2(104, 44)
+		size = Vector2(tw, 44)
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		mouse_entered.connect(func(): hover = true)
 		mouse_exited.connect(func(): hover = false)

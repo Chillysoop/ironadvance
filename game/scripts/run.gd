@@ -20,6 +20,88 @@ var trophies: Array = []   # Iron Boar parts brought home this run
 var discount := 0.0        # next shop's price cut (Quartermaster POW)
 var reroll_tokens := 0     # free affix rerolls at the gunsmith
 var gunsmith_uses := 0     # each paid reroll costs more
+var lvl_rerolls := 2       # level-up rerolls (P4); POWs and medals add more
+var banishes := 2          # level-up banishes (P4)
+var banished := {}         # soldier key -> option ids that never show up again
+var cmd: Array = []        # commander perks (P5)
+var extra_picks := 0       # Double Down: the next level-up takes two options
+var intel := ""            # this mission's briefing condition (W2)
+var side := ""             # "outpost" while an Elite Outpost side fight is running (W1)
+var threat := 0            # threat level chosen for this run (W5)
+var temp_luck := 0         # Luck that only lasts for the current mission
+var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0}   # kept across runs (W4, W5)
+const META_PATH := "user://meta.json"
+
+func _ready() -> void:
+	load_meta()
+
+func load_meta() -> void:
+	if not FileAccess.file_exists(META_PATH):
+		return
+	var j = JSON.parse_string(FileAccess.get_file_as_string(META_PATH))
+	if j is Dictionary:
+		for k in j:
+			meta[k] = j[k]
+
+func save_meta() -> void:
+	var f := FileAccess.open(META_PATH, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(meta))
+
+func feat(id: String, n := 1) -> String:
+	## Counts toward an Armory unlock feat. Returns the unlocked item's name the moment it unlocks.
+	for fd in Data.FEATS:
+		if fd.id != id:
+			continue
+		var c: int = int(meta.feats.get(id, 0)) + n
+		meta.feats[id] = c
+		var out := ""
+		if c >= fd.n and not meta.unlocked.has(fd.item):
+			meta.unlocked.append(fd.item)
+			out = Data.ITEMS[fd.item].name
+		save_meta()
+		return out
+	return ""
+
+func unlocked(id: String) -> bool:
+	return not Data.ITEMS[id].get("locked", false) or meta.unlocked.has(id)
+
+func threat_on(n: int) -> bool:
+	## Threat levels stack: level 3 includes the modifiers of levels 1 and 2.
+	return threat >= n
+
+func roll_intel() -> void:
+	var pool: Array = []
+	for k in Data.INTEL:
+		for i in Data.INTEL[k].w:
+			pool.append(k)
+	intel = pool[randi() % pool.size()] if mission > 0 else "clear"
+
+func route_offers() -> Array:
+	var others: Array = ["outpost", "powcamp", "hospital"]
+	others.shuffle()
+	return ["depot"] + others.slice(0, 2)
+
+func evolutions(s: Dictionary) -> Array:
+	## M4: an Epic or better card plus the matching kit evolves into a Metal Slug weapon.
+	var out: Array = []
+	var kits: Array = []
+	for sl in ["kit1", "kit2"]:
+		if s.equip[sl] != null:
+			kits.append(s.equip[sl].id)
+	for rule in Data.EVOLUTIONS:
+		if not kits.has(rule.kit):
+			continue
+		for c in s.deck:
+			if c.key == rule.card and Data.tier_of(c) >= 3 and not c.has("src"):
+				out.append({"card": c, "rule": rule})
+				break
+	return out
+
+func evolve(c: Dictionary, rule: Dictionary) -> void:
+	c.key = rule.into
+	c.erase("mods")
+	c.erase("nick")
 
 func new_run() -> void:
 	soldiers.clear()
@@ -37,6 +119,14 @@ func new_run() -> void:
 	discount = 0.0
 	reroll_tokens = 0
 	gunsmith_uses = 0
+	lvl_rerolls = 2
+	banishes = 2
+	banished = {}
+	cmd = []
+	extra_picks = 0
+	intel = ""
+	side = ""
+	temp_luck = 0
 	total_score = 0
 	uid = 1
 	seed_val = randi()
@@ -56,7 +146,7 @@ func new_card(key: String, tier := -1) -> Dictionary:
 	return {"id": uid, "key": key, "tier": Data.base_tier(key) if tier < 0 else maxi(tier, Data.base_tier(key))}
 
 func luck_total() -> int:
-	var n := luck + (2 if has_gear("charm") else 0) + (1 if has_gear("dogtags") else 0)
+	var n := luck + (2 if has_gear("charm") else 0) + (1 if has_gear("dogtags") else 0) + (2 if has_cmd("rabbit") else 0) + temp_luck
 	for s in soldiers:
 		if s.alive:
 			n += int(gear_bonus(s).get("luck", 0))
@@ -135,6 +225,8 @@ func add_xp(s: Dictionary, n: int) -> int:
 		return 0
 	if has_gear("dogtags"):
 		n = int(ceil(n * (1.3 + 0.1 * relic_tier("dogtags"))))
+	if has_cmd("veterans"):
+		n = int(ceil(n * 1.25))
 	s.xp += n
 	var gained := 0
 	while s.xp >= xp_for_next(s):
@@ -168,13 +260,18 @@ func level_options(s: Dictionary) -> Array:
 	## Each option rolls its own rarity.
 	var out: Array = []
 	var d: Dictionary = s.def
-	var pool: Array = d.pool.duplicate()
+	var ban: Array = banished.get(d.key, [])
+	var pool: Array = d.pool.filter(func(k): return not ban.has(k))
+	if pool.is_empty():
+		pool = d.pool.duplicate()
 	pool.shuffle()
 	var ckey: String = pool[0]
 	out.append({"kind": "card", "key": ckey, "tier": roll_card_tier(ckey)})
 	var stats: Array = Data.STAT_BOOSTS.duplicate()
 	stats.shuffle()
 	for st in stats:
+		if ban.has(st.id):
+			continue
 		if st.id == "hand" and s.bonus.hand >= 2:
 			continue
 		if st.id == "energy" and s.bonus.energy1 >= 1:
@@ -188,10 +285,10 @@ func level_options(s: Dictionary) -> Array:
 			t = 2
 		out.append({"kind": "stat", "id": st.id, "name": st.name, "text": stat_text(st.id, t), "tier": t})
 		break
-	var perks: Array = Data.PERKS[d.key].filter(func(p): return not s.perks.has(p.id))
+	var perks := perk_offers(s)
 	if perks.size():
 		var p: Dictionary = perks[randi() % perks.size()]
-		out.append({"kind": "perk", "id": p.id, "name": p.name, "text": p.text, "tier": 2})
+		out.append(p)
 	else:
 		for st in stats:
 			if out.any(func(o): return o.get("id", "") == st.id):
@@ -202,6 +299,53 @@ func level_options(s: Dictionary) -> Array:
 			out.append({"kind": "stat", "id": st.id, "name": st.name, "text": stat_text(st.id, t), "tier": t})
 			break
 	return out
+
+func perk_offers(s: Dictionary) -> Array:
+	## P1: the next untaken perk in each of the soldier's four branches.
+	var out: Array = []
+	var ban: Array = banished.get(s.key, [])
+	for b in Data.BRANCHES[s.key]:
+		for i in b.perks.size():
+			var p: Dictionary = b.perks[i]
+			if s.perks.has(p.id):
+				continue
+			if not ban.has(p.id):
+				var txt: String = p.text
+				if i == 2:
+					txt += " Overdrive becomes %s." % Data.CARDS[b.od].name
+				out.append({"kind": "perk", "id": p.id, "name": p.name, "text": txt, "tier": 2 + i, "branch": b.name, "ptier": i, "label": "%s %s" % [b.name.to_upper(), Data.PERK_TIER[i]]})
+			break
+	return out
+
+func od_key(s: Dictionary) -> String:
+	## P2: a capstone perk swaps the Overdrive for its archetype's.
+	for b in Data.BRANCHES[s.key]:
+		if s.perks.has(b.perks[2].id):
+			return b.od
+	return Data.OD[s.key]
+
+func archetypes(s: Dictionary) -> Array:
+	## Branch names with how deep this soldier is in each, for the squad panels.
+	var out: Array = []
+	for b in Data.BRANCHES[s.key]:
+		var n := 0
+		for p in b.perks:
+			if s.perks.has(p.id):
+				n += 1
+		if n > 0:
+			out.append([b.name, n])
+	return out
+
+func has_cmd(id: String) -> bool:
+	return cmd.has(id)
+
+func belt_max() -> int:
+	return Data.BELT_MAX + (1 if has_cmd("supply") else 0)
+
+func command_offers() -> Array:
+	var pool: Array = Data.COMMANDS.filter(func(c): return not cmd.has(c.id))
+	pool.shuffle()
+	return pool.slice(0, 3)
 
 func raise_tier(c: Dictionary) -> void:
 	c.tier = mini(Data.TIER_MAX, Data.tier_of(c) + 1)
@@ -258,6 +402,8 @@ func new_item(id: String, tier := -1) -> Dictionary:
 	## A fresh item instance with rolled rarity and affixes.
 	uid += 1
 	var t := roll_tier() if tier < 0 else tier
+	if Data.ITEMS[id].has("keystone"):
+		t = Data.TIER_MAX
 	var it := {"uid": uid, "id": id, "tier": t, "affixes": []}
 	if Data.ITEMS[id].slot != "belt":
 		roll_affixes(it)
@@ -271,11 +417,14 @@ func roll_affixes(it: Dictionary) -> void:
 	it.affixes = pool.slice(0, Data.AFFIX_COUNT[it.tier])
 
 func random_item_id(slots := ["weapon", "armor", "kit"]) -> String:
-	var ids: Array = Data.ITEMS.keys().filter(func(k): return Data.ITEMS[k].slot in slots)
+	var ids: Array = Data.ITEMS.keys().filter(func(k): return Data.ITEMS[k].slot in slots and not Data.ITEMS[k].has("keystone") and unlocked(k))
 	return ids[randi() % ids.size()]
 
 func roll_item(min_tier := 0, slots := ["weapon", "armor", "kit"]) -> Dictionary:
-	return new_item(random_item_id(slots), roll_tier(min_tier))
+	var t := roll_tier(min_tier)
+	if t >= Data.TIER_MAX and slots.size() > 1 and randf() < 0.5:
+		return new_item(Data.KEYSTONE_IDS[randi() % Data.KEYSTONE_IDS.size()], t)
+	return new_item(random_item_id(slots), t)
 
 func medals(st: Dictionary) -> Array:
 	## Debrief medals (L9). Each one earns a supply crate, up to three; a win always earns one.
@@ -316,6 +465,8 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 		var st := Data.item_stats(it)
 		for k in st:
 			out[k] = out.get(k, 0) + st[k]
+		if Data.ITEMS[it.id].has("keystone"):
+			out["ks_" + it.id] = 1
 		var set_id: String = Data.ITEMS[it.id].get("set", "")
 		if set_id != "":
 			sets[set_id] = sets.get(set_id, 0) + 1
@@ -369,7 +520,7 @@ func unequip(s: Dictionary, slot: String) -> void:
 
 func add_loot(it: Dictionary) -> String:
 	## Belt items go on the belt when there is room; everything else goes to the stash.
-	if Data.ITEMS[it.id].slot == "belt" and belt.size() < Data.BELT_MAX:
+	if Data.ITEMS[it.id].slot == "belt" and belt.size() < belt_max():
 		belt.append(it)
 		return "belt"
 	stash.append(it)
@@ -463,6 +614,10 @@ func fuse(s: Dictionary, g: Array) -> Dictionary:
 	for c in g:
 		s.deck.erase(c)
 	var c := new_card(g[0].key, Data.tier_of(g[0]) + 1)
+	for o in g:
+		if o.get("mods", []).size():
+			c["mods"] = o.mods.duplicate()
+			break
 	if Data.tier_of(c) >= Data.TIER_MAX:
 		c["nick"] = Data.CARD_NICKS[randi() % Data.CARD_NICKS.size()]
 	s.deck.append(c)

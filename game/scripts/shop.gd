@@ -87,23 +87,26 @@ func build() -> void:
 		var idx := i
 		cv.pressed.connect(func(): buy_gear(idx))
 		add_child(cv)
-	var fusable := Run.soldiers.any(func(s): return s.alive and Run.fusable(s).size() > 0)
+	var fusable := Run.soldiers.any(func(s): return s.alive and (Run.fusable(s).size() > 0 or Run.evolutions(s).size() > 0))
 	var services := [
 		["HOSPITAL", "Heal the whole squad to full.", 40, heal_all, Color("53d4e2")],
 		["UPGRADE", "Raise one card a rarity tier.", 60, upgrade_card, Color("53d4e2")],
+		["MOD", "Gunsmith: add an upgrade branch to a card (2 per card).", Data.MOD_PRICE, mod_card, Color("53d4e2")],
 		["REMOVE", "Thin a deck: burn one card.", 50, remove_card, Color("53d4e2")],
-		["FUSE 3", "Three copies of a card become one, a tier higher.", 0, fuse_cards, Color("b48cff")],
-		["FABRICATE", "Copy a Common or Uncommon item.", Data.FAB_PRICE, fabricate, Color("b48cff")],
+		["WORKBENCH", "Fuse three copies of a card into one a tier higher, or evolve an Epic card with its kit.", 0, fuse_cards, Color("b48cff")],
+		["FABRICATOR", "Copy a Common or Uncommon item.", Data.FAB_PRICE, fabricate, Color("b48cff")],
 		["REVIVE", "Bring a fallen soldier back at half HP.", 120, revive, Color("62d26f")],
 		["RESTOCK", "New cards and gear on the shelf.", 20, reroll, Color("9aa2ae")],
 	]
 	for i in services.size():
 		var sv: Array = services[i]
 		var bt := HudScript.PixButton.new()
-		bt.text = "%s  %s" % [sv[0], "FREE" if sv[2] == 0 else "%d$" % price(sv[2])]
+		bt.text = sv[0]
+		bt.sub = "FREE" if sv[2] == 0 else "%d$" % price(sv[2])
 		bt.color = sv[4]
-		bt.size = Vector2(124, 26)
-		bt.position = Vector2(24 + i * 131, 270)
+		bt.size = Vector2(108, 34)
+		bt.small = true
+		bt.position = Vector2(24 + i * 114, 264)
 		bt.disabled = Run.scrip < price(sv[2]) or (sv[3] == fuse_cards and not fusable) or (sv[3] == fabricate and Run.fab_options().is_empty())
 		bt.tooltip_text = sv[1]
 		bt.pressed.connect(sv[3])
@@ -168,7 +171,7 @@ func _draw() -> void:
 		else:
 			Art.text(self, "KIA", Vector2(x + 62, y + 60), 16, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 		Art.text(self, "DECK %d  XP %d" % [s.deck.size(), s.xp], Vector2(x + 8, y + 94), 8, Color("e8dcc2"))
-		var perks: Array = s.perks.map(func(p): return Data.perk(s.key, p).name)
+		var perks: Array = Run.archetypes(s).map(func(a): return "%s %s" % [a[0], ["I", "II", "III"][a[1] - 1]])
 		var yy := y + 112
 		for line in CardView.wrap_text(", ".join(perks) if perks.size() else "No abilities yet", 156, 16):
 			Art.text(self, line, Vector2(x + 8, yy), 16, Color("ffd23a") if perks.size() else Color("6c7480"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
@@ -308,6 +311,28 @@ func remove_card() -> void:
 	say("%s removed from %s's deck." % [Data.CARDS[c.key].name, s.def.name])
 	build()
 
+func mod_card() -> void:
+	## P3: pick a card, then one of its upgrade branches. A card holds two mods.
+	if Run.scrip < price(Data.MOD_PRICE):
+		Sfx.play("deny")
+		return
+	var s := await choose_soldier("MOD WHOSE CARD?")
+	if s.is_empty():
+		return
+	var c := await choose_card("PICK A CARD TO MOD", s, func(x): return Data.mod_options(x).size() > 0)
+	if c.is_empty():
+		return
+	var mods := Data.mod_options(c)
+	var opts: Array = mods.map(func(m): return {"kind": "service", "name": m.name, "text": m.text, "icon": "ic_up"})
+	var i := await choose("%s: PICK A MOD" % Data.card(c).name.to_upper(), opts)
+	if i < 0 or not pay(price(Data.MOD_PRICE)):
+		return
+	if not c.has("mods"):
+		c["mods"] = []
+	c.mods.append(mods[i].id)
+	say("%s gets %s." % [Data.CARDS[c.key].name, mods[i].name])
+	build()
+
 func fuse_cards() -> void:
 	## M3: three copies of one card at one rarity fuse into a single card a tier higher.
 	var cand: Array = []
@@ -315,12 +340,25 @@ func fuse_cards() -> void:
 		if s.alive:
 			for g in Run.fusable(s):
 				cand.append({"s": s, "g": g})
+			for ev in Run.evolutions(s):
+				cand.append({"s": s, "ev": ev})
 	if cand.is_empty():
-		say("Nobody has three copies of a card at the same rarity.")
+		say("Nothing to fuse or evolve yet.")
 		return
-	var opts: Array = cand.map(func(o): return {"kind": "card", "key": o.g[0].key, "tier": Data.tier_of(o.g[0]) + 1, "label": "%s: 3 INTO 1" % o.s.def.name})
-	var i := await choose("FUSE WHICH CARDS?", opts)
+	var opts: Array = cand.map(func(o):
+		if o.has("ev"):
+			return {"kind": "card", "key": o.ev.rule.into, "tier": Data.tier_of(o.ev.card), "label": "%s: EVOLVE" % o.s.def.name}
+		return {"kind": "card", "key": o.g[0].key, "tier": Data.tier_of(o.g[0]) + 1, "label": "%s: 3 INTO 1" % o.s.def.name})
+	var i := await choose("WORKBENCH: FUSE OR EVOLVE", opts)
 	if i < 0:
+		return
+	if cand[i].has("ev"):
+		var ev: Dictionary = cand[i].ev
+		var from: String = Data.CARDS[ev.card.key].name
+		Run.evolve(ev.card, ev.rule)
+		Sfx.play("levelup")
+		say("%s evolved into %s!" % [from, Data.CARDS[ev.rule.into].name])
+		build()
 		return
 	var c := Run.fuse(cand[i].s, cand[i].g)
 	Sfx.play("levelup")

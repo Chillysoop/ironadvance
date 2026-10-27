@@ -60,6 +60,14 @@ var act_once := {}        # tag-team combos that pay out once per action
 var act_crushed := 0      # Jackals crushed by debris during the current action (DOMINO)
 var act_crush_at := Vector2.ZERO
 var crate_bump := 0       # kill combo x5: the next crate rolls one rarity higher
+var act_unit: Unit = null # who played the card that started the current action
+var taunter: Unit = null  # Taunt: Jackals that can, shoot this soldier next phase
+var lazarus_used := false
+var last_hit_head := false
+var burn_tick := false    # a burn status is dealing damage right now (feat tracking)
+var relay_hand := 0       # captured relays (W3)
+var relay_intel := false
+var slug_given := false
 var loot_queue: Array = []   # pickups waiting for a decision (equip or stash) after the current action
 var mission: Dictionary = {}
 var mission_idx := 0
@@ -79,9 +87,10 @@ var world_w := 6400
 @onready var view = $WorldView
 
 # ---------------------------------------------------------------- setup
-func setup(idx: int) -> void:
+func setup(idx: int, custom := {}) -> void:
 	mission_idx = idx
-	mission = Data.MISSIONS[idx]
+	mission = Data.MISSIONS[idx] if custom.is_empty() else custom
+	Run.temp_luck = 2 if Run.intel == "veterans" else 0
 	theme = mission.theme
 	T = Terrain.new(self)
 	T.build(mission)
@@ -134,8 +143,9 @@ func setup(idx: int) -> void:
 		var u := mk_enemy(type, x, y)
 		u.hold = opt.has("hold")
 		if type == "boss":
-			u.hp = mission.boss_hp; u.max_hp = u.hp; u.plate = mission.plate
-		elif randf() < 0.12 + mission_idx * 0.06:
+			var bm := 1.4 if Run.threat_on(5) else 1.0
+			u.hp = int(mission.boss_hp * bm); u.max_hp = u.hp; u.plate = int(mission.plate * bm)
+		elif randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0):
 			make_elite(u, Data.ELITES.keys()[randi() % Data.ELITES.size()])
 		units.append(u)
 	spawn_map_loot()
@@ -271,7 +281,7 @@ func spawn_map_loot() -> void:
 	## Crates on roofs and in the open, the odd strongbox, and one buried cache per mission (L1, L3, L6).
 	var lo := 520.0
 	var hi := world_w - 900.0
-	var n := int((hi - lo) / 360.0)
+	var n := int((hi - lo) / 360.0) * (2 if Run.intel == "surplus" else 1)
 	for i in n:
 		var x := lo + (i + randf_range(0.15, 0.85)) * (hi - lo) / n
 		var k := "strongbox" if randf() < 0.22 else "crate"
@@ -288,6 +298,17 @@ func spawn_map_loot() -> void:
 			continue  # only dirt hides a cache
 		var c := mk_unit(); c.team = "neutral"; c.kind = "cache"; c.x = x; c.y = gy + 18; c.w = 10; c.h = 10
 		units.append(c)
+	# radio relays (W3): one or two per mission, each with its own buff
+	var buffs: Array = Data.RELAY_BUFFS.keys()
+	buffs.shuffle()
+	for i in (2 if world_w > 4200 else 1):
+		var x := lo + (hi - lo) * (0.3 + 0.4 * i) + randf_range(-60, 60)
+		var y = T.stand_y(x, 0)
+		if y == null:
+			continue
+		var r := mk_unit(); r.team = "neutral"; r.kind = "relay"; r.x = x; r.y = y; r.w = 12; r.h = 34
+		r.loot = {"buff": buffs[i % buffs.size()], "taken": false}
+		units.append(r)
 
 func drop_loot(x: float, y: float, payload: Dictionary, pop := 1.0) -> Unit:
 	## A pickup that tumbles out with physics. Walk a soldier over it to collect.
@@ -344,7 +365,7 @@ func mk_enemy(type: String, x: float, y) -> Unit:
 	var u := mk_unit()
 	u.team = "enemy"; u.kind = "enemy"; u.type = type; u.x = x; u.y = y if y != null else WATER_Y - 4
 	u.w = E.w; u.h = E.h
-	u.hp = int(round(E.hp * mission.hp_mul)); u.max_hp = u.hp; u.face = -1
+	u.hp = int(round(E.hp * mission.hp_mul * (1.2 if Run.threat_on(4) else 1.0))); u.max_hp = u.hp; u.face = -1
 	u.heavy = E.get("heavy", false); u.shield = E.get("shield", false)
 	u.sheet = "en_" + type if Art.meta.has("en_" + type) else ""
 	return u
@@ -489,12 +510,21 @@ func gas_at(x: float, y: float):
 			return g
 	return null
 
-func tag(key: String, x: float, y: float, once := true) -> bool:
+func tag(key: String, x: float, y: float, once := true, who = null) -> bool:
 	## A tag-team combo fired (C3). Returns false when it already paid out this action.
+	## The soldier behind it earns style XP (P6); Brothers in Arms also draws them a card.
 	if once and act_once.has(key):
 		return false
 	act_once[key] = true
 	stats.tags += 1
+	if key in ["skeet", "pinball"]:
+		announce_unlock(Run.feat(key))
+	if who == null:
+		who = act_unit
+	if who is Unit and who.team == "squad" and not who.dead:
+		give_xp(who, 3)
+		if Run.has_cmd("brothers") and state == "player":
+			draw_cards(who, 1)
 	float_at(x, y - 50, Data.TAGS[key].name, Color("b48cff"), true)
 	Sfx.play("power", -4)
 	log_msg("%s %s" % [Data.TAGS[key].name, Data.TAGS[key].text])
@@ -506,13 +536,75 @@ func add_status(u: Unit, k: String, turns: int, by = null) -> void:
 		return
 	if k == "stun" and (u.type == "boss" or u.team == "squad"):
 		return
+	if k == "burn" and ks(by, "fuelpack"):
+		turns = maxi(turns, 4)
 	var fresh := not u.has_st(k)
 	u.st[k] = maxi(u.st.get(k, 0), turns)
+	if k == "supp" and by is Unit and by.team == "squad":
+		by.fl["supp_n"] = by.fl.get("supp_n", 0) + 1
 	if by != null:
 		u.st_by[k] = by
 	if fresh:
 		float_text(u, Data.STATUS[k].name, Data.STATUS[k].c)
 	ui_dirty = true
+
+func announce_unlock(name_: String) -> void:
+	if name_ != "":
+		banner("ARMORY UNLOCK!", Color("b48cff"), name_.to_upper() + " CAN NOW DROP")
+		Sfx.play("levelup")
+		log_msg("Armory unlock: %s joins the loot pool for every run." % name_)
+
+func ks(u, id: String) -> bool:
+	## Is this soldier wearing a keystone item?
+	return u != null and u is Unit and u.team == "squad" and u.g("ks_" + id) > 0
+
+func chain(u: Unit, name_: String) -> void:
+	## A signature chain (C2) completed: big purple callout and a little style XP.
+	float_text(u, name_ + "!", Color("e0b0ff"), true)
+	Sfx.play("power", -4)
+	give_xp(u, 2)
+	log_msg("Chain: %s." % name_)
+
+func chain_ready(u: Unit, inst: Dictionary) -> String:
+	## The chain this card would complete if played now ("" if none), so the hand can glow.
+	if u == null or u.team != "squad":
+		return ""
+	var c := Data.card(inst)
+	var last: String = u.seq[-1][0] if u.seq.size() else ""
+	match u.def.key:
+		"moss":
+			if last == "tagshot" and inst.key == "snipe":
+				return "SPOTTED"
+			if last == "digin" and c.get("overwatch", false):
+				return "DUG IN"
+			if c.type == "AIM" and u.fl.get("free_aim", false):
+				return "DOUBLE BANK"
+			if c.type == "AIM" and u.seq.size() >= 2 and u.seq[-1][1] == "AIM" and u.seq[-2][1] == "AIM" and not u.fl.has("sixgun"):
+				return "SIX SHOOTER"
+		"hex":
+			if Data.is_attack(c) and u.seq.size() >= 2 and u.seq[-1][0] == "sprint" and u.seq[-2][0] == "smoke":
+				return "FROM THE FOG"
+			if inst.key == "shotgun" and u.fl.get("healed", false):
+				return "SCRUBBED IN"
+		"vee":
+			if c.type in ["ARC", "LINE"] and c.has("dmg") and u.fl.get("jumped", false):
+				return "DEATH FROM ABOVE"
+			if c.has("radius") and u.fl.get("molotov", false) and inst.key != "molotov":
+				return "ACCELERANT"
+		"rook":
+			if last == "taunt" and inst.key == "digin":
+				return "COME AND GET IT"
+			if last == "grapple" and inst.key == "knife":
+				return "ZIP STRIKE"
+	if inst.get("od", false) and u.fl.get("juiced", false):
+		return "JUICED"
+	return ""
+
+func targetable(e: Unit, tg: Unit) -> bool:
+	## Ghillie (Hex capstone): squadmates in smoke who haven't attacked this turn are invisible.
+	if tg.attacked or not smoke_at(tg.x, tg.y - tg.h / 2.0):
+		return true
+	return not squad_alive().any(func(h): return h.perk("ghillie"))
 
 func tick_statuses(team: String) -> void:
 	## Burning and toxic hurt at the start of their side's turn. Gas poisons whoever stands in it.
@@ -523,12 +615,16 @@ func tick_statuses(team: String) -> void:
 		if u.has_st("burn"):
 			for i in 4:
 				part({"x": u.x + randf_range(-6, 6), "y": u.y - randf() * u.h, "vx": 0.0, "vy": -1.5, "life": 24, "max": 24, "c": Color("ff9a3d"), "s": 3.0, "g": -0.02, "fire": true})
-			damage(u, 3, u.st_by.get("burn", null), {"status": true})
+			var bsrc = u.st_by.get("burn", null)
+			var bd := 1 if Run.intel == "monsoon" else 3 + (2 if bsrc is Unit and bsrc.perk("accelerant") else 0)
+			burn_tick = true
+			damage(u, bd, bsrc, {"status": true})
+			burn_tick = false
 			if g != null:
 				# fire meets gas: the whole cloud goes up
 				gases.erase(g)
 				explode(g.x, g.y, g.r * 0.8, 12, g.owner)
-			elif T.mat(u.x, u.y + 2) == 3:
+			elif T.mat(u.x, u.y + 2) == 3 and Run.intel != "monsoon":
 				# the wood underfoot chars and the fire jumps to anyone else standing on wood nearby
 				T.carve(u.x, u.y + 3, 6, null)
 				for o in units:
@@ -593,11 +689,13 @@ func unit_at_point(x: float, y: float, shooter, travelled: float, skip: Dictiona
 			continue
 		if shooter != null and u != shooter and u.team != "" and u.team == shooter.team:
 			continue  # bullets slip past teammates, explosions don't
+		if u.kind == "slug":
+			continue
 		if x >= u.x - u.w / 2.0 and x <= u.x + u.w / 2.0 and y >= u.y - u.h and y <= u.y:
 			return u
 	return null
 
-func trace_bullet(x: float, y: float, ang: float, max_len: float, bounces: int, shooter, pierce: bool) -> Dictionary:
+func trace_bullet(x: float, y: float, ang: float, max_len: float, bounces: int, shooter, pierce: bool, pass_mat := 0) -> Dictionary:
 	## SteamWorld Heist style bullet: straight line, bounces off stone, stops in the first body unless it pierces.
 	var segs: Array = []
 	var hits: Array = []
@@ -625,7 +723,7 @@ func trace_bullet(x: float, y: float, ang: float, max_len: float, bounces: int, 
 			if not pierce:
 				segs.append([sx, sy, nx, ny])
 				return {"segs": segs, "hits": hits, "pings": pings, "ping_d": ping_d, "len": trav, "end": null}
-		if T.solid(nx, ny):
+		if T.solid(nx, ny) and (pass_mat == 0 or (pass_mat > 0 and T.mat(nx, ny) != pass_mat)):
 			var m := T.mat(nx, ny)
 			if bounces > 0 and (m == 2 or m == 4):
 				var hx := T.solid(nx, py)
@@ -664,10 +762,22 @@ func bounce_bonus(a: Unit, sc: bool) -> int:
 	var n := 1 if sc else 0
 	if a.team == "squad" and a.perk("trick"):
 		n += 1
+	if a.team == "squad" and a.perk("mirrors"):
+		n += 2
 	return n
 
 func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: bool) -> void:
-	var tr := trace_bullet(x, y, ang, c.range, c.get("bounce", 0) + bounce_bonus(a, sc), a, c.get("pierce", false))
+	var pm := -1 if c.get("phase", false) else (3 if c.get("woodpass", false) else 0)
+	var tr := trace_bullet(x, y, ang, c.range, c.get("bounce", 0) + bounce_bonus(a, sc), a, c.get("pierce", false), pm)
+	if pm != 0:
+		for sg in tr.segs:
+			# rounds that pass through terrain still chew a groove in it
+			var L: float = Vector2(sg[2] - sg[0], sg[3] - sg[1]).length()
+			for k in range(0, int(L), 18):
+				var fx_: float = sg[0] + (sg[2] - sg[0]) * k / maxf(1, L)
+				var fy_: float = sg[1] + (sg[3] - sg[1]) * k / maxf(1, L)
+				if T.solid(fx_, fy_):
+					T.carve(fx_, fy_, 4, a if a.team == "squad" else null)
 	for s in tr.segs:
 		tracer(s[0], s[1], s[2], s[3], (Color("ffcf70") if sc else Color("fff4c0")) if a.team == "squad" else Color("ffb0a0"))
 	for p in tr.pings:
@@ -682,14 +792,26 @@ func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: boo
 		if tg.team == "enemy":
 			foes += 1
 		var d := ri(c.dmg[0], c.dmg[1]) + (int(a.g("aim_dmg")) if a.team == "squad" else 0)
+		var banks: int = tr.ping_d.filter(func(pd): return pd < hh.d).size()
+		d += c.get("bankdmg", 0) * banks
+		if ks(a, "tungsten"):
+			d = int(round(d * (1.0 + 0.25 * banks)))
+		if a.team == "squad" and a.perk("patience") and not a.moved:
+			d = int(round(d * 1.3))
+		if c.get("forcehead", false) and not tg.is_prop():
+			hh.head = true
 		if sc:
 			d = int(round(d * 1.25))
 		# SKEET: knocked into the air by a squadmate, shot before it lands
 		if a.team == "squad" and tg.team == "enemy" and tg.air and not tg.para and tg.last_hit_by is Unit and tg.last_hit_by != a and tg.last_hit_by.team == "squad":
 			d *= 2
-			if tag("skeet", tg.x, tg.y - tg.h):
+			var launcher: Unit = tg.last_hit_by
+			if tag("skeet", tg.x, tg.y - tg.h, true, a):
 				a.energy += 1
 				float_text(a, "+1 ENERGY", Color("ffd23a"))
+				if launcher.def.key == "rook":
+					launcher.energy += 1
+					chain(launcher, "SPARE")
 		if a.team == "enemy":
 			d = int(round(d * (1 + alert * 0.06)))
 		if tg.elite == "armored":
@@ -699,11 +821,24 @@ func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: boo
 		if hh.head:
 			d = int(round(d * (2.0 if a.team == "squad" and a.def.key == "moss" else 1.5)))
 			float_text(tg, "HEADSHOT", Color("ffb23e"), true)
-		if tg.shield and hh.dx > 0 and not tg.dead:
+		var angled := a.team == "squad" and a.perk("angles") and banks > 0
+		if tg.team == "squad" and ks(tg, "riotshield") and signf(hh.dx) == -tg.face and not tg.dead:
 			d = maxi(1, int(round(d * 0.25)))
 			float_text(tg, "SHIELD", Color("c9d1da"))
 			sparks(hh.x, hh.y, 6)
+		elif tg.shield and hh.dx > 0 and not tg.dead and not angled:
+			d = maxi(1, int(round(d * 0.25)))
+			float_text(tg, "SHIELD", Color("c9d1da"))
+			sparks(hh.x, hh.y, 6)
+		last_hit_head = hh.head
 		damage(tg, d, a, {"crit": hh.head})
+		last_hit_head = false
+		if c.get("boomhit", false):
+			booms.append({"t": 1, "x": hh.x, "y": hh.y, "r": 26.0, "dmg": 6, "owner": a})
+		if not tg.dead and c.get("toxic", false):
+			add_status(tg, "toxic", 3, a)
+		if not tg.dead and (c.get("supp", false) or (a.team == "squad" and a.perk("pindown") and c.get("gun", "") == "mg")):
+			add_status(tg, "supp", 1, a)
 		if not tg.dead and c.get("mark", false):
 			add_status(tg, "mark", 2, a)
 		if not tg.dead and c.get("burn", false):
@@ -718,8 +853,12 @@ func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: boo
 		if not tg.is_prop():
 			for i in 5:
 				part({"x": hh.x, "y": hh.y, "vx": hh.dx * randf() * 2.5, "vy": -randf() * 2.5, "life": 22, "max": 22, "c": Color("c0392b") if tg.team == "squad" else Color("e8d080"), "s": 2.0, "g": 0.15})
-	if foes >= 2 and a.team == "squad" and state == "player" and tag("pinball", a.x, a.y - a.h):
+	if foes >= 2 and a.team == "squad" and state == "player" and tag("pinball", a.x, a.y - a.h, true, a):
 		draw_cards(a, 1)
+		if a.def.key == "moss":
+			a.fl["free_aim"] = true
+	if tr.end != null and c.get("boomhit", false) and tr.hits.is_empty():
+		booms.append({"t": 1, "x": tr.end.x, "y": tr.end.y, "r": 26.0, "dmg": 6, "owner": a})
 	if tr.end != null:
 		var ch := maxf(c.get("chip", 3), 5.5 if tr.end.m == 3 else 0.0)
 		T.carve(tr.end.x, tr.end.y, ch, a if a.team == "squad" else null)
@@ -853,8 +992,12 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 			float_text(tg, "CLANK", Color("c9d1da"))
 			sparks(tg.x, tg.y - 8, 4)
 		return
-	if tg.kind == "loot" or tg.kind == "cache":
+	if tg.kind == "loot" or tg.kind == "cache" or tg.kind == "relay" or tg.kind == "slug":
 		return
+	if own != null and tg.team == "enemy" and not o.get("status", false) and own.payback > 0:
+		amt += own.payback
+		float_text(tg, "PAYBACK +%d" % own.payback, Color("9fb4c9"), true)
+		own.payback = 0
 	if own != null and tg.team == "enemy" and not o.get("status", false):
 		if tg.has_st("mark"):
 			tg.st.erase("mark")
@@ -874,16 +1017,16 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 	if tg.kind == "barrel":
 		if not tg.primed:
 			tg.primed = true
-			var mul := 2.0 if own != null and own.perk("chain") else 1.0
-			booms.append({"t": 14, "x": tg.x, "y": tg.y - 9, "r": 44.0, "dmg": int(13 * mul), "owner": own, "barrel": tg})
+			var mul := (2.0 if own != null and own.perk("chain") else 1.0) * (1.5 if ks(own, "detbox") else 1.0)
+			booms.append({"t": 1 if ks(own, "detbox") else 14, "x": tg.x, "y": tg.y - 9, "r": 44.0, "dmg": int(13 * mul), "owner": own, "barrel": tg})
 		return
 	if tg.kind == "fuel":
 		if tg.primed:
 			return
-		if o.get("blast", false):
+		if o.get("blast", false) or ks(own, "detbox"):
 			tg.primed = true
-			var mul := 2.0 if own != null and own.perk("chain") else 1.0
-			booms.append({"t": 10, "x": tg.x, "y": tg.y - 15, "r": 84.0, "dmg": int(20 * mul), "owner": own, "barrel": tg})
+			var mul := (2.0 if own != null and own.perk("chain") else 1.0) * (1.5 if ks(own, "detbox") else 1.0)
+			booms.append({"t": 1 if ks(own, "detbox") else 10, "x": tg.x, "y": tg.y - 15, "r": 84.0, "dmg": int(20 * mul), "owner": own, "barrel": tg})
 		elif tg.leak == null:
 			tg.leak = 2
 			tg.leak_by = own
@@ -937,6 +1080,12 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 				charm_used += 1
 				amt = tg.hp - 1
 				float_text(tg, "LUCKY CHARM!", Color("62d26f"), true)
+			elif not lazarus_used and squad_alive().any(func(h): return h != tg and h.perk("lazarus")):
+				lazarus_used = true
+				amt = 0
+				tg.hp = int(ceil(tg.max_hp * 0.3))
+				float_text(tg, "LAZARUS!", Color("62d26f"), true)
+				log_msg("Hex drags %s back up." % tg.def.name)
 		tg.hp -= amt
 		tg.pose = "hurt"; tg.pose_t = 16
 		Sfx.play("hurt")
@@ -983,9 +1132,9 @@ func gain_adr(u: Unit, n: int) -> void:
 	ui_dirty = true
 
 func grant_overdrive(u: Unit) -> void:
-	if u.dead or u.hand.any(func(c): return c.get("od", false)):
+	if u.dead or u.hand.any(func(c): return c.get("od", false) and not c.has("duo") and not c.get("temp", false)):
 		return
-	var key: String = Data.OD[u.def.key]
+	var key: String = Run.od_key(u.s)
 	u.hand.append({"id": -1, "key": key, "tier": Data.OD_TIER, "od": true})
 	banner("%s: OVERDRIVE" % u.def.name, Color("ffb23e"), Data.CARDS[key].name.to_upper())
 	bark(u, pick(Data.BARKS.od))
@@ -1007,21 +1156,33 @@ func kill(tg: Unit, src) -> void:
 		if state == "player":
 			combo += 1
 			stats.best_combo = maxi(stats.best_combo, combo)
-			if combo == 3:
+			var c3 := 2 if Run.has_cmd("killstreak") else 3
+			var c5 := 4 if Run.has_cmd("killstreak") else 5
+			if combo == c3:
 				for s in squad_alive():
 					gain_adr(s, 10)
-				float_at(tg.x, tg.y - tg.h - 64, "COMBO x3: +10 ADRENALINE", Color("ff7a3d"), true)
-			elif combo == 5:
+				float_at(tg.x, tg.y - tg.h - 64, "COMBO x%d: +10 ADRENALINE" % c3, Color("ff7a3d"), true)
+			elif combo == c5:
 				crate_bump = 1
-				float_at(tg.x, tg.y - tg.h - 64, "COMBO x5: NEXT CRATE +1 RARITY", Color("b48cff"), true)
+				float_at(tg.x, tg.y - tg.h - 64, "COMBO x%d: NEXT CRATE +1 RARITY" % c5, Color("b48cff"), true)
 				Sfx.play("levelup")
 		var mult := maxi(1, combo)
 		score += base * mult
 		float_text(tg, ("x%d " % mult if mult > 1 else "") + "+%d" % (base * mult), Color("ffb23e"), true)
 		float_at(tg.x, tg.y - tg.h - 34, pick(Data.SCREAMS), Color("ffe9c0"))
 		Sfx.play("scream", -6)
-		give_scrip(maxi(2, base / 25), tg.x, tg.y - tg.h - 50)
+		give_scrip(int(maxi(2, base / 25) * (1.5 if Run.has_cmd("warchest") else 1.0)), tg.x, tg.y - tg.h - 50)
+		if tg.has_st("toxic") and squad_alive().any(func(h): return h.perk("pandemic")):
+			for o2 in units:
+				if o2.team == "enemy" and not o2.dead and o2 != tg and absf(o2.x - tg.x) < 90 and absf(o2.y - tg.y) < 60:
+					add_status(o2, "toxic", 3, tg.st_by.get("toxic", null))
+		if burn_tick:
+			announce_unlock(Run.feat("pyro"))
 		if src != null and src is Unit and src.team == "squad":
+			if state == "player" and last_hit_head and src.perk("deadeye") and src.last_cost > 0 and not act_once.has("deadeye"):
+				act_once["deadeye"] = true
+				src.energy += src.last_cost
+				float_text(src, "DEAD EYE: REFUND", Color("ffd23a"))
 			if state == "player" and (src.air or src.zip != null) and src.last_cost > 0 and tag("skydiver", src.x, src.y - src.h):
 				src.energy += src.last_cost
 				float_text(src, "CARD REFUNDED", Color("ffd23a"))
@@ -1081,6 +1242,8 @@ func crush(u: Unit, d: int, cause, kvx: float, kvy: float) -> void:
 		print("[crush r%d] %s %s d=%d" % [round_n, u.team, u.type, d])
 	if u.team == "squad" and u.def.key == "rook":
 		d = int(ceil(d / 2.0))
+	if cause is Unit and cause.team == "squad" and cause.perk("democrew"):
+		d *= 2
 	float_text(u, "CRUSHED", Color("e8dcc2"), true)
 	Sfx.play("thud")
 	u.last_hit_by = cause
@@ -1109,12 +1272,33 @@ func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> vo
 	# FUEL-AIR: a blast inside smoke or gas grows by half; a gas cloud is used up
 	var g = gas_at(x, y)
 	if dmg > 0 and (g != null or smoke_at(x, y)):
-		r *= 1.5
+		var thermo: bool = g != null and g.owner is Unit and g.owner.def.key == "hex"
+		r *= 2.0 if thermo else 1.5
+		if thermo:
+			chain(g.owner, "THERMOBARIC")
 		burn = burn or g != null
 		tag("fuelair", x, y, false)
 		if g != null:
 			gases.erase(g)
-	T.carve(x, y, r * 0.8, owner)
+	var own_sq: bool = owner != null and owner is Unit and owner.team == "squad"
+	if own_sq and owner.perk("napalm"):
+		burn = true
+	if own_sq and owner.fl.get("accel", false):
+		burn = true
+		owner.fl.erase("accel")
+	T.carve(x, y, r * 0.8 * (1.35 if own_sq and owner.perk("weakpoints") else 1.0), owner)
+	if own_sq and owner.def.key == "vee" and state == "player" and dmg > 0:
+		# CRATER: two of Vee's blasts on one spot in a turn
+		var spots: Array = owner.fl.get("blasts", [])
+		if spots.any(func(q): return q.distance_to(Vector2(x, y)) < 44) and not act_once.has("crater"):
+			act_once["crater"] = true
+			T.carve(x, y + 8, r * 1.4, owner)
+			chain(owner, "CRATER")
+			for o2 in units:
+				if o2.team == "enemy" and not o2.dead and Vector2(o2.x - x, o2.y - o2.h / 2.0 - y).length() < r * 1.4:
+					add_status(o2, "stun", 1, owner)
+		spots.append(Vector2(x, y))
+		owner.fl["blasts"] = spots
 	Sfx.play("bigboom" if r > 45 else "boom")
 	shake = minf(18, shake + r * 0.28)
 	fireball(x, y, r)
@@ -1122,7 +1306,7 @@ func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> vo
 		return
 	var bonus := 3 if owner != null and owner is Unit and owner.team == "squad" and owner.def.key == "vee" else 0
 	for u in units:
-		if u.dead or u.gone or u.kind == "pow" or u.kind == "cache":
+		if u.dead or u.gone or u.kind == "pow" or u.kind == "cache" or u.kind == "relay" or u.kind == "slug":
 			continue
 		var cx: float = u.x
 		var cy: float = u.y - u.h / 2.0
@@ -1133,9 +1317,12 @@ func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> vo
 		var dm := maxi(1, int(round(dmg * f))) + bonus
 		if u == owner:
 			dm = 0 if u.perk("blastproof") else maxi(1, int(round(dm * 0.4)))
-		if not u.heavy and not u.is_prop():
+		if not u.heavy and not u.is_prop() and not u.immovable:
 			var ang := atan2(cy - y - 6, cx - x)
 			var k := (1 - d / r) * 6 + 2.5
+			if u == owner and u.perk("kinetic"):
+				k *= 1.6
+				u.jumping = true
 			u.vx = cos(ang) * k
 			u.vy = minf(-2.5, sin(ang) * k - 3)
 			u.air = true
@@ -1149,7 +1336,7 @@ func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> vo
 
 # ---------------------------------------------------------------- projectiles
 func mk_proj(o: Dictionary) -> Dictionary:
-	var p := {"age": 0, "vx": 0.0, "vy": 0.0, "wind": 0.0, "grav": 1.0, "r": 30.0, "dmg": 10, "bounce": false, "fuse": null, "dead": false, "smoke": false, "gas": false, "srad": 64.0, "sturns": 2, "bombs": 3, "cluster": 0, "beacon": false, "trail": false, "mini": false, "owner": null}
+	var p := {"age": 0, "vx": 0.0, "vy": 0.0, "wind": 0.0, "grav": 1.0, "r": 30.0, "dmg": 10, "bounce": false, "fuse": null, "dead": false, "smoke": false, "gas": false, "card": {}, "x0": 0.0, "srad": 64.0, "sturns": 2, "bombs": 3, "cluster": 0, "beacon": false, "trail": false, "mini": false, "owner": null}
 	p.merge(o, true)
 	return p
 
@@ -1167,6 +1354,28 @@ func unit_hit(p: Dictionary):
 
 func detonate(p: Dictionary) -> void:
 	p.dead = true
+	var pc: Dictionary = p.card
+	if p.smoke and pc.get("multi", 0) > 1:
+		for k in pc.multi:
+			var ox: float = (k - (pc.multi - 1) / 2.0) * p.srad * 1.3
+			smokes.append({"x": p.x + ox, "y": p.y - 24, "r": p.srad, "turns": p.sturns, "seed": randf() * 10})
+		Sfx.play("splash")
+		return
+	if pc.get("markall", false):
+		for o2 in units:
+			if o2.team == "enemy" and not o2.dead and absf(o2.x - p.x) < 170:
+				add_status(o2, "mark", 2, p.owner)
+	if pc.get("fuelgas", false):
+		gases.append({"x": p.x, "y": p.y - 20, "r": 70.0, "turns": 1, "seed": 0.0, "owner": p.owner})
+	if p.beacon and pc.get("barrage", 0) > 0:
+		var dir := 1.0 if p.owner == null or p.x >= p.owner.x else -1.0
+		for k in pc.barrage:
+			projs.append(mk_proj({"kind": "bomb", "x": p.x + dir * (k - 1) * 38, "y": -20.0 - k * 26, "vx": 0.0, "vy": 5.0, "r": 46.0, "dmg": 14, "owner": p.owner}))
+		float_at(p.x, p.y - 20, "BARRAGE!", Color("ffb23e"), true)
+		Sfx.play("alarm")
+		return
+	if p.owner is Unit and p.owner.team == "squad" and p.owner.perk("rangefinder") and p.dmg > 0:
+		p.dmg += 2 * int(absf(p.x - p.x0) / 200.0)
 	if p.gas:
 		gases.append({"x": p.x, "y": p.y - 20, "r": p.srad, "turns": p.sturns, "seed": randf() * 10, "owner": p.owner})
 		Sfx.play("splash")
@@ -1183,7 +1392,24 @@ func detonate(p: Dictionary) -> void:
 		float_at(p.x, p.y - 20, "BEACON SET", Color("62d26f"), true)
 		Sfx.play("tick")
 		return
-	explode(p.x, p.y, p.r, p.dmg, p.owner)
+	explode(p.x, p.y, p.r, p.dmg, p.owner, pc.get("burnblast", false))
+	if pc.has("carve"):
+		T.carve(p.x, p.y, pc.carve, p.owner)
+	if pc.get("flash", false):
+		for o2 in units:
+			if o2.team == "enemy" and not o2.dead and Vector2(o2.x - p.x, o2.y - o2.h / 2.0 - p.y).length() < p.r + 10:
+				add_status(o2, "stun", 1, p.owner)
+	if pc.get("napalm", false):
+		for k in range(-3, 4):
+			if k != 0:
+				booms.append({"t": 6 + absi(k) * 6, "x": p.x + k * 40, "y": p.y - 6, "r": 24.0, "dmg": 4, "owner": p.owner, "burn": true})
+	if pc.get("shrapnel", 0) > 0 and p.owner is Unit:
+		for k in pc.shrapnel:
+			var a: float = -PI + PI * (k + 0.5) / pc.shrapnel
+			fire_bullet(p.owner, p.x, p.y - 6, a, {"dmg": [3, 4], "range": 220, "bounce": 0}, false)
+	if pc.get("key", "") == "mortar" and p.owner is Unit and p.owner.perk("fireforeffect"):
+		strikes.append({"x": p.x, "owner": p.owner, "friendly": true, "n": 1})
+		float_at(p.x, p.y - 34, "FIRE FOR EFFECT", Color("ffb23e"))
 	if p.cluster:
 		for i in p.cluster:
 			projs.append(mk_proj({"kind": "frag", "x": p.x, "y": p.y - 8, "vx": (randf() - .5) * 7, "vy": -3 - randf() * 4, "wind": 0.5, "r": 24.0, "dmg": 7, "bounce": true, "fuse": 40 + ri(0, 45), "owner": p.owner, "mini": true}))
@@ -1222,6 +1448,15 @@ func update_proj(p: Dictionary) -> void:
 			p.dead = true
 			return
 		var hu = unit_hit(p) if p.age > 2 else null
+		if p.get("lizard", false) and hu == null and T.solid(p.x, p.y):
+			# Iron Lizard: hug the ground and keep crawling until it meets a body or a tall wall
+			var sy = T.stand_y(p.x, p.y - 14)
+			p.crawl = p.get("crawl", 0.0) + absf(p.vx / n)
+			if sy != null and absf(sy - p.y) < 18 and p.crawl < 420:
+				p.y = sy - 3
+				p.vy = 0.0
+				p.vx = signf(p.vx) * 5.0
+				continue
 		if T.solid(p.x, p.y) or hu != null:
 			if p.bounce:
 				if hu != null:
@@ -1293,10 +1528,15 @@ func resolve(fn: Callable) -> void:
 	await fn.call()
 	await until(settled)
 	await wait(8)
+	if act_crushed >= 3:
+		announce_unlock(Run.feat("timber"))
 	if act_crushed >= 2 and tag("domino", act_crush_at.x, act_crush_at.y):
 		for s in squad_alive():
 			s.energy += 1
 			float_text(s, "+1 ENERGY", Color("ffd23a"))
+		if act_unit != null and act_unit.def.key == "vee" and act_unit.last_cost > 0:
+			act_unit.energy += act_unit.last_cost
+			chain(act_unit, "DEMOLITION")
 		drop_loot(act_crush_at.x, act_crush_at.y, {"type": "item", "item": Run.roll_item()})
 	act_crushed = 0
 	await post_action()
@@ -1307,28 +1547,100 @@ func resolve(fn: Callable) -> void:
 func card_cost(u: Unit, inst: Dictionary) -> int:
 	var c := Data.card(inst)
 	var cost: int = c.cost
+	if inst.get("free", false):
+		return 0
 	if c.type == "AIM" and u.perk("doubletap") and not u.aim_discount:
+		cost = maxi(0, cost - 1)
+	if c.type == "AIM" and u.fl.get("free_aim", false):
+		cost = 0
+	if c.get("smoke", false) and ks(u, "canister"):
+		cost = 0
+	if c.get("beacon", false) and ks(u, "howitzer"):
 		cost = maxi(0, cost - 1)
 	return cost
 
-func spend_card(u: Unit, idx: int) -> Dictionary:
+func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
+	## Pays for a card and applies everything that happens on play: signature chains (C2),
+	## perks and keystones that change the card, momentum. Pass the card dict the action
+	## will use so chain bonuses reach it.
 	var inst: Dictionary = u.hand[idx]
-	u.hand.remove_at(idx)
-	var c := Data.card(inst)
+	var c: Dictionary = c_in if c_in != null else Data.card(inst)
 	var cost := card_cost(u, inst)
+	var ch := chain_ready(u, inst)
+	u.hand.remove_at(idx)
 	u.energy -= cost
 	u.last_cost = cost
+	act_unit = u
 	u.played += 1
-	if u.team == "squad" and u.played % Data.MOMENTUM == 0:
+	if ch != "":
+		chain(u, ch)
+	match ch:
+		"SPOTTED":
+			c["forcehead"] = true
+		"DUG IN":
+			u.fl["ow_crit"] = true
+		"DOUBLE BANK":
+			u.fl.erase("free_aim")
+		"SIX SHOOTER":
+			u.fl["sixgun"] = true
+			u.hand.append({"id": -2, "key": "pistol", "tier": Data.base_tier("pistol"), "temp": true, "free": true})
+		"FROM THE FOG":
+			if c.type == "AIM":
+				c["forcehead"] = true
+			elif c.has("dmg"):
+				c.dmg = [int(c.dmg[0] * 1.5), int(c.dmg[1] * 1.5)] if c.dmg is Array else int(c.dmg * 1.5)
+		"SCRUBBED IN":
+			c.pellets = c.get("pellets", 1) + 3
+		"DEATH FROM ABOVE":
+			c.dmg = int(c.dmg * 1.5) if not (c.dmg is Array) else [int(c.dmg[0] * 1.5), int(c.dmg[1] * 1.5)]
+		"ACCELERANT":
+			u.fl.erase("molotov")
+			u.fl["accel"] = true
+		"COME AND GET IT":
+			c.armor = c.get("armor", 0) * 2
+		"ZIP STRIKE":
+			u.energy += 1
+		"JUICED":
+			u.fl.erase("juiced")
+			u.hand.append(inst)
+	u.seq.append([inst.key, c.type])
+	if inst.key == "molotov":
+		u.fl["molotov"] = true
+	if inst.key == "pistol" and u.perk("cylinder"):
+		draw_cards(u, 1)
+	if c.get("echo", 0) > 0:
+		draw_cards(u, c.echo)
+	# perk and keystone tweaks to the card itself
+	if ks(u, "twinrev") and inst.key == "pistol":
+		c.shots = c.get("shots", 1) * 2
+		c.dmg = [maxi(1, int(c.dmg[0] * 0.6)), maxi(1, int(c.dmg[1] * 0.6))]
+	if ks(u, "ammobelt") and inst.key == "hmg":
+		c.shots = c.get("shots", 1) + 3
+	if ks(u, "varga") and inst.key == "snipe":
+		c["woodpass"] = true
+	if u.perk("hosepipe") and c.get("gun", "") == "mg":
+		c["pierce"] = true
+		c["chip"] = 9
+	var period := Data.MOMENTUM
+	if u.perk("highnoon") or (Run.has_cmd("tempo") and round_n == 1):
+		period = 2
+	if u.team == "squad" and u.played % period == 0:
 		# C1 momentum: every third card in a turn pays one energy back
 		u.energy += 1
 		float_text(u, "MOMENTUM +1", Color("b48cff"), true)
 		Sfx.play("power", -8)
 	if c.type == "AIM":
 		u.aim_discount = true
-	if inst.get("od", false):
+	if inst.has("duo"):
+		# a duo spends both soldiers' Overdrives (or every soldier's, for the Slug)
+		consume_od(u)
+		for o2 in squad_alive():
+			if inst.duo == "squad" or o2.def.key == inst.duo:
+				consume_od(o2)
+		banner(Data.CARDS[inst.key].name.to_upper(), Color("ffb23e"), "DUO OVERDRIVE" if inst.duo != "squad" else "ALL FOUR OVERDRIVES")
+	elif inst.get("od", false):
 		u.adr = 0
-	elif not inst.get("temp", false):
+	elif not inst.get("temp", false) and ch != "JUICED":
 		u.disc.append(inst)
 	ui_dirty = true
 	return c
@@ -1348,7 +1660,11 @@ func aim_vel(u: Unit, p: Vector2) -> Dictionary:
 
 func sway_of(u: Unit, c: Dictionary) -> float:
 	var s: float = c.get("sway", 0.0) * (4.0 if c.get("still", false) and u.moved else (1.0 if u.moved else 0.6))
+	if u.fl.has("breath") and c.type == "AIM":
+		return 0.0
 	if u.perk("steady"):
+		s *= 0.5
+	if u.perk("bipod") and c.get("key", "") in ["hmg", "burst", "suppress", "leadrain"]:
 		s *= 0.5
 	if Run.has_gear("laser"):
 		s *= 0.7
@@ -1464,13 +1780,24 @@ func commit_aim(p: Vector2) -> void:
 		resolve(func(): await _act_rocket(u, idx, c, p, sc))
 
 func _act_aim(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
-	spend_card(u, idx)
+	spend_card(u, idx, c)
+	if u.fl.has("breath"):
+		c.dmg = [c.dmg[0] + u.fl.breath, c.dmg[1] + u.fl.breath]
+		u.fl.erase("breath")
 	u.attacked = true
 	await fire_aim(u, c, p, sc)
 	await wait(6)
 
 func _act_arc(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
-	spend_card(u, idx)
+	spend_card(u, idx, c)
+	if u.perk("thicksmoke") and (c.get("smoke", false) or c.get("gas", false)):
+		c.srad = c.get("srad", 64.0) * 1.25
+		c.sturns = c.get("sturns", 2) + 1
+	if c.get("smoke", false) and ks(u, "canister"):
+		c["bounce"] = true
+		c["fuse"] = 90
+	if c.get("beacon", false) and ks(u, "howitzer"):
+		c.bombs = c.get("bombs", 3) + 2
 	u.attacked = true
 	var v := aim_vel(u, p)
 	u.face = v.f
@@ -1487,7 +1814,7 @@ func _act_arc(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
 		"x": v.hx, "y": v.hy, "vx": v.vx, "vy": v.vy, "wind": c.get("wind", 1.0), "r": r,
 		"dmg": int(round((c.get("dmg", 0) + dmg_bonus) * (1.25 if sc else 1.0))), "bounce": c.get("bounce", false), "fuse": fuse,
 		"smoke": c.get("smoke", false), "gas": c.get("gas", false), "srad": c.get("srad", 64.0), "sturns": c.get("sturns", 2), "bombs": c.get("bombs", 3),
-		"beacon": c.get("beacon", false), "cluster": c.get("cluster", 0), "owner": u, "trail": fuse == null}))
+		"beacon": c.get("beacon", false), "cluster": c.get("cluster", 0), "owner": u, "trail": fuse == null, "card": c, "x0": u.x}))
 	await wait(4)
 
 func _act_grapple(u: Unit, idx: int, gs: Dictionary) -> void:
@@ -1498,32 +1825,62 @@ func _act_grapple(u: Unit, idx: int, gs: Dictionary) -> void:
 	u.zip = {"x0": u.x, "y0": u.y, "x1": gs.x, "y1": gs.y, "t": 0.0}
 	await until(func(): return u.zip == null)
 	u.moved = true
+	if u.perk("hookshot"):
+		for o2 in units:
+			if o2.team == "enemy" and not o2.dead and not o2.heavy and absf(o2.x - u.x) < 70 and absf(o2.y - u.y) < 50:
+				o2.vx = signf(u.x - o2.x) * 6.5; o2.vy = -3.0; o2.air = true; o2.walk = null; o2.bumped = null; o2.last_hit_by = u
+				add_status(o2, "stun", 1, u)
+				float_text(o2, "HOOKED", Color("ffd23a"), true)
+				break
 	await check_push(u)
 
 func _act_jump(u: Unit, idx: int, p: Vector2) -> void:
 	var c := spend_card(u, idx)
+	u.fl["jumped"] = true
+	if c.get("rjump", false):
+		explode(u.x, u.y - 4, 30, 6, u)
+		await wait(2)
 	var v := jump_vel(u, p, c.get("jpow", 1.0))
 	u.face = 1 if v.vx >= 0 else -1
 	u.vx = v.vx; u.vy = v.vy; u.air = true; u.jumping = true; u.walk = null
 	Sfx.play("rocket")
 	for i in 10:
 		part({"x": u.x, "y": u.y, "vx": (randf() - .5) * 2, "vy": randf() * 2, "life": 24, "max": 24, "c": pick([Color("ffb23e"), Color("ff7a3d"), Color("9a9a9a")]), "s": 3.0, "g": 0.05, "fire": true})
+	if c.get("frags", 0) > 0:
+		await until(func(): return u.vy >= 0 or not u.air or u.dead)
+		for k in c.frags:
+			projs.append(mk_proj({"kind": "frag", "x": u.x, "y": u.y - 10, "vx": (k - 1) * 1.6 + u.vx * 0.3, "vy": 1.0, "r": 34.0 * blast_scale(u), "dmg": 11, "bounce": true, "fuse": 50 + k * 10, "owner": u}))
+		Sfx.play("toss")
 	await until(func(): return not u.air or u.dead)
 	u.moved = true
 
 func _act_rush(u: Unit, idx: int, p: Vector2) -> void:
-	spend_card(u, idx)
+	var c := spend_card(u, idx)
+	if c.has("stab"):
+		u.fl["stab"] = c.stab
+	if c.has("squadheal"):
+		for s in squad_alive():
+			s.hp = mini(s.max_hp, s.hp + c.squadheal)
+			gain_adr(s, 25)
+			float_text(s, "+%d HP" % c.squadheal, Color("62d26f"))
 	var v := rush_vel(u, p)
+	if c.get("cannon", false):
+		v.vx *= 1.35
+		v.vy *= 1.2
 	u.face = 1 if v.vx >= 0 else -1
 	u.vx = v.vx; u.vy = v.vy; u.air = true; u.rushing = true; u.bumped = {}; u.last_hit_by = u; u.walk = null
 	Sfx.play("power")
 	await until(func(): return not u.air or u.dead)
 	u.rushing = false
+	u.fl.erase("stab")
+	if c.get("cannon", false) and not u.dead:
+		explode(u.x, u.y - 8, 54, 18, u)
+		float_text(u, "CANNONBALL!", Color("ffb23e"), true)
 	u.moved = true
 	await check_push(u)
 
 func _act_rocket(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
-	spend_card(u, idx)
+	spend_card(u, idx, c)
 	u.attacked = true
 	var hp_ := hand_pos(u)
 	u.face = 1 if p.x >= u.x else -1
@@ -1535,7 +1892,7 @@ func _act_rocket(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void
 		Sfx.play("rocket")
 		u.muzzle = 4
 		u.pose = "recoil"; u.pose_t = 8
-		projs.append(mk_proj({"kind": "rocket", "x": hp_.x, "y": hp_.y, "vx": cos(a) * c.speed, "vy": sin(a) * c.speed, "grav": 0.0, "r": c.radius * (1.2 if sc else 1.0) * blast_scale(u), "dmg": int(round(c.dmg * (1.25 if sc else 1.0))), "owner": u, "trail": true, "homing": c.get("homing", false)}))
+		projs.append(mk_proj({"kind": "rocket", "x": hp_.x, "y": hp_.y, "vx": cos(a) * c.speed, "vy": sin(a) * c.speed, "grav": 0.0, "r": c.radius * (1.2 if sc else 1.0) * blast_scale(u), "dmg": int(round(c.dmg * (1.25 if sc else 1.0))), "owner": u, "trail": true, "homing": c.get("homing", false), "lizard": ks(u, "lizard"), "card": c, "x0": u.x}))
 		for k in 4:
 			puff(hp_.x - u.face * 10, hp_.y, 1.2)
 		await wait(8)
@@ -1558,7 +1915,7 @@ func play_on_target(tg: Unit) -> void:
 		resolve(func(): await _act_ally(u, idx, c, tg))
 
 func _act_melee(u: Unit, idx: int, c: Dictionary, tg: Unit, sc: bool) -> void:
-	spend_card(u, idx)
+	spend_card(u, idx, c)
 	u.attacked = true
 	u.face = 1 if tg.x >= u.x else -1
 	u.pose = "throw"; u.pose_t = 16
@@ -1568,9 +1925,24 @@ func _act_melee(u: Unit, idx: int, c: Dictionary, tg: Unit, sc: bool) -> void:
 	var d := ri(c.dmg[0], c.dmg[1])
 	if sc:
 		d = int(round(d * 1.25))
-	damage(tg, d, u, {"melee": true})
-	if not tg.heavy and not tg.dead and not tg.is_prop():
-		tg.vx = u.face * c.knock; tg.vy = -3.5; tg.air = true; tg.walk = null; tg.bumped = null; tg.last_hit_by = u
+	var victims: Array = [tg]
+	if ks(u, "zantetsu") and c.key == "knife":
+		# Zantetsu: one sweep cuts every body in reach and the terrain in front
+		for o2 in units:
+			if o2 != tg and not o2.dead and not o2.gone and o2.team != "squad" and not o2.is_pickup() and o2.kind != "pow" and signf(o2.x - u.x) == u.face and absf(o2.x - u.x) <= c.range + 24 and absf(o2.y - u.y) < 40:
+				victims.append(o2)
+		T.carve(u.x + u.face * 30, u.y - 16, 14, u)
+	for v in victims:
+		damage(v, d, u, {"melee": true})
+		if c.get("stun", false):
+			add_status(v, "stun", 1, u)
+		if c.get("mark", false):
+			add_status(v, "mark", 2, u)
+		if not v.heavy and not v.dead and not v.is_prop() and not v.immovable:
+			v.vx = u.face * c.knock; v.vy = -3.5; v.air = true; v.walk = null; v.bumped = null; v.last_hit_by = u
+	if c.has("selfheal"):
+		u.hp = mini(u.max_hp, u.hp + c.selfheal)
+		float_text(u, "+%d HP" % c.selfheal, Color("62d26f"))
 	await wait(16)
 
 func heal_amount(u: Unit, c: Dictionary) -> int:
@@ -1582,11 +1954,30 @@ func heal_amount(u: Unit, c: Dictionary) -> int:
 	return h + int(u.g("heal"))
 
 func _act_ally(u: Unit, idx: int, c: Dictionary, tg: Unit) -> void:
-	spend_card(u, idx)
+	spend_card(u, idx, c)
+	if c.has("adrshot"):
+		gain_adr(tg, c.adrshot)
+		float_text(tg, "+%d ADRENALINE" % c.adrshot, Color("ff7a3d"), true)
+		Sfx.play("power")
 	if c.has("heal"):
 		var h := heal_amount(u, c)
 		var before := tg.hp
+		var over := maxi(0, tg.hp + h - tg.max_hp)
 		tg.hp = mini(tg.max_hp, tg.hp + h)
+		u.fl["healed"] = true
+		if over > 0 and u.perk("redline"):
+			gain_adr(tg, over * 4)
+		if over > 0 and u.perk("hardplates"):
+			tg.armor += over
+			float_text(tg, "+%d ARMOR" % over, Color("9fb4c9"))
+		if ks(u, "medrig"):
+			u.armor += h
+		if c.get("medenergy", 0) > 0:
+			tg.energy += c.medenergy
+		if u.perk("badbatch"):
+			for o2 in units:
+				if o2.team == "enemy" and not o2.dead and absf(o2.x - tg.x) < 90 and absf(o2.y - tg.y) < 60:
+					add_status(o2, "toxic", 2, u)
 		float_text(tg, "+%d HP" % h, Color("62d26f"), true)
 		Sfx.play("coin")
 		give_xp(u, maxi(1, (tg.hp - before) / 3))
@@ -1597,7 +1988,10 @@ func _act_ally(u: Unit, idx: int, c: Dictionary, tg: Unit) -> void:
 	if c.has("energy"):
 		tg.energy += c.energy
 		float_text(tg, "+1 ENERGY", Color("ffb23e"))
-		tg.hp = maxi(1, tg.hp - 3)
+		if not u.perk("seconddose"):
+			tg.hp = maxi(1, tg.hp - 3)
+		if u.def.key == "hex":
+			tg.fl["juiced"] = true
 		gain_adr(tg, 15)
 		Sfx.play("select")
 	await wait(20)
@@ -1611,7 +2005,38 @@ func play_self(idx: int) -> void:
 	resolve(func(): await _act_self(u, idx, c))
 
 func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
-	spend_card(u, idx)
+	spend_card(u, idx, c)
+	if c.has("draw"):
+		draw_cards(u, c.draw)
+		float_text(u, "DRAW %d" % c.draw, Color("53d4e2"))
+	if c.has("breath"):
+		u.fl["breath"] = c.breath
+		float_text(u, "HOLDING BREATH", Color("53d4e2"))
+	if c.get("taunt", false):
+		taunter = u
+		u.fl["taunted"] = true
+		float_text(u, "COME ON THEN!", Color("ff7a3d"), true)
+		bark(u, "Over here, Jackals!")
+	if c.get("blight", false):
+		for o2 in units:
+			if o2.team == "enemy" and not o2.dead and o2.x > cam_x - 20 and o2.x < cam_x + W + 20:
+				add_status(o2, "toxic", 3, u)
+		Sfx.play("splash")
+	if c.has("triage"):
+		for s in squad_alive():
+			if absf(s.x - u.x) <= c.range:
+				s.hp = mini(s.max_hp, s.hp + c.triage)
+				s.st = {}
+				float_text(s, "+%d HP" % c.triage, Color("62d26f"), true)
+	if c.get("immovable", false):
+		u.immovable = true
+		u.heavy = true
+	if c.has("ownet"):
+		for s in squad_alive():
+			s.overwatch += c.ownet
+			float_text(s, "OVERWATCH +%d" % c.ownet, Color("53d4e2"))
+	if c.get("slug", false):
+		call_slug(u)
 	if c.has("armor"):
 		u.armor += c.armor
 		float_text(u, "+%d ARMOR" % c.armor, Color("9fb4c9"))
@@ -1720,6 +2145,15 @@ func scroll_to(tx: float, reason: String, who = null) -> void:
 		score += 250
 		alert = maxi(0, alert - 1)
 		stats.pushes += 1
+		for s in squad_alive():
+			if s.def.key == "rook" and s.fl.get("supp_n", 0) >= 2 and not s.fl.has("pinned"):
+				s.fl["pinned"] = true
+				chain(s, "PINNED")
+				for s2 in squad_alive():
+					s2.energy += 1
+			if s.perk("blitz"):
+				s.hand.append({"id": -2, "key": "knife", "tier": Data.base_tier("knife"), "temp": true, "free": true})
+				float_text(s, "BLITZ: FREE KNIFE", Color("ffd23a"))
 		if who != null and not who.dead:
 			who.energy += 1
 			float_text(who, "+1 ENERGY", Color("ffb23e"))
@@ -1836,17 +2270,42 @@ func level_up(u: Unit) -> void:
 	banner("LEVEL UP!", Color("ffd23a"), "%s IS NOW LEVEL %d" % [u.def.name, u.s.lvl])
 	bark(u, pick(Data.BARKS.lvl))
 	var opts := Run.level_options(u.s)
-	var ch := await ask("level", "%s  LEVEL %d" % [u.def.name, u.s.lvl], "Pick one: a new card, a stat boost or an ability.", opts, u)
-	if ch < 0:
-		return
-	var o: Dictionary = opts[ch]
+	var picks := 1
+	if Run.extra_picks > 0:
+		Run.extra_picks -= 1
+		picks = 2
+	while picks > 0 and opts.size():
+		var ch := await ask("level", "%s  LEVEL %d" % [u.def.name, u.s.lvl], "Pick %s: a new card, a stat boost or an ability." % ("two" if picks > 1 else "one"), opts, u)
+		if ch == -2 and Run.lvl_rerolls > 0:
+			Run.lvl_rerolls -= 1
+			opts = Run.level_options(u.s)
+			continue
+		if ch <= -100 and Run.banishes > 0:
+			# banished options never show up for this soldier again this run
+			var bo: Dictionary = opts[-100 - ch]
+			if not Run.banished.has(u.s.key):
+				Run.banished[u.s.key] = []
+			Run.banished[u.s.key].append(bo.get("key", bo.get("id", "")))
+			Run.banishes -= 1
+			log_msg("%s banished from %s's pool." % [bo.get("name", Data.CARDS.get(bo.get("key", ""), {}).get("name", "?")), u.def.name])
+			opts = Run.level_options(u.s)
+			continue
+		if ch < 0:
+			give_scrip(15, u.x, u.y - u.h - 20)
+			return
+		var o: Dictionary = opts[ch]
+		opts.remove_at(ch)
+		picks -= 1
+		apply_level_option(u, o)
+
+func apply_level_option(u: Unit, o: Dictionary) -> void:
 	var line := Run.apply_option(u.s, o)
 	if o.kind == "card":
 		u.draw.insert(ri(0, u.draw.size()), u.s.deck[-1])
 	elif o.kind == "stat":
 		match o.id:
 			"hp":
-				u.max_hp = u.s.max_hp
+				u.max_hp = Run.eff_max_hp(u.s)
 				u.hp = mini(u.max_hp, u.hp + Run.STAT_TIERS.hp[o.tier])
 			"move":
 				u.move_left += Run.STAT_TIERS.move[o.tier]
@@ -1885,6 +2344,7 @@ func post_action() -> void:
 					float_text(s, "+6 HP", Color("62d26f"))
 			_:
 				Run.luck += 1
+		Run.lvl_rerolls += 1
 		log_msg("%s: %s" % [q.pow.pow_name, sp.get("text", "LUCK +1. Your loot just got better.")])
 		await wait(40)
 		await supply_drop("%s says thanks" % q.pow.pow_name, null if q.u.dead else q.u)
@@ -1898,10 +2358,15 @@ func post_action() -> void:
 		var u: Unit = lvl_queue.pop_front()
 		await wait(20)
 		await level_up(u)
+	refresh_duos()
 	if squad_alive().is_empty():
 		game_over()
 		return
 	if boss_dead:
+		await until(settled)
+		victory()
+		return
+	if mission.get("outpost", false) and not units.any(func(e): return e.team == "enemy" and not e.dead):
 		await until(settled)
 		victory()
 		return
@@ -1927,6 +2392,93 @@ func post_action() -> void:
 				await scroll_to(n2 - W * 0.6, "clear")
 
 # ---------------------------------------------------------------- turns
+func refresh_duos() -> void:
+	## C4: two soldiers with Overdrive ready within 120px get a duo card; all four call the Slug.
+	## Duo cards come and go as soldiers move.
+	var sq := squad_alive()
+	var ready := func(u: Unit) -> bool: return u.hand.any(func(c): return c.get("od", false) and not c.has("duo") and not c.get("temp", false))
+	var want := {}
+	for d in Data.DUOS:
+		var a = null
+		var b2 = null
+		for u in sq:
+			if u.def.key == d.pair[0]:
+				a = u
+			elif u.def.key == d.pair[1]:
+				b2 = u
+		if a == null or b2 == null or absf(a.x - b2.x) > Data.DUO_RANGE:
+			continue
+		var ra: bool = ready.call(a)
+		var rb: bool = ready.call(b2)
+		var oc := ks(a, "overcharger") or ks(b2, "overcharger")
+		if (ra and rb) or (oc and (ra or rb)):
+			var holder: Unit = a if a.def.key == d.holder else b2
+			want[holder.id] = want.get(holder.id, []) + [[d.card, (b2 if holder == a else a).def.key]]
+	if sq.size() == 4 and sq.all(func(u): return ready.call(u)):
+		want[sq[0].id] = want.get(sq[0].id, []) + [["slugcall", "squad"]]
+	for u in sq:
+		var keep: Array = want.get(u.id, [])
+		u.hand = u.hand.filter(func(c): return not c.has("duo") or keep.any(func(k): return k[0] == c.key and k[1] == c.duo))
+		for k in keep:
+			if not u.hand.any(func(c): return c.has("duo") and c.key == k[0]):
+				u.hand.append({"id": -3, "key": k[0], "tier": Data.OD_TIER, "od": true, "duo": k[1]})
+				float_text(u, "DUO: " + Data.CARDS[k[0]].name.to_upper(), Color("ffb23e"), true)
+	ui_dirty = true
+
+func capture_relay(r: Unit, s: Unit) -> void:
+	r.loot.taken = true
+	var bf: Dictionary = Data.RELAY_BUFFS[r.loot.buff]
+	match r.loot.buff:
+		"hand":
+			relay_hand += 1
+		"luck":
+			Run.temp_luck += 2
+		"intel":
+			relay_intel = true
+	alert = mini(10, alert + 1)
+	banner("RELAY CAPTURED: " + bf.name, Color("53d4e2"), bf.text.to_upper() + "  ALERT +1")
+	Sfx.play("power")
+	give_xp(s, 4)
+	log_msg("%s captured a radio relay: %s Alert +1." % [s.def.name, bf.text])
+
+func call_slug(by: Unit) -> void:
+	## The SV-001 drops in beside the caller and stays for one round.
+	var sl := mk_unit()
+	sl.team = "ally"; sl.kind = "slug"; sl.heavy = true
+	sl.x = clampf(by.x + 40, cam_x + 60, cam_x + W - 120); sl.y = -60.0; sl.air = true; sl.vy = 4.0
+	sl.w = 64; sl.h = 40; sl.hp = 99; sl.max_hp = 99; sl.face = 1
+	sl.last_hit_by = by
+	sl.loot = {"turns": 1, "by": by}
+	units.append(sl)
+	banner("SV-001 SLUG!", Color("62d26f"), "METAL SLUG ON THE FIELD")
+	Sfx.play("power")
+	shake += 6
+
+func slug_act(sl: Unit) -> void:
+	## Rolls forward crushing whatever is in front, then shells the three nearest Jackals.
+	banner("SLUG ATTACK", Color("62d26f"))
+	sl.rushing = true; sl.bumped = {}; sl.air = true; sl.vx = 6.5; sl.vy = -3.2; sl.walk = null
+	await until(func(): return not sl.air)
+	sl.rushing = false
+	var foes: Array = units.filter(func(e): return e.team == "enemy" and not e.dead and e.x > cam_x - 20 and e.x < cam_x + W + 40)
+	foes.sort_custom(func(a, b2): return absf(a.x - sl.x) < absf(b2.x - sl.x))
+	for e in foes.slice(0, 3):
+		var mx := sl.x + 30
+		var my := sl.y - 34
+		var a := atan2(e.y - e.h / 2.0 - my, e.x - mx)
+		Sfx.play("rocket")
+		projs.append(mk_proj({"kind": "rocket", "x": mx, "y": my, "vx": cos(a) * 11, "vy": sin(a) * 11, "grav": 0.0, "r": 40.0, "dmg": 16, "owner": sl.loot.by, "trail": true}))
+		await wait(16)
+	await until(settled)
+
+func consume_od(u: Unit) -> void:
+	for i in u.hand.size():
+		var c: Dictionary = u.hand[i]
+		if c.get("od", false) and not c.has("duo") and not c.get("temp", false):
+			u.hand.remove_at(i)
+			break
+	u.adr = 0
+
 func draw_cards(u: Unit, n: int) -> void:
 	for i in n:
 		if u.draw.is_empty():
@@ -1944,7 +2496,7 @@ func stow_hand(s: Unit) -> void:
 	s.hand = s.hand.filter(func(c): return c.get("od", false) or c.get("temp", false))
 
 func hand_size(s: Unit) -> int:
-	return 4 + s.s.bonus.hand + (1 if s.perk("fieldkit") else 0)
+	return maxi(2, 4 + s.s.bonus.hand + (1 if s.perk("fieldkit") else 0) + relay_hand - (1 if Run.threat_on(3) else 0))
 
 func start_player_turn() -> void:
 	round_n += 1
@@ -1963,6 +2515,13 @@ func start_player_turn() -> void:
 		s.aim_discount = false
 		s.kill_drawn = false
 		s.played = 0
+		s.seq = []
+		s.fl = {}
+		if s.immovable:
+			s.immovable = false
+			s.heavy = false
+		if s.perk("payback") and s.armor > 0:
+			s.payback = s.armor
 		s.armor = (3 if s.perk("ironhide") else 0) + int(s.g("armor_turn"))
 		if s.g("regen") > 0 and s.hp < s.max_hp:
 			var rg := mini(int(s.g("regen")), s.max_hp - s.hp)
@@ -1972,10 +2531,25 @@ func start_player_turn() -> void:
 		s.dragged = false
 		stow_hand(s)
 		draw_cards(s, hand_size(s))
-		if s.adr >= 100 and not s.hand.any(func(c): return c.get("od", false)):
+		if s.adr >= 100 and not s.hand.any(func(c): return c.get("od", false) and not c.has("duo")):
 			grant_overdrive(s)
+	refresh_duos()
+	var al0 := squad_alive()
+	if round_n == 1 and Run.trophies.size() >= 3 and not slug_given and al0.size():
+		# L7: three Boar parts rebuilt the SV-001. It answers one call per mission.
+		slug_given = true
+		al0[0].hand.append({"id": -3, "key": "slugcall", "tier": Data.OD_TIER, "temp": true})
+		log_msg("The SV-001 Slug is on call this mission. The card is in %s's hand." % al0[0].def.name)
 	for u in units:
 		u.hit_sides = {}
+		if u.kind == "slug" and not u.gone:
+			u.loot.turns -= 1
+			if u.loot.turns < 0:
+				u.gone = true
+				for k in 6:
+					puff(u.x + randf_range(-30, 30), u.y - randf_range(0, 40), 2.0)
+				float_at(u.x, u.y - 60, "SLUG OUT", Color("62d26f"), true)
+	taunter = null
 	tick_statuses("squad")
 	state = "player"
 	busy = false
@@ -2034,7 +2608,16 @@ func end_turn(force := false) -> void:
 		ui_dirty = true
 		return
 	end_confirm_t = 0
+	for r in units.filter(func(o): return o.kind == "relay" and not o.loot.taken):
+		for s in squad_alive():
+			if absf(s.x - r.x) < 26 and absf(s.y - r.y) < 30:
+				capture_relay(r, s)
+				break
 	for s in squad_alive():
+		if s.perk("tracker") and s.energy > 0:
+			s.overwatch += s.energy
+			float_text(s, "TRACKING +%d" % s.energy, Color("53d4e2"))
+			s.energy = 0
 		stow_hand(s)
 	card_idx = -1
 	enemy_phase()
@@ -2065,6 +2648,8 @@ func enemy_phase() -> void:
 		strikes = []
 		await until(settled)
 		await wait(10)
+	for sl in units.filter(func(u): return u.kind == "slug" and not u.gone):
+		await slug_act(sl)
 	var armed := units.filter(func(u): return u.kind == "charge" and not u.dead and not u.gone and not u.primed)
 	if armed.size():
 		for c in armed:
@@ -2088,6 +2673,10 @@ func enemy_phase() -> void:
 			await wait(20)
 			continue
 		acting = e
+		if squad_alive().any(func(h): return h.perk("hairtrigger") and h.overwatch > 0):
+			await overwatch_check(e)
+			if e.dead:
+				continue
 		await enemy_act(e)
 		e.st.erase("supp")
 		await until(settled)
@@ -2114,7 +2703,15 @@ func enemy_phase() -> void:
 	smokes = smokes.filter(func(s): return s.turns > 0)
 	for g in gases:
 		g.turns -= 1
-		g.x += wind * 5
+		if ks(g.owner, "weathervane"):
+			var near = null
+			for e in units:
+				if e.team == "enemy" and not e.dead and (near == null or absf(e.x - g.x) < absf(near.x - g.x)):
+					near = e
+			if near != null:
+				g.x += clampf(near.x - g.x, -36, 36)
+		else:
+			g.x += wind * 5
 	gases = gases.filter(func(g): return g.turns > 0)
 	for f in units.filter(func(u): return u.kind == "fuel" and u.leak != null and not u.primed and not u.gone):
 		f.leak -= 1
@@ -2134,7 +2731,7 @@ func enemy_phase() -> void:
 	rounds_since_scroll += 1
 	var before := alert
 	var calls := 0
-	if rounds_since_scroll >= 2:
+	if rounds_since_scroll >= (1 if Run.threat_on(1) else 2):
 		alert = mini(10, alert + 1)
 	var radios := units.filter(func(u): return u.type == "radio" and u.active and not u.dead)
 	if radios.is_empty():
@@ -2181,14 +2778,18 @@ func enemy_phase() -> void:
 
 func best_shot(e: Unit, targets: Array, rng: float):
 	var best = null
+	if Run.intel == "fog":
+		rng *= 0.7
 	for tg in targets:
+		if tg.team == "squad" and not targetable(e, tg):
+			continue
 		var d := dist(e, tg)
 		if d > rng:
 			continue
 		var vis := visibility(e, tg)
 		if not vis:
 			continue
-		var sc: float = vis * 30 - d / 10 + (-10 if tg.armor else 0) + (tg.max_hp - tg.hp) * 0.5
+		var sc: float = vis * 30 - d / 10 + (-10 if tg.armor else 0) + (tg.max_hp - tg.hp) * 0.5 + (500 if tg == taunter else 0)
 		if best == null or sc > best.sc:
 			best = {"t": tg, "vis": vis, "sc": sc}
 	return best
@@ -2229,7 +2830,10 @@ func overwatch_check(e: Unit) -> void:
 			s.gun_target = atan2(sin(ang), cos(ang) * s.face)
 			Sfx.play("shot")
 			s.muzzle = 4
-			fire_bullet(s, m.x, m.y, ang, Data.card("rifle"), s.adr >= 50)
+			var oc := Data.card("rifle")
+			oc["forcehead"] = s.fl.get("ow_crit", false)
+			oc["boomhit"] = ks(s, "claymore")
+			fire_bullet(s, m.x, m.y, ang, oc, s.adr >= 50)
 			await wait(16)
 
 func enemy_advance(e: Unit, tx: float, budget: float, stop = null) -> void:
@@ -2348,8 +2952,12 @@ func lob(e: Unit, tg: Unit, dmg: int, r: float, err_mul: float) -> bool:
 	return true
 
 func nearest_squad(e: Unit):
+	if taunter != null and not taunter.dead and absf(taunter.x - e.x) < 520:
+		return taunter
 	var best = null
 	for s in squad_alive():
+		if not targetable(e, s):
+			continue
 		if best == null or absf(s.x - e.x) < absf(best.x - e.x):
 			best = s
 	return best
@@ -2570,6 +3178,7 @@ func victory() -> void:
 
 func sync_back() -> void:
 	## Writes HP and deaths back to the persistent squad.
+	Run.temp_luck = 0
 	for u in squad():
 		u.s.hp = maxi(0, u.hp)
 		if u.dead:
@@ -2698,7 +3307,7 @@ func step() -> void:
 			if b.has("barrel") and b.barrel != null:
 				b.barrel.dead = true
 				b.barrel.gone = true
-			explode(b.x, b.y, b.r, b.dmg, b.owner, b.r >= 80)
+			explode(b.x, b.y, b.r, b.dmg, b.owner, b.get("burn", b.r >= 80))
 	booms = booms.filter(func(b): return not b.get("done", false))
 	for p in parts:
 		p.life -= 1
@@ -2746,6 +3355,8 @@ func body_collisions(u: Unit) -> void:
 	for o in units:
 		if o == u or o.dead or o.gone or o.sunk or o.kind == "pow" or o.para or o.is_pickup() or u.is_pickup():
 			continue
+		if (u.kind == "slug" and o.team == "squad") or (o.kind == "slug" and u.team != "enemy"):
+			continue  # the Slug rolls over Jackals, never its own crew
 		if u.bumped != null and u.bumped.has(o.id):
 			continue
 		if u.jumping and o.team == u.team:
@@ -2755,17 +3366,24 @@ func body_collisions(u: Unit) -> void:
 				u.bumped = {}
 			u.bumped[o.id] = true
 			var cause = u if u.rushing else (u.last_hit_by if u.last_hit_by != null and u.last_hit_by.team == "squad" else null)
-			var dmg := 14 if u.rushing else int(round(sp * 1.6))
+			var dmg: int = u.fl.get("stab", 14) if u.rushing else int(round(sp * 1.6))
 			if not u.rushing and o.team == u.team:
 				dmg = int(round(dmg / 3.0))  # squadmates tumbling into each other bruise, not break
 			if not u.rushing and o.air and o.last_hit_by == u.last_hit_by:
 				dmg = int(round(dmg / 2.0))  # both thrown by the same blast
 			if cause != null and cause.perk("bulldozer"):
 				dmg *= 2
+			if ks(cause, "gauntlet"):
+				dmg = int(dmg * 1.5)
+			if cause != null and cause.perk("strike") and u != cause and o.team == "enemy" and u.bumped.size() == 3 and not act_once.has("strike"):
+				act_once["strike"] = true
+				cause.energy += 1
+				draw_cards(cause, 1)
+				float_at(o.x, o.y - 60, "STRIKE!", Color("ffd23a"), true)
 			float_text(o, "SMASH" if u.rushing else "BONK", Color("ffd23a"), true)
 			Sfx.play("bonk")
 			shake += 3
-			if not o.heavy and not o.is_prop():
+			if not o.heavy and not o.is_prop() and not o.immovable:
 				var dir := signf(u.vx) if u.vx != 0 else 1.0
 				o.vx = dir * 8 if u.rushing else u.vx * 0.9
 				o.vy = -5 if u.rushing else minf(o.vy, -3)
@@ -2780,7 +3398,8 @@ func body_collisions(u: Unit) -> void:
 				tag("pileup", o.x, o.y - o.h, false)
 			if not u.rushing:
 				collision_dmg(u, sp * (0.3 if o.team == u.team else 0.8), "BONK")
-				u.vx *= 0.35
+				if not ks(cause, "gauntlet"):
+					u.vx *= 0.35
 
 func physics(u: Unit) -> void:
 	if u.walk != null or (u.kind == "pow" and u.freed):
@@ -2809,7 +3428,13 @@ func physics(u: Unit) -> void:
 					add_status(u, "stun", 1, u.last_hit_by)
 				for k in 4:
 					dust(nx, u.y - u.h / 2.0, Color("c9b38a"), 1)
-			u.vx *= -0.25
+			if u.team == "enemy" and not u.rico and u.last_hit_by is Unit and u.last_hit_by.perk("ricobody") and imp > 3:
+				u.rico = true
+				u.vx *= -0.8
+				u.bumped = null
+				float_text(u, "RICOCHET!", Color("ffd23a"))
+			else:
+				u.vx *= -0.25
 		else:
 			u.x = nx
 		if u.team == "squad" and not u.dead:
@@ -2832,6 +3457,10 @@ func physics(u: Unit) -> void:
 				collision_dmg(u, (imp - 6.5) * 2.5, "FALL")
 			if imp > 3:
 				Sfx.play("land", -8)
+			if u.team == "squad" and u.perk("meteor") and imp > 4 and (u.jumping or u.rushing) and not u.dead:
+				booms.append({"t": 1, "x": u.x, "y": u.y - 6, "r": 36.0, "dmg": 10, "owner": u})
+				float_text(u, "METEOR!", Color("ff7a3d"), true)
+			u.rico = false
 			u.rushing = false
 			u.jumping = false
 			u.leaping = false
