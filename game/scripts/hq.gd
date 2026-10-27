@@ -46,7 +46,7 @@ func build() -> void:
 		add_child(bt)
 	var go := HudScript.PixButton.new()
 	go.text = "DIAL THE GATE"
-	go.sub = "MISSION %d" % (next_mission_n())
+	go.sub = "FINALE" if next_mission_n() > Data.LEVELS.size() else "LEVEL %d OF %d" % [next_mission_n(), Data.LEVELS.size()]
 	go.color = Color("ff4d3d")
 	go.size = Vector2(220, 44)
 	go.position = Vector2(370, 486)
@@ -54,7 +54,7 @@ func build() -> void:
 	add_child(go)
 
 func next_mission_n() -> int:
-	return Run.mission + (2 if Run.history.size() else 1)
+	return Run.history.size() + 1
 
 func open_shop(mode: String) -> void:
 	Sfx.play("click")
@@ -134,7 +134,9 @@ func _draw() -> void:
 	# header
 	draw_rect(Rect2(0, 0, 960, 70), Color(0.05, 0.035, 0.03, 0.75))
 	Art.text(self, "IRON ADVANCE HQ", Vector2(24, 34), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
-	var line := "Back through the gate. Resupply, then dial the gate for mission %d." % next_mission_n() if Run.history.size() else "Kit out the squad, then dial the gate for mission 1."
+	var line := "Kit out the squad, then dial the gate for level 1."
+	if Run.history.size():
+		line = "Back through the gate. Resupply, then dial the gate for " + ("the finale." if next_mission_n() > Data.LEVELS.size() else "level %d." % next_mission_n())
 	Art.text(self, line, Vector2(24, 56), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	var sc := "%d SCRIP" % Run.scrip
 	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 16) - 22, 20, 16, 16), false)

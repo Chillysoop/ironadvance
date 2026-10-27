@@ -418,8 +418,11 @@ func run() -> void:
 			await shot("flow_hq_start")
 			main.screen.dial.emit()
 			await frames_wait(20)
+			await shot("flow_dial0")
+			press_first()
+			await frames_wait(20)
 			await shot("flow_brief0")
-			for m in 3:
+			for m in 4:
 				press_first()
 				await frames_wait(5)
 				var b: Battle = main.battle
@@ -430,7 +433,8 @@ func run() -> void:
 				await until(func(): return main.battle == null, 2000)
 				await frames_wait(20)
 				await shot("flow_result%d" % m)
-				if m == 2:
+				if m == 3:
+					check(main.screen.get("mode") == "final", "beating the harbor finale wins the run")
 					break
 				press_first()
 				await frames_wait(20)
@@ -447,29 +451,9 @@ func run() -> void:
 				await frames_wait(10)
 				main.screen.dial.emit()
 				await frames_wait(20)
-				await shot("flow_route%d" % m)
-				if m == 0:
-					main.go_stop("front")
-				else:
-					main.go_stop("outpost")
-					await frames_wait(5)
-					var ob: Battle = main.battle
-					await until(func(): return ob.state == "player" and not ob.busy)
-					print("[flow] outpost elites ", ob.units.filter(func(x): return x.team == "enemy" and x.elite != "").size(), "/", ob.units.filter(func(x): return x.team == "enemy").size(), " boss ", ob.units.any(func(x): return x.type == "boss"))
-					await shot("flow_outpost")
-					for e in ob.units.filter(func(x): return x.team == "enemy"):
-						e.dead = true; e.gone = true
-					ob.end_turn(true)
-					await until(func(): return main.battle == null, 3000)
-					await frames_wait(20)
-					await shot("flow_outpost_result")
+				await shot("flow_dial%d" % (m + 1))
+				if m < 2:
 					press_first()
-					await frames_wait(20)
-					main.screen.open_all()
-					await frames_wait(90)
-					await shot("flow_spoils")
-					print("[flow] trophies ", Run.trophies, " stash ", Run.stash.size())
-					main.screen.done.emit()
 				await frames_wait(20)
 				print("[flow] intel ", Run.intel, " mission ", Run.mission)
 				await shot("flow_brief%d" % (m + 1))
@@ -536,26 +520,6 @@ func run() -> void:
 			b.announce_unlock("Skeet Vest")
 			await frames_wait(20)
 			await shot("p5_unlock")
-			# route + hospital + powcamp
-			Run.soldiers[2].alive = false
-			main.show_route()
-			await frames_wait(20)
-			await shot("p5_route")
-			main.go_stop("hospital")
-			await frames_wait(20)
-			await shot("p5_hospital")
-			print("[p5] hospital alive ", Run.alive_count(), " hp ", Run.soldiers.map(func(x): return x.hp))
-			var rr: int = Run.lvl_rerolls
-			main.go_stop("powcamp")
-			await frames_wait(20)
-			print("[p5] powcamp rerolls ", rr, "->", Run.lvl_rerolls, " tokens ", Run.reroll_tokens)
-			main.screen.open_all()
-			await frames_wait(90)
-			await shot("p5_powcamp")
-			main.screen.done.emit()
-			await frames_wait(20)
-			await shot("p5_brief")
-			print("[p5] brief intel ", Run.intel)
 		"alive":
 			# ambient life: idle gunfire, critters, flags, smoke; then a blast to scatter the critters
 			for m in 3:
@@ -653,6 +617,8 @@ func run() -> void:
 			await gate()
 		"camp":
 			await camp()
+		"biomes":
+			await biomes()
 		"campaign":
 			Run.new_run()
 			for m in 3:
@@ -782,7 +748,7 @@ func hazards() -> void:
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.
-	for m in Data.MISSIONS:
+	for m in Data.MISSIONS + Data.BIOMES.keys().map(func(id): return Run.make_level(id, 0)):
 		check(m.segments.count("camp") == 2 and m.segments[-2] == "camp", "%s has a mid camp and a camp before the boss" % m.name)
 	Run.new_run()
 	var b: Battle = main.start_battle(0)
@@ -836,7 +802,10 @@ func gate() -> void:
 	check(main.screen.get("arrived") == false, "a run starts at HQ")
 	main.screen.dial.emit()
 	await frames_wait(10)
-	check(main.screen.get("mode") == "brief", "the first dial goes straight to mission 1's briefing")
+	check(main.screen.get("mode") == "dial" and Run.mission == 0, "the first dial offers level 1's biomes")
+	press_first()
+	await frames_wait(10)
+	check(main.screen.get("mode") == "brief", "picking a biome goes to the briefing")
 	press_first()
 	await frames_wait(5)
 	var b: Battle = main.battle
@@ -887,11 +856,98 @@ func gate() -> void:
 	await frames_wait(10)
 	main.screen.dial.emit()
 	await frames_wait(20)
-	await shot("gate_route")
-	check(main.screen.get("mode") == "route", "after a mission the gate dials the road east")
-	main.go_stop("front")
+	await shot("gate_dial")
+	check(main.screen.get("mode") == "dial" and Run.dial.size() == 2, "after a mission the gate dials two biomes")
+	press_first()
 	await frames_wait(20)
-	check(main.screen.get("mode") == "brief" and Run.mission == 1, "straight to the front goes to mission 2")
+	check(main.screen.get("mode") == "brief" and Run.mission == 1, "picking a biome briefs level 2")
+
+func biomes() -> void:
+	## Step 4: a level is one biome. The gate dial offers two, the skipped one is burned, and each
+	## biome's rules are real: sway, sight, wind, hills, wet ground, fuel, mines, elites.
+	for id in Data.BIOMES:
+		var lv := Run.make_level(id, 0)
+		check(lv.segments.size() == 8 and lv.segments.count("camp") == 2 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)), "%s builds a full level" % id)
+	for i in Data.LEVELS.size():
+		check(Data.LEVELS[i].pool.size() >= 6 and Data.LEVELS[i].pool.all(func(k): return Data.BIOMES.has(k)), "level %d has a pool of 6+ biomes" % (i + 1))
+	# a whole run of dials: never a repeat, never a burned biome
+	for r in 20:
+		Run.new_run()
+		var seen: Array = []
+		for m in Data.LEVELS.size():
+			Run.mission = m
+			var d := Run.roll_dial()
+			if d.size() != 2 or d[0] == d[1] or d.any(func(k): return seen.has(k)):
+				check(false, "run %d level %d dials two fresh biomes %s (seen %s)" % [r, m, d, seen])
+				return
+			seen.append_array(d)
+			Run.pick_biome(d[randi() % 2])
+			if r == 0:
+				check(Run.burned.has(d[0]) and Run.burned.has(d[1]), "both dial options burn")
+	check(true, "20 runs of dials never repeat or bring back a burned biome")
+	# fit readout follows the deck
+	Run.new_run()
+	var moss: Dictionary = Run.soldier("moss")
+	var vee: Dictionary = Run.soldier("vee")
+	check(Run.fit(moss, "desert") == "great" and Run.fit(moss, "palace") == "rough", "the Marksman fits the desert, not the palace (%s / %s)" % [Run.fit(moss, "desert"), Run.fit(moss, "palace")])
+	check(Run.fit(vee, "refinery") == "great" and Run.fit(vee, "harbor") == "rough", "Demolitions fits the refinery, not the harbor (%s / %s)" % [Run.fit(vee, "refinery"), Run.fit(vee, "harbor")])
+	var fits := {}
+	for id in Data.BIOMES:
+		fits[id] = Run.soldiers.map(func(so): return Run.fit(so, id))
+	print("[biomes] fits ", fits)
+	# the dial screen
+	Run.new_run()
+	Run.dial = ["desert", "palace"]
+	main.dial_gate()
+	await frames_wait(30)
+	await shot("biomes_dial")
+	check(main.screen.get("mode") == "dial", "the gate dial shows the two biomes")
+	press_first()
+	await frames_wait(20)
+	await shot("biomes_brief")
+	check(Run.level.get("biome") == "desert" and Run.burned.has("palace"), "picking desert burns the palace")
+	# rules in battle
+	var base_sway: float = Data.card("snipe").sway
+	var b: Battle = main.start_battle(0, Run.current_mission())
+	await until(func(): return b.state == "player" and not b.busy)
+	await frames_wait(10)
+	await shot("biomes_desert")
+	check(absf(Data.card("snipe").sway - base_sway * 0.6) < 0.0001, "desert steadies aimed shots")
+	main.clear()
+	check(Data.card("snipe").sway == base_sway, "the sway rule ends with the battle")
+	for id in ["refinery", "jungle", "palace", "mountain", "delta", "harbor", "fortress"]:
+		Run.level = Run.make_level(id, 1)
+		b = main.start_battle(1, Run.current_mission())
+		await until(func(): return b.state == "player" and not b.busy)
+		var seg_fuel := 0
+		var seg_mines := 0
+		for sg in Run.level.segments:
+			seg_fuel += Data.SEGMENTS[sg].spawns.filter(func(sp): return sp[0] == "fuel").size()
+			seg_mines += Data.SEGMENTS[sg].spawns.filter(func(sp): return sp[0] == "mine").size()
+		var fuel: int = b.units.filter(func(u): return u.kind == "fuel").size()
+		var mines: int = b.units.filter(func(u): return u.kind == "mine").size()
+		var rl: Dictionary = Data.BIOMES[id].rules
+		var extra: int = b.T.spawns.filter(func(sp): return sp[0] == "fuel" or sp[0] == "mine").size() - seg_fuel - seg_mines
+		check(extra == int(rl.get("fuel", 0)) + int(rl.get("mines", 0)) and fuel + mines >= seg_fuel + seg_mines + extra - 1, "%s lays its extra fuel (%d) and mines (%d)" % [id, fuel, mines])
+		check(b.wet() == rl.get("wet", false), "%s wet rule" % id)
+		var hs: PackedFloat32Array = b.T.heights
+		var lo := 9999.0
+		var hi := -9999.0
+		for cx in range(int(500 / 4.0), int(1600 / 4.0)):
+			lo = minf(lo, hs[cx]); hi = maxf(hi, hs[cx])
+		print("[biomes] ", id, " hills ", int(hi - lo), "px  fuel ", fuel, " mines ", mines)
+		var mid: float = b.T.camps[0].x0 - 500
+		cam_on(b, mid)
+		await frames_wait(20)
+		await shot("biomes_" + id)
+		main.clear()
+	# after level 3 the gate dials the finale
+	Run.new_run()
+	Run.history = [{}, {}, {}]
+	main.dial_gate()
+	await frames_wait(20)
+	await shot("biomes_finale")
+	check(main.screen.get("mode") == "brief" and Run.is_final_mission() and Run.mission == 3, "after level 3 the gate goes to the harbor finale")
 
 func tags() -> void:
 	## Dog tags: going down spends a tag, going down with none is KIA for good, recruits fill the slot.
@@ -931,13 +987,6 @@ func tags() -> void:
 	await until(func(): return main.screen != null and main.screen.get("mode") == "won", 2000)
 	await frames_wait(20)
 	await shot("tags_result")
-	# hospital gives a tag back to the living and does not raise the dead
-	var other: Dictionary = Run.soldiers[1]
-	other.tags = 0
-	main.go_stop("hospital")
-	await frames_wait(20)
-	await shot("tags_hospital")
-	check(other.tags == 1 and not s.alive, "hospital restores one tag and leaves the dead")
 	# recruits fill the fallen slot, with a legacy perk when the class has a tag on the wall
 	var slot: int = Run.fallen_slots()[0]
 	var offers := Run.recruit_offers(4)

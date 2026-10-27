@@ -637,6 +637,67 @@ const MISSIONS := [
 	 "boss_hp": 210, "plate": 60, "hp_mul": 1.3, "brief": "Night raid on the harbor. Fight along the piers, gut the warehouse, and drop a crane load on the flagship BOAR."},
 ]
 
+# ---------------------------------------------------------------- biomes (run structure step 4)
+# A level is one biome. At HQ the gate dial offers two biomes from that level's pool; the one you
+# skip is burned for the run. Every biome pays the same. What changes is which builds it suits:
+# "favor" and "rough" name a fighting style (long, close, arc) and every rule below is real.
+#   sway: your aimed shots' sway   sight: how far Jackals see   wind: wind strength
+#   amp: how hilly the ground is   wet: fire does 1 damage and won't spread
+#   fuel / mines: extra fuel barrels / mines on the map   elite: extra chance a Jackal is elite
+# "look" tints the level: tint and grass go to the terrain, sky modulates the backdrop.
+const STYLES := {"long": "LONG GUNS", "close": "CLOSE QUARTERS", "arc": "EXPLOSIVES"}
+const BIOMES := {
+	"desert": {"name": "DESERT RUINS", "theme": "dusk", "favor": "long", "rough": "close",
+		"rules": {"sway": 0.6, "sight": 1.2, "amp": 0.4, "wind": 1.5},
+		"look": {"tint": Color(1.08, 0.98, 0.82), "grass": Color("c8a85a"), "sky": Color(1.0, 0.92, 0.78)},
+		"segments": ["trenches", "towers", "boulder", "gully", "overhang"],
+		"text": "Flat sand and clear air. Your aimed shots sway 40% less, but Jackals see 20% farther."},
+	"fortress": {"name": "FORTRESS TOWN", "theme": "dusk", "favor": "arc", "rough": "long",
+		"rules": {"sway": 1.3, "fuel": 2},
+		"look": {"tint": Color(0.9, 0.9, 0.94), "grass": Color("7a8a5a"), "sky": Color(0.86, 0.86, 0.92)},
+		"segments": ["fort", "warehouse", "bunker", "gauntlet", "fort"],
+		"text": "Forts and warehouses wall to wall. Blow the floors out. Aimed shots sway 30% more."},
+	"jungle": {"name": "JUNGLE CANOPY", "theme": "jungle", "favor": "close", "rough": "long",
+		"rules": {"sway": 1.4, "sight": 0.7, "mines": 3},
+		"look": {},
+		"segments": ["ridge", "overhang", "gully", "boulder"],
+		"text": "Thick cover and buried mines. Jackals see 30% less far. Aimed shots sway 40% more."},
+	"delta": {"name": "FLOODED DELTA", "theme": "jungle", "favor": "close", "rough": "arc",
+		"rules": {"wet": true, "wind": 0.3, "mines": 2},
+		"look": {"tint": Color(0.86, 0.98, 1.04), "grass": Color("3a9a6a"), "sky": Color(0.84, 0.94, 1.0)},
+		"segments": ["river", "gully", "ridge", "docks"],
+		"text": "Everything is soaked: fire does 1 damage and won't spread. Barely any wind."},
+	"refinery": {"name": "OIL REFINERY", "theme": "dusk", "favor": "arc", "rough": "close",
+		"rules": {"fuel": 5, "sight": 1.1},
+		"look": {"tint": Color(1.06, 0.9, 0.8), "grass": Color("8a7a3a"), "sky": Color(1.0, 0.8, 0.66)},
+		"segments": ["bunker", "mortar", "warehouse", "towers"],
+		"text": "Fuel drums everywhere. Light them up, and don't stand next to one. Jackals see 10% farther."},
+	"mountain": {"name": "MOUNTAIN PASS", "theme": "dusk", "favor": "long", "rough": "arc",
+		"rules": {"amp": 2.0, "wind": 2.0, "sway": 0.8},
+		"look": {"tint": Color(0.92, 0.96, 1.06), "grass": Color("6a9a5a"), "sky": Color(0.84, 0.9, 1.04)},
+		"segments": ["ridge", "boulder", "overhang", "towers", "trenches"],
+		"text": "Steep hills and a gale. Double wind. Aimed shots sway 20% less."},
+	"harbor": {"name": "NIGHT HARBOR", "theme": "night", "favor": "long", "rough": "arc", "arena": "pier",
+		"rules": {"sight": 0.8, "wind": 1.6},
+		"look": {},
+		"segments": ["docks", "warehouse", "gauntlet", "mortar"],
+		"text": "Piers in the dark and a sea wind. Jackals see 20% less far. Wind is 60% stronger."},
+	"palace": {"name": "NINJA PALACE", "theme": "night", "favor": "close", "rough": "long",
+		"rules": {"sway": 1.6, "sight": 0.6, "elite": 0.2},
+		"look": {"tint": Color(0.86, 0.62, 0.7), "grass": Color("5a4a6a"), "sky": Color(1.0, 0.7, 0.8)},
+		"segments": ["fort", "overhang", "gauntlet", "warehouse"],
+		"text": "Paper walls and shadows. Jackals see 40% less far, but more of them are elite. Aimed shots sway 60% more."},
+}
+# Each level of a run has its own pool. Played and burned biomes never come back.
+const LEVELS := [
+	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain"], "hp_mul": 1.0, "boss_hp": 120, "plate": 36},
+	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "harbor", "palace"], "hp_mul": 1.15, "boss_hp": 160, "plate": 46},
+	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "harbor", "palace"], "hp_mul": 1.3, "boss_hp": 210, "plate": 60},
+]
+# After the third level: one fixed fight against the Jackal flagship.
+const FINALE := {"name": "IRON HARBOR", "theme": "night", "segments": ["start", "docks", "pier"], "finale": true,
+	"boss_hp": 260, "plate": 70, "hp_mul": 1.4, "brief": "The last gate opens on the harbor. The Jackal flagship BOAR is loading out. Sink it and the war is over."}
+
 const THEMES := {
 	"dusk": {"water": [Color("14485a"), Color("2f8aa0")], "tint": Color(1, 1, 1), "grass": Color("7cb042")},
 	"jungle": {"water": [Color("0e3a34"), Color("2a8a6a")], "tint": Color(0.92, 1.02, 0.95), "grass": Color("4ca83a")},
@@ -693,6 +754,8 @@ func card(inst) -> Dictionary:
 				base[k] += 1
 		if base.type == "AIM":
 			base.bounce = base.get("bounce", 0) + 1
+	if base.type == "AIM" and base.has("sway") and Run.sway_mul != 1.0:
+		base.sway = base.sway * Run.sway_mul
 	base["key"] = key
 	base["tier"] = tier
 	if inst is Dictionary and inst.get("mods", []).size():

@@ -16,6 +16,7 @@ const SUN := Vector2(700, 240)  # where the sky texture puts the sun / moon on s
 
 func setup(th: String) -> void:
 	theme = th
+	modulate = b.th.get("sky", Color.WHITE)  # a biome can warm or cool the whole backdrop
 	sky = load("res://assets/bg/%s_sky.png" % th)
 	clouds = load("res://assets/bg/%s_clouds.png" % th)
 	layers = [
@@ -104,7 +105,7 @@ func draw_smoke_columns(cx: float) -> void:
 			var y := base - f * 200
 			var r := roundf((6 + f * 30) / 2) * 2
 			var a := minf(1.0, f * 8) * (1 - f) * 0.38
-			draw_circle(Vector2(roundf(x), roundf(y)), r, Color(smoke.lerp(Color(Data.THEMES[theme].water[1]), f * 0.3), a))
+			draw_circle(Vector2(roundf(x), roundf(y)), r, Color(smoke.lerp(Color(b.th.water[1]), f * 0.3), a))
 		var fl := 0.6 + 0.4 * sin(b.t * 0.3 + k) * sin(b.t * 0.17 + k * 3)
 		draw_circle(Vector2(sx, base + 6), 20, Color(1, 0.5, 0.2, 0.10 * fl))
 		draw_rect(Rect2(roundf(sx) - 4, base, 8, 4), Color(1, 0.55, 0.2, 0.7 * fl))
@@ -168,7 +169,7 @@ func draw_flock(cx: float, par: float) -> void:
 	var sz := 2.0 if par > 0.1 else 1.0
 	var col := Color("1a1420") if theme != "night" else Color("0a0a16")
 	if par < 0.1:
-		col = col.lerp(Color(Data.THEMES[theme].water[1]), 0.25)
+		col = col.lerp(Color(b.th.water[1]), 0.25)
 	for i in n:
 		var row := (i + 1) / 2
 		var sgn := -1 if i % 2 else 1
@@ -188,7 +189,7 @@ func draw_flock(cx: float, par: float) -> void:
 			draw_rect(Rect2(p.x + sz, p.y + sz, sz * 2, sz), col)
 
 func draw_water(cx: float) -> void:
-	var th: Dictionary = Data.THEMES[b.theme]
+	var th: Dictionary = b.th
 	var wy := float(Battle.WATER_Y)
 	draw_rect(Rect2(cx - 8, wy, Battle.W + 16, Battle.H - wy + 8), th.water[0])
 	var x2 := floorf(cx / 8) * 8 - 8

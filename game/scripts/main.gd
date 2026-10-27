@@ -26,6 +26,7 @@ func _ready() -> void:
 	show_title()
 
 func clear() -> void:
+	Run.sway_mul = 1.0   # a biome's sway rule only lasts while its battle is up
 	if screen != null:
 		screen.queue_free()
 		screen = null
@@ -60,9 +61,29 @@ func show_hq(arrived: bool) -> void:
 	clear()
 	var h: Control = HqScript.new()
 	h.arrived = arrived
-	h.dial.connect(func(): show_route() if Run.history.size() else show_brief())
+	h.dial.connect(dial_gate)
 	screen = h
 	ui_layer.add_child(h)
+
+func dial_gate() -> void:
+	## The gate dial: two biomes for the next level, pick one and the other is burned.
+	## After the third level the gate only dials one place, the harbor finale.
+	Run.mission = Run.history.size()
+	Run.discount = 0.0
+	if Run.mission >= Data.LEVELS.size():
+		Run.start_finale()
+		show_brief()
+		return
+	if Run.dial.is_empty():
+		Run.roll_dial()
+	clear()
+	var s := Screen.new()
+	s.mode = "dial"
+	for b in Run.dial:
+		var id: String = b
+		s.buttons.append([Data.BIOMES[id].name, func(): Sfx.play("start"); Run.pick_biome(id); show_brief()])
+	s.buttons.append(["<< BACK TO HQ", func(): show_hq(false)])
+	open(s)
 
 func show_brief() -> void:
 	clear()
@@ -70,7 +91,7 @@ func show_brief() -> void:
 	Run.roll_intel()
 	var s := Screen.new()
 	s.mode = "brief"
-	s.buttons = [["DEPLOY", func(): start_battle(Run.mission)]]
+	s.buttons = [["DEPLOY", func(): start_battle(Run.mission, Run.current_mission())]]
 	open(s)
 
 func start_battle(idx: int, custom := {}) -> Battle:
@@ -108,7 +129,7 @@ func _on_mission_over(won: bool) -> void:
 	if not won or Run.alive_count() == 0:
 		s.mode = "lost"
 		s.buttons = [["NEW CAMPAIGN", func(): start_run()], ["TITLE", func(): show_title()]]
-	elif Run.mission >= Data.MISSIONS.size() - 1:
+	elif Run.is_final_mission():
 		s.mode = "final"
 		s.buttons = [["NEW CAMPAIGN", func(): start_run()]]
 		Run.meta.wins = int(Run.meta.wins) + 1
@@ -128,43 +149,6 @@ func show_debrief(st: Dictionary) -> void:
 	screen = d
 	ui_layer.add_child(d)
 
-func show_route() -> void:
-	## W1: pick the next stop on the road. The depot is always offered.
-	clear()
-	var s := Screen.new()
-	s.mode = "route"
-	for k in Run.route_offers():
-		var key: String = k
-		s.buttons.append([Data.STOPS[key].name, func(): go_stop(key)])
-	open(s)
-
-func go_stop(key: String) -> void:
-	Sfx.play("start")
-	match key:
-		"front":
-			next_mission()
-		"depot":
-			show_shop()
-		"outpost":
-			Run.side = "outpost"
-			var m: Dictionary = Data.MISSIONS[Run.mission].duplicate()
-			var segs: Array = ["start", ["towers", "bunker", "boulder"][Run.mission % 3], "bunker"]
-			m.merge({"name": "ELITE OUTPOST", "segments": segs, "outpost": true, "hp_mul": m.hp_mul + 0.1}, true)
-			start_battle(Run.mission, m)
-		"powcamp":
-			Run.lvl_rerolls += 2
-			Run.reroll_tokens += 1
-			show_spoils([1], false)
-		"hospital":
-			for so in Run.soldiers:
-				if so.alive:
-					so.hp = so.max_hp
-					so.tags = mini(Data.DOG_TAGS, so.tags + 1)
-			var s := Screen.new()
-			s.mode = "hospital"
-			s.buttons = [["NEXT MISSION", func(): next_mission()]]
-			open(s)
-
 func show_spoils(tiers: Array, trophy: bool) -> void:
 	## Crates from a side stop (outpost, POW camp), then straight on to the next mission.
 	clear()
@@ -181,9 +165,7 @@ func show_spoils(tiers: Array, trophy: bool) -> void:
 	ui_layer.add_child(d)
 
 func next_mission() -> void:
-	Run.discount = 0.0
-	Run.mission += 1
-	show_brief()
+	show_hq(false)
 
 func show_shop() -> void:
 	clear()
@@ -209,16 +191,21 @@ class Screen extends Control:
 		var widths: Array = []
 		var total := 0.0
 		for i in n:
-			var bw := maxf(250.0 if i == 0 and mode != "route" else 140.0, Art.text_width(buttons[i][0], 16) + 40)
+			var bw := maxf(250.0 if i == 0 or (mode == "dial" and i < 2) else 140.0, Art.text_width(buttons[i][0], 16) + 40)
 			widths.append(bw)
 			total += bw + (10 if i > 0 else 0)
 		var x := 480 - total / 2
 		for i in n:
 			var bt = load("res://scripts/hud.gd").PixButton.new()
 			bt.text = buttons[i][0]
-			bt.color = Color("ff4d3d") if i == 0 else Color("9aa2ae")
+			bt.color = Color("ff4d3d") if i == 0 or (mode == "dial" and i < 2) else Color("9aa2ae")
 			bt.size = Vector2(widths[i], 40)
 			bt.position = Vector2(x, 470)
+			if mode == "dial":  # one button under each biome card, and a small way back
+				bt.position = [Vector2(145, 470), Vector2(565, 470), Vector2(20, 18)][i]
+				if i == 2:
+					bt.small = true
+					bt.size = Vector2(150, 28)
 			x += widths[i] + 10
 			bt.pressed.connect(buttons[i][1])
 			add_child(bt)
@@ -235,7 +222,7 @@ class Screen extends Control:
 	func _draw() -> void:
 		var theme := "dusk"
 		if mode == "brief":
-			theme = Data.MISSIONS[Run.mission].theme
+			theme = Run.current_mission().theme
 		var sky: Texture2D = bg("%s_sky" % theme)
 		draw_texture_rect(sky, Rect2(0, 0, 960, 540), false)
 		var off := t * 0.4
@@ -254,7 +241,7 @@ class Screen extends Control:
 			"title": draw_title()
 			"brief": draw_brief()
 			"won", "final", "lost", "outpost_lost": draw_result()
-			"route": draw_route()
+			"dial": draw_dial()
 			"hospital":
 				Art.text(self, "FIELD HOSPITAL", Vector2(480, 110), 32, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 				Art.text(self, "Everyone is patched up and gets one dog tag back. The dead stay dead.", Vector2(480, 150), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
@@ -338,14 +325,18 @@ class Screen extends Control:
 		if t % 60 < 40:
 			Art.text(self, "3 MISSIONS  4 SOLDIERS  1 IRON BOAR TOO MANY", Vector2(480, 528), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 	func draw_brief() -> void:
-		var m: Dictionary = Data.MISSIONS[Run.mission]
-		Art.text(self, "MISSION %d" % (Run.mission + 1), Vector2(480, 90), 16, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+		var m: Dictionary = Run.current_mission()
+		var head := "FINALE" if m.get("finale", false) else ("LEVEL %d OF %d" % [Run.mission + 1, Data.LEVELS.size()] if m.has("biome") else "MISSION %d" % (Run.mission + 1))
+		Art.text(self, head, Vector2(480, 90), 16, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 		Art.text(self, m.name, Vector2(480, 130), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 		var y := 170.0
 		for line in CardView.wrap_text(m.brief, 620, 16):
 			Art.text(self, line, Vector2(480, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 			y += 16
-		Art.text(self, "IRON BOAR HP %d   ARMOR %d   JACKALS +%d%% HP" % [m.boss_hp, m.plate, int((m.hp_mul - 1) * 100)], Vector2(480, y + 14), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_CENTER)
+		Art.text(self, "IRON BOAR HP %d   ARMOR %d   JACKALS +%d%% HP" % [m.boss_hp, m.plate, roundi((m.hp_mul - 1) * 100)], Vector2(480, y + 14), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_CENTER)
+		if m.has("biome"):
+			var bm: Dictionary = Data.BIOMES[m.biome]
+			Art.text(self, "GOOD FOR %s   ROUGH ON %s" % [Data.STYLES[bm.favor], Data.STYLES[bm.rough]], Vector2(480, y - 2), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
 		var it: Dictionary = Data.INTEL[Run.intel] if Data.INTEL.has(Run.intel) else Data.INTEL.clear
 		Art.text(self, "INTEL: %s  %s" % [it.name, it.text.to_upper()], Vector2(480, y + 58), 8, Color("53d4e2") if Run.intel != "clear" else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 		if Run.threat > 0:
@@ -353,22 +344,51 @@ class Screen extends Control:
 		draw_texture_rect(Art.tex.ic_coin, Rect2(410, y + 30, 10, 10), false)
 		Art.text(self, "%d SCRIP" % Run.scrip, Vector2(426, y + 40), 8, Color("ffd23a"))
 		squad_line(370, "idle")
-	func draw_route() -> void:
-		Art.text(self, "THE ROAD EAST", Vector2(480, 80), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
-		Art.text(self, "Pick one stop before the next mission.", Vector2(480, 112), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
-		var n := buttons.size()
-		var fs := 16 if buttons.all(func(bt): return Art.text_width(bt[0], 16) < 190) else 8
-		for i in n:
-			var st: Dictionary = Data.STOPS.values().filter(func(x): return x.name == buttons[i][0])[0]
-			var x := 480 - (n * 220) / 2.0 + i * 220 + 10
-			draw_rect(Rect2(x, 150, 200, 150), Color(0.06, 0.05, 0.04, 0.85))
-			draw_rect(Rect2(x, 150, 200, 150), Color("ffb23e") if i == 0 else Color("9aa2ae"), false, 2)
-			Art.text(self, st.name, Vector2(x + 100, 176), fs, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
-			var y := 200.0
-			for line in CardView.wrap_text(st.text, 180, 16):
-				Art.text(self, line, Vector2(x + 100, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+	func draw_dial() -> void:
+		Art.text(self, "DIAL THE GATE", Vector2(480, 58), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+		Art.text(self, "Level %d of %d. Pick one biome. The other is burned for this run." % [Run.mission + 1, Data.LEVELS.size()], Vector2(480, 90), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		var al: Array = Run.soldiers.filter(func(so): return so.alive)
+		for i in Run.dial.size():
+			var id: String = Run.dial[i]
+			var bm: Dictionary = Data.BIOMES[id]
+			var x := 80.0 + i * 420
+			draw_rect(Rect2(x, 108, 380, 352), Color(0.06, 0.05, 0.04, 0.88))
+			draw_rect(Rect2(x, 108, 380, 352), Color("ffb23e"), false, 2)
+			# a window onto the biome: its sky and far hills, tinted by its look
+			var sky_mod: Color = bm.look.get("sky", Color.WHITE)
+			draw_texture_rect_region(bg("%s_sky" % bm.theme), Rect2(x + 8, 116, 364, 74), Rect2(300, 120, 364, 74), sky_mod)
+			var far: Texture2D = bg("%s_far" % bm.theme)
+			draw_texture_rect_region(far, Rect2(x + 8, 150, 364, 40), Rect2(0, far.get_height() - 20, 182, 20), sky_mod)
+			draw_rect(Rect2(x + 8, 186, 364, 4), bm.look.get("grass", Data.THEMES[bm.theme].grass))
+			Art.text(self, bm.name, Vector2(x + 190, 150), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+			var y := 210.0
+			for line in CardView.wrap_text(bm.text, 352, 16):
+				Art.text(self, line, Vector2(x + 190, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 				y += 16
-		squad_line(390, "idle")
+			y = maxf(y + 6, 272)
+			Art.text(self, "GOOD FOR " + Data.STYLES[bm.favor], Vector2(x + 190, y), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "ROUGH ON " + Data.STYLES[bm.rough], Vector2(x + 190, y + 14), 8, Color("ff7a5a"), HORIZONTAL_ALIGNMENT_CENTER)
+			# how each soldier's deck fits this biome
+			y += 38
+			for j in al.size():
+				var so: Dictionary = al[j]
+				var f := Run.fit(so, id)
+				var fc: Color = {"great": Color("62d26f"), "ok": Color("e8dcc2"), "rough": Color("ff7a5a")}[f]
+				var row := y + j * 30
+				Art.draw_char(self, "sq_" + so.key, "idle", (t / 12 + j) % 4, Vector2(x + 40, row + 14), 1, false, 0, 1.0, 0, true, 0.8)
+				Art.text(self, so.def.name, Vector2(x + 60, row + 8), 8, Color.WHITE)
+				Art.text(self, f.to_upper(), Vector2(x + 360, row + 8), 8, fc, HORIZONTAL_ALIGNMENT_RIGHT)
+				var sh := Run.styles(so)
+				var k := 0
+				for st in ["long", "close", "arc"]:
+					var w := int(round(sh[st] * 120))
+					draw_rect(Rect2(x + 150 + k, row + 1, w, 7), {"long": Color("53d4e2"), "close": Color("ffb23e"), "arc": Color("ff4d3d")}[st])
+					k += w
+				draw_rect(Rect2(x + 150, row + 1, 120, 7), Color("6c7480"), false, 1)
+		var lx := 330.0
+		for lg in [["DECK BAR:", Color("9aa2ae")], ["LONG GUNS", Color("53d4e2")], ["CLOSE", Color("ffb23e")], ["EXPLOSIVES", Color("ff4d3d")]]:
+			Art.text(self, lg[0], Vector2(lx, 528), 8, lg[1])
+			lx += Art.text_width(lg[0], 8) + 18
 	func draw_result() -> void:
 		var title := "MISSION COMPLETE!" if mode == "won" else ("THE JACKALS GO HOME" if mode == "final" else ("OUTPOST HOLDS" if mode == "outpost_lost" else "MISSION FAILED"))
 		var col := Color("62d26f") if mode != "lost" else Color("ff4d3d")

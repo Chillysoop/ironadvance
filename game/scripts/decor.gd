@@ -346,7 +346,7 @@ func draw_prop(p: Dictionary) -> void:
 		p.dead = true
 		b.puff(p.x, p.y - 8, 1.2)
 		return
-	var tint := Color(Data.THEMES[b.theme].tint, 1.0)
+	var tint := Color(b.th.tint, 1.0)
 	match p.kind:
 		"camp":
 			sprite("logs", p.x, p.y, tint)
@@ -402,7 +402,7 @@ func draw_flags() -> void:
 	var tx: Texture2D = tex.flag
 	var w := tx.get_width()
 	var h := tx.get_height()
-	var tint := Color(Data.THEMES[b.theme].tint, 1.0)
+	var tint := Color(b.th.tint, 1.0)
 	for f in flags:
 		if f.get("dead", false):
 			continue
@@ -427,8 +427,8 @@ func draw_flags() -> void:
 
 func draw_grass() -> void:
 	var T: Terrain = b.T
-	var gc: Color = Data.THEMES[b.theme].grass
-	var tint: Color = Data.THEMES[b.theme].tint
+	var gc: Color = b.th.grass
+	var tint: Color = b.th.tint
 	var shades := [gc * Color(1.18, 1.18, 1.18) * tint, gc * tint, gc * Color(0.78, 0.78, 0.78) * tint]
 	var walkers: Array = []
 	for u in b.units:
@@ -492,5 +492,5 @@ func draw_crit(c: Dictionary) -> void:
 		fr = 1
 	var s := Art.PX
 	draw_set_transform(Vector2(roundf(c.x), roundf(c.y - bob)), 0, Vector2(s * c.face, s))
-	draw_texture_rect_region(tex.crit, Rect2(-6, -9, 12, 10), Rect2(fr * 12, row * 10, 12, 10), Color(Data.THEMES[b.theme].tint, c.alpha))
+	draw_texture_rect_region(tex.crit, Rect2(-6, -9, 12, 10), Rect2(fr * 12, row * 10, 12, 10), Color(b.th.tint, c.alpha))
 	draw_set_transform_matrix(Transform2D.IDENTITY)
