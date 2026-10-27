@@ -627,6 +627,12 @@ func draw_parts() -> void:
 		else:
 			c.a = minf(1, a * 1.5)
 		var s: float = roundf(p.s)
+		if p.get("helmet", false):
+			# R2: the popped helmet, a dome with a brim
+			draw_rect(Rect2(roundf(p.x) - 4, roundf(p.y) - 4, 8, 5), Color(C_DARK, c.a))
+			draw_rect(Rect2(roundf(p.x) - 3, roundf(p.y) - 3, 6, 3), c)
+			draw_rect(Rect2(roundf(p.x) - 5, roundf(p.y), 10, 2), c.darkened(0.3))
+			continue
 		if p.get("plus", false):
 			draw_rect(Rect2(roundf(p.x) - 1, roundf(p.y) - 3, 2, 6), c)
 			draw_rect(Rect2(roundf(p.x) - 3, roundf(p.y) - 1, 6, 2), c)
@@ -785,8 +791,23 @@ func draw_targeting() -> void:
 			draw_recoil(u, c, aa.a)
 		"ARC":
 			var v := b.aim_vel(u, m)
+			var fz = b.armed_fuse()
+			if fz != null:
+				# K1: the whole bouncing flight up to the fuse, and where it bursts
+				var eff: int = int(fz / 2) if u.perk("shortfuse") else fz
+				var gs := b.sim_grenade(v.hx, v.hy, v.vx, v.vy, c.get("wind", 1.0), eff)
+				for i in gs.pts.size():
+					if i % 3 == 0:
+						var p: Vector2 = gs.pts[i]
+						draw_rect(Rect2(p.x - 1, p.y - 1, 3, 3), Color(1, 1, 1, maxf(0.25, 1 - i / float(eff + 20))))
+				var bp := Vector2(gs.x, gs.y)
+				if not gs.lost:
+					var rr: float = c.get("radius", 30) * b.blast_scale(u)
+					draw_arc(bp, rr, 0, TAU, 32, Color(1, 0.45, 0.2, 0.7), 1.0)
+					draw_rect(Rect2(bp.x - 3, bp.y - 3, 6, 6), Color("ff7a3d"))
+				Art.text(self, "FUSE %.1fs  [WHEEL]" % (eff / 60.0), Vector2(m.x + 12, m.y + 22), 8, Color("ffd23a"))
 			var sim := b.sim_arc(v.hx, v.hy, v.vx, v.vy, c.get("wind", 1.0), 40)
-			for i in sim.pts.size():
+			for i in (sim.pts.size() if fz == null else 0):
 				if i % 2 == 0:
 					var p: Vector2 = sim.pts[i]
 					draw_rect(Rect2(p.x - 1, p.y - 1, 3, 3), Color(1, 1, 1, 1 - i / 44.0))

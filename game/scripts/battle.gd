@@ -64,6 +64,12 @@ var inspect := false     # ALT held: show every soldier's actions
 var jet_armed := false   # J pressed: the next click-and-hold flies the selected soldier
 var jet_hold := false    # the mouse button is down while jetting
 var pads: Array = []     # bonus pads on this map
+var grav := GRAV         # this map's gravity: Mountain's thin air lowers it
+var fuse_pick := 0       # frames of fuse the player dialed in with the wheel (0 = the card's own)
+var feed: Array = []     # kill feed lines: {killer, how, victim, kc, stamp, t}
+var kill_how := ""       # what is dealing the damage right now when it isn't a card (FALL, CRUSHED, BURN)
+var act_card := ""       # name of the card behind the current action, for the kill feed
+var pop_next := false    # the next kill was an overkill: the Jackal bursts instead of leaving a body
 var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0, "kia": 0, "max_alert": 0, "pows_total": 0, "loot": 0, "tags": 0, "best_combo": 0, "fallen": []}
 var act_once := {}        # tag-team combos that pay out once per action
 var act_crushed := 0      # Jackals crushed by debris during the current action (DOMINO)
@@ -107,6 +113,7 @@ func setup(idx: int, custom := {}) -> void:
 	rules = mission.get("rules", {})
 	breach = mission.get("breach", false)
 	Run.sway_mul = rules.get("sway", 1.0)
+	grav = GRAV * rules.get("grav", 1.0)
 	Run.temp_luck = 2 if Run.intel == "veterans" else 0
 	theme = mission.theme
 	th = Data.THEMES[theme].duplicate()
@@ -618,6 +625,8 @@ func tag(key: String, x: float, y: float, once := true, who = null) -> bool:
 		if Run.has_cmd("brothers") and state == "player":
 			draw_cards(who, 1)
 	float_at(x, y - 50, Data.TAGS[key].name, Color("b48cff"), true)
+	if feed.size() and feed[-1].t < 90 and not feed[-1].stamp.contains(Data.TAGS[key].name):
+		feed[-1].stamp = (feed[-1].stamp + " " + Data.TAGS[key].name).strip_edges()
 	Sfx.play("power", -4)
 	log_msg("%s %s" % [Data.TAGS[key].name, Data.TAGS[key].text])
 	return true
@@ -712,7 +721,9 @@ func tick_statuses(team: String) -> void:
 			var bsrc = u.st_by.get("burn", null)
 			var bd := 1 if wet() else 3 + (2 if bsrc is Unit and bsrc.perk("accelerant") else 0)
 			burn_tick = true
+			kill_how = "BURN"
 			damage(u, bd, bsrc, {"status": true})
+			kill_how = ""
 			burn_tick = false
 			if g != null:
 				# fire meets gas: the whole cloud goes up
@@ -727,7 +738,9 @@ func tick_statuses(team: String) -> void:
 		if u.has_st("toxic") and not u.dead:
 			var a: int = u.armor
 			u.armor = 0
+			kill_how = "TOXIC"
 			damage(u, 2, u.st_by.get("toxic", null), {"status": true})
+			kill_how = ""
 			u.armor = a
 		for k in ["burn", "toxic", "mark", "berserk", "cloak", "flamegod", "vest"]:
 			if u.st.has(k):
@@ -1235,7 +1248,10 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 		if own != null and tg.team == "enemy":
 			give_xp(own, maxi(1, int(amt / 3)))
 		if tg.hp <= 0:
+			# R2: overkill by half its health or more and the Jackal bursts into helmet, boots and smoke
+			pop_next = tg.kind == "enemy" and tg.type != "boss" and -tg.hp >= maxi(6, tg.max_hp / 2)
 			kill(tg, src)
+			pop_next = false
 	ui_dirty = true
 
 func crack_boss(bo: Unit) -> void:
@@ -1284,7 +1300,10 @@ func kill(tg: Unit, src) -> void:
 	tg.dead_t = 0
 	tg.walk = null
 	tg.overwatch = 0
-	if tg.kind == "enemy" and tg.type != "boss":
+	feed_kill(tg, src)
+	if pop_next and tg.kind == "enemy":
+		overkill_pop(tg)
+	elif tg.kind == "enemy" and tg.type != "boss":
 		# the body stays where it drops: it stops one bullet, and blasts throw it like a sandbag
 		tg.soak = 1
 		tg.w = 26
@@ -1384,6 +1403,62 @@ func kill(tg: Unit, src) -> void:
 			card_idx = -1
 	ui_dirty = true
 
+func feed_kill(tg: Unit, src) -> void:
+	## U1: one kill feed line, Metal Slug style: KILLER [HOW] VICTIM, with a stamp for the flashy ones.
+	if tg.kind != "enemy" and tg.kind != "soldier":
+		return
+	var killer := "BOOM"
+	var kc := Color("e8dcc2")
+	if src is Unit:
+		if src == tg:
+			killer = "HIMSELF" if tg.team == "enemy" else "FRIENDLY FIRE"
+		elif src.team == "squad":
+			killer = src.def.name.to_upper()
+			kc = Color("ffd23a")
+		elif src.kind == "enemy":
+			killer = Data.ETYPES[src.type].name.to_upper()
+			kc = Color("ff4d3d")
+	var how := kill_how
+	if how == "":
+		if src is Unit and src.team == "squad" and act_card != "" and state == "player":
+			how = act_card.to_upper()
+		elif src is Unit and src.kind == "enemy":
+			how = "ATTACK"
+		else:
+			how = "BLAST"
+	var victim: String = (Data.ETYPES[tg.type].name if tg.team == "enemy" else tg.def.name).to_upper()
+	var stamp := ""
+	if pop_next:
+		stamp = "OVERKILL!"
+	elif last_hit_head and src is Unit and src.team == "squad":
+		stamp = "HEADSHOT!"
+	elif tg.air and how in ["FALL", "SLAM"]:
+		stamp = "SPLAT!"
+	if state == "player" and combo >= 1 and tg.team == "enemy":
+		stamp = (stamp + " " if stamp != "" else "") + ["", "", "DOUBLE!", "TRIPLE!", "MULTI KILL!"][mini(combo + 1, 4)]
+	feed.append({"killer": killer, "kc": kc, "how": how, "victim": victim, "vc": Color("ff7a3d") if tg.team == "enemy" else Color("53d4e2"), "stamp": stamp.strip_edges(), "t": 0})
+	if feed.size() > 4:
+		feed.pop_front()
+
+func overkill_pop(tg: Unit) -> void:
+	## R2: cartoon only. The helmet pops off and bounces, the boots fly, and there is no body left.
+	tg.gone = true
+	tg.soak = 0
+	var cx := tg.x
+	var cy := tg.y - tg.h / 2.0
+	if faction(tg) != "jackal":
+		for i in 14:
+			part({"x": cx, "y": cy, "vx": (randf() - .5) * 6, "vy": -randf() * 5 - 1, "life": 50, "max": 50, "c": Color("9df25c"), "s": 3.0, "g": 0.22})
+	else:
+		part({"x": cx, "y": tg.y - tg.h, "vx": (randf() - .5) * 3, "vy": -5.5, "life": 150, "max": 150, "c": Color("5a6b3a"), "s": 6.0, "g": 0.22, "helmet": true})
+		for k in [-1, 1]:
+			part({"x": cx + k * 4, "y": tg.y - 4, "vx": k * (1.5 + randf() * 2), "vy": -3.0 - randf() * 2, "life": 110, "max": 110, "c": Color("3a2a1a"), "s": 4.0, "g": 0.22})
+	for k in 3:
+		puff(cx + randf_range(-10, 10), cy + randf_range(-10, 10), 2.0)
+	float_at(cx, tg.y - tg.h - 52, "OVERKILL!", Color("ffd23a"), true)
+	shake += 2
+	Sfx.play("thud")
+
 func collision_dmg(u: Unit, amt: float, label: String) -> void:
 	var d := int(round(amt))
 	if label == "FALL" and u.team == "squad" and Run.implanted(u.s, "spine"):
@@ -1400,7 +1475,10 @@ func collision_dmg(u: Unit, amt: float, label: String) -> void:
 	var src = u.last_hit_by if u.last_hit_by != null and u.last_hit_by != u else null
 	if src != null and src is Unit and src.perk("bulldozer"):
 		d *= 2
+	var was := kill_how
+	kill_how = label
 	damage(u, d, src, {})
+	kill_how = was
 
 func crush(u: Unit, d: int, cause, kvx: float, kvy: float) -> void:
 	## Called by the terrain when falling or toppling debris lands on a body.
@@ -1422,7 +1500,10 @@ func crush(u: Unit, d: int, cause, kvx: float, kvy: float) -> void:
 			give_xp(cause, 3)
 	if u.type == "boss":
 		crack_boss(u)
+	var was := kill_how
+	kill_how = "CRUSHED"
 	damage(u, d, cause, {})
+	kill_how = was
 	if not u.heavy and not u.is_prop() and not u.dead:
 		u.vx = kvx
 		u.vy = kvy
@@ -1615,7 +1696,7 @@ func update_proj(p: Dictionary) -> void:
 			p.vx = cos(cur) * sp
 			p.vy = sin(cur) * sp
 	p.vx += wind * 0.006 * p.wind
-	p.vy += GRAV * p.grav
+	p.vy += grav * p.grav
 	var n := maxi(1, int(ceil(Vector2(p.vx, p.vy).length() / 2.0)))
 	for i in n:
 		var px: float = p.x
@@ -1679,13 +1760,44 @@ func sim_arc(sx: float, sy: float, vx: float, vy: float, wind_f: float, steps: i
 	var y := sy
 	for i in steps:
 		vx += wind * 0.006 * wind_f
-		vy += GRAV
+		vy += grav
 		x += vx
 		y += vy
 		pts.append(Vector2(x, y))
 		if y > WATER_Y or x < 0 or x > world_w or T.solid(x, y):
 			return {"pts": pts, "x": x, "y": y, "end": true}
 	return {"pts": pts, "x": x, "y": y, "end": false}
+
+func sim_grenade(sx: float, sy: float, vx: float, vy: float, wind_f: float, frames: int) -> Dictionary:
+	## A bouncing grenade's whole flight up to its fuse, with the same bounces update_proj gives it.
+	var pts: Array = []
+	var x := sx
+	var y := sy
+	for f in frames:
+		vx += wind * 0.006 * wind_f
+		vy += grav
+		var n := maxi(1, int(ceil(Vector2(vx, vy).length() / 2.0)))
+		for i in n:
+			var px := x
+			var py := y
+			x += vx / n
+			y += vy / n
+			if y > WATER_Y + 4 or x < 0 or x > world_w:
+				pts.append(Vector2(x, y))
+				return {"pts": pts, "x": x, "y": y, "lost": true}
+			if T.solid(x, y):
+				var hx := T.solid(x, py)
+				var hy := T.solid(px, y)
+				x = px
+				y = py
+				if hx or not hy:
+					vx = -vx * 0.45
+				if hy or not hx:
+					vy = -vy * 0.4
+				vx *= 0.85
+				break
+		pts.append(Vector2(x, y))
+	return {"pts": pts, "x": x, "y": y, "lost": false}
 
 func solve_arc(sx: float, sy: float, tx: float, ty: float, wind_f: float, pmax: float):
 	var dir := -1.0 if tx < sx else 1.0
@@ -1761,6 +1873,7 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 	u.energy -= cost
 	u.last_cost = cost
 	act_unit = u
+	act_card = c.get("name", "")
 	u.played += 1
 	if ch != "":
 		chain(u, ch)
@@ -2019,7 +2132,7 @@ func sim_body(u: Unit, vx: float, vy: float, thrust = null, fuel := 0) -> Dictio
 			vx = clampf(vx + a.x, -JET_MAX_VX, JET_MAX_VX)
 			vy = clampf(vy + a.y, -JET_MAX_VY, 10.0)
 			fuel -= 1
-		vy = minf(vy + GRAV, 10.0)
+		vy = minf(vy + grav, 10.0)
 		var n := maxi(1, int(ceil(maxf(absf(vx), absf(vy)) / 2.0)))
 		for i in n:
 			var nx := x + vx / n
@@ -2062,6 +2175,14 @@ func _act_arc(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
 	await wait(8)
 	Sfx.play("toss")
 	var fuse = c.get("fuse", null)
+	if fuse != null and fuse_pick > 0 and c.get("bounce", false):
+		fuse = fuse_pick
+	if fuse != null and u.has_st("cluster") and not c.get("smoke", false) and not c.get("gas", false):
+		c.cluster = c.get("cluster", 0) + 3
+		u.st.cluster -= 1
+		if u.st.cluster <= 0:
+			u.st.erase("cluster")
+		float_text(u, "CLUSTER!", Color("ffd23a"))
 	var dmg_bonus := 0
 	if fuse != null and u.perk("shortfuse"):
 		fuse = int(fuse / 2)
@@ -3281,6 +3402,13 @@ func grant_bonus(p: Unit, u: Unit) -> void:
 		var hl := mini(15, u.max_hp - u.hp)
 		u.hp += hl
 		float_text(u, "+%d HP" % hl, Color("62d26f"))
+	elif k == "nadekit":
+		# K2: a soldier gets two Frag Grenades that stay in hand until thrown; a Jackal lobs one on its next attack
+		if u.team == "squad":
+			for i in 2:
+				u.hand.append({"id": -2, "key": "frag", "tier": Data.base_tier("frag"), "temp": true})
+		else:
+			u.st["nades"] = 1
 	else:
 		u.st[k] = Data.BONUS_TURNS
 	float_at(u.x, u.y - u.h - 30, B.name + "!", B.c, true)
@@ -3638,7 +3766,7 @@ func enemy_advance(e: Unit, tx: float, budget: float, stop = null) -> void:
 			e.face = dir
 			e.vx = 0
 			e.vault = {"y": e.y - top - 3, "vx": dir * 1.8}
-			e.vy = -sqrt(2 * GRAV * (top + 18))
+			e.vy = -sqrt(2 * grav * (top + 18))
 			e.air = true
 			e.leaping = true
 			await until(func(): return not e.air or e.dead)
@@ -3674,9 +3802,26 @@ func lob(e: Unit, tg: Unit, dmg: int, r: float, err_mul: float) -> bool:
 	e.pose = "throw"; e.pose_t = 24
 	await wait(8)
 	Sfx.play("toss")
-	projs.append(mk_proj({"kind": "egren", "x": sx, "y": sy, "vx": (sol.vx * c - sol.vy * s) * k, "vy": (sol.vx * s + sol.vy * c) * k, "wind": 1.0, "r": r, "dmg": int(round(dmg * (1 + alert * 0.06))), "owner": e}))
+	var cl := 0
+	if e.has_st("cluster"):
+		cl = 3
+		e.st.cluster -= 1
+		if e.st.cluster <= 0:
+			e.st.erase("cluster")
+	projs.append(mk_proj({"kind": "egren", "x": sx, "y": sy, "vx": (sol.vx * c - sol.vy * s) * k, "vy": (sol.vx * s + sol.vy * c) * k, "wind": 1.0, "r": r, "dmg": int(round(dmg * (1 + alert * 0.06))), "owner": e, "cluster": cl}))
 	await wait(6)
 	return true
+
+func jackal_nade(e: Unit) -> bool:
+	## A Jackal that grabbed a grenade kit throws it at the nearest soldier.
+	if not e.st.has("nades") or faction(e) != "jackal":
+		return false
+	var tg = nearest_squad(e)
+	if tg == null or absf(tg.x - e.x) > 420:
+		return false
+	e.st.erase("nades")
+	float_text(e, "FIRE IN THE HOLE!", Color("ff7a3d"))
+	return await lob(e, tg, 11, 36, 1.0)
 
 func nearest_squad(e: Unit):
 	if taunter != null and not taunter.dead and absf(taunter.x - e.x) < 520:
@@ -3744,12 +3889,16 @@ func enemy_act(e: Unit) -> void:
 	if e.type == "boss":
 		await boss_act(e)
 		return
+	if await jackal_nade(e):
+		return
 	var pad = pad_in_reach(e, E.get("speed", 0)) if not e.hold and E.get("speed", 0) > 0 and not E.get("static", false) else null
 	if pad != null:
 		# a bonus is up within reach: grab it, then shoot if there is a shot
 		float_text(e, "GRAB IT!", Color("ff7a3d"))
 		await enemy_advance(e, pad.x, E.speed)
 		if e.dead or e.air:
+			return
+		if await jackal_nade(e):
 			return
 		if E.has("range") and not E.get("melee", false) and not E.get("arc", false):
 			var b3 = best_shot(e, squad_alive(), E.range)
@@ -4547,6 +4696,9 @@ func step() -> void:
 	for r in ropes:
 		r.t -= 1
 	ropes = ropes.filter(func(r): return r.t > 0)
+	for f in feed:
+		f.t += 1
+	feed = feed.filter(func(f): return f.t < 480)
 	if banners.size():
 		banners[0].t += 1
 		if banners[0].t > banners[0].dur:
@@ -4618,7 +4770,7 @@ func physics(u: Unit) -> void:
 			u.vy = maxf(u.vy, 0)
 		else:
 			return
-	u.vy = minf(u.vy + GRAV, 2.4 if u.para else 10.0)
+	u.vy = minf(u.vy + grav, 2.4 if u.para else 10.0)
 	if u.vault != null and u.y <= u.vault.y:
 		u.vx = u.vault.vx  # clear the wall top before moving over it
 	if u.para:
@@ -4823,12 +4975,31 @@ func select_card(i: int) -> void:
 		return
 	card_idx = -1 if card_idx == i else i
 	jet_armed = false
+	fuse_pick = 0
 	ui_dirty = true
 
 func cancel_card() -> void:
 	card_idx = -1
 	jet_armed = false
+	fuse_pick = 0
 	ui_dirty = true
+
+func armed_fuse():
+	## The armed card's fuse in frames if it is a bouncing grenade the wheel can dial, else null.
+	if sel == null or card_idx < 0 or card_idx >= sel.hand.size():
+		return null
+	var c := Data.card(sel.hand[card_idx])
+	if c.type != "ARC" or c.get("fuse", null) == null or not c.get("bounce", false):
+		return null
+	return fuse_pick if fuse_pick > 0 else int(c.fuse)
+
+func dial_fuse(d: int) -> void:
+	## K1: the wheel sets a grenade's fuse from 1 to 4 seconds in half-second steps.
+	var f = armed_fuse()
+	if f == null or busy or state != "player":
+		return
+	fuse_pick = clampi(int(round(f / 30.0)) * 30 + d * 30, 60, 240)
+	Sfx.play("tick", -8)
 
 func select_unit(u: Unit) -> void:
 	if u == null or u.dead or busy:
@@ -4947,6 +5118,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 				world_click(mouse)
 		elif ev.button_index == MOUSE_BUTTON_RIGHT:
 			cancel_card()
+		elif ev.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			dial_fuse(1 if ev.button_index == MOUSE_BUTTON_WHEEL_UP else -1)
 	elif ev is InputEventKey:
 		if ev.keycode == KEY_SHIFT:
 			aim_hold = ev.pressed
@@ -4977,3 +5150,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 			auto_advance()
 		elif ev.keycode == KEY_J:
 			toggle_jet()
+		elif ev.keycode == KEY_BRACKETRIGHT or ev.keycode == KEY_EQUAL:
+			dial_fuse(1)
+		elif ev.keycode == KEY_BRACKETLEFT or ev.keycode == KEY_MINUS:
+			dial_fuse(-1)
