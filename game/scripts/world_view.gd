@@ -114,6 +114,25 @@ func draw_unit(u: Unit) -> void:
 		"barrel":
 			draw_sprite("barrel_w" if white else "barrel", pos, Vector2(0.5, 1.0))
 			return
+		"crate":
+			draw_sprite("crate_w" if white else "crate", pos, Vector2(0.5, 1.0))
+			if b.t % 90 < 6:
+				draw_rect(Rect2(pos.x + 4, pos.y - 14, 2, 2), Color(1, 1, 0.8))
+			return
+		"strongbox":
+			draw_strongbox(pos, white)
+			return
+		"loot":
+			draw_loot(u, pos)
+			return
+		"cache":
+			# a glint in the dirt every couple of seconds
+			var gy: float = b.T.ground_at(u.x)
+			if (b.t + u.id * 37) % 120 < 10:
+				var a := sin(((b.t + u.id * 37) % 120) / 10.0 * PI)
+				draw_rect(Rect2(pos.x - 3, gy - 2, 7, 1), Color(1, 0.92, 0.5, a))
+				draw_rect(Rect2(pos.x, gy - 5, 1, 7), Color(1, 0.92, 0.5, a))
+			return
 		"pow":
 			var fr := (b.t / 20) % 2
 			var face := -1
@@ -169,6 +188,42 @@ func draw_unit(u: Unit) -> void:
 			var mo := Art.muzzle_offset(u.sheet, a[0], a[1], u.gun_angle)
 			draw_muzzle(pos + kick + Vector2(mo.x * u.face, mo.y), u.face, u.gun_angle)
 
+func draw_strongbox(pos: Vector2, white: bool) -> void:
+	var r := Rect2(pos.x - 10, pos.y - 14, 20, 14)
+	draw_rect(r.grow(1), C_DARK)
+	draw_rect(r, Color.WHITE if white else Color("4a5a3a"))
+	draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 3), Color("6a7a52"))
+	draw_rect(Rect2(r.position.x + 3, r.position.y, 2, r.size.y), Color("2e3a24"))
+	draw_rect(Rect2(r.end.x - 5, r.position.y, 2, r.size.y), Color("2e3a24"))
+	draw_rect(Rect2(pos.x - 2, pos.y - 9, 4, 4), Color("ffd23a"))
+	draw_rect(Rect2(pos.x - 1, pos.y - 7, 2, 2), C_DARK)
+
+func draw_loot(u: Unit, pos: Vector2) -> void:
+	## A pickup: a small box glowing in its rarity color, a letter disc, a coin pile or a trophy.
+	var L: Dictionary = u.loot
+	var bob := sin((b.t + u.id * 13) / 9.0) * 2 if not u.air else 0.0
+	var p := pos + Vector2(0, -6 + bob)
+	match L.type:
+		"letter":
+			draw_circle(p + Vector2(0, -4), 10, C_DARK)
+			draw_circle(p + Vector2(0, -4), 9, Color("ffd23a") if b.t % 20 < 14 else Color("ffb23e"))
+			Art.text(self, L.key, p + Vector2(1, 1), 16, Color("8a1a0a"), HORIZONTAL_ALIGNMENT_CENTER)
+		"scrip":
+			draw_texture_rect(Art.tex.ic_coin, Rect2(p.x - 6, p.y - 10, 12, 12), false)
+		"trophy":
+			draw_circle(p + Vector2(0, -4), 11, Color(1, 0.7, 0.12, 0.3 + 0.2 * sin(b.t / 5.0)))
+			draw_texture_rect(Art.tex.ic_star, Rect2(p.x - 8, p.y - 12, 16, 16), false)
+		_:
+			var t: int = L.item.tier
+			var col := Data.tier_color(t)
+			draw_circle(p + Vector2(0, -4), 9 + (2 if t >= 3 else 0), Color(col, 0.25 + 0.15 * sin(b.t / 6.0)))
+			draw_rect(Rect2(p.x - 6, p.y - 10, 12, 10), C_DARK)
+			draw_rect(Rect2(p.x - 5, p.y - 9, 10, 8), col.darkened(0.2))
+			draw_rect(Rect2(p.x - 5, p.y - 9, 10, 2), col.lightened(0.3))
+			draw_rect(Rect2(p.x - 1, p.y - 9, 2, 8), C_DARK)
+			if t >= 3 and b.t % 30 < 4:
+				draw_rect(Rect2(p.x + 5, p.y - 14, 2, 2), Color.WHITE)
+
 func draw_sprite(key: String, pos: Vector2, anchor: Vector2, alpha := 1.0, flip := false) -> void:
 	var tx: Texture2D = Art.tex[key]
 	var sz := Vector2(tx.get_width(), tx.get_height())
@@ -205,7 +260,7 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel"] or u.type == "boss" or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache"] or u.type == "boss" or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -219,6 +274,9 @@ func draw_plate(u: Unit) -> void:
 	draw_rect(Rect2(x - w / 2, y, roundf(w * u.hp / u.max_hp), 3), Color("ff4d3d"))
 	for k in range(1, 4):
 		draw_rect(Rect2(x - w / 2 + k * w / 4, y, 1, 3), C_DARK)
+	if u.elite != "":
+		draw_rect(Rect2(x - w / 2 - 2, y - 2, w + 4, 7), Color("ffd23a"), false, 1.0)
+		Art.text(self, Data.ELITES[u.elite].name, Vector2(x, y - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 	if b.inspect and b.state == "player":
 		var it := b.intent_of(u)
 		var tw := Art.text_width(it, 8) + 6
@@ -458,6 +516,8 @@ func draw_targeting() -> void:
 				var lab := "BODY"
 				if tg.kind == "fuel": lab = "LEAK"
 				elif tg.kind == "charge": lab = "DEFUSE"
+				elif tg.kind == "crate": lab = "OPEN"
+				elif tg.kind == "strongbox": lab = "LOCKED: BLAST OR PRY"
 				elif tg.is_prop(): lab = "BOOM"
 				elif hh.head: lab = "HEAD!"
 				elif tg.shield and hh.dx > 0: lab = "SHIELD"
@@ -581,10 +641,24 @@ func draw_hover() -> void:
 		lines = [E.name.to_upper(), "HP %d/%d" % [h.hp, h.max_hp], E.note]
 		if h.type == "boss":
 			lines.append("ARMOR PLATE %d" % h.plate if h.plate > 0 else "ARMOR CRACKED: TAKES +30%")
+		if h.elite != "":
+			lines.append("ELITE %s: %s Drops an item." % [Data.ELITES[h.elite].name, Data.ELITES[h.elite].text])
 	elif h.kind == "fuel":
 		lines = ["FUEL TANK", ("Leaking: blows after %d more enemy phase(s)." % h.leak) if h.leak != null else "Shoot it: it leaks and blows in 2 turns.", "Blast it: it goes up now. Blast 84."]
 	elif h.kind == "charge":
 		lines = ["SAPPER CHARGE", "Blows when the Jackals move next.", "Shoot it to defuse. Blast 48."]
+	elif h.kind == "crate":
+		lines = ["SUPPLY CRATE", "Shoot it or blast it open. The loot pops out:", "careful, it can roll into a pit."]
+	elif h.kind == "strongbox":
+		lines = ["JACKAL STRONGBOX", "Pry it open with a MELEE card: quiet.", "Blast it: free, but ALERT +1 and it may damage the loot."]
+	elif h.kind == "loot":
+		var L: Dictionary = h.loot
+		match L.type:
+			"item": lines = ["%s %s" % [Data.tier_name(L.item.tier), Data.item_name(L.item).to_upper()], "Walk over it to pick it up."]
+			"letter": lines = ["%s: %s" % [L.key, Data.CARDS[Data.LETTERS[L.key]].name.to_upper()], "3 free shots for whoever grabs it."]
+			"scrip": lines = ["%d SCRIP" % L.n]
+			_: lines = ["TROPHY: " + L.name]
+		lines.append("Anything left behind goes to the stash.")
 	elif h.is_prop():
 		lines = ["FUEL BARREL", "Explodes when hit. Blast 44."]
 	else:

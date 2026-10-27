@@ -58,6 +58,10 @@ var planted := false
 var built := 0
 var dragged := false
 var tread := 0.0
+var elite := ""       # elite Jackal modifier (Data.ELITES key)
+var loot = null       # payload for a loot pickup or a crate
+var kill_drawn := false
+var gb: Dictionary = {}  # squad: gear bonuses for this mission
 # squad only
 var s: Dictionary = {}  # persistent Run soldier record
 var def: Dictionary = {}
@@ -78,7 +82,14 @@ func center() -> Vector2:
 	return Vector2(x, y - h / 2.0)
 
 func is_prop() -> bool:
-	return kind == "barrel" or kind == "fuel" or kind == "charge"
+	return kind == "barrel" or kind == "fuel" or kind == "charge" or kind == "crate" or kind == "strongbox"
+
+func is_pickup() -> bool:
+	## Loot on the ground and buried caches: bullets and blasts pass through them.
+	return kind == "loot" or kind == "cache"
+
+func g(k: String, d = 0):
+	return gb.get(k, d)
 
 func perk(id_: String) -> bool:
 	return s.has("perks") and s.perks.has(id_)

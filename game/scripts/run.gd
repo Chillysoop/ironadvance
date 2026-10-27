@@ -13,6 +13,13 @@ var uid := 1
 var luck := 0              # shifts every rarity roll upward
 var pity_rare := 0         # rolls since the last Rare or better
 var pity_epic := 0         # rolls since the last Epic or better
+var stash: Array = []      # unequipped items, shared by the squad
+var belt: Array = []       # consumables usable mid-mission without a card
+var gear_tier := {}        # squad gear (commander relic) id -> rarity tier
+var trophies: Array = []   # Iron Boar parts brought home this run
+var discount := 0.0        # next shop's price cut (Quartermaster POW)
+var reroll_tokens := 0     # free affix rerolls at the gunsmith
+var gunsmith_uses := 0     # each paid reroll costs more
 
 func new_run() -> void:
 	soldiers.clear()
@@ -23,6 +30,13 @@ func new_run() -> void:
 	luck = 0
 	pity_rare = 0
 	pity_epic = 0
+	stash.clear()
+	belt.clear()
+	gear_tier.clear()
+	trophies.clear()
+	discount = 0.0
+	reroll_tokens = 0
+	gunsmith_uses = 0
 	total_score = 0
 	uid = 1
 	seed_val = randi()
@@ -34,6 +48,7 @@ func new_run() -> void:
 			"key": d.key, "def": d, "hp": d.hp, "max_hp": d.hp, "alive": true,
 			"lvl": 1, "xp": 0, "deck": deck, "perks": [],
 			"bonus": {"move": 0, "dodge": 0, "hand": 0, "energy1": 0},
+			"equip": {"weapon": null, "armor": null, "kit1": null, "kit2": null},
 		})
 
 func new_card(key: String, tier := -1) -> Dictionary:
@@ -41,7 +56,11 @@ func new_card(key: String, tier := -1) -> Dictionary:
 	return {"id": uid, "key": key, "tier": Data.base_tier(key) if tier < 0 else maxi(tier, Data.base_tier(key))}
 
 func luck_total() -> int:
-	return luck + (2 if has_gear("charm") else 0) + (1 if has_gear("dogtags") else 0)
+	var n := luck + (2 if has_gear("charm") else 0) + (1 if has_gear("dogtags") else 0)
+	for s in soldiers:
+		if s.alive:
+			n += int(gear_bonus(s).get("luck", 0))
+	return n
 
 func tier_weights() -> Array:
 	## Rarity odds for this point in the run. Later missions and Luck move weight off Common.
@@ -87,6 +106,11 @@ func soldier(key: String) -> Dictionary:
 			return s
 	return {}
 
+func add_gear(id: String, tier := 0) -> void:
+	if not gear.has(id):
+		gear.append(id)
+	gear_tier[id] = maxi(gear_tier.get(id, 0), tier)
+
 func has_gear(id: String) -> bool:
 	return gear.has(id)
 
@@ -110,7 +134,7 @@ func add_xp(s: Dictionary, n: int) -> int:
 	if n <= 0 or not s.alive:
 		return 0
 	if has_gear("dogtags"):
-		n = int(ceil(n * 1.5))
+		n = int(ceil(n * (1.3 + 0.1 * relic_tier("dogtags"))))
 	s.xp += n
 	var gained := 0
 	while s.xp >= xp_for_next(s):
@@ -220,11 +244,136 @@ func apply_option(s: Dictionary, o: Dictionary) -> String:
 			return "%s: %s." % [s.def.name, o.name]
 	return ""
 
-func laser_steps(_s: Dictionary) -> int:
-	return 0
+func laser_steps(s: Dictionary) -> int:
+	return int(gear_bonus(s).get("laser_step", 0)) + (1 if relic_tier("laser") >= Data.TIER_MAX else 0)
 
-func laser_pct(_s: Dictionary) -> float:
-	return 0.0
+func laser_pct(s: Dictionary) -> float:
+	return float(gear_bonus(s).get("laser_pct", 0.0))
+
+# ---------------------------------------------------------------- gear and inventory
+func relic_tier(id: String) -> int:
+	return gear_tier.get(id, 0) if has_gear(id) else -1
+
+func new_item(id: String, tier := -1) -> Dictionary:
+	## A fresh item instance with rolled rarity and affixes.
+	uid += 1
+	var t := roll_tier() if tier < 0 else tier
+	var it := {"uid": uid, "id": id, "tier": t, "affixes": []}
+	if Data.ITEMS[id].slot != "belt":
+		roll_affixes(it)
+	else:
+		it.tier = 0
+	return it
+
+func roll_affixes(it: Dictionary) -> void:
+	var pool: Array = Data.AFFIXES.keys()
+	pool.shuffle()
+	it.affixes = pool.slice(0, Data.AFFIX_COUNT[it.tier])
+
+func random_item_id(slots := ["weapon", "armor", "kit"]) -> String:
+	var ids: Array = Data.ITEMS.keys().filter(func(k): return Data.ITEMS[k].slot in slots)
+	return ids[randi() % ids.size()]
+
+func roll_item(min_tier := 0, slots := ["weapon", "armor", "kit"]) -> Dictionary:
+	return new_item(random_item_id(slots), roll_tier(min_tier))
+
+func medals(st: Dictionary) -> Array:
+	## Debrief medals (L9). Each one earns a supply crate, up to three; a win always earns one.
+	var segs: int = Data.MISSIONS[mission].segments.size()
+	var out: Array = []
+	if st.get("kia", 0) == 0:
+		out.append(["FLAWLESS", "Nobody went down"])
+	if st.get("rounds", 99) <= segs * 2 + 2:
+		out.append(["BLITZ", "Done in %d rounds or fewer" % (segs * 2 + 2)])
+	if st.get("pows_total", 0) > 0 and st.get("pows", 0) >= st.pows_total:
+		out.append(["LIBERATOR", "Every POW freed"])
+	if st.get("max_alert", 10) < 6:
+		out.append(["LOW PROFILE", "Alert never reached 6"])
+	return out
+
+func item_opt(it: Dictionary, label := "") -> Dictionary:
+	## A pick-modal / CardView option for an item instance.
+	return {"kind": "item", "item": it, "tier": it.tier, "label": label}
+
+func item_price(it: Dictionary) -> int:
+	if Data.ITEMS[it.id].slot == "belt":
+		return 30
+	return [60, 90, 130, 190, 280][it.tier]
+
+func sell_value(it: Dictionary) -> int:
+	return int(item_price(it) * 0.4)
+
+func gear_bonus(s: Dictionary) -> Dictionary:
+	## Every stat from a soldier's equipped items, their affixes and set bonuses.
+	var out := {}
+	if not s.has("equip"):
+		return out
+	var sets := {}
+	for slot in s.equip:
+		var it = s.equip[slot]
+		if it == null:
+			continue
+		var st := Data.item_stats(it)
+		for k in st:
+			out[k] = out.get(k, 0) + st[k]
+		var set_id: String = Data.ITEMS[it.id].get("set", "")
+		if set_id != "":
+			sets[set_id] = sets.get(set_id, 0) + 1
+	for set_id in sets:
+		if sets[set_id] >= 2:
+			for k in Data.SETS[set_id].bonus:
+				out[k] = out.get(k, 0) + Data.SETS[set_id].bonus[k]
+	return out
+
+func eff_max_hp(s: Dictionary) -> int:
+	return s.max_hp + int(gear_bonus(s).get("hp", 0))
+
+func slot_for(s: Dictionary, it: Dictionary) -> String:
+	## Where an item would go on this soldier: its slot, or the free kit slot (kit1 when both are full).
+	var sl: String = Data.ITEMS[it.id].slot
+	if sl == "kit":
+		if s.equip.kit1 == null:
+			return "kit1"
+		if s.equip.kit2 == null:
+			return "kit2"
+		return "kit1"
+	return sl
+
+func equip(s: Dictionary, it: Dictionary, slot := "") -> Dictionary:
+	## Puts an item on a soldier and returns whatever it replaced (or {}). Weapon cards
+	## follow the weapon in and out of the deck.
+	if slot == "":
+		slot = slot_for(s, it)
+	var old = s.equip[slot]
+	if old != null:
+		unequip(s, slot)
+	stash.erase(it)
+	s.equip[slot] = it
+	var d: Dictionary = Data.ITEMS[it.id]
+	for k in d.get("cards", []):
+		var c := new_card(k, it.tier)
+		c["src"] = it.uid
+		s.deck.append(c)
+	if s.hp > eff_max_hp(s):
+		s.hp = eff_max_hp(s)
+	return old if old != null else {}
+
+func unequip(s: Dictionary, slot: String) -> void:
+	var it = s.equip[slot]
+	if it == null:
+		return
+	s.equip[slot] = null
+	s.deck = s.deck.filter(func(c): return c.get("src", -1) != it.uid)
+	stash.append(it)
+	s.hp = mini(s.hp, eff_max_hp(s))
+
+func add_loot(it: Dictionary) -> String:
+	## Belt items go on the belt when there is room; everything else goes to the stash.
+	if Data.ITEMS[it.id].slot == "belt" and belt.size() < Data.BELT_MAX:
+		belt.append(it)
+		return "belt"
+	stash.append(it)
+	return "stash"
 
 func alive_count() -> int:
 	return soldiers.filter(func(s): return s.alive).size()

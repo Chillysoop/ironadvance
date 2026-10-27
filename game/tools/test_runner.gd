@@ -156,6 +156,61 @@ func run() -> void:
 			for i in 2000:
 				counts[Run.roll_tier()] += 1
 			print("[rarity] 2000 rolls ", counts)
+		"loot":
+			Run.new_run()
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			var u: Unit = b.sel
+			var cr := b.mk_unit(); cr.team = "neutral"; cr.kind = "crate"; cr.x = u.x + 60; cr.y = b.T.stand_y(cr.x, 0); cr.w = 16; cr.h = 14
+			b.units.append(cr)
+			var sb := b.mk_unit(); sb.team = "neutral"; sb.kind = "strongbox"; sb.x = u.x + 110; sb.y = b.T.stand_y(sb.x, 0); sb.w = 20; sb.h = 14
+			b.units.append(sb)
+			b.drop_loot(u.x + 150, u.y - 30, {"type": "letter", "key": "H"})
+			b.drop_loot(u.x + 180, u.y - 30, {"type": "item", "item": Run.roll_item(3)})
+			var e: Unit = b.units.filter(func(x): return x.team == "enemy")[0]
+			b.make_elite(e, "armored")
+			await frames_wait(60)
+			await shot("loot_field")
+			b.damage(cr, 5, u, {})
+			b.damage(sb, 5, u, {"blast": true})
+			await frames_wait(60)
+			await shot("loot_open")
+			b.autopick = 0
+			for l in b.units.filter(func(x): return x.kind == "loot" and not x.gone):
+				b.collect(u, l)
+			b.resolve(func(): await b.wait(2))
+			await until(func(): return not b.busy)
+			print("[loot] hand ", u.hand.map(func(c): return c.key), " stash ", Run.stash.map(func(i): return i.id), " equip ", u.s.equip)
+			await shot("loot_after")
+			b.sweep_loot(INF)
+		"armory":
+			Run.new_run()
+			for i in 6:
+				Run.stash.append(Run.roll_item(i % 5))
+			Run.belt.append(Run.new_item("b_medkit"))
+			Run.equip(Run.soldiers[0], Run.new_item("marksman", 3))
+			Run.equip(Run.soldiers[3], Run.new_item("plate", 2))
+			Run.equip(Run.soldiers[3], Run.new_item("steeltoe", 1))
+			Run.scrip = 500
+			main.show_shop()
+			await frames_wait(10)
+			main.screen.open_armory()
+			await frames_wait(10)
+			var arm = main.screen.get_children()[-1]
+			arm.select({"where": "stash", "i": 0})
+			await frames_wait(10)
+			await shot("armory")
+			print("[armory] moss deck ", Run.soldiers[0].deck.map(func(c): return c.key), " rook bonus ", Run.gear_bonus(Run.soldiers[3]))
+		"debrief":
+			Run.new_run()
+			main.show_debrief({"kia": 0, "rounds": 8, "pows": 1, "pows_total": 1, "max_alert": 3})
+			await frames_wait(10)
+			await shot("debrief")
+			main.screen.open_all()
+			await frames_wait(40)
+			await shot("debrief_open")
+			await frames_wait(60)
+			await shot("debrief_done")
 		"shop":
 			Run.new_run()
 			Run.scrip = 400
@@ -185,6 +240,11 @@ func run() -> void:
 				if m == 2:
 					break
 				press_first()
+				await frames_wait(20)
+				await shot("flow_debrief%d" % m)
+				main.screen.open_all()
+				await frames_wait(90)
+				main.screen.done.emit()
 				await frames_wait(20)
 				await shot("flow_shop%d" % m)
 				main.screen.done.emit()

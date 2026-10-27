@@ -6,9 +6,11 @@ signal done
 signal chosen(i: int)
 
 const HudScript := preload("res://scripts/hud.gd")
+const ArmoryScript := preload("res://scripts/armory.gd")
 
 var stock_cards: Array = []
 var stock_gear: Array = []
+var shelf: Array = []       # item shelf for the Armory: 3 items, a mystery crate, sometimes a black-market legendary
 var t := 0
 var msg := ""
 var msg_t := 0
@@ -20,18 +22,36 @@ func _ready() -> void:
 	build()
 
 func restock() -> void:
-	var keys: Array = []
-	for k in Data.CARDS:
-		if not Data.CARDS[k].get("od", false):
-			keys.append(k)
+	var keys: Array = Data.offer_keys()
 	keys.shuffle()
 	stock_cards.clear()
 	for i in 5:
 		var t := Run.roll_card_tier(keys[i])
-		stock_cards.append({"kind": "card", "key": keys[i], "tier": t, "price": Data.card_price(keys[i], t)})
+		stock_cards.append({"kind": "card", "key": keys[i], "tier": t, "price": price(Data.card_price(keys[i], t))})
 	var gear: Array = Data.GEAR.filter(func(g): return not Run.has_gear(g.id))
 	gear.shuffle()
-	stock_gear = gear.slice(0, 3).map(func(g): return {"kind": "gear", "id": g.id, "icon": g.icon, "name": g.name, "text": g.text, "price": g.price})
+	stock_gear = gear.slice(0, 3).map(func(g):
+		var t := Run.roll_tier()
+		return {"kind": "gear", "id": g.id, "icon": g.icon, "name": g.name, "text": Data.relic_text(g.id, t), "tier": t, "price": price(int(g.price * (1.0 + 0.35 * t)))})
+	shelf.clear()
+	for i in 3:
+		var it := Run.roll_item() if i < 2 else Run.new_item(Run.random_item_id(["belt"]))
+		shelf.append({"item": it, "price": Run.item_price(it)})
+	shelf.append({"mystery": true, "price": 80})
+	if randf() < 0.25:
+		var lg := Run.roll_item(Data.TIER_MAX)
+		shelf.append({"item": lg, "price": 300, "black": true})
+
+func price(n: int) -> int:
+	return int(ceil(n * (1.0 - Run.discount)))
+
+func open_armory() -> void:
+	Sfx.play("click")
+	var a: Control = ArmoryScript.new()
+	a.shop_mode = true
+	a.shelf = shelf
+	a.done.connect(func(): a.queue_free(); build())
+	add_child(a)
 
 func say(s: String) -> void:
 	msg = s
@@ -90,8 +110,16 @@ func build() -> void:
 	go.color = Color("ff4d3d")
 	go.size = Vector2(190, 44)
 	go.position = Vector2(746, 482)
-	go.pressed.connect(func(): Sfx.play("start"); done.emit())
+	go.pressed.connect(func(): Sfx.play("start"); Run.discount = 0.0; done.emit())
 	add_child(go)
+	var arm := HudScript.PixButton.new()
+	arm.text = "ARMORY"
+	arm.sub = "GEAR %d  STASH %d" % [Run.soldiers.reduce(func(a, s): return a + s.equip.values().filter(func(x): return x != null).size(), 0), Run.stash.size()]
+	arm.color = Color("53d4e2")
+	arm.size = Vector2(190, 44)
+	arm.position = Vector2(546, 482)
+	arm.pressed.connect(open_armory)
+	add_child(arm)
 
 func _process(_d: float) -> void:
 	t += 1
@@ -131,8 +159,8 @@ func _draw() -> void:
 		Art.text(self, s.def.cls, Vector2(x + 62, y + 36), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		if s.alive:
 			draw_rect(Rect2(x + 62, y + 44, 100, 6), Color(0.05, 0.035, 0.03))
-			draw_rect(Rect2(x + 63, y + 45, 98.0 * s.hp / s.max_hp, 4), Color("62d26f") if s.hp > s.max_hp * 0.3 else Color("ff4d3d"))
-			Art.text(self, "HP %d/%d" % [s.hp, s.max_hp], Vector2(x + 62, y + 64), 8, Color("e8dcc2"))
+			draw_rect(Rect2(x + 63, y + 45, 98.0 * s.hp / Run.eff_max_hp(s), 4), Color("62d26f") if s.hp > Run.eff_max_hp(s) * 0.3 else Color("ff4d3d"))
+			Art.text(self, "HP %d/%d" % [s.hp, Run.eff_max_hp(s)], Vector2(x + 62, y + 64), 8, Color("e8dcc2"))
 		else:
 			Art.text(self, "KIA", Vector2(x + 62, y + 60), 16, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 		Art.text(self, "DECK %d  XP %d" % [s.deck.size(), s.xp], Vector2(x + 8, y + 94), 8, Color("e8dcc2"))
@@ -144,8 +172,11 @@ func _draw() -> void:
 	# owned gear
 	var gx := 24.0
 	Art.text(self, "GEAR:", Vector2(gx, 500), 8, Color("62d26f"))
-	var names: Array = Run.gear.map(func(g): return Data.gear(g).name)
-	Art.text(self, ", ".join(names) if names.size() else "none", Vector2(gx + 50, 501), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+	var names: Array = Run.gear.map(func(g): return "%s (%s)" % [Data.gear(g).name, Data.tier_name(Run.gear_tier.get(g, 0)).capitalize()])
+	var gl := ", ".join(names) if names.size() else "none"
+	while Art.text_width(gl, 16, true) > 460 and gl.length() > 4:
+		gl = gl.substr(0, gl.length() - 4) + "."
+	Art.text(self, gl, Vector2(gx + 50, 501), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 	if msg_t > 0:
 		var w := Art.text_width(msg, 16, true) + 20
 		draw_rect(Rect2(480 - w / 2, 296, w, 20), Color(0.05, 0.035, 0.03, 0.9))
@@ -186,7 +217,7 @@ func choose_soldier(title: String, alive_only := true) -> Dictionary:
 	var cand: Array = Run.soldiers.filter(func(s): return s.alive == alive_only)
 	if cand.is_empty():
 		return {}
-	var opts: Array = cand.map(func(s): return {"kind": "service", "name": s.def.name, "text": "%s  LV%d  HP %d/%d  %d cards" % [s.def.cls, s.lvl, s.hp, s.max_hp, s.deck.size()], "icon": "ic_heart" if s.alive else "ic_skull"})
+	var opts: Array = cand.map(func(s): return {"kind": "service", "name": s.def.name, "text": "%s  LV%d  HP %d/%d  %d cards" % [s.def.cls, s.lvl, s.hp, Run.eff_max_hp(s), s.deck.size()], "icon": "ic_heart" if s.alive else "ic_skull"})
 	var i := await choose(title, opts)
 	return cand[i] if i >= 0 else {}
 
@@ -225,20 +256,20 @@ func buy_gear(i: int) -> void:
 	var o: Dictionary = stock_gear[i]
 	if o.get("sold", false) or not pay(o.price):
 		return
-	Run.gear.append(o.id)
+	Run.add_gear(o.id, o.tier)
 	o["sold"] = true
 	say("%s issued to the squad." % o.name)
 	build()
 
 func heal_all() -> void:
-	if not Run.soldiers.any(func(s): return s.alive and s.hp < s.max_hp):
+	if not Run.soldiers.any(func(s): return s.alive and s.hp < Run.eff_max_hp(s)):
 		say("Everyone is already at full health.")
 		return
-	if not pay(40):
+	if not pay(price(40)):
 		return
 	for s in Run.soldiers:
 		if s.alive:
-			s.hp = s.max_hp
+			s.hp = Run.eff_max_hp(s)
 	say("The squad is patched up.")
 	build()
 

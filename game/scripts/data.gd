@@ -70,6 +70,13 @@ const CARDS := {
 	"overwatch": {"name": "Overwatch", "type": "SELF", "cost": 1, "overwatch": true, "ow": 1, "text": "Fire at the first enemies that move into view.", "rarity": 1, "up": {"ow": 2}},
 	"adrenal": {"name": "Adrenaline Spike", "type": "SELF", "cost": 0, "adrenal": 50, "selfdmg": 4, "text": "Hurt yourself to get angry.", "rarity": 1, "up": {"selfdmg": 2}},
 	"rally": {"name": "Rally Cry", "type": "SELF", "cost": 1, "rally": 70, "range": 220, "text": "Squad in range: extra movement and 10 adrenaline.", "rarity": 1, "up": {"rally": 110}},
+	# weapon cards: only come from equipped weapons (G1)
+	"carbine": {"name": "Carbine Burst", "type": "AIM", "cost": 1, "dmg": [4, 5], "shots": 2, "range": FULL_RANGE, "gun": "smg", "bounce": 1, "sway": 0.04, "spread": 0.05, "text": "Two quick rounds.", "rarity": 0, "pool": false, "up": {"shots": 3}},
+	"huntshot": {"name": "Hunting Round", "type": "AIM", "cost": 1, "dmg": [8, 10], "range": FULL_RANGE, "gun": "rifle", "bounce": 1, "sway": 0.03, "text": "Heavy round. Ricochets once.", "rarity": 0, "pool": false, "up": {"dmg": [10, 13]}},
+	# letter weapons: temporary cards picked up in the field (L2)
+	"flameshot": {"name": "Flame Shot", "type": "AIM", "cost": 1, "dmg": [2, 3], "pellets": 7, "range": FULL_RANGE, "gun": "shotgun", "bounce": 0, "sway": 0.02, "spread": 0.12, "knock": 2, "chip": 7, "burn": true, "text": "A gout of fire. Chews wood.", "rarity": 2, "pool": false},
+	"lasergun": {"name": "Laser Gun", "type": "AIM", "cost": 1, "dmg": [9, 11], "range": FULL_RANGE, "gun": "sniper", "bounce": 3, "sway": 0.0, "pierce": true, "chip": 2, "text": "Pierces and bounces. No sway.", "rarity": 2, "pool": false},
+	"chaser": {"name": "Enemy Chaser", "type": "LINE", "cost": 1, "radius": 26, "dmg": 10, "speed": 6.5, "homing": true, "text": "A rocket that hunts the nearest Jackal.", "rarity": 2, "pool": false},
 	# overdrives: unlocked by full adrenaline, free, single use
 	"ricochet": {"name": "Ricochet Round", "type": "AIM", "cost": 0, "od": true, "dmg": [16, 20], "range": FULL_RANGE, "gun": "sniper", "bounce": 5, "sway": 0.0, "pierce": true, "chip": 5, "text": "Five bounces. Pierces every body it meets.", "rarity": 5},
 	"surge": {"name": "Adrenal Surge", "type": "SELF", "cost": 0, "od": true, "surge": true, "range": 240, "text": "Squad within 240px: heal 10, +1 energy, +80 move.", "rarity": 5},
@@ -77,6 +84,91 @@ const CARDS := {
 	"rush": {"name": "Bull Rush", "type": "LINE", "cost": 0, "od": true, "rush": true, "text": "Launch yourself. Everyone you hit goes flying.", "rarity": 5},
 }
 const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush"}
+# Metal Slug letter drops: 3 temporary cards in the collector's hand for the rest of the mission.
+const LETTERS := {"H": "hmg", "R": "bazooka", "F": "flameshot", "S": "shotgun", "L": "lasergun", "C": "chaser"}
+
+# ---------------------------------------------------------------- gear (G1-G6)
+# Four slots per soldier plus a squad stash and a 3-slot consumable belt.
+# "stats" scale with the item's rarity (TIER_MUL); weapons add their cards to the deck.
+const SLOT_NAMES := {"weapon": "WEAPON", "armor": "ARMOR", "kit": "KIT", "belt": "BELT"}
+const TIER_MUL := [1.0, 1.25, 1.5, 2.0, 2.5]
+const STASH_MAX := 8
+const BELT_MAX := 3
+const ITEMS := {
+	"carbine": {"name": "M-16 Carbine", "slot": "weapon", "cards": ["carbine", "carbine"], "text": "Adds 2 Carbine Burst cards."},
+	"huntrifle": {"name": "Hunting Rifle", "slot": "weapon", "cards": ["huntshot", "huntshot"], "text": "Adds 2 Hunting Round cards."},
+	"marksman": {"name": "Marksman Rifle", "slot": "weapon", "cards": ["snipe", "snipe"], "stats": {"laser_pct": 0.2}, "text": "Adds 2 Long Shot cards."},
+	"riotgun": {"name": "Riot Shotgun", "slot": "weapon", "cards": ["shotgun", "shotgun"], "text": "Adds 2 Shotgun cards."},
+	"service": {"name": "Service Pistol", "slot": "weapon", "cards": ["pistol", "pistol"], "stats": {"move": 10}, "text": "Adds 2 Sidearm cards."},
+	"greasegun": {"name": "Grease Gun", "slot": "weapon", "cards": ["burst", "burst"], "text": "Adds 2 Burst Fire cards."},
+	"tube": {"name": "Bazooka Tube", "slot": "weapon", "cards": ["bazooka", "bazooka"], "set": "boar", "text": "Adds 2 Bazooka cards."},
+	"nadebelt": {"name": "Grenade Belt", "slot": "weapon", "cards": ["frag", "frag"], "text": "Adds 2 Frag Grenade cards."},
+	"machete": {"name": "Machete", "slot": "weapon", "cards": ["knife", "knife"], "stats": {"move": 15}, "set": "desert", "text": "Adds 2 Knife cards."},
+	"medbag": {"name": "Medic Bag", "slot": "weapon", "cards": ["medkit", "medkit"], "stats": {"heal": 1}, "text": "Adds 2 Field Dressing cards."},
+	"flak": {"name": "Flak Vest", "slot": "armor", "stats": {"hp": 4}, "text": "Padding where it counts."},
+	"plate": {"name": "Riot Plate", "slot": "armor", "stats": {"armor_turn": 2}, "set": "boar", "text": "Armor at the start of every turn."},
+	"ghillie": {"name": "Ghillie Suit", "slot": "armor", "stats": {"dodge": 6}, "set": "desert", "text": "Hard to pin down."},
+	"cboots": {"name": "Combat Boots", "slot": "armor", "stats": {"move": 25}, "text": "Broken in."},
+	"steeltoe": {"name": "Steel-Toe Rig", "slot": "armor", "stats": {"hp": 2, "fall_half": 1}, "text": "Half damage from falls and slams."},
+	"sparemag": {"name": "Spare Mag", "slot": "kit", "stats": {"kill_draw": 1}, "text": "ON KILL: draw a card (once a turn)."},
+	"flashhider": {"name": "Flash Hider", "slot": "kit", "stats": {"head_adr": 15}, "text": "ON HEADSHOT: gain adrenaline."},
+	"ammopouch": {"name": "Ammo Pouch", "slot": "kit", "stats": {"energy1": 1}, "text": "+1 energy on round 1."},
+	"luckycoin": {"name": "Lucky Coin", "slot": "kit", "stats": {"luck": 1}, "text": "Better loot for the whole squad."},
+	"scope": {"name": "4x Scope", "slot": "kit", "stats": {"laser_step": 1}, "text": "This soldier's aim laser reaches a step further."},
+	"griptape": {"name": "Grip Tape", "slot": "kit", "stats": {"sway": 0.2}, "set": "desert", "text": "Less sway on every gun."},
+	"medpatch": {"name": "Med Patch", "slot": "kit", "stats": {"regen": 2}, "text": "Heal at the start of every turn."},
+	"detcord": {"name": "Det Cord", "slot": "kit", "stats": {"blast": 0.12}, "set": "boar", "text": "Bigger blasts."},
+	"rallypatch": {"name": "Rally Patch", "slot": "kit", "stats": {"push_draw": 1}, "text": "ON PUSH: draw a card."},
+	"adrenalgland": {"name": "Adrenal Gland", "slot": "kit", "stats": {"kill_adr": 10}, "text": "ON KILL: extra adrenaline."},
+	"b_medkit": {"name": "Medkit", "slot": "belt", "use": "heal", "n": 10, "text": "Heal 10. No card or energy needed."},
+	"b_smoke": {"name": "Smoke Pot", "slot": "belt", "use": "smoke", "text": "Smoke at your feet."},
+	"b_ration": {"name": "Ration", "slot": "belt", "use": "ration", "n": 5, "text": "Heal 5 and find 15 scrip."},
+	"b_ammo": {"name": "Ammo Crate", "slot": "belt", "use": "energy", "text": "+1 energy right now."},
+}
+# Affixes rolled onto gear: Common 0, Uncommon 1, Rare 2, Epic 2 (x1.5), Legendary 3 (x2).
+const AFFIXES := {
+	"hp": {"v": 3, "fmt": "+%d max HP"},
+	"move": {"v": 15, "fmt": "+%d move"},
+	"dodge": {"v": 3, "fmt": "+%d dodge"},
+	"kill_adr": {"v": 6, "fmt": "ON KILL: +%d adrenaline"},
+	"laser_pct": {"v": 0.25, "fmt": "+%d%% laser length", "pct": true},
+	"armor_turn": {"v": 1, "fmt": "+%d armor each turn"},
+	"aim_dmg": {"v": 1, "fmt": "+%d AIM damage"},
+	"blast": {"v": 0.08, "fmt": "+%d%% blast size", "pct": true},
+	"heal": {"v": 2, "fmt": "+%d healing"},
+	"regen": {"v": 1, "fmt": "Heal %d each turn"},
+}
+const AFFIX_COUNT := [0, 1, 2, 2, 3]
+const AFFIX_MUL := [1.0, 1.0, 1.0, 1.5, 2.0]
+const SETS := {
+	"desert": {"name": "Desert Rat", "bonus": {"move": 20, "dodge": 5}, "text": "Ghillie Suit, Grip Tape, Machete. 2 pieces: +20 move, +5 dodge."},
+	"boar": {"name": "Boar Salvage", "bonus": {"armor_turn": 2, "hp": 4}, "text": "Riot Plate, Det Cord, Bazooka Tube. 2 pieces: +2 armor each turn, +4 max HP."},
+}
+const STAT_FMT := {
+	"hp": "+%d max HP", "move": "+%d move", "dodge": "+%d dodge", "armor_turn": "+%d armor each turn",
+	"kill_draw": "ON KILL: draw %d", "head_adr": "ON HEADSHOT: +%d adrenaline", "energy1": "+%d energy round 1",
+	"luck": "+%d squad Luck", "laser_step": "+%d laser step", "sway": "-%d%% sway", "regen": "Heal %d each turn",
+	"blast": "+%d%% blast size", "push_draw": "ON PUSH: draw %d", "kill_adr": "ON KILL: +%d adrenaline",
+	"laser_pct": "+%d%% laser length", "heal": "+%d healing", "fall_half": "Half fall damage", "aim_dmg": "+%d AIM damage",
+}
+const PCT_STATS := ["sway", "blast", "laser_pct"]
+const FLAT_STATS := ["kill_draw", "energy1", "luck", "laser_step", "push_draw", "fall_half"]
+
+# Elite Jackals (L4): gold-outlined, one modifier, a guaranteed item drop.
+const ELITES := {
+	"armored": {"name": "ARMORED", "text": "Bullets do half damage. Blast or crush it."},
+	"volatile": {"name": "VOLATILE", "text": "Explodes when it dies."},
+	"veteran": {"name": "VETERAN", "text": "Shoots like the alert is maxed."},
+	"medic": {"name": "MEDIC", "text": "Heals nearby Jackals each turn."},
+	"shielded": {"name": "SHIELDED", "text": "Carries a riot shield."},
+}
+# Named POWs with a specialty (L5). Anyone else gives +1 Luck.
+const POW_SPECIAL := {
+	"Sgt. Bramble": {"id": "quartermaster", "text": "QUARTERMASTER: 20% off at the next shop"},
+	"Pvt. Okonkwo": {"id": "gunsmith", "text": "GUNSMITH: a free affix reroll"},
+	"Cpl. Teller": {"id": "medic", "text": "MEDIC: the squad heals 6"},
+}
+const TROPHIES := ["BOAR TREAD", "BOAR CANNON", "BOAR ENGINE"]
 const SHOP_PRICE := [45, 70, 100]
 
 const SQUAD_DEFS := [
@@ -316,6 +408,64 @@ func stat_line(c: Dictionary) -> String:
 
 func is_attack(c: Dictionary) -> bool:
 	return c.type == "AIM" or c.type == "MELEE" or (c.type == "ARC" and not c.get("smoke", false) and not c.get("beacon", false)) or (c.type == "LINE" and not c.get("grapple", false) and not c.get("rush", false) and not c.get("jump", false))
+
+func relic_text(id: String, t: int) -> String:
+	## Squad gear text at a given rarity tier.
+	match id:
+		"boots": return "Squad takes no fall or slam damage." if t >= 3 else "Squad takes half fall and slam damage."
+		"jammer": return "Radiomen need %d more rounds to call backup." % (2 if t >= 3 else 1)
+		"rations": return "Every wave clear heals the squad %d HP." % (4 + t * 2)
+		"laser": return "Aim lasers reach %s further. Sway -30%%." % ("two steps" if t >= TIER_MAX else "one step")
+		"charm": return "The first %s to die each mission live%s at 1 HP." % (["soldier", "s"] if t < 3 else ["two soldiers", ""])
+		"bandolier": return "+1 energy for everyone on round 1%s." % (" and 2" if t >= 3 else "")
+		"dogtags": return "Kills give %d%% more XP. +1 Luck." % int(30 + 10 * t)
+		"stimpack": return "Adrenaline builds %d%% faster." % int(30 + 10 * t)
+	return gear(id).get("text", "")
+
+func offer_keys() -> Array:
+	## Cards that can show up in level-ups, supply drops and the shop.
+	var out: Array = []
+	for k in CARDS:
+		if not CARDS[k].get("od", false) and CARDS[k].get("pool", true):
+			out.append(k)
+	return out
+
+func item_stats(it: Dictionary) -> Dictionary:
+	## Base stats scaled by rarity plus rolled affixes, for one item instance.
+	var d: Dictionary = ITEMS[it.id]
+	var t: int = it.get("tier", 0)
+	var out := {}
+	for k in d.get("stats", {}):
+		var v = d.stats[k]
+		if k in FLAT_STATS:
+			out[k] = v + (1 if t >= TIER_MAX and k in ["kill_draw", "push_draw", "laser_step"] else 0)
+		elif k in PCT_STATS:
+			out[k] = v * TIER_MUL[t]
+		else:
+			out[k] = int(round(v * TIER_MUL[t]))
+	for a in it.get("affixes", []):
+		var A: Dictionary = AFFIXES[a]
+		var v = A.v * AFFIX_MUL[t]
+		if not A.get("pct", false):
+			v = int(round(v))
+		out[a] = out.get(a, 0) + v
+	return out
+
+func stat_lines(st: Dictionary) -> Array:
+	var out: Array = []
+	for k in st:
+		var v = st[k]
+		var fmt: String = STAT_FMT.get(k, k + " %d")
+		if k in PCT_STATS:
+			out.append(fmt % int(round(v * 100)))
+		elif k == "fall_half":
+			out.append(fmt)
+		else:
+			out.append(fmt % v)
+	return out
+
+func item_name(it: Dictionary) -> String:
+	return ITEMS[it.id].name
 
 func squad_def(key: String) -> Dictionary:
 	for d in SQUAD_DEFS:

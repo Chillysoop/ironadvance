@@ -54,7 +54,8 @@ var lost := false
 var ui_dirty := true
 var end_confirm_t := 0   # frames left to confirm END TURN while soldiers can still act
 var inspect := false     # ALT held: show every soldier's actions and enemy intents
-var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0}
+var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0, "kia": 0, "max_alert": 0, "pows_total": 0, "loot": 0}
+var loot_queue: Array = []   # pickups waiting for a decision (equip or stash) after the current action
 var mission: Dictionary = {}
 var mission_idx := 0
 var uid := 1
@@ -62,7 +63,7 @@ var speed := 1.0
 var acting: Unit = null
 var hud = null
 var acc := 0.0
-var charm_used := false
+var charm_used := 0
 var autopick := -1        # tests: pick this option index in every modal instead of waiting
 var theme := "dusk"
 var world_w := 6400
@@ -98,8 +99,9 @@ func setup(idx: int) -> void:
 		var x := 50.0 + i * 35
 		var u := mk_unit()
 		u.team = "squad"; u.kind = "soldier"; u.def = s.def; u.s = s; u.sheet = "sq_" + s.key
-		u.x = x; u.y = T.stand_y(x, 0); u.face = 1; u.hp = s.hp; u.max_hp = s.max_hp
-		u.dodge = s.def.dodge + s.bonus.dodge
+		u.gb = Run.gear_bonus(s)
+		u.x = x; u.y = T.stand_y(x, 0); u.face = 1; u.max_hp = Run.eff_max_hp(s); u.hp = mini(s.hp, u.max_hp)
+		u.dodge = s.def.dodge + s.bonus.dodge + int(u.g("dodge"))
 		u.second_wind = s.perks.has("secondwind")
 		var deck: Array = s.deck.duplicate()
 		deck.shuffle()
@@ -120,6 +122,7 @@ func setup(idx: int) -> void:
 		if type == "pow":
 			var u := mk_unit(); u.team = "neutral"; u.kind = "pow"; u.x = x; u.y = T.stand_y(x, 0); u.face = -1
 			u.pow_name = Data.POW_NAMES[pi % Data.POW_NAMES.size()]; pi += 1
+			stats.pows_total += 1
 			units.append(u); continue
 		var E: Dictionary = Data.ETYPES[type]
 		var y = T.stand_y(x, 0) if (opt.has("hold") or opt.has("top")) and not opt.has("inside") else T.stand_y(x, T.ground_at(x) - 40)
@@ -127,7 +130,10 @@ func setup(idx: int) -> void:
 		u.hold = opt.has("hold")
 		if type == "boss":
 			u.hp = mission.boss_hp; u.max_hp = u.hp; u.plate = mission.plate
+		elif randf() < 0.12 + mission_idx * 0.06:
+			make_elite(u, Data.ELITES.keys()[randi() % Data.ELITES.size()])
 		units.append(u)
+	spawn_map_loot()
 	sel = null
 	for u in units:
 		if u.team == "squad":
@@ -135,6 +141,189 @@ func setup(idx: int) -> void:
 	for u in units:
 		if u.y == null:
 			u.y = WATER_Y - 4
+
+func collect(u: Unit, p: Unit) -> void:
+	## A soldier walks over a pickup. Scrip, letters, trophies and belt items apply at once;
+	## gear waits for an equip-or-stash decision after the current action.
+	p.gone = true
+	var L: Dictionary = p.loot
+	match L.type:
+		"scrip":
+			give_scrip(L.n, p.x, p.y - 20)
+			Sfx.play("coin")
+		"letter":
+			var key: String = Data.LETTERS[L.key]
+			for i in 3:
+				u.hand.append({"id": -2, "key": key, "tier": maxi(2, Data.base_tier(key)), "temp": true})
+			banner(Data.CARDS[key].name.to_upper() + "!", Color("ffd23a"), "%s GOT 3 SHOTS. THEY LAST THIS MISSION." % u.def.name)
+			Sfx.play("power")
+		"trophy":
+			if not Run.trophies.has(L.name):
+				Run.trophies.append(L.name)
+			banner("TROPHY: " + L.name, Color("ffb21e"), "%d OF 3 BOAR PARTS" % Run.trophies.size())
+			Sfx.play("levelup")
+		"item":
+			stats.loot += 1
+			if Data.ITEMS[L.item.id].slot == "belt":
+				var where := Run.add_loot(L.item)
+				float_text(u, "%s TO %s" % [Data.item_name(L.item).to_upper(), where.to_upper()], Color("62d26f"))
+				Sfx.play("coin")
+			else:
+				float_text(u, Data.item_name(L.item).to_upper(), Data.tier_color(L.item.tier), true)
+				Sfx.play("coin")
+				loot_queue.append({"u": u, "item": L.item})
+	ui_dirty = true
+
+func offer_item(u: Unit, it: Dictionary) -> void:
+	## Quick-equip prompt (G5): equip on the soldier who found it, or send it to the stash.
+	var s: Dictionary = u.s
+	var sl: String = Data.ITEMS[it.id].slot
+	var title := "%s FOUND %s" % [u.def.name, Data.item_name(it).to_upper()]
+	var opts: Array = []
+	var slots: Array = []
+	if sl == "kit" and s.equip.kit1 != null and s.equip.kit2 != null:
+		opts = [Run.item_opt(it, "NEW: STASH IT"), Run.item_opt(s.equip.kit1, "SWAP THIS OUT"), Run.item_opt(s.equip.kit2, "SWAP THIS OUT")]
+		slots = ["", "kit1", "kit2"]
+	else:
+		var slot := Run.slot_for(s, it)
+		opts = [Run.item_opt(it, "EQUIP ON %s" % u.def.name)]
+		slots = [slot]
+		if s.equip[slot] != null:
+			opts.append(Run.item_opt(s.equip[slot], "KEEP THIS"))
+			slots.append("")
+	var ch := await ask("loot", title, "Equip it now or send it to the stash. Gear can be swapped at the Armory between missions.", opts, u)
+	if ch >= 0 and slots[ch] != "":
+		if not Run.stash.has(it):
+			Run.stash.append(it)
+		Run.equip(s, it, slots[ch])
+		refresh_unit_gear(u)
+		log_msg("%s equipped %s." % [u.def.name, Data.item_name(it)])
+	else:
+		Run.add_loot(it)
+		log_msg("%s sent to the stash." % Data.item_name(it))
+	ui_dirty = true
+
+func refresh_unit_gear(u: Unit) -> void:
+	## Re-applies gear stats mid-mission and moves weapon cards in or out of the piles.
+	var old_max := u.max_hp
+	u.gb = Run.gear_bonus(u.s)
+	u.max_hp = Run.eff_max_hp(u.s)
+	if u.max_hp > old_max:
+		u.hp += u.max_hp - old_max
+	u.hp = mini(u.hp, u.max_hp)
+	u.dodge = u.def.dodge + u.s.bonus.dodge + int(u.g("dodge"))
+	var ids := {}
+	for c in u.s.deck:
+		ids[c.id] = true
+	var keep := func(c): return not c.has("src") or ids.has(c.id)
+	u.draw = u.draw.filter(keep)
+	u.hand = u.hand.filter(keep)
+	u.disc = u.disc.filter(keep)
+	var have := {}
+	for pile in [u.draw, u.hand, u.disc]:
+		for c in pile:
+			have[c.get("id", -9)] = true
+	for c in u.s.deck:
+		if not have.has(c.id):
+			u.draw.insert(ri(0, u.draw.size()), c)
+
+func use_belt(i: int) -> void:
+	## Consumables need no card and no energy (G6).
+	var u := sel
+	if u == null or u.dead or busy or state != "player" or i >= Run.belt.size():
+		return
+	var it: Dictionary = Run.belt[i]
+	var d: Dictionary = Data.ITEMS[it.id]
+	Run.belt.remove_at(i)
+	match d.use:
+		"heal":
+			var h := mini(d.n, u.max_hp - u.hp)
+			u.hp += h
+			float_text(u, "+%d HP" % h, Color("62d26f"), true)
+		"ration":
+			var h := mini(d.n, u.max_hp - u.hp)
+			u.hp += h
+			float_text(u, "+%d HP" % h, Color("62d26f"))
+			give_scrip(15, u.x, u.y - 50)
+		"smoke":
+			smokes.append({"x": u.x, "y": u.y - 24, "r": 64.0, "turns": 2, "seed": randf() * 10})
+			for k in 5:
+				puff(u.x + randf_range(-30, 30), u.y - randf_range(0, 40), 3.0)
+		"energy":
+			u.energy += 1
+			float_text(u, "+1 ENERGY", Color("ffd23a"), true)
+	Sfx.play("power")
+	log_msg("%s used a %s." % [u.def.name, d.name])
+	ui_dirty = true
+
+func make_elite(u: Unit, mod: String) -> void:
+	u.elite = mod
+	u.hp = int(round(u.hp * 1.5)); u.max_hp = u.hp
+	if mod == "shielded":
+		u.shield = true
+
+func spawn_map_loot() -> void:
+	## Crates on roofs and in the open, the odd strongbox, and one buried cache per mission (L1, L3, L6).
+	var lo := 520.0
+	var hi := world_w - 900.0
+	var n := int((hi - lo) / 360.0)
+	for i in n:
+		var x := lo + (i + randf_range(0.15, 0.85)) * (hi - lo) / n
+		var k := "strongbox" if randf() < 0.22 else "crate"
+		var u := mk_unit(); u.team = "neutral"; u.kind = k; u.x = x; u.y = T.stand_y(x, 0)
+		u.w = 16 if k == "crate" else 20; u.h = 14 if k == "crate" else 14
+		u.hp = 1; u.max_hp = 1
+		if u.y == null:
+			continue
+		units.append(u)
+	for i in 1 + (1 if randf() < 0.4 else 0):
+		var x := randf_range(lo + 200, hi)
+		var gy: float = T.ground_at(x)
+		if T.mat(x, gy + 16) != 1:
+			continue  # only dirt hides a cache
+		var c := mk_unit(); c.team = "neutral"; c.kind = "cache"; c.x = x; c.y = gy + 18; c.w = 10; c.h = 10
+		units.append(c)
+
+func drop_loot(x: float, y: float, payload: Dictionary, pop := 1.0) -> Unit:
+	## A pickup that tumbles out with physics. Walk a soldier over it to collect.
+	var u := mk_unit(); u.team = "neutral"; u.kind = "loot"; u.loot = payload
+	u.x = x; u.y = y; u.w = 12; u.h = 12
+	u.vx = randf_range(-2.2, 2.2) * pop; u.vy = -randf_range(3, 5) * pop; u.air = true
+	units.append(u)
+	return u
+
+func crate_payload(min_tier := 0) -> Dictionary:
+	var r := randf()
+	if r < 0.18:
+		return {"type": "letter", "key": Data.LETTERS.keys()[randi() % Data.LETTERS.size()]}
+	if r < 0.36:
+		return {"type": "item", "item": Run.new_item(Run.random_item_id(["belt"]))}
+	if r < 0.5 and min_tier == 0:
+		return {"type": "scrip", "n": ri(12, 30)}
+	return {"type": "item", "item": Run.roll_item(min_tier)}
+
+func open_crate(c: Unit, loud: bool) -> void:
+	if c.dead:
+		return
+	c.dead = true
+	c.gone = true
+	debris(c.x, c.y - 6, 3)
+	Sfx.play("thud" if c.kind == "strongbox" else "bonk")
+	if c.kind == "strongbox":
+		var p := crate_payload(1)
+		if loud:
+			alert = mini(10, alert + 1)
+			float_at(c.x, c.y - 30, "LOUD! ALERT +1", Color("ff4d3d"))
+			if p.type == "item" and p.item.tier > 0 and randf() < 0.3:
+				p.item.tier -= 1
+				Run.roll_affixes(p.item)
+				float_at(c.x, c.y - 44, "CONTENTS DAMAGED", Color("ff7a3d"))
+		drop_loot(c.x, c.y - 10, p)
+		if randf() < 0.5:
+			drop_loot(c.x, c.y - 10, {"type": "scrip", "n": ri(15, 35)})
+	else:
+		drop_loot(c.x, c.y - 8, crate_payload())
+	ui_dirty = true
 
 func mk_unit() -> Unit:
 	var u := Unit.new()
@@ -328,7 +517,7 @@ func dist(a: Unit, b: Unit) -> float:
 
 func unit_at_point(x: float, y: float, shooter, travelled: float, skip: Dictionary):
 	for u in units:
-		if u.dead or u.gone or u.sunk or u.kind == "pow" or skip.has(u.id):
+		if u.dead or u.gone or u.sunk or u.kind == "pow" or u.is_pickup() or skip.has(u.id):
 			continue
 		if u == shooter and travelled < 40:
 			continue
@@ -419,11 +608,15 @@ func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: boo
 		var tg: Unit = hh.u
 		if tg.dead:
 			continue
-		var d := ri(c.dmg[0], c.dmg[1])
+		var d := ri(c.dmg[0], c.dmg[1]) + (int(a.g("aim_dmg")) if a.team == "squad" else 0)
 		if sc:
 			d = int(round(d * 1.25))
 		if a.team == "enemy":
 			d = int(round(d * (1 + alert * 0.06)))
+		if tg.elite == "armored":
+			d = maxi(1, int(round(d * 0.5)))
+		if hh.head and a.team == "squad" and a.g("head_adr") > 0 and not tg.is_prop():
+			gain_adr(a, int(a.g("head_adr")))
 		if hh.head:
 			d = int(round(d * (2.0 if a.team == "squad" and a.def.key == "moss" else 1.5)))
 			float_text(tg, "HEADSHOT", Color("ffb23e"), true)
@@ -562,6 +755,21 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 	if tg.kind == "pow":
 		return
 	var own = src if src != null and src is Unit and src.team == "squad" else null
+	if tg.kind == "crate":
+		open_crate(tg, false)
+		return
+	if tg.kind == "strongbox":
+		if o.get("blast", false):
+			open_crate(tg, true)
+		elif o.get("melee", false):
+			float_text(tg, "PRIED OPEN", Color("62d26f"))
+			open_crate(tg, false)
+		else:
+			float_text(tg, "CLANK", Color("c9d1da"))
+			sparks(tg.x, tg.y - 8, 4)
+		return
+	if tg.kind == "loot" or tg.kind == "cache":
+		return
 	if tg.kind == "barrel":
 		if not tg.primed:
 			tg.primed = true
@@ -624,8 +832,8 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 				tg.second_wind = false
 				amt = tg.hp - 1
 				float_text(tg, "SECOND WIND!", Color("ffd23a"), true)
-			elif Run.has_gear("charm") and not charm_used:
-				charm_used = true
+			elif Run.has_gear("charm") and charm_used < (2 if Run.relic_tier("charm") >= 3 else 1):
+				charm_used += 1
 				amt = tg.hp - 1
 				float_text(tg, "LUCKY CHARM!", Color("62d26f"), true)
 		tg.hp -= amt
@@ -663,7 +871,7 @@ func gain_adr(u: Unit, n: int) -> void:
 	if u == null or u.dead or u.team != "squad":
 		return
 	if Run.has_gear("stimpack"):
-		n = int(n * 1.5)
+		n = int(n * (1.3 + 0.1 * Run.relic_tier("stimpack")))
 	var b0 := u.adr
 	u.adr = clampi(u.adr + n, 0, 100)
 	if b0 < 50 and u.adr >= 50:
@@ -704,15 +912,29 @@ func kill(tg: Unit, src) -> void:
 		Sfx.play("scream", -6)
 		give_scrip(maxi(2, base / 25), tg.x, tg.y - tg.h - 50)
 		if src != null and src is Unit and src.team == "squad":
-			gain_adr(src, 8)
+			gain_adr(src, 8 + int(src.g("kill_adr")))
 			give_xp(src, 4 + base / 50)
+			if src.g("kill_draw") > 0 and not src.kill_drawn and state == "player":
+				src.kill_drawn = true
+				draw_cards(src, int(src.g("kill_draw")))
+				float_text(src, "SPARE MAG: DRAW", Color("53d4e2"))
+		if tg.elite != "":
+			drop_loot(tg.x, tg.y - tg.h / 2.0, {"type": "item", "item": Run.roll_item(1)})
+			if tg.elite == "volatile":
+				booms.append({"t": 16, "x": tg.x, "y": tg.y - tg.h / 2.0, "r": 46.0, "dmg": 12, "owner": null})
+				float_text(tg, "VOLATILE!", Color("ff7a3d"), true)
 			if randf() < 0.3:
 				bark(src, pick(Data.BARKS.kill))
 		if tg.type == "boss":
 			boss_dead = true
+			drop_loot(tg.x, tg.y - 40, {"type": "item", "item": Run.roll_item(Data.TIER_MAX)}, 1.4)
+			var part_name: String = Data.TROPHIES[mini(mission_idx, Data.TROPHIES.size() - 1)]
+			if not Run.trophies.has(part_name):
+				drop_loot(tg.x + 20, tg.y - 40, {"type": "trophy", "name": part_name}, 1.2)
 			for i in 7:
 				booms.append({"t": 10 + i * 14, "x": tg.x + (randf() - .5) * 90, "y": tg.y - 20 - randf() * 40, "r": 34.0, "dmg": 0, "owner": null})
 	elif tg.team == "squad":
+		stats.kia += 1
 		float_text(tg, "KIA", Color("ff4d3d"), true)
 		Sfx.play("bad")
 		log_msg("%s is down." % tg.def.name)
@@ -726,7 +948,9 @@ func kill(tg: Unit, src) -> void:
 
 func collision_dmg(u: Unit, amt: float, label: String) -> void:
 	var d := int(round(amt))
-	if u.team == "squad" and (u.def.key == "rook" or Run.has_gear("boots")):
+	if u.team == "squad" and Run.relic_tier("boots") >= 3:
+		d = 0
+	elif u.team == "squad" and (u.def.key == "rook" or Run.has_gear("boots") or u.g("fall_half") > 0):
 		d = int(ceil(d / 2.0))
 	if d < 1 or u.dead:
 		return
@@ -761,7 +985,9 @@ func crush(u: Unit, d: int, cause, kvx: float, kvy: float) -> void:
 		u.walk = null
 
 func blast_scale(owner) -> float:
-	return 1.2 if owner != null and owner is Unit and owner.perk("bigboom") else 1.0
+	if owner == null or not (owner is Unit):
+		return 1.0
+	return (1.2 if owner.perk("bigboom") else 1.0) + float(owner.g("blast", 0.0))
 
 func explode(x: float, y: float, r: float, dmg: int, owner) -> void:
 	T.carve(x, y, r * 0.8, owner)
@@ -772,7 +998,7 @@ func explode(x: float, y: float, r: float, dmg: int, owner) -> void:
 		return
 	var bonus := 3 if owner != null and owner is Unit and owner.team == "squad" and owner.def.key == "vee" else 0
 	for u in units:
-		if u.dead or u.gone or u.kind == "pow":
+		if u.dead or u.gone or u.kind == "pow" or u.kind == "cache":
 			continue
 		var cx: float = u.x
 		var cy: float = u.y - u.h / 2.0
@@ -803,7 +1029,7 @@ func mk_proj(o: Dictionary) -> Dictionary:
 
 func unit_hit(p: Dictionary):
 	for u in units:
-		if u.dead or u.gone or u.kind == "pow":
+		if u.dead or u.gone or u.kind == "pow" or u.is_pickup():
 			continue
 		if u == p.owner and p.age < 24:
 			continue
@@ -835,6 +1061,20 @@ func update_proj(p: Dictionary) -> void:
 	p.age += 1
 	if p.trail and p.age % 2 == 0:
 		part({"x": p.x, "y": p.y, "vx": 0.0, "vy": -0.2, "life": 24, "max": 24, "c": Color("ffb23e") if p.kind == "rocket" else Color("9a9a9a"), "s": 3.0, "g": 0.0, "smoke": p.kind != "rocket"})
+	if p.get("homing", false) and p.age > 10:
+		var best = null
+		for e in units:
+			if e.team == "enemy" and not e.dead and e.active and Vector2(e.x - p.x, e.y - e.h / 2.0 - p.y).length() < 520:
+				if best == null or absf(e.x - p.x) < absf(best.x - p.x):
+					best = e
+		if best != null:
+			var sp := Vector2(p.vx, p.vy).length()
+			var cur := atan2(p.vy, p.vx)
+			var want := atan2(best.y - best.h / 2.0 - p.y, best.x - p.x)
+			var da := wrapf(want - cur, -PI, PI)
+			cur += clampf(da, -0.07, 0.07)
+			p.vx = cos(cur) * sp
+			p.vy = sin(cur) * sp
 	p.vx += wind * 0.006 * p.wind
 	p.vy += GRAV * p.grav
 	var n := maxi(1, int(ceil(Vector2(p.vx, p.vy).length() / 2.0)))
@@ -941,7 +1181,7 @@ func spend_card(u: Unit, idx: int) -> Dictionary:
 		u.aim_discount = true
 	if inst.get("od", false):
 		u.adr = 0
-	else:
+	elif not inst.get("temp", false):
 		u.disc.append(inst)
 	ui_dirty = true
 	return c
@@ -965,6 +1205,7 @@ func sway_of(u: Unit, c: Dictionary) -> float:
 		s *= 0.5
 	if Run.has_gear("laser"):
 		s *= 0.7
+	s *= maxf(0.2, 1.0 - float(u.g("sway", 0.0)))
 	return s
 
 func aim_angle(u: Unit, c: Dictionary, p: Vector2) -> Dictionary:
@@ -1147,7 +1388,7 @@ func _act_rocket(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void
 		Sfx.play("rocket")
 		u.muzzle = 4
 		u.pose = "recoil"; u.pose_t = 8
-		projs.append(mk_proj({"kind": "rocket", "x": hp_.x, "y": hp_.y, "vx": cos(a) * c.speed, "vy": sin(a) * c.speed, "grav": 0.0, "r": c.radius * (1.2 if sc else 1.0) * blast_scale(u), "dmg": int(round(c.dmg * (1.25 if sc else 1.0))), "owner": u, "trail": true}))
+		projs.append(mk_proj({"kind": "rocket", "x": hp_.x, "y": hp_.y, "vx": cos(a) * c.speed, "vy": sin(a) * c.speed, "grav": 0.0, "r": c.radius * (1.2 if sc else 1.0) * blast_scale(u), "dmg": int(round(c.dmg * (1.25 if sc else 1.0))), "owner": u, "trail": true, "homing": c.get("homing", false)}))
 		for k in 4:
 			puff(hp_.x - u.face * 10, hp_.y, 1.2)
 		await wait(8)
@@ -1180,7 +1421,7 @@ func _act_melee(u: Unit, idx: int, c: Dictionary, tg: Unit, sc: bool) -> void:
 	var d := ri(c.dmg[0], c.dmg[1])
 	if sc:
 		d = int(round(d * 1.25))
-	damage(tg, d, u, {})
+	damage(tg, d, u, {"melee": true})
 	if not tg.heavy and not tg.dead and not tg.is_prop():
 		tg.vx = u.face * c.knock; tg.vy = -3.5; tg.air = true; tg.walk = null; tg.bumped = null; tg.last_hit_by = u
 	await wait(16)
@@ -1191,7 +1432,7 @@ func heal_amount(u: Unit, c: Dictionary) -> int:
 		h += 3
 	if u.perk("triage"):
 		h += 4
-	return h
+	return h + int(u.g("heal"))
 
 func _act_ally(u: Unit, idx: int, c: Dictionary, tg: Unit) -> void:
 	spend_card(u, idx)
@@ -1336,15 +1577,41 @@ func scroll_to(tx: float, reason: String, who = null) -> void:
 			who.energy += 1
 			float_text(who, "+1 ENERGY", Color("ffb23e"))
 			give_xp(who, 3)
+			if who.g("push_draw") > 0:
+				draw_cards(who, int(who.g("push_draw")))
 	else:
 		banner("GO!  >>>", Color("62d26f"))
 	Sfx.play("start")
 	rounds_since_scroll = 0
 	await until(func(): return absf(cam_x - cam_tx) < 0.5)
 	cam_x = cam_tx
+	sweep_loot(cam_x)
 	activate_enemies()
 	await until(settled)
 	ui_dirty = true
+
+func sweep_loot(edge: float) -> void:
+	## Loot the squad left behind (or that sank) goes straight to the global inventory (L8).
+	var n := 0
+	for u in units:
+		if u.kind == "loot" and not u.gone and (u.x < edge or u.sunk):
+			u.gone = true
+			stash_payload(u.loot)
+			n += 1
+	if n:
+		log_msg("%d item%s left behind went to the stash." % [n, "s" if n > 1 else ""])
+
+func stash_payload(p: Dictionary) -> void:
+	match p.type:
+		"item":
+			Run.add_loot(p.item)
+			stats.loot += 1
+		"scrip":
+			Run.scrip += p.n
+			stats.scrip += p.n
+		"trophy":
+			if not Run.trophies.has(p.name):
+				Run.trophies.append(p.name)
 
 func drag_stragglers() -> void:
 	var al := squad_alive()
@@ -1374,7 +1641,7 @@ func activate_enemies() -> void:
 		if e.x < cam_x + W + 40:
 			e.active = true
 			if e.type == "radio" and radio_t == null:
-				radio_t = 4 if Run.has_gear("jammer") else 3
+				radio_t = 3 + jammer_rounds()
 				log_msg("A radioman is calling for backup. Paratroopers in %d rounds unless you drop him." % radio_t)
 			if e.type == "boss" and not boss_active:
 				boss_active = true
@@ -1393,18 +1660,21 @@ func supply_drop(title: String, for_unit) -> void:
 	var alive := squad_alive()
 	if alive.is_empty():
 		return
-	var pool: Array = []
-	for k in Data.CARDS:
-		if not Data.CARDS[k].get("od", false):
-			pool.append(k)
+	var pool: Array = Data.offer_keys()
 	pool.shuffle()
 	var opts: Array = []
 	for i in 3:
 		var u: Unit = for_unit if for_unit != null else pick(alive)
-		opts.append({"kind": "card", "key": pool[i], "tier": Run.roll_card_tier(pool[i]), "u": u})
+		if i == 2 and randf() < 0.35:
+			var it := Run.roll_item()
+			opts.append(Run.item_opt(it, "").merged({"u": u}))
+		else:
+			opts.append({"kind": "card", "key": pool[i], "tier": Run.roll_card_tier(pool[i]), "u": u})
 	var sub := ("%s freed them. Pick one card for %s's deck." % [for_unit.def.name, for_unit.def.name]) if for_unit != null else "Pick one card. It goes into that soldier's draw pile."
 	var ch := await ask("supply", title, sub, opts)
-	if ch >= 0:
+	if ch >= 0 and opts[ch].kind == "item":
+		await offer_item(opts[ch].u, opts[ch].item)
+	elif ch >= 0:
 		var o: Dictionary = opts[ch]
 		var inst := Run.new_card(o.key, o.tier)
 		o.u.s.deck.append(inst)
@@ -1455,8 +1725,28 @@ func post_action() -> void:
 		give_scrip(25, q.pow.x, q.pow.y - 50)
 		give_xp(q.u, 8)
 		Sfx.play("coin")
+		drop_loot(q.pow.x, q.pow.y - 20, {"type": "item", "item": Run.roll_item(1)})
+		var sp: Dictionary = Data.POW_SPECIAL.get(q.pow.pow_name, {})
+		match sp.get("id", ""):
+			"quartermaster":
+				Run.discount = 0.2
+			"gunsmith":
+				Run.reroll_tokens += 1
+			"medic":
+				for s in squad_alive():
+					s.hp = mini(s.max_hp, s.hp + 6)
+					float_text(s, "+6 HP", Color("62d26f"))
+			_:
+				Run.luck += 1
+		log_msg("%s: %s" % [q.pow.pow_name, sp.get("text", "LUCK +1. Your loot just got better.")])
 		await wait(40)
 		await supply_drop("%s says thanks" % q.pow.pow_name, null if q.u.dead else q.u)
+	while loot_queue.size():
+		var lq: Dictionary = loot_queue.pop_front()
+		if lq.u.dead:
+			Run.add_loot(lq.item)
+			continue
+		await offer_item(lq.u, lq.item)
 	while lvl_queue.size():
 		var u: Unit = lvl_queue.pop_front()
 		await wait(20)
@@ -1477,9 +1767,10 @@ func post_action() -> void:
 			give_scrip(15, cam_x + W / 2.0, 200)
 			Sfx.play("coin")
 			if Run.has_gear("rations"):
+				var rh := 4 + 2 * Run.relic_tier("rations")
 				for s in squad_alive():
-					s.hp = mini(s.max_hp, s.hp + 4)
-					float_text(s, "+4 HP", Color("62d26f"))
+					s.hp = mini(s.max_hp, s.hp + rh)
+					float_text(s, "+%d HP" % rh, Color("62d26f"))
 			await wait(60)
 			await supply_drop("Supply drop", null)
 			var nx: float = rest.map(func(e): return e.x).min()
@@ -1501,9 +1792,9 @@ func draw_cards(u: Unit, n: int) -> void:
 
 func stow_hand(s: Unit) -> void:
 	for c in s.hand:
-		if not c.get("od", false):
+		if not c.get("od", false) and not c.get("temp", false):
 			s.disc.append(c)
-	s.hand = s.hand.filter(func(c): return c.get("od", false))
+	s.hand = s.hand.filter(func(c): return c.get("od", false) or c.get("temp", false))
 
 func hand_size(s: Unit) -> int:
 	return 4 + s.s.bonus.hand + (1 if s.perk("fieldkit") else 0)
@@ -1516,12 +1807,19 @@ func start_player_turn() -> void:
 	for s in squad_alive():
 		s.energy = 3
 		if round_n == 1:
-			s.energy += s.s.bonus.energy1 + (1 if Run.has_gear("bandolier") else 0)
-		s.move_left = s.def.spd + s.s.bonus.move + (60 if s.perk("charge") else 0)
+			s.energy += s.s.bonus.energy1 + int(s.g("energy1")) + (1 if Run.has_gear("bandolier") else 0)
+		elif round_n == 2 and Run.relic_tier("bandolier") >= 3:
+			s.energy += 1
+		s.move_left = s.def.spd + s.s.bonus.move + int(s.g("move")) + (60 if s.perk("charge") else 0)
 		s.moved = false
 		s.attacked = false
 		s.aim_discount = false
-		s.armor = 3 if s.perk("ironhide") else 0
+		s.kill_drawn = false
+		s.armor = (3 if s.perk("ironhide") else 0) + int(s.g("armor_turn"))
+		if s.g("regen") > 0 and s.hp < s.max_hp:
+			var rg := mini(int(s.g("regen")), s.max_hp - s.hp)
+			s.hp += rg
+			float_text(s, "+%d HP" % rg, Color("62d26f"))
 		s.overwatch = 0
 		s.dragged = false
 		stow_hand(s)
@@ -1538,6 +1836,10 @@ func start_player_turn() -> void:
 	log_msg("Round %d. Alert %d/10.%s" % [round_n, alert, " The line has stalled: alert is rising." if rounds_since_scroll >= 2 else ""])
 	ui_dirty = true
 	resolve(func(): await wait(1))
+
+func jammer_rounds() -> int:
+	var t := Run.relic_tier("jammer")
+	return 0 if t < 0 else (2 if t >= 3 else 1)
 
 func can_act(u: Unit) -> bool:
 	## True while a soldier still has something to do: movement left or a card they can pay for.
@@ -1592,6 +1894,11 @@ func enemy_phase() -> void:
 	ui_dirty = true
 	banner("ENEMY PHASE", Color("ff4d3d"))
 	await wait(45)
+	for m in units.filter(func(e): return e.elite == "medic" and not e.dead and e.active):
+		for e in units:
+			if e.team == "enemy" and not e.dead and e != m and e.hp < e.max_hp and absf(e.x - m.x) < 140:
+				e.hp = mini(e.max_hp, e.hp + 4)
+				float_text(e, "+4", Color("62d26f"))
 	if strikes.size():
 		var friendly := strikes.filter(func(s): return s.get("friendly", false))
 		banner("AIRSTRIKE!", Color("62d26f") if friendly.size() == strikes.size() else Color("ff4d3d"))
@@ -1671,14 +1978,15 @@ func enemy_phase() -> void:
 		radio_t = null
 	else:
 		if radio_t == null:
-			radio_t = 4 if Run.has_gear("jammer") else 3
+			radio_t = 3 + jammer_rounds()
 		radio_t -= 1
 		if radio_t <= 0:
 			calls = 1
-			radio_t = 4 if Run.has_gear("jammer") else 3
+			radio_t = 3 + jammer_rounds()
 			alert = mini(10, alert + 1)
 			var r: Unit = radios[0]
 			part({"x": r.x, "y": r.y - 30, "vx": 0.0, "vy": -6.0, "life": 80, "max": 80, "c": Color("ff4d3d"), "s": 5.0, "g": 0.08, "fire": true})
+	stats.max_alert = maxi(stats.max_alert, alert)
 	if alert > before and [3, 6, 10].any(func(v): return before < v and alert >= v):
 		banner("ALERT %d" % alert, Color("ff4d3d"), "AIR SUPPORT AUTHORIZED" if alert >= 10 else ("THEY KNOW YOU ARE HERE" if alert >= 6 else "THE JACKALS ARE ORGANIZING"))
 		Sfx.play("alarm")
@@ -1731,7 +2039,7 @@ func enemy_shoot(e: Unit, tg: Unit, spec: Dictionary) -> void:
 		var m := muzzle(e)
 		var pts := visible_points(m.x, m.y, tg)
 		var py: float = pick(pts) if pts.size() else tg.y - tg.h / 2.0
-		var err := maxf(0.015, 0.075 - alert * 0.005) + tg.dodge * 0.002
+		var err := maxf(0.015, 0.075 - (10 if e.elite == "veteran" else alert) * 0.005) + tg.dodge * 0.002
 		var ang := atan2(py - m.y, tg.x - m.x) + gauss() * err
 		if e.type == "boss":
 			e.aim_a = clampf(atan2(-(py - m.y), -(tg.x - m.x)), -0.4, 0.6)
@@ -2090,6 +2398,7 @@ func victory() -> void:
 	stats["pay"] = pay
 	stats["alert_bonus"] = ab
 	stats["surv_bonus"] = sb
+	sweep_loot(INF)
 	sync_back()
 	await wait(150)
 	mission_over.emit(true)
@@ -2167,6 +2476,14 @@ func step() -> void:
 				if u.x < cam_x - 30:
 					u.gone = true
 			continue
+		if u.kind == "cache":
+			# buried until the dirt above it is blown or dug away
+			if not T.solid(u.x, u.y - 8) or not T.solid(u.x, u.y + 2):
+				u.gone = true
+				float_at(u.x, u.y - 20, "CACHE FOUND!", Color("ffd23a"), true)
+				Sfx.play("coin")
+				drop_loot(u.x, u.y - 4, {"type": "item", "item": Run.roll_item(1)})
+			continue
 		if u.zip != null:
 			var z: Dictionary = u.zip
 			z.t += 1.0 / 20.0
@@ -2199,6 +2516,8 @@ func step() -> void:
 			physics(u)
 		if u.team == "squad" and not u.dead:
 			for p in units:
+				if p.kind == "loot" and not p.gone and not p.sunk and absf(p.x - u.x) < 22 and absf(p.y - u.y) < 30:
+					collect(u, p)
 				if p.kind == "pow" and not p.freed and absf(p.x - u.x) < 26 and absf(p.y - u.y) < 30:
 					p.freed = true
 					p.dead_t = 0
@@ -2260,7 +2579,7 @@ func body_collisions(u: Unit) -> void:
 	if (sp < 3 and not u.rushing) or u.leaping:
 		return  # a vault is footwork, not a tackle
 	for o in units:
-		if o == u or o.dead or o.gone or o.sunk or o.kind == "pow" or o.para:
+		if o == u or o.dead or o.gone or o.sunk or o.kind == "pow" or o.para or o.is_pickup() or u.is_pickup():
 			continue
 		if u.bumped != null and u.bumped.has(o.id):
 			continue
@@ -2410,7 +2729,7 @@ func sync_chunks() -> void:
 func unit_at_p(p: Vector2):
 	var best = null
 	for u in units:
-		if u.dead or u.gone or u.sunk:
+		if u.dead or u.gone or u.sunk or u.kind == "cache":
 			continue
 		if p.x >= u.x - u.w / 2.0 - 6 and p.x <= u.x + u.w / 2.0 + 6 and p.y >= u.y - u.h - 6 and p.y <= u.y + 4:
 			if best == null or absf(u.x - p.x) < absf(best.x - p.x):

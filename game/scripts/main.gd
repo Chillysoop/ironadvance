@@ -4,6 +4,7 @@ extends Node
 const BattleScene := preload("res://scenes/battle.tscn")
 const HudScript := preload("res://scripts/hud.gd")
 const ShopScript := preload("res://scripts/shop.gd")
+const DebriefScript := preload("res://scripts/debrief.gd")
 
 var battle: Battle = null
 var hud: CanvasLayer = null
@@ -86,8 +87,16 @@ func _on_mission_over(won: bool) -> void:
 		s.buttons = [["NEW CAMPAIGN", func(): start_run()]]
 	else:
 		s.mode = "won"
-		s.buttons = [["TO THE QUARTERMASTER", func(): show_shop()]]
+		s.buttons = [["OPEN SUPPLY CRATES", func(): show_debrief(st)]]
 	open(s)
+
+func show_debrief(st: Dictionary) -> void:
+	clear()
+	var d: Control = DebriefScript.new()
+	d.medals = Run.medals(st)
+	d.done.connect(show_shop)
+	screen = d
+	ui_layer.add_child(d)
 
 func show_shop() -> void:
 	clear()

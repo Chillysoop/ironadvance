@@ -58,6 +58,8 @@ func type_color() -> Color:
 			return Color("ffd23a")
 		"gear":
 			return Color("62d26f")
+		"item":
+			return {"weapon": Color("ff7a3d"), "armor": Color("9fb4c9"), "kit": Color("53d4e2"), "belt": Color("62d26f")}.get(Data.ITEMS[opt.item.id].slot, Color("b48cff"))
 	return Color("b48cff")
 
 func tier() -> int:
@@ -139,6 +141,15 @@ func _draw() -> void:
 			title = "ABILITY"; name_ = opt.name; body = opt.text
 		"gear":
 			title = "SQUAD GEAR"; name_ = opt.name; body = opt.text
+		"item":
+			var it: Dictionary = opt.item
+			var d: Dictionary = Data.ITEMS[it.id]
+			title = Data.SLOT_NAMES[d.slot]
+			name_ = d.name
+			stat = "  ".join(Data.stat_lines(Data.item_stats(it)))
+			body = d.text
+			if d.has("set"):
+				body += " SET: %s." % Data.SETS[d.set].name
 		"service":
 			title = "SERVICE"; name_ = opt.name; body = opt.text
 	Art.text(self, title, Vector2(w / 2.0, 12), 8, Color.WHITE if not dim else Color("cccccc"), HORIZONTAL_ALIGNMENT_CENTER, 1)
@@ -227,7 +238,20 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 			"SELF":
 				icon = "ic_shield" if cd.has("armor") else ("ic_flame" if cd.has("adrenal") or cd.get("surge", false) else ("ic_star" if cd.has("rally") or cd.get("overwatch", false) else "ic_boot"))
 	else:
-		icon = {"stat": "ic_up", "perk": "ic_star", "gear": "ic_shield", "service": "ic_heart"}.get(kind, "ic_card")
+		if kind == "item":
+			var d: Dictionary = Data.ITEMS[opt.item.id]
+			if d.slot == "weapon":
+				var sub := CardView.new()
+				sub.opt = {"kind": "card", "key": d.cards[0]}
+				var tmp := opt
+				opt = sub.opt
+				draw_picto("card", c, dim)
+				opt = tmp
+				sub.free()
+				return
+			icon = {"armor": "ic_shield", "kit": "ic_star", "belt": "ic_heart"}.get(d.slot, "ic_card")
+		else:
+			icon = {"stat": "ic_up", "perk": "ic_star", "gear": "ic_shield", "service": "ic_heart"}.get(kind, "ic_card")
 		if opt.has("icon"):
 			icon = opt.icon
 	if icon != "":

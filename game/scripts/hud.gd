@@ -59,6 +59,13 @@ func setup(battle: Battle) -> void:
 	mute.size = Vector2(58, 24)
 	mute.pressed.connect(func(): Sfx.muted = not Sfx.muted; mute.text = "MUTE" if Sfx.muted else "SND")
 	root.add_child(mute)
+	for i in Data.BELT_MAX:
+		var bs := BeltSlot.new()
+		bs.hud = self
+		bs.idx = i
+		bs.position = Vector2(830 + i * 41, 424)
+		bs.size = Vector2(38, 30)
+		root.add_child(bs)
 	modal = Control.new()
 	modal.set_anchors_preset(Control.PRESET_FULL_RECT)
 	modal.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -188,15 +195,17 @@ func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> 
 		cv.opt = o
 		cv.size = Vector2(cw, 176)
 		cv.position = Vector2(x0 + i * (cw + gap), 196)
-		if o.has("u"):
+		if o.get("label", "") != "":
+			cv.label_top = o.label
+		elif o.has("u"):
 			cv.label_top = "TO %s" % o.u.def.name
 		var idx := i
 		cv.pressed.connect(func(): Sfx.play("coin"); picked.emit(idx))
 		modal.add_child(cv)
 	var skip := PixButton.new()
-	skip.text = "SKIP" if kind != "level" else "SKIP (NO BONUS)"
+	skip.text = {"level": "SKIP (NO BONUS)", "loot": "TO STASH"}.get(kind, "SKIP")
 	skip.color = Color("9aa2ae")
-	skip.size = Vector2(170 if kind == "level" else 90, 26)
+	skip.size = Vector2(170 if kind == "level" else (120 if kind == "loot" else 90), 26)
 	skip.position = Vector2(480 - skip.size.x / 2, 392)
 	skip.pressed.connect(func(): picked.emit(-1))
 	modal.add_child(skip)
@@ -283,6 +292,41 @@ class PixButton extends Control:
 		Art.text(self, text, Vector2(w / 2.0, ty), 8 if h < 30 else 16, Color.WHITE if not disabled else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 		if sub != "":
 			Art.text(self, sub, Vector2(w / 2.0, ty + 12), 8, Color(1, 1, 1, 0.7), HORIZONTAL_ALIGNMENT_CENTER, 1)
+
+class BeltSlot extends Control:
+	## One consumable on the squad belt. Click to use it on the selected soldier.
+	var hud
+	var idx := 0
+	var hover := false
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		mouse_entered.connect(func(): hover = true)
+		mouse_exited.connect(func(): hover = false)
+	func _gui_input(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			if idx < Run.belt.size():
+				hud.b.use_belt(idx)
+			else:
+				Sfx.play("deny")
+	func _process(_d: float) -> void:
+		queue_redraw()
+	func _draw() -> void:
+		var ink := Color(0.05, 0.035, 0.03)
+		draw_rect(Rect2(0, 0, size.x, size.y), ink)
+		draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color("2a2e34") if not hover else Color("3a4048"))
+		if idx >= Run.belt.size():
+			Art.text(self, "BELT", Vector2(size.x / 2, 19), 8, Color("4a505a"), HORIZONTAL_ALIGNMENT_CENTER)
+			return
+		var it: Dictionary = Run.belt[idx]
+		var icon: String = {"heal": "ic_heart", "ration": "ic_heart", "smoke": "ic_shield", "energy": "ic_bolt"}.get(Data.ITEMS[it.id].use, "ic_card")
+		draw_texture_rect(Art.tex[icon], Rect2(size.x / 2 - 8, 3, 16, 16), false)
+		Art.text(self, Data.item_name(it).split(" ")[0].to_upper().substr(0, 5), Vector2(size.x / 2, 28), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+		if hover:
+			var tip := "%s: %s" % [Data.item_name(it), Data.ITEMS[it.id].text]
+			var tw := Art.text_width(tip, 16, true) + 12
+			draw_rect(Rect2(size.x - tw, -24, tw, 20), Color(ink, 0.9))
+			Art.text(self, tip, Vector2(size.x - 6, -9), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT, 0, true)
 
 class Tag extends Control:
 	## A soldier's dog tag in the roster: portrait, name, level, HP and adrenaline.
