@@ -1365,7 +1365,8 @@ func doc() -> void:
 	Run.new_run()
 	check(Run.surgery_block("cybereye", "moss") == "BUILD THE DOC'S LAB", "no surgery before the Doc's Lab is built")
 	Run.hq_upgrade("doc")
-	check(Run.surgery_block("cybereye", "hex") == "WRONG CLASS", "Cyber Eye is Marksman only")
+	check(Data.SURGERIES.size() >= 12, "at least 12 surgeries (%d)" % Data.SURGERIES.size())
+	check(Data.SQUAD_DEFS.all(func(d): return Data.SURGERIES.keys().all(func(k): return Run.surgery_block(k, d.key) == "")), "every class can take every surgery")
 	for op in [["cybereye", "moss"], ["thirdarm", "hex"], ["asbestos", "vee"], ["spine", "rook"]]:
 		check(Run.operate(op[0], op[1]), "%s installs on %s" % op)
 	check(int(Run.meta.bio) == 20 - 4 * Data.SURGERY_BIO and int(Run.meta.salvage) == 190 - 4 * Data.SURGERY_SALVAGE, "each surgery costs %d Bio and %d Salvage" % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE])
@@ -1373,6 +1374,15 @@ func doc() -> void:
 	Run.hq_upgrade("doc")
 	check(Run.operate("cybereye", "moss") and Run.implants("moss") == ["magnet", "cybereye"], "two slots hold two implants")
 	check(Run.operate("adrenal", "vee"), "Adrenal Pump goes on any class")
+	# stat surgeries feed the same bonus table gear uses
+	Run.hq_upgrade("doc")
+	Run.meta.bio = 40
+	var hex: Dictionary = Run.soldier("hex")
+	var gb0 := Run.gear_bonus(hex)
+	for k in ["legs", "reflex"]:
+		Run.operate(k, "hex")
+	var gb1 := Run.gear_bonus(hex)
+	check(int(gb1.get("move", 0)) == int(gb0.get("move", 0)) + 40 and int(gb1.get("dodge", 0)) == int(gb0.get("dodge", 0)) + 8 and Run.implants("hex").has("thirdarm"), "Hydraulic Legs and Reflex Wiring add their stats in the 3-slot lab")
 	main.show_hq(false)
 	await frames_wait(20)
 	await shot("doc_hq")
