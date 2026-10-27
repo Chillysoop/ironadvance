@@ -23,6 +23,7 @@ func _draw() -> void:
 		Art.draw_gate(self, Vector2(b.gate.x, b.gate.y), b.gate.r, b.t, b.gate.chev, b.gate.open, b.gate.alpha, b.gate.spin, b.gate.burst)
 	for r in b.ropes:
 		draw_line(Vector2(r.x, r.y), Vector2(r.u.x, r.u.y - 20), Color("d8d0b8"), 1.0)
+	draw_acids()
 	for u in b.units:
 		if u.dead:
 			draw_unit(u)
@@ -39,7 +40,6 @@ func _draw() -> void:
 	draw_fx()
 	for u in b.units:
 		draw_plate(u)
-	draw_alien_marks()
 	draw_targeting()
 	draw_texts()
 	draw_barks()
@@ -235,6 +235,12 @@ func draw_unit(u: Unit) -> void:
 	if u.type == "boss":
 		draw_boss(u, pos, white)
 		return
+	if u.type == "hive":
+		draw_hive(u, pos, white)
+		return
+	if u.type == "burrow":
+		draw_burrow(u, pos, white)
+		return
 	if u.type == "mg":
 		var pa := pick_anim(u)
 		Art.draw_char(self, u.sheet, "idle" if not u.dead else "die", pa[1], pos + Vector2(4, -8), -1, white, 0, u.alpha, u.gun_angle, not u.dead)
@@ -418,11 +424,6 @@ func draw_plate(u: Unit) -> void:
 		draw_rect(Rect2(x - w / 2 - 2, y - 2, w + 4, 7), Color("ffd23a"), false, 1.0)
 		Art.text(self, Data.ELITES[u.elite].name, Vector2(x, y - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 	draw_statuses(u, x, y - (14 if u.elite != "" else 4))
-	if b.inspect and b.state == "player":
-		var it := b.intent_of(u)
-		var tw := Art.text_width(it, 8) + 6
-		draw_rect(Rect2(x - tw / 2, y - 24, tw, 12), Color(C_DARK, 0.85))
-		Art.text(self, it, Vector2(x, y - 14), 8, Color("ff8a80"), HORIZONTAL_ALIGNMENT_CENTER)
 	if u.type == "radio" and b.radio_t != null and u.active:
 		var col := Color("ff4d3d") if b.radio_t <= 1 else Color("ffd23a")
 		draw_texture_rect(Art.tex.ic_radio, Rect2(clampf(x, b.cam_x + 44, b.cam_x + 916) - 34, y - 16, 16, 16), false)
@@ -767,6 +768,45 @@ func draw_brackets(r: Rect2, col: Color) -> void:
 		draw_line(corner, corner + Vector2(l * sx, 0), col, 2.0)
 		draw_line(corner, corner + Vector2(0, l * sy), col, 2.0)
 
+func draw_hive(u: Unit, pos: Vector2, white: bool) -> void:
+	## Hive Pod: a ribbed violet egg sac, its glow quickening as the hatch timer runs down.
+	var a := u.alpha
+	if u.dead:
+		a *= 0.6
+	var n: int = u.fl.get("hatch", Data.ETYPES.hive.hatch)
+	var beat := 0.5 + 0.5 * sin(b.t / (4.0 if n <= 1 else 10.0))
+	var body := Color.WHITE if white else Color("7d3cb0")
+	draw_circle(pos + Vector2(0, -12), 15, Color(C_DARK, a))
+	draw_circle(pos + Vector2(0, -12), 13, Color(body, a))
+	draw_circle(pos + Vector2(-4, -15), 7, Color(Color("b06ae0"), a))
+	for k in 3:
+		draw_line(pos + Vector2(-10 + k * 10, -2), pos + Vector2(-6 + k * 6, -23), Color(Color("4a1f6e"), a), 2.0)
+	if not u.dead:
+		draw_circle(pos + Vector2(3, -10), 4 + beat * 2, Color(C_OOZE, 0.5 + 0.4 * beat))
+		draw_circle(pos + Vector2(-5, -6), 2 + beat, Color(C_OOZE, 0.4 + 0.4 * beat))
+	draw_rect(Rect2(pos.x - 14, pos.y - 2, 28, 3), Color(Color("4a1f6e"), a))
+
+func draw_burrow(u: Unit, pos: Vector2, white: bool) -> void:
+	## Skitter tunnel: a dirt mound around a dark hole, glowing eyes inside while waves are left.
+	var dirt := Color.WHITE if white else Color("8c6a46")
+	draw_rect(Rect2(pos.x - 17, pos.y - 9, 34, 9), C_DARK)
+	draw_rect(Rect2(pos.x - 16, pos.y - 8, 32, 8), dirt)
+	draw_rect(Rect2(pos.x - 11, pos.y - 13, 22, 5), dirt)
+	draw_rect(Rect2(pos.x - 8, pos.y - 10, 16, 8), C_DARK)
+	if not u.dead and u.fl.get("wave", 0) < Data.ETYPES.burrow.waves.size():
+		for k in 3:
+			if (b.t / 20 + k) % 3 != 0:
+				draw_rect(Rect2(pos.x - 6 + k * 5, pos.y - 7, 2, 1), C_OOZE)
+
+func draw_acids() -> void:
+	for a in b.acids:
+		var w: float = a.r * 2
+		for k in 3:
+			var c := Color(C_OOZE, 0.25 + 0.1 * k)
+			draw_rect(Rect2(a.x - w / 2 + k * 6, a.y - 3 + k, w - k * 12, 3), c)
+		if b.t % 20 < 10:
+			draw_rect(Rect2(a.x - 4 + (b.t % 40) / 4.0, a.y - 6, 2, 2), C_OOZE)
+
 func draw_pod(pos: Vector2, white: bool) -> void:
 	## The Squid Trooper's saucer: a steel dish under its tentacles, lights chasing round the rim.
 	var c := Color.WHITE if white else Color("8e939a")
@@ -779,53 +819,6 @@ func draw_pod(pos: Vector2, white: bool) -> void:
 		draw_rect(Rect2(pos.x - 9 + k * 6, pos.y, 2, 1), C_OOZE if on else Color("3c3e46"))
 	var a := 0.25 + 0.15 * sin(b.t / 5.0)
 	draw_rect(Rect2(pos.x - 4, pos.y + 5, 8, 6), Color(C_OOZE, a))
-
-func draw_alien_marks() -> void:
-	## Every Vharr power is shown a turn ahead: the Skitter's pounce reticle, the Squid's ray line,
-	## the Blinker's rune. Ooze green over a dark edge so it reads against any sky.
-	var pulse := 0.7 + 0.3 * sin(b.t / 7.0)
-	var mk := Color(C_OOZE, pulse)
-	var edge := Color(C_DARK, 0.8)
-	for u in b.units:
-		if u.dead or u.gone or u.sunk or u.team != "enemy" or not on_screen(u.x, 400):
-			continue
-		if u.pounce != null:
-			var p: Vector2 = u.pounce
-			var a0 := Vector2(u.x, u.y - 6)
-			for k in range(1, 8):
-				var f := k / 8.0
-				var q := a0.lerp(p, f) + Vector2(0, -sin(f * PI) * 40)
-				draw_rect(Rect2(q.x - 2, q.y - 2, 4, 4), edge)
-				draw_rect(Rect2(q.x - 1, q.y - 1, 2, 2), mk)
-			draw_reticle(p + Vector2(1, -9), edge)
-			draw_reticle(p + Vector2(0, -10), mk)
-			Art.text(self, "POUNCE", p + Vector2(0, -24), 8, C_OOZE, HORIZONTAL_ALIGNMENT_CENTER)
-		if u.beam != null:
-			var bp: Dictionary = b.beam_path(u, u.beam)
-			var o: Vector2 = u.center()
-			var seg: Vector2 = bp.end - o
-			var n := int(seg.length() / 8.0)
-			for k in n:
-				if (k + b.t / 3) % 3 != 0:
-					var q1: Vector2 = o + seg * (k / float(n))
-					var q2: Vector2 = o + seg * ((k + 0.6) / float(n))
-					draw_line(q1, q2, edge, 4.0)
-					draw_line(q1, q2, mk, 2.0)
-			for h in bp.hits:
-				if h.team == "squad":
-					draw_brackets(Rect2(h.x - h.w / 2.0 - 3, h.y - h.h - 3, h.w + 6, h.h + 6), mk)
-		if u.rune != null:
-			var r: Vector2 = u.rune
-			draw_set_transform(r + Vector2(0, -2), 0, Vector2(1, 0.35))
-			draw_arc(Vector2.ZERO, 16, 0, TAU, 24, edge, 4.0)
-			draw_arc(Vector2.ZERO, 16, 0, TAU, 24, mk, 2.0)
-			draw_arc(Vector2.ZERO, 10, b.t / 10.0, b.t / 10.0 + PI * 1.4, 12, Color(C_ALIEN, pulse), 2.0)
-			draw_set_transform_matrix(Transform2D.IDENTITY)
-			for k in 3:
-				var gy := r.y - 6 - k * 9 - (b.t % 18) / 2.0
-				draw_rect(Rect2(r.x - 2 + (k - 1) * 6, gy - 1, 4, 5), edge)
-				draw_rect(Rect2(r.x - 1 + (k - 1) * 6, gy, 2, 3), mk)
-			Art.text(self, "BLINK", r + Vector2(0, -40), 8, C_OOZE, HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_reticle(p: Vector2, col: Color) -> void:
 	var s := 7.0 + sin(b.t / 6.0)

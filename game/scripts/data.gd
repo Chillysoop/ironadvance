@@ -254,6 +254,11 @@ const ELITES := {
 	"veteran": {"name": "VETERAN", "text": "Shoots like the alert is maxed."},
 	"medic": {"name": "MEDIC", "text": "Heals nearby Jackals each turn."},
 	"shielded": {"name": "SHIELDED", "text": "Carries a riot shield."},
+	# Vharr elites (E7): only aliens roll these, and only these.
+	"brood": {"name": "BROOD", "vharr": true, "text": "Splits into two half-strength copies when it dies."},
+	"alpha": {"name": "ALPHA", "vharr": true, "text": "Others of its kind within 160px act twice while it lives."},
+	"anchored": {"name": "ANCHORED", "vharr": true, "text": "Can't be knocked back. Crush it or burn it."},
+	"hungry": {"name": "HUNGRY", "vharr": true, "text": "Eats a body within 60px each turn to heal 8."},
 }
 # Named POWs with a specialty (L5). Anyone else gives +1 Luck.
 const POW_SPECIAL := {
@@ -554,11 +559,13 @@ const ETYPES := {
 	"engineer": {"name": "Jackal Engineer", "hp": 12, "dmg": [2, 3], "range": 360, "speed": 80, "prefer": 320, "builds": true, "score": 150, "w": 16, "h": 34, "note": "Builds concrete walls for the Jackal line."},
 	"sapper": {"name": "Jackal Sapper", "hp": 11, "speed": 150, "sapper": true, "score": 175, "w": 16, "h": 34, "note": "Runs in and plants a charge that blows next turn. Shoot the charge to defuse it."},
 	"mortarcrew": {"name": "Mortar Crew", "hp": 18, "arc": true, "heavyArc": true, "dmg": 12, "radius": 46, "range": 900, "speed": 0, "score": 250, "w": 18, "h": 34, "note": "Shells your cover from long range. Sits still. Something is hanging over it."},
-	# Vharr aliens. Every power is marked on the field a turn ahead (see Battle.draw intents), and
+	# Vharr aliens. Like the Jackals they move and attack in the same enemy phase, and
 	# "weight" sets how physics moves them: light flies twice as far, hover holds altitude on a pod.
-	"skitter": {"name": "Skitter", "faction": "vharr", "weight": "light", "hp": 6, "dmg": 4, "leap": 240, "speed": 140, "climb": true, "pack": 3, "score": 60, "w": 16, "h": 14, "note": "Comes in packs. Scrambles up walls, then pounces on the marked spot. Light: flies twice as far when knocked."},
-	"squid": {"name": "Squid Trooper", "faction": "vharr", "weight": "hover", "hp": 8, "pod": 8, "dmg": 4, "range": 520, "speed": 110, "prefer": 300, "alt": 110, "score": 150, "w": 18, "h": 30, "note": "Hovers on a saucer pod. Its ray fires along the marked line and goes through one thin wall. Break the pod and it drops."},
-	"blinker": {"name": "Blinker", "faction": "vharr", "hp": 10, "dmg": 7, "knock": 4.5, "speed": 60, "score": 175, "w": 16, "h": 34, "note": "Teleports onto its rune and claws whoever is next to it. Anything standing on the rune when it blinks telefrags it."},
+	"skitter": {"name": "Skitter", "faction": "vharr", "weight": "light", "hp": 6, "dmg": 4, "leap": 240, "speed": 140, "climb": true, "pack": 3, "score": 60, "w": 16, "h": 14, "note": "Comes in packs. Scrambles up walls and pounces from 240px. Light: flies twice as far when knocked."},
+	"squid": {"name": "Squid Trooper", "faction": "vharr", "weight": "hover", "hp": 8, "pod": 8, "dmg": 4, "range": 520, "speed": 110, "prefer": 300, "alt": 110, "score": 150, "w": 18, "h": 30, "note": "Hovers on a saucer pod. Its ray goes through one thin wall and hits everything on the line. Break the pod and it drops."},
+	"blinker": {"name": "Blinker", "faction": "vharr", "hp": 10, "dmg": 7, "knock": 4.5, "speed": 60, "score": 175, "w": 16, "h": 34, "note": "Teleports behind the nearest soldier within 360px and claws them."},
+	"hive": {"name": "Hive Pod", "faction": "vharr", "hp": 20, "static": true, "heavy": true, "hatch": 2, "brood": 2, "score": 200, "w": 26, "h": 26, "note": "Hatches two Skitters when its timer runs out. Bursts into acid when killed: anyone standing in it at the end of the enemy phase takes 3."},
+	"burrow": {"name": "Skitter Tunnel", "faction": "vharr", "hp": 14, "static": true, "heavy": true, "waves": [3, 4, 3], "score": 150, "w": 30, "h": 14, "note": "Sends a wave of Skitters each enemy phase (the next wave's size is shown), then caves in. Blow it up to stop the swarm."},
 	"boss": {"name": "IRON BOAR", "hp": 150, "dmg": [3, 4], "shots": 4, "range": 660, "heavy": true, "score": 3000, "w": 120, "h": 64, "note": "Armored tank: shrugs off 60% of damage until its armor cracks. Crushing debris cracks it at once."},
 }
 

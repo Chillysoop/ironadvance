@@ -361,6 +361,8 @@ class Screen extends Control:
 			draw_texture_rect_region(far, Rect2(x + 8, 150, 364, 40), Rect2(0, far.get_height() - 20, 182, 20), sky_mod)
 			draw_rect(Rect2(x + 8, 186, 364, 4), bm.look.get("grass", Data.THEMES[bm.theme].grass))
 			Art.text(self, bm.name, Vector2(x + 190, 150), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+			if Run.dial_breach.get(id, false):
+				Art.text(self, "BREACH: VHARR AND JACKALS AT WAR", Vector2(x + 190, 178), 8, Color("9df25c"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 			var y := 210.0
 			for line in CardView.wrap_text(bm.text, 352, 16):
 				Art.text(self, line, Vector2(x + 190, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
