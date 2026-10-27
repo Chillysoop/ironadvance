@@ -700,6 +700,8 @@ func run() -> void:
 			await soldat()
 		"soldat2":
 			await soldat2()
+		"soldat3":
+			await soldat3()
 		"drill":
 			await drill()
 		"detours":
@@ -1794,6 +1796,111 @@ func soldat2_moves(b: Battle, s: Unit) -> void:
 	check(jt2.crash and not jt2.jetting, "a hit in flight knocks its pack out")
 	await until(func(): return not jt2.air, 400)
 	check(jt2.hp < hp1 - 1, "and it crashes (hp %d -> %d)" % [hp1, jt2.hp])
+
+func soldat3() -> void:
+	## Soldat round 2, guns: sidearms, dropped Jackal guns, weapon weight, mounted M2s.
+	Run.new_run()
+	var lvl := {"name": "SOLDAT YARD III", "theme": "dusk", "segments": ["start", "m2nest", "camp", "arena"],
+		"boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "", "rules": {"pads": 0}}
+	var b: Battle = main.start_battle(0, lvl)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	b.autopick = 0
+	b.wind = 0
+	var sq: Array = b.squad()
+	var s: Unit = sq[0]
+	# --- B1 sidearms
+	check(sq.all(func(u): return u.hand.any(func(c): return c.key == "sa_pistol" and c.get("temp", false))), "every soldier starts the turn with a Holdout Pistol sidearm")
+	check(Data.card({"key": "sa_pistol", "tier": 0}).cost == 0, "the holdout pistol is free")
+	s.gb["sa"] = 1
+	b.give_sidearm(s)
+	check(s.hand.any(func(c): return c.key == "sa_knife") and not s.hand.any(func(c): return c.key == "sa_pistol"), "a Combat Knife kit swaps the sidearm")
+	s.gb["sa"] = 3
+	b.give_sidearm(s)
+	var li := -1
+	for i in s.hand.size():
+		if s.hand[i].key == "sa_law":
+			li = i
+	check(li >= 0, "a LAW Tube makes the sidearm a LAW")
+	b.spend_card(s, li)
+	b.give_sidearm(s)
+	check(s.s.get("law_spent", false) and s.hand.any(func(c): return c.key == "sa_pistol"), "once the LAW is fired it's back to the pistol")
+	s.s.erase("law_spent")
+	b.give_sidearm(s)
+	check(s.hand.any(func(c): return c.key == "sa_law"), "and a camp reloads it")
+	s.gb.erase("sa")
+	b.give_sidearm(s)
+	# --- B5 weapon weight
+	var m0 := b.full_move(s)
+	s.gb["light"] = 15
+	check(b.full_move(s) == m0 + 15, "a light weapon adds movement (%d -> %d)" % [m0, b.full_move(s)])
+	s.gb.erase("light")
+	s.gb["heavy"] = 15
+	s.gb["jet"] = 90
+	check(b.full_move(s) == m0 - 15 and b.jet_fuel(s) == 60, "a heavy one costs movement and jet fuel (%d, fuel %d)" % [b.full_move(s), b.jet_fuel(s)])
+	s.gb.erase("heavy"); s.gb.erase("jet")
+	check(Data.stat_lines({"heavy": 15})[0].begins_with("HEAVY"), "gear cards say LIGHT or HEAVY")
+	# --- B6 mounted M2
+	var guns: Array = b.units.filter(func(o): return o.kind == "m2")
+	check(guns.size() == 2, "the M2 nest has two mounted guns (%d)" % guns.size())
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	var g1: Unit = guns[0]
+	cam_on(b, g1.x)
+	ground_unit(b, s, g1.x - 20)
+	b.refresh_mounts()
+	var mi := -1
+	for i in s.hand.size():
+		if s.hand[i].key == "mounted":
+			mi = i
+	check(mi >= 0, "standing at the M2 gives the free Mounted M2 card")
+	await frames_wait(6)
+	await shot("soldat3_m2")
+	var tgt := b.mk_enemy("grunt", g1.x + 160, b.T.stand_y(g1.x + 160, 0)); tgt.active = true; tgt.hp = 40; tgt.max_hp = 40
+	b.units.append(tgt)
+	var hp0 := tgt.hp
+	var x0 := s.x
+	b.sel = s
+	b.aim_hold = true
+	await b.resolve(func(): await b._act_aim(s, mi, Data.card(s.hand[mi]), Vector2(tgt.x, tgt.y - 20), false))
+	b.aim_hold = false
+	check(tgt.hp < hp0, "the M2 shreds the Jackal (%d -> %d)" % [hp0, tgt.hp])
+	check(absf(s.x - x0) < 1, "and has no kick")
+	check(not s.hand.any(func(c): return c.key == "mounted"), "once a turn")
+	ground_unit(b, s, g1.x - 120)
+	b.round_n += 1
+	b.refresh_mounts()
+	check(not s.hand.any(func(c): return c.key == "mounted"), "walking away leaves the gun behind")
+	var g2: Unit = guns[1]
+	var jk := b.mk_enemy("grunt", g2.x + 14, b.T.stand_y(g2.x + 14, 0)); jk.active = true
+	b.units.append(jk)
+	ground_unit(b, s, g2.x - 200)
+	cam_on(b, g2.x - 100)
+	b.state = "enemy"
+	await b.enemy_act(jk)
+	b.state = "player"
+	await until(func(): return b.settled(), 300)
+	check(g2.loot.en == b.round_n, "a Jackal at the other M2 fires it")
+	b.damage(g2, 99, s)
+	await until(func(): return b.settled(), 300)
+	check(g2.gone, "an M2 can be blown up")
+	# --- B4 dropped guns
+	var mg := b.mk_enemy("mg", s.x + 80, b.T.stand_y(s.x + 80, 0)); mg.active = true
+	b.units.append(mg)
+	b.damage(mg, mg.hp, s)
+	await until(func(): return b.settled(), 300)
+	var drop = null
+	for o in b.units:
+		if o.kind == "loot" and not o.gone and o.loot.type == "gun":
+			drop = o
+	check(drop != null and drop.loot.card == "hmg", "a dead MG nest drops its Heavy MG")
+	await frames_wait(4)
+	await shot("soldat3_drop")
+	var n0: int = s.hand.filter(func(c): return c.key == "hmg").size()
+	if drop != null:
+		b.collect(s, drop)
+	check(s.hand.filter(func(c): return c.key == "hmg" and c.get("temp", false)).size() == n0 + 1, "walking over it gives one Heavy MG shot")
 
 func ground_unit(b: Battle, u: Unit, x: float, from_y := 0.0) -> void:
 	u.x = x; u.y = b.T.stand_y(x, from_y); u.air = false; u.vx = 0; u.vy = 0; u.walk = null
