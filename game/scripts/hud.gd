@@ -19,6 +19,7 @@ var cards: Array = []
 var tags: Array = []
 var deck_view: Control = null
 var hand_x0 := 270.0      # left edge of the hand, so the action meter can sit beside it
+var targeting := false    # a card is armed: the hand ghosts out so it doesn't hide what you aim at
 
 const INK := Color(0.05, 0.035, 0.03)
 
@@ -166,6 +167,15 @@ func refresh() -> void:
 func _process(_d: float) -> void:
 	if b == null:
 		return
+	# While a card is armed the hand sinks and fades, and over a unit it lets the click through,
+	# so a Jackal lying behind the cards can still be aimed at and hit.
+	targeting = b.card_idx >= 0 and b.state == "player"
+	var over_unit: bool = targeting and b.unit_at_p(b.get_global_mouse_position()) != null
+	var near_hand := hand_box.get_local_mouse_position().y > 440
+	hand_box.modulate.a = lerpf(hand_box.modulate.a, (0.2 if near_hand else 0.45) if targeting else 1.0, 0.3)
+	for cv in cards:
+		cv.ghost = targeting
+		cv.mouse_filter = Control.MOUSE_FILTER_IGNORE if over_unit else Control.MOUSE_FILTER_STOP
 	# NEXT says how many soldiers can still act; once nobody can, it turns into END TURN.
 	# The small END TURN button still asks twice while anyone can act.
 	var n := b.ready_count() if b.state == "player" else 0
@@ -633,9 +643,12 @@ class Overlay extends Control:
 			for l in lines:
 				hw = maxf(hw, Art.text_width(l, 16, true))
 			var top := 426.0 - lines.size() * 14
-			draw_rect(Rect2(480 - hw / 2 - 8, top - 2, hw + 16, lines.size() * 14 + 4), Color(0.05, 0.035, 0.03, 0.7))
+			var strip := Rect2(480 - hw / 2 - 8, top - 2, hw + 16, lines.size() * 14 + 4)
+			# aiming at something behind the strip: fade it nearly away
+			var al := 0.2 if hud.targeting and strip.grow(24).has_point(get_local_mouse_position()) else 1.0
+			draw_rect(strip, Color(0.05, 0.035, 0.03, 0.7 * al))
 			for i in lines.size():
-				Art.text(self, lines[i], Vector2(480, top + 11 + i * 14), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
+				Art.text(self, lines[i], Vector2(480, top + 11 + i * 14), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0, true, al)
 		if b.state == "enemy":
 			var who: String = ("ENEMY: " + Data.ETYPES[b.acting.type].name.to_upper()) if b.acting != null else "ENEMY PHASE"
 			Art.text(self, who, Vector2(480, 402), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)

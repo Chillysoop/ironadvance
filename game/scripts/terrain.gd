@@ -361,7 +361,10 @@ func build_struct(s: Dictionary) -> void:
 			var top: float = ground_at(s.x0) - s.dy
 			s["y"] = top
 			fill_r(s.x0, top, s.x1 - s.x0, 8, GRATE)
-			var px: float = s.x0
+			# the near leg stands well back from the ladder, so a shot or a grenade aimed through
+			# the ladder isn't stopped by steel hiding right behind its rails
+			fill_r(s.x0 + 28, top + 8, 8, ground_at(s.x0 + 32) - top, 4)
+			var px: float = s.x0 + s.get("leg", 96)
 			while px <= s.x1 - 8:
 				fill_r(px, top + 8, 8, ground_at(px + 4) - top, 4)
 				px += s.get("leg", 96)
