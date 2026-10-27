@@ -23,7 +23,7 @@ func _draw() -> void:
 	if b.gate != null:
 		Art.draw_gate(self, Vector2(b.gate.x, b.gate.y), b.gate.r, b.t, b.gate.chev, b.gate.open, b.gate.alpha, b.gate.spin, b.gate.burst)
 	for r in b.ropes:
-		draw_line(Vector2(r.x, r.y), Vector2(r.u.x, r.u.y - 20), Color("d8d0b8"), 1.0)
+		draw_line(Vector2(r.x, r.y), Vector2(r.u.x, r.u.y - 20), r.get("c", Color("d8d0b8")), 3.0 if r.has("c") else 1.0)
 	draw_acids()
 	for u in b.units:
 		if u.dead:
@@ -256,6 +256,9 @@ func draw_unit(u: Unit) -> void:
 		if u.muzzle > 0 and not u.dead:
 			draw_muzzle(Vector2(u.x - 22, u.y - 16), -1, 0)
 		return
+	if u.weight == "buried" and not u.dead:
+		draw_mound(u, pos)
+		return
 	if u.sheet == "":
 		return
 	var a := pick_anim(u)
@@ -283,7 +286,14 @@ func draw_unit(u: Unit) -> void:
 		var rim: Color = RIM.get(b.theme, RIM.dusk)
 		for o in [Vector2(0, -2), Vector2(-u.face * 2, 0)]:
 			Art.draw_char(self, u.sheet, a[0], a[1], pos + kick + o, u.face, true, rot, u.alpha * rim.a, u.gun_angle, false, 1.0, Color(rim, 1.0))
-	Art.draw_char(self, u.sheet, a[0], a[1], pos + kick, u.face, white, rot, u.alpha, u.gun_angle, a[2])
+	var sc := 1.0 + 0.1 * maxi(0, u.fl.get("swell", 0)) if u.type == "bloater" else 1.0
+	Art.draw_char(self, u.sheet, a[0], a[1], pos + kick, u.face, white, rot, u.alpha, u.gun_angle, a[2], sc)
+	if u.dome > 0 and not u.dead:
+		var r := maxf(u.w, u.h) / 2.0 + 8
+		var c := pos + Vector2(0, -u.h / 2.0)
+		draw_circle(c, r, Color(C_OOZE, 0.12 + 0.05 * sin(b.t / 8.0)))
+		draw_arc(c, r, 0, TAU, 32, Color(C_OOZE, 0.7), 2.0)
+		draw_arc(c, r - 4, -2.4, -1.6, 8, Color(1, 1, 1, 0.5), 2.0)
 	if not u.dead:
 		if u.shield:
 			# riot shield held out front
@@ -931,6 +941,15 @@ func draw_acids() -> void:
 			draw_rect(Rect2(a.x - w / 2 + k * 6, a.y - 3 + k, w - k * 12, 3), c)
 		if b.t % 20 < 10:
 			draw_rect(Rect2(a.x - 4 + (b.t % 40) / 4.0, a.y - 6, 2, 2), C_OOZE)
+
+func draw_mound(u: Unit, pos: Vector2) -> void:
+	## A buried Burrower: a heaving ridge of dirt with a glint of violet through the cracks.
+	var heave := sin(b.t / 9.0 + u.id) * 1.5
+	draw_rect(Rect2(pos.x - 17, pos.y - 7 - heave, 34, 8 + heave), C_DARK)
+	draw_rect(Rect2(pos.x - 16, pos.y - 6 - heave, 32, 6 + heave), Color("8c6a46"))
+	draw_rect(Rect2(pos.x - 9, pos.y - 10 - heave, 18, 4), Color("8c6a46"))
+	draw_rect(Rect2(pos.x - 3, pos.y - 6 - heave, 2, 3), Color("7d3cb0"))
+	draw_rect(Rect2(pos.x + 4, pos.y - 4 - heave, 2, 2), Color("7d3cb0"))
 
 func draw_pod(pos: Vector2, white: bool) -> void:
 	## The Squid Trooper's saucer: a steel dish under its tentacles, lights chasing round the rim.
