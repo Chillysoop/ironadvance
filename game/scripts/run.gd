@@ -37,7 +37,7 @@ var burned: Array = []     # biomes skipped or already played this run; they nev
 var dial_levels := {}      # biome id -> the level it would build, rolled with the dial (Gate Control 3 shows it)
 var dial_rerolled := false # Gate Control 2: one reroll per HQ visit
 var sway_mul := 1.0        # the current biome's sway rule, read by Data.card during a battle
-var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "bio": 0, "hq": {}}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
+var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "bio": 0, "hq": {}, "implants": {}}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
 const META_PATH := "user://meta.json"
 
 func _ready() -> void:
@@ -271,6 +271,46 @@ func hq_upgrade(id: String) -> bool:
 	if not meta.has("hq"):
 		meta.hq = {}
 	meta.hq[id] = r + 1
+	save_meta()
+	return true
+
+# ---------------------------------------------------------------- the Doc's surgeries
+func implants(cls: String) -> Array:
+	## Surgeries installed on a class (a SQUAD_DEFS key).
+	return meta.get("implants", {}).get(cls, [])
+
+func implanted(s, id: String) -> bool:
+	return s is Dictionary and s.has("key") and implants(s.key).has(id)
+
+func surgery_block(id: String, cls: String) -> String:
+	## Why this surgery can't go on this class right now, or "" when it can.
+	var S: Dictionary = Data.SURGERIES[id]
+	if hq("doc") < 1:
+		return "BUILD THE DOC'S LAB"
+	if S.cls != "" and S.cls != cls:
+		return "WRONG CLASS"
+	if implants(cls).has(id):
+		return "INSTALLED"
+	if int(meta.get("bio", 0)) < Data.SURGERY_BIO or int(meta.get("salvage", 0)) < Data.SURGERY_SALVAGE:
+		return "NEED %d BIO + %d SALVAGE" % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE]
+	return ""
+
+func operate(id: String, cls: String) -> bool:
+	## Install a surgery on a class. Past the slot cap the oldest implant comes out.
+	if surgery_block(id, cls) != "":
+		return false
+	meta.bio = int(meta.bio) - Data.SURGERY_BIO
+	meta.salvage = int(meta.salvage) - Data.SURGERY_SALVAGE
+	if not meta.has("implants"):
+		meta.implants = {}
+	var have: Array = implants(cls).duplicate()
+	while have.size() >= hq("doc"):
+		have.pop_front()
+	have.append(id)
+	meta.implants[cls] = have
+	for s in soldiers:
+		if s.key == cls and s.alive:
+			s.hp = mini(s.hp, eff_max_hp(s))
 	save_meta()
 	return true
 
@@ -661,7 +701,7 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 	return out
 
 func eff_max_hp(s: Dictionary) -> int:
-	return s.max_hp + int(gear_bonus(s).get("hp", 0))
+	return s.max_hp + int(gear_bonus(s).get("hp", 0)) + (6 if implanted(s, "spine") else 0) - (3 if implanted(s, "adrenal") else 0)
 
 func slot_for(s: Dictionary, it: Dictionary) -> String:
 	## Where an item would go on this soldier: its slot, or the free kit slot (kit1 when both are full).
