@@ -415,6 +415,7 @@ class Tag extends Control:
 		draw_texture_rect_region(Art.tex[u.sheet], Rect2(x0 + 11, 1, 22, 22), Rect2(4, 2, 11, 11) if m.frame[0] == 24 else Rect2(6, 3, 11, 11))
 		if u.dead:
 			draw_texture_rect(Art.tex.ic_skull, Rect2(x0 + 16, 6, 12, 12), false)
+		Art.draw_tags(self, Vector2(x0 + 20, 16), u.s.tags, 0.75)
 		Art.text(self, u.def.name, Vector2(x0 + 36, 11), 8, Color.WHITE if not u.dead else Color("8a7a7a"))
 		Art.text(self, "LV%d" % u.s.lvl, Vector2(x0 + w - 4, 11), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
 		var b: Battle = hud.b
@@ -438,7 +439,7 @@ class Tag extends Control:
 			var f := clampf(float(u.s.xp - xp_lo) / maxf(1, xp_hi - xp_lo), 0, 1)
 			draw_rect(Rect2(x0 + 36, 22, roundf(bw * f), 1), Color("53d4e2"))
 		else:
-			Art.text(self, "KIA", Vector2(x0 + 36, 21), 8, Color("ff4d3d"))
+			Art.text(self, "DOWN" if u.downed else "KIA", Vector2(x0 + 36, 21), 8, Color("ffb23e") if u.downed else Color("ff4d3d"))
 
 class ModalBG extends Control:
 	var title := ""

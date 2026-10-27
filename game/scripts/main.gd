@@ -144,11 +144,9 @@ func go_stop(key: String) -> void:
 			show_spoils([1], false)
 		"hospital":
 			for so in Run.soldiers:
-				if not so.alive:
-					so.alive = true
-					so.hp = int(so.max_hp / 2)
-				else:
+				if so.alive:
 					so.hp = so.max_hp
+					so.tags = mini(Data.DOG_TAGS, so.tags + 1)
 			var s := Screen.new()
 			s.mode = "hospital"
 			s.buttons = [["NEXT MISSION", func(): next_mission()]]
@@ -242,7 +240,7 @@ class Screen extends Control:
 			"route": draw_route()
 			"hospital":
 				Art.text(self, "FIELD HOSPITAL", Vector2(480, 110), 32, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 3)
-				Art.text(self, "Everyone is patched up. The fallen are back on their feet at half HP.", Vector2(480, 150), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+				Art.text(self, "Everyone is patched up and gets one dog tag back. The dead stay dead.", Vector2(480, 150), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 				squad_line(370, "cheer")
 	func squad_line(y: float, anim: String) -> void:
 		var i := 0
@@ -253,6 +251,8 @@ class Screen extends Control:
 			Art.text(self, s.def.name, Vector2(x, y + 18), 8, Color.WHITE if s.alive else Color("8a7a7a"), HORIZONTAL_ALIGNMENT_CENTER)
 			if s.has("lvl"):
 				Art.text(self, "LV%d" % s.lvl, Vector2(x, y + 30), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			if s.has("tags") and s.alive:
+				Art.draw_tags(self, Vector2(x - 9, y + 36), s.tags)
 			i += 1
 	func draw_title() -> void:
 		var bob := sin(t / 20.0) * 3
@@ -314,6 +314,8 @@ class Screen extends Control:
 		elif mode == "lost":
 			Art.text(self, "THE JACKALS HOLD THE LINE. REGROUP AND GO AGAIN.", Vector2(480, 124), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 		var rows := [["SCORE", str(stats.get("score", 0))], ["KILLS", str(stats.get("kills", 0))], ["CRUSHES", str(stats.get("crushes", 0))], ["POWS FREED", str(stats.get("pows", 0))], ["PUSHES", str(stats.get("pushes", 0))], ["ROUNDS", str(stats.get("rounds", 0))], ["SCRIP EARNED", str(stats.get("scrip", 0))]]
+		if stats.get("fallen", []).size():
+			rows.append(["KILLED IN ACTION", ", ".join(stats.fallen)])
 		if mode == "final" or mode == "lost":
 			rows.append(["CAMPAIGN SCORE", str(Run.total_score)])
 		for i in rows.size():

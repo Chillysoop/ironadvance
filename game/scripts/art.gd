@@ -92,3 +92,11 @@ func text(ci: CanvasItem, s: String, pos: Vector2, size: int, col: Color, align 
 
 func text_width(s: String, size: int, body := false) -> float:
 	return (font_b if body else font).get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+
+func draw_tags(ci: CanvasItem, pos: Vector2, n: int, sc := 1.0) -> void:
+	## Dog tags left: bright for each tag still worn, dark for each one spent.
+	for i in Data.DOG_TAGS:
+		var p := pos + Vector2(i * 7 * sc, 0)
+		ci.draw_rect(Rect2(p, Vector2(6, 8) * sc), Color(0.05, 0.035, 0.03))
+		ci.draw_rect(Rect2(p + Vector2(1, 1) * sc, Vector2(4, 6) * sc), Color("d8dde4") if i < n else Color("3b3f45"))
+		ci.draw_rect(Rect2(p + Vector2(2, 2) * sc, Vector2(2, 1) * sc), Color(0.05, 0.035, 0.03) if i < n else Color("2a2e34"))

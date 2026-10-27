@@ -55,7 +55,7 @@ var lost := false
 var ui_dirty := true
 var end_confirm_t := 0   # frames left to confirm END TURN while soldiers can still act
 var inspect := false     # ALT held: show every soldier's actions and enemy intents
-var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0, "kia": 0, "max_alert": 0, "pows_total": 0, "loot": 0, "tags": 0, "best_combo": 0}
+var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0, "kia": 0, "max_alert": 0, "pows_total": 0, "loot": 0, "tags": 0, "best_combo": 0, "fallen": []}
 var act_once := {}        # tag-team combos that pay out once per action
 var act_crushed := 0      # Jackals crushed by debris during the current action (DOMINO)
 var act_crush_at := Vector2.ZERO
@@ -1220,9 +1220,17 @@ func kill(tg: Unit, src) -> void:
 				booms.append({"t": 10 + i * 14, "x": tg.x + (randf() - .5) * 90, "y": tg.y - 20 - randf() * 40, "r": 34.0, "dmg": 0, "owner": null})
 	elif tg.team == "squad":
 		stats.kia += 1
-		float_text(tg, "KIA", Color("ff4d3d"), true)
+		if tg.s.tags > 0:
+			# a dog tag buys their life: out for this mission, back for the next
+			tg.s.tags -= 1
+			tg.downed = true
+			float_text(tg, "DOWN! %d TAG%s LEFT" % [tg.s.tags, "" if tg.s.tags == 1 else "S"], Color("ffb23e"), true)
+			log_msg("%s is down and out of this mission. %d dog tag%s left." % [tg.def.name, tg.s.tags, "" if tg.s.tags == 1 else "s"])
+		else:
+			stats.fallen.append(tg.def.name)
+			float_text(tg, "KIA", Color("ff4d3d"), true)
+			log_msg("%s is killed in action. No dog tags left." % tg.def.name)
 		Sfx.play("bad")
-		log_msg("%s is down." % tg.def.name)
 		for s in squad_alive():
 			gain_adr(s, 25)
 		if sel == tg:
@@ -3192,9 +3200,12 @@ func sync_back() -> void:
 	Run.temp_luck = 0
 	for u in squad():
 		u.s.hp = maxi(0, u.hp)
-		if u.dead:
+		if u.dead and u.downed:
+			u.s.hp = int(ceil(Run.eff_max_hp(u.s) / 2.0))
+		elif u.dead:
 			u.s.alive = false
 			u.s.hp = 0
+			Run.memorialize(u.s)
 	Run.total_score += score
 
 # ---------------------------------------------------------------- update loop
