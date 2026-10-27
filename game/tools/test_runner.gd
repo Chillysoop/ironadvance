@@ -789,6 +789,30 @@ func hazards() -> void:
 	await b.walk_along(walker, ws.pts)
 	await frames_wait(30)
 	check(not m2.primed, "a Jackal walking over its own mine leaves it alone")
+	# the MOVE button and the after-wave drag never walk a soldier onto a mine
+	var walker_s: Unit = b.squad_alive()[0]
+	for o in b.squad_alive():
+		if o != walker_s:
+			o.x = maxf(0, m2.x - 400)  # out of the way so only one soldier walks
+	walker_s.x = m2.x - 30; walker_s.y = b.T.stand_y(walker_s.x, m2.y - 40); walker_s.air = false
+	walker_s.move_left = 200; walker_s.energy = 0
+	b.cam_x = maxf(0, m2.x - 300); b.cam_tx = b.cam_x
+	b.busy = false
+	b.auto_advance()
+	await until(func(): return not b.busy, 600)
+	await frames_wait(30)
+	check(not m2.primed and walker_s.x < m2.x, "MOVE stops short of an armed mine (soldier %d, mine %d)" % [walker_s.x, m2.x])
+	var al := b.squad_alive()
+	var dragged: Unit = al[0]
+	var lane := b.cam_x + 16
+	var lane_mine := b.mk_unit()
+	lane_mine.team = "neutral"; lane_mine.kind = "mine"; lane_mine.w = 12; lane_mine.h = 6
+	lane_mine.x = lane; lane_mine.y = b.T.stand_y(lane, b.T.ground_at(lane) - 40)
+	b.units.append(lane_mine)
+	dragged.x = lane - 200; dragged.y = lane_mine.y; dragged.air = false
+	b.drag_stragglers()
+	await frames_wait(30)
+	check(not lane_mine.primed and absf(dragged.x - lane_mine.x) > dragged.w / 2.0 + 5, "dragging a straggler forward skips past a mine (soldier %d, mine %d)" % [dragged.x, lane_mine.x])
 	# crane: shoot the cable, the container drops on the Boar
 	Run.new_run()
 	b = main.start_battle(2)
