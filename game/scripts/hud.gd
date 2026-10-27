@@ -221,6 +221,8 @@ func hint_text() -> String:
 			return "JUMP PACK: aim the arc. You land soft. Landing in the push zone counts as a push."
 		if c.get("beacon", false):
 			return "BEACON: lob it onto the Jackals. Three bombs land there when their phase starts."
+		if b.armed_fuse() != null:
+			return "GRENADE: aim the throw. The mouse wheel (or [ and ]) sets the fuse from 1 to 4 seconds; the trail shows every bounce and where it bursts."
 		return Data.TYPES[c.type].hint
 	if u.move_left > 1:
 		return "Click ground to move %s. Hold ALT for intel. Click a ladder top to climb. Ending in the push zone scrolls early and cuts the alert." % u.def.name
@@ -628,13 +630,35 @@ class Overlay extends Control:
 			var a := 0.55 + 0.45 * float(i + 1) / b.log_lines.size()
 			Art.text(self, b.log_lines[i], Vector2(10, ly + i * 14), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		draw_action_panel(b)
-		# C6 kill combo meter, top right under the bar
+		# U1 kill feed, top right: KILLER [HOW] VICTIM, sliding in, with a flashing stamp for the good ones
+		var fy := 50.0
+		for f in b.feed:
+			var al: float = clampf((480 - f.t) / 40.0, 0, 1)
+			var slide: float = maxf(0, 1 - f.t / 8.0) * 160
+			var segs := [[f.killer, f.kc], [" [" + f.how + "] ", Color("e8dcc2")], [f.victim, f.vc]]
+			var w := 0.0
+			for sg in segs:
+				w += Art.text_width(sg[0], 8)
+			var sw: float = Art.text_width(f.stamp, 8) + 8 if f.stamp != "" else 0.0
+			var x0 := 950 - w - sw + slide
+			draw_rect(Rect2(x0 - 6, fy - 10, w + sw + 12, 14), Color(0.05, 0.035, 0.03, 0.78 * al))
+			draw_rect(Rect2(x0 - 6, fy - 10, 3, 14), Color(f.kc, al))
+			var x := x0
+			for sg in segs:
+				Art.text(self, sg[0], Vector2(x, fy), 8, sg[1], HORIZONTAL_ALIGNMENT_LEFT, 2, false, al)
+				x += Art.text_width(sg[0], 8)
+			if f.stamp != "":
+				var hot: bool = f.t < 60 and f.t % 8 < 4
+				Art.text(self, f.stamp, Vector2(x + 8, fy), 8, Color("ff4d3d") if hot else Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2, false, al)
+			fy += 16
+		# C6 kill combo meter, top right under the feed
 		if b.combo >= 2 and b.state == "player":
 			var cx := 940.0
+			var cy := maxf(100.0, fy + 14)
 			var pulse := 1.0 + 0.1 * sin(b.t / 4.0)
-			Art.text(self, "COMBO x%d" % b.combo, Vector2(cx, 100 + pulse), 16, Color("ff7a3d") if b.combo < 5 else Color("b48cff"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
+			Art.text(self, "COMBO x%d" % b.combo, Vector2(cx, cy + pulse), 16, Color("ff7a3d") if b.combo < 5 else Color("b48cff"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
 			var nxt := "x3: SQUAD +10 ADRENALINE" if b.combo < 3 else ("x5: NEXT CRATE +1 RARITY" if b.combo < 5 else "CRATE BONUS READY")
-			Art.text(self, nxt, Vector2(cx, 116), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT)
+			Art.text(self, nxt, Vector2(cx, cy + 16), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT)
 		# hint strip above the hand
 		var h: String = hud.hint_text()
 		if h != "":
