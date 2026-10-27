@@ -29,6 +29,7 @@ var spawns: Array = []
 var chunks: Array = []
 var bridges: Array = []  # standing bridge structs: posts are checked after every carve
 var arena_x := 0
+var camps: Array = []    # safe camps inside the level: {x0, x1, used}
 
 func _init(battle) -> void:
 	b = battle
@@ -93,12 +94,18 @@ func build(mission: Dictionary) -> void:
 	var x := 0
 	var shapes: Array = []
 	var open_pits: Array = []
-	pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear()
+	pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear(); camps.clear()
 	arena_x = 1 << 20  # outposts have no arena
+	var rules: Dictionary = mission.get("rules", {})
+	var stretches: Array = []   # fighting stretches, where a biome's extra fuel and mines go
 	for sname in mission.segments:
 		var s: Dictionary = Data.SEGMENTS[sname]
+		if sname != "start" and not s.get("camp", false) and not s.get("flat", false):
+			stretches.append([x + 60, x + s.w - 60])
 		if s.get("flat", false):
 			arena_x = x
+		if s.get("camp", false):
+			camps.append({"x0": x, "x1": x + s.w, "fire": x + s.w / 2, "used": false})
 		for p in s.pits:
 			pits.append([p[0] + x, p[1] + x])
 		for sb in s.sandbags:
@@ -122,6 +129,17 @@ func build(mission: Dictionary) -> void:
 		for sp in s.spawns:
 			spawns.append([sp[0], sp[1] + x, sp[2] if sp.size() > 2 else {}])
 		x += s.w
+	for k in ["fuel", "mines"]:
+		for i in int(rules.get(k, 0)):
+			if stretches.is_empty():
+				break
+			var st: Array = stretches[randi() % stretches.size()]
+			var sx := randf_range(st[0], st[1])
+			for tries in 8:
+				if not pits.any(func(p): return sx > p[0] - 24 and sx < p[1] + 24):
+					break
+				sx = randf_range(st[0], st[1])
+			spawns.append(["fuel" if k == "fuel" else "mine", sx, {}])
 	world_w = int(ceil(x / 160.0)) * 160
 	cols = world_w / CELL
 	var n := cols * ROWS
@@ -131,14 +149,21 @@ func build(mission: Dictionary) -> void:
 	astamp = PackedInt32Array(); astamp.resize(n)
 	qbuf = PackedInt32Array(); qbuf.resize(n)
 	heights = PackedFloat32Array(); heights.resize(cols)
+	var amp: float = rules.get("amp", 1.0)
 	for cx in cols:
 		var wx := float(cx * CELL)
-		var h := 392.0 - 26.0 * sin(wx / 290.0 + 0.5) - 18.0 * sin(wx / 131.0 + 1.3) - 9.0 * sin(wx / 47.0 + 0.7)
+		var h := 392.0 - amp * (26.0 * sin(wx / 290.0 + 0.5) + 18.0 * sin(wx / 131.0 + 1.3) + 9.0 * sin(wx / 47.0 + 0.7))
 		if wx < 460:
 			h = lerpf(404, h, wx / 460.0)
 		if wx > arena_x + 280:
 			h = lerpf(h, 404, clampf((wx - arena_x - 280) / 320.0, 0, 1))
 		heights[cx] = h
+	for c in camps:
+		# a level clearing to pitch the tents on
+		for cx in range(maxi(0, int((c.x0 - 120) / CELL)), mini(cols, int((c.x1 + 120) / CELL))):
+			var wx := float(cx * CELL)
+			var k := clampf(minf(wx - (c.x0 - 120), (c.x1 + 120) - wx) / 120.0, 0, 1)
+			heights[cx] = lerpf(heights[cx], 400.0, k)
 	for g in shapes:
 		shape_ground(g)
 	for p in pits:

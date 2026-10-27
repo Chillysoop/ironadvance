@@ -1,6 +1,7 @@
 extends Control
-## The quartermaster between missions: buy cards and squad gear, upgrade or
-## remove cards, heal, recruit replacements and restore dog tags. Prices are paid in scrip earned in the field.
+## Two HQ buildings share this screen. The Quartermaster sells cards and squad gear and
+## upgrades, removes and heals; the Barracks recruits replacements and restores dog tags.
+## Prices are paid in scrip earned in the field.
 
 signal done
 signal chosen(i: int)
@@ -15,10 +16,17 @@ var t := 0
 var msg := ""
 var msg_t := 0
 var chooser: Control = null
+var mode := "shop"          # "shop" (Quartermaster) or "barracks"
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	restock()
+	# the shelf stays put for the whole HQ visit, so leaving and coming back is not a free restock
+	if Run.qm_cache.get("mission", -1) == Run.mission:
+		stock_cards = Run.qm_cache.cards
+		stock_gear = Run.qm_cache.gear
+		shelf = Run.qm_cache.shelf
+	else:
+		restock()
 	build()
 
 func restock() -> void:
@@ -41,6 +49,7 @@ func restock() -> void:
 	if randf() < 0.25:
 		var lg := Run.roll_item(Data.TIER_MAX)
 		shelf.append({"item": lg, "price": 300, "black": true})
+	Run.qm_cache = {"mission": Run.mission, "cards": stock_cards, "gear": stock_gear, "shelf": shelf}
 
 func price(n: int) -> int:
 	return int(ceil(n * (1.0 - Run.discount)))
@@ -58,6 +67,9 @@ func say(s: String) -> void:
 	msg_t = 200
 
 func build() -> void:
+	if mode == "barracks":
+		build_barracks()
+		return
 	for c in get_children():
 		c.queue_free()
 	var cw := 104.0
@@ -95,8 +107,6 @@ func build() -> void:
 		["REMOVE", "Thin a deck: burn one card.", 50, remove_card, Color("53d4e2")],
 		["WORKBENCH", "Fuse three copies of a card into one a tier higher, or evolve an Epic card with its kit.", 0, fuse_cards, Color("b48cff")],
 		["FABRICATOR", "Copy a Common or Uncommon item.", Data.FAB_PRICE, fabricate, Color("b48cff")],
-		["RECRUIT", "Hire a replacement for a soldier killed in action.", Data.RECRUIT_PRICE, recruit, Color("62d26f")],
-		["DOG TAG", "Give a soldier back one spent dog tag.", Data.TAG_PRICE, restore_tag, Color("62d26f")],
 		["RESTOCK", "New cards and gear on the shelf.", 20, reroll, Color("9aa2ae")],
 	]
 	for i in services.size():
@@ -105,22 +115,15 @@ func build() -> void:
 		bt.text = sv[0]
 		bt.sub = "FREE" if sv[2] == 0 else "%d$" % price(sv[2])
 		bt.color = sv[4]
-		bt.size = Vector2(96, 34)
+		bt.size = Vector2(108, 34)
 		bt.small = true
-		bt.position = Vector2(24 + i * 102, 264)
-		bt.disabled = Run.scrip < price(sv[2]) or (sv[3] == fuse_cards and not fusable) or (sv[3] == fabricate and Run.fab_options().is_empty()) \
-			or (sv[3] == recruit and Run.fallen_slots().is_empty()) or (sv[3] == restore_tag and not Run.soldiers.any(func(s): return s.alive and s.tags < Data.DOG_TAGS))
+		bt.position = Vector2(24 + i * 114, 264)
+		bt.disabled = Run.scrip < price(sv[2]) or (sv[3] == fuse_cards and not fusable) or (sv[3] == fabricate and Run.fab_options().is_empty())
 		bt.tooltip_text = sv[1]
 		bt.pressed.connect(sv[3])
 		add_child(bt)
 	var go := HudScript.PixButton.new()
-	go.text = "DEPLOY >>"
-	go.sub = "MISSION %d" % (Run.mission + 2)
-	go.color = Color("ff4d3d")
-	go.size = Vector2(190, 44)
-	go.position = Vector2(746, 482)
-	go.pressed.connect(func(): Sfx.play("start"); Run.discount = 0.0; done.emit())
-	add_child(go)
+	add_child(back_button())
 	var arm := HudScript.PixButton.new()
 	arm.text = "ARMORY"
 	arm.sub = "GEAR %d  STASH %d" % [Run.soldiers.reduce(func(a, s): return a + s.equip.values().filter(func(x): return x != null).size(), 0), Run.stash.size()]
@@ -129,6 +132,34 @@ func build() -> void:
 	arm.position = Vector2(546, 482)
 	arm.pressed.connect(open_armory)
 	add_child(arm)
+
+func back_button() -> Control:
+	var go := HudScript.PixButton.new()
+	go.text = "<< BACK TO HQ"
+	go.color = Color("ff4d3d")
+	go.size = Vector2(190, 44)
+	go.position = Vector2(746, 482)
+	go.pressed.connect(func(): Sfx.play("click"); done.emit())
+	return go
+
+func build_barracks() -> void:
+	var services := [
+		["RECRUIT", "Hire a replacement for a soldier killed in action.", Data.RECRUIT_PRICE, recruit, Run.fallen_slots().is_empty()],
+		["DOG TAG", "Give a soldier back one spent dog tag.", Data.TAG_PRICE, restore_tag, not Run.soldiers.any(func(s): return s.alive and s.tags < Data.DOG_TAGS)],
+	]
+	for i in services.size():
+		var sv: Array = services[i]
+		var bt := HudScript.PixButton.new()
+		bt.text = sv[0]
+		bt.sub = "%d$" % price(sv[2])
+		bt.color = Color("62d26f")
+		bt.size = Vector2(200, 40)
+		bt.position = Vector2(24 + i * 212, 236)
+		bt.disabled = Run.scrip < price(sv[2]) or sv[4]
+		bt.tooltip_text = sv[1]
+		bt.pressed.connect(sv[3])
+		add_child(bt)
+	add_child(back_button())
 
 func _process(_d: float) -> void:
 	t += 1
@@ -145,13 +176,19 @@ func _draw() -> void:
 	for x in range(0, 960, 32):
 		draw_texture_rect(hz, Rect2(x, 0, 32, 8), false)
 		draw_texture_rect(hz, Rect2(x, 252, 32, 6), false)
-	Art.text(self, "QUARTERMASTER", Vector2(24, 40), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
-	Art.text(self, "Spend scrip before the next drop. Cards go to the soldier you pick.", Vector2(24, 60), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+	Art.text(self, "QUARTERMASTER" if mode == "shop" else "BARRACKS", Vector2(24, 40), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+	var sub := "Spend scrip before the next drop. Cards go to the soldier you pick." if mode == "shop" else "Hire replacements for the fallen. Buy back spent dog tags. Two tags each; lose the last and they are gone for good."
+	Art.text(self, sub, Vector2(24, 60), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	var sc := "%d SCRIP" % Run.scrip
 	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 16) - 22, 26, 16, 16), false)
 	Art.text(self, sc, Vector2(936, 42), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
-	Art.text(self, "FIELD CARDS", Vector2(24, 84), 8, Color("53d4e2"))
-	Art.text(self, "SQUAD GEAR", Vector2(600, 84), 8, Color("62d26f"))
+	if mode == "shop":
+		Art.text(self, "FIELD CARDS", Vector2(24, 84), 8, Color("53d4e2"))
+		Art.text(self, "SQUAD GEAR", Vector2(600, 84), 8, Color("62d26f"))
+	else:
+		var fallen: int = Run.fallen_slots().size()
+		Art.text(self, "%d KILLED IN ACTION THIS RUN" % fallen if fallen else "THE SQUAD IS AT FULL STRENGTH", Vector2(24, 100), 8, Color("ff4d3d") if fallen else Color("62d26f"))
+		Art.text(self, "%d NAMES ON THE MEMORIAL" % Run.meta.memorial.size(), Vector2(24, 120), 8, Color("9aa2ae"))
 	# squad roster
 	Art.text(self, "THE SQUAD", Vector2(24, 316), 8, Color("ffb23e"))
 	for i in Run.soldiers.size():

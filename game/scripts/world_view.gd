@@ -14,6 +14,11 @@ func _draw() -> void:
 	draw_ladders(cx)
 	draw_bridges()
 	draw_strikes(cx)
+	for c in b.T.camps:
+		if on_screen(c.fire, 320):
+			draw_camp(c)
+	if b.gate != null:
+		Art.draw_gate(self, Vector2(b.gate.x, b.gate.y), b.gate.r, b.t, b.gate.chev, b.gate.open, b.gate.alpha, b.gate.spin, b.gate.burst)
 	for r in b.ropes:
 		draw_line(Vector2(r.x, r.y), Vector2(r.u.x, r.u.y - 20), Color("d8d0b8"), 1.0)
 	for u in b.units:
@@ -36,6 +41,39 @@ func _draw() -> void:
 	draw_texts()
 	draw_barks()
 	draw_hover()
+
+func draw_camp(c: Dictionary) -> void:
+	## Two tents, a supply crate, a flag and a campfire that burns until the squad moves on.
+	var T = b.T
+	for tx in [c.fire - 150.0, c.fire + 110.0]:
+		var g: float = T.ground_at(tx)
+		draw_colored_polygon(PackedVector2Array([Vector2(tx - 44, g), Vector2(tx, g - 46), Vector2(tx + 44, g)]), C_DARK)
+		draw_colored_polygon(PackedVector2Array([Vector2(tx - 40, g), Vector2(tx, g - 42), Vector2(tx + 40, g)]), Color("5a6b3a"))
+		draw_colored_polygon(PackedVector2Array([Vector2(tx - 9, g), Vector2(tx, g - 22), Vector2(tx + 9, g)]), Color("2a2418"))
+	var cg: float = T.ground_at(c.fire + 60)
+	draw_rect(Rect2(c.fire + 50, cg - 20, 24, 20), C_DARK)
+	draw_rect(Rect2(c.fire + 51, cg - 19, 22, 18), Color("8a6a3a"))
+	draw_rect(Rect2(c.fire + 51, cg - 13, 22, 2), Color("6a4e2a"))
+	var fx: float = c.fire - 60
+	var fg: float = T.ground_at(fx)
+	draw_rect(Rect2(fx - 1, fg - 70, 2, 70), Color("3a3a3a"))
+	for i in 5:
+		var wave := sin(b.t / 12.0 + i * 0.7) * 2
+		draw_rect(Rect2(fx + 1 + i * 4, fg - 68 + wave, 4, 12), Color("62d26f") if i % 2 == 0 else Color("e8dcc2"))
+	# the fire
+	var g: float = T.ground_at(c.fire)
+	draw_rect(Rect2(c.fire - 12, g - 4, 24, 4), Color("4a3020"))
+	draw_rect(Rect2(c.fire - 8, g - 7, 16, 3), Color("5a3a24"))
+	if not c.get("out", false):
+		for k in 4:
+			var h := 6 + 5 * absf(sin(b.t / (5.0 + k) + k * 1.3))
+			var col: Color = [Color("ff4d3d"), Color("ff7a3d"), Color("ffb23e"), Color("ffe36a")][k]
+			draw_rect(Rect2(c.fire - 6 + k * 3, g - 6 - h, 4, h), col)
+		if b.t % 9 == 0:
+			b.part({"x": c.fire + (randf() - 0.5) * 8, "y": g - 14, "vx": (randf() - 0.5) * 0.3, "vy": -0.6, "life": 40, "max": 40, "c": Color("ffb23e"), "s": 2.0, "g": -0.005})
+		draw_circle(Vector2(c.fire, g - 8), 34, Color(1, 0.6, 0.2, 0.08))
+	if not c.used:
+		Art.text(self, "CAMP", Vector2(c.fire, g - 90), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 
 func on_screen(x: float, pad := 140.0) -> bool:
 	return x > b.cam_x - pad and x < b.cam_x + Battle.W + pad

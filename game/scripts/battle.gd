@@ -47,6 +47,7 @@ var pow_queue: Array = []
 var lvl_queue: Array = []
 var boss_active := false
 var boss_dead := false
+var gate = null          # the gate home to HQ, opened after the boss falls
 var radio_t = null
 var aim_hold := false
 var sway_t := 0
@@ -79,6 +80,8 @@ var acc := 0.0
 var charm_used := 0
 var autopick := -1        # tests: pick this option index in every modal instead of waiting
 var theme := "dusk"
+var th := {}              # the theme colors, with the biome's look laid over them
+var rules := {}           # the biome's rules: sway, sight, wind, amp, wet, fuel, mines, elite
 var world_w := 6400
 
 @onready var cam: Camera2D = $Camera
@@ -90,16 +93,20 @@ var world_w := 6400
 func setup(idx: int, custom := {}) -> void:
 	mission_idx = idx
 	mission = Data.MISSIONS[idx] if custom.is_empty() else custom
+	rules = mission.get("rules", {})
+	Run.sway_mul = rules.get("sway", 1.0)
 	Run.temp_luck = 2 if Run.intel == "veterans" else 0
 	theme = mission.theme
+	th = Data.THEMES[theme].duplicate()
+	th.merge(mission.get("look", {}), true)
 	T = Terrain.new(self)
 	T.build(mission)
 	world_w = T.world_w
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/terrain.gdshader")
 	mat.set_shader_parameter("cells", Vector2(T.cols, Terrain.ROWS))
-	mat.set_shader_parameter("tint", Vector3(Data.THEMES[theme].tint.r, Data.THEMES[theme].tint.g, Data.THEMES[theme].tint.b))
-	var gc: Color = Data.THEMES[theme].grass
+	mat.set_shader_parameter("tint", Vector3(th.tint.r, th.tint.g, th.tint.b))
+	var gc: Color = th.grass
 	mat.set_shader_parameter("grass_col", Vector3(gc.r, gc.g, gc.b))
 	terrain_sprite.material = mat
 	terrain_sprite.texture = T.tex
@@ -130,11 +137,12 @@ func setup(idx: int, custom := {}) -> void:
 		if type == "barrel":
 			var u := mk_unit(); u.team = "neutral"; u.kind = "barrel"; u.x = x; u.y = T.stand_y(x, 0); u.w = 14; u.h = 18
 			units.append(u); continue
-		if type == "fuel":
-			var u := mk_unit(); u.team = "neutral"; u.kind = "fuel"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.w = 22; u.h = 30
-			units.append(u); continue
-		if type == "mine":
-			var u := mk_unit(); u.team = "neutral"; u.kind = "mine"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.w = 12; u.h = 6
+		if type == "fuel" or type == "mine":
+			var fy = T.stand_y(x, T.ground_at(x) - 40)
+			if fy == null:  # a biome's extra drum or mine that landed over water
+				continue
+			var u := mk_unit(); u.team = "neutral"; u.kind = type; u.x = x; u.y = fy
+			u.w = 22 if type == "fuel" else 12; u.h = 30 if type == "fuel" else 6
 			units.append(u); continue
 		if type == "pow":
 			var u := mk_unit(); u.team = "neutral"; u.kind = "pow"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - opt.up) if opt.has("up") else T.stand_y(x, 0); u.face = -1
@@ -150,7 +158,7 @@ func setup(idx: int, custom := {}) -> void:
 		if type == "boss":
 			var bm := 1.4 if Run.threat_on(5) else 1.0
 			u.hp = int(mission.boss_hp * bm); u.max_hp = u.hp; u.plate = int(mission.plate * bm)
-		elif randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0):
+		elif randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
 			make_elite(u, Data.ELITES.keys()[randi() % Data.ELITES.size()])
 		units.append(u)
 	spawn_map_loot()
@@ -290,11 +298,12 @@ func spawn_map_loot() -> void:
 	for i in n:
 		var x := lo + (i + randf_range(0.15, 0.85)) * (hi - lo) / n
 		var k := "strongbox" if randf() < 0.22 else "crate"
-		var u := mk_unit(); u.team = "neutral"; u.kind = k; u.x = x; u.y = T.stand_y(x, 0)
+		var ly = T.stand_y(x, 0)
+		if ly == null:
+			continue
+		var u := mk_unit(); u.team = "neutral"; u.kind = k; u.x = x; u.y = ly
 		u.w = 16 if k == "crate" else 20; u.h = 14 if k == "crate" else 14
 		u.hp = 1; u.max_hp = 1
-		if u.y == null:
-			continue
 		units.append(u)
 	for i in 1 + (1 if randf() < 0.4 else 0):
 		var x := randf_range(lo + 200, hi)
@@ -421,6 +430,10 @@ func settled() -> bool:
 
 func gauss() -> float:
 	return (randf() + randf() + randf() - 1.5) * 1.15
+
+func wet() -> bool:
+	## Monsoon intel or a soaked biome: fire does 1 damage and won't spread.
+	return Run.intel == "monsoon" or rules.get("wet", false)
 
 func ri(a: int, b: int) -> int:
 	return randi_range(a, b)
@@ -623,7 +636,7 @@ func tick_statuses(team: String) -> void:
 			for i in 4:
 				part({"x": u.x + randf_range(-6, 6), "y": u.y - randf() * u.h, "vx": 0.0, "vy": -1.5, "life": 24, "max": 24, "c": Color("ff9a3d"), "s": 3.0, "g": -0.02, "fire": true})
 			var bsrc = u.st_by.get("burn", null)
-			var bd := 1 if Run.intel == "monsoon" else 3 + (2 if bsrc is Unit and bsrc.perk("accelerant") else 0)
+			var bd := 1 if wet() else 3 + (2 if bsrc is Unit and bsrc.perk("accelerant") else 0)
 			burn_tick = true
 			damage(u, bd, bsrc, {"status": true})
 			burn_tick = false
@@ -631,7 +644,7 @@ func tick_statuses(team: String) -> void:
 				# fire meets gas: the whole cloud goes up
 				gases.erase(g)
 				explode(g.x, g.y, g.r * 0.8, 12, g.owner)
-			elif T.mat(u.x, u.y + 2) == 3 and Run.intel != "monsoon":
+			elif T.mat(u.x, u.y + 2) == 3 and not wet():
 				# the wood underfoot chars and the fire jumps to anyone else standing on wood nearby
 				T.carve(u.x, u.y + 3, 6, null)
 				for o in units:
@@ -1221,11 +1234,11 @@ func kill(tg: Unit, src) -> void:
 	elif tg.team == "squad":
 		stats.kia += 1
 		if tg.s.tags > 0:
-			# a dog tag buys their life: out for this mission, back for the next
+			# a dog tag buys their life: out until the next camp, or back next mission
 			tg.s.tags -= 1
 			tg.downed = true
 			float_text(tg, "DOWN! %d TAG%s LEFT" % [tg.s.tags, "" if tg.s.tags == 1 else "S"], Color("ffb23e"), true)
-			log_msg("%s is down and out of this mission. %d dog tag%s left." % [tg.def.name, tg.s.tags, "" if tg.s.tags == 1 else "s"])
+			log_msg("%s is down until the next camp. %d dog tag%s left." % [tg.def.name, tg.s.tags, "" if tg.s.tags == 1 else "s"])
 		else:
 			stats.fallen.append(tg.def.name)
 			float_text(tg, "KIA", Color("ff4d3d"), true)
@@ -2154,10 +2167,83 @@ func _act_walk(u: Unit, pts: Array, cost: float) -> void:
 
 # ---------------------------------------------------------------- screen scrolling
 func check_push(u: Unit) -> void:
+	await check_camp(u)
 	if u.dead or cam_x >= world_w - W:
 		return
 	if u.x - cam_x > W * 0.72:
 		await scroll_to(clampf(u.x - W * 0.5, cam_x, world_w - W), "push", u)
+
+func check_camp(u: Unit) -> void:
+	## Reaching a camp with the area clear makes camp: the downed get back up, everyone patches up,
+	## and the squad picks one camp perk before moving on.
+	if u.dead or u.team != "squad" or state != "player":
+		return
+	for c in T.camps:
+		if c.used or u.x < c.x0 + 40 or u.x > c.x1:
+			continue
+		var hostile := units.filter(func(e): return e.team == "enemy" and not e.dead and e.active and e.x < c.x1 + 200)
+		if hostile.size():
+			if not c.get("warned", false):
+				c["warned"] = true
+				float_text(u, "CLEAR THE AREA TO MAKE CAMP", Color("ffb23e"))
+			return
+		c.used = true
+		await make_camp(c)
+		return
+
+func make_camp(c: Dictionary) -> void:
+	busy = true
+	banner("CAMP", Color("62d26f"), "SAFE FOR NOW")
+	Sfx.play("levelup")
+	await wait(30)
+	var i := 0
+	for s in squad():
+		if s.dead and s.downed:
+			# back on their feet at half HP, by the fire
+			s.dead = false
+			s.downed = false
+			s.gone = false
+			s.alpha = 1.0
+			s.hp = int(ceil(s.max_hp / 2.0))
+			s.x = c.fire - 40 + i * 26
+			var sy = T.stand_y(s.x, 0)
+			s.y = float(sy) if sy != null else s.y
+			s.vx = 0; s.vy = 0; s.air = false; s.walk = null
+			s.st = {}
+			s.pose = "cheer"; s.pose_t = 60
+			float_text(s, "BACK IN THE FIGHT", Color("62d26f"), true)
+			log_msg("%s rejoins the squad at camp." % s.def.name)
+			i += 1
+		elif not s.dead:
+			var add := int(ceil(s.max_hp * Data.CAMP_HEAL))
+			s.hp = mini(s.max_hp, s.hp + add)
+			float_text(s, "+%d" % add, Color("62d26f"))
+	await wait(30)
+	var opts: Array = Data.CAMP_PICKS.map(func(p): return {"kind": "service", "name": p.name, "text": p.text, "id": p.id})
+	var ch := await ask("camp", "MAKE CAMP", "The downed are back on their feet and everyone patched up a little. Pick one more.", opts)
+	match opts[maxi(ch, 0)].id:
+		"patch":
+			for s in squad_alive():
+				s.hp = s.max_hp
+			Sfx.play("power")
+		"upgrade":
+			for s in squad_alive():
+				var cands: Array = s.s.deck.filter(func(cd): return Run.upgradable(cd))
+				if cands.size():
+					var cd: Dictionary = pick(cands)
+					Run.raise_tier(cd)
+					float_text(s, Data.card(cd).name.to_upper(), Color("b48cff"))
+			Sfx.play("levelup")
+		"cache":
+			give_scrip(60, c.fire, T.ground_at(c.fire) - 40)
+		"quiet":
+			alert = 0
+			for s in squad_alive():
+				s.energy += 1
+			Sfx.play("power")
+	stats["camps"] = int(stats.get("camps", 0)) + 1
+	busy = false
+	ui_dirty = true
 
 func scroll_to(tx: float, reason: String, who = null) -> void:
 	tx = clampf(tx, 0, world_w - W)
@@ -2525,7 +2611,7 @@ func hand_size(s: Unit) -> int:
 func start_player_turn() -> void:
 	round_n += 1
 	stats.rounds = round_n
-	wind = ri(-6, 6)
+	wind = int(round(ri(-6, 6) * rules.get("wind", 1.0)))
 	combo = 0
 	for s in squad_alive():
 		s.energy = 3
@@ -2806,6 +2892,7 @@ func best_shot(e: Unit, targets: Array, rng: float):
 	var best = null
 	if Run.intel == "fog":
 		rng *= 0.7
+	rng *= rules.get("sight", 1.0)
 	for tg in targets:
 		if tg.team == "squad" and not targetable(e, tg):
 			continue
@@ -3199,8 +3286,69 @@ func victory() -> void:
 	stats["surv_bonus"] = sb
 	sweep_loot(INF)
 	sync_back()
-	await wait(150)
+	if boss_dead and not mission.get("outpost", false):
+		await gate_home()
+	else:
+		await wait(150)
 	mission_over.emit(true)
+
+func gate_home() -> void:
+	## The boss is down: the captured gate spins up in the arena and the squad steps through to HQ.
+	await wait(60)
+	var al := squad_alive()
+	var front: float = al.reduce(func(m, s): return maxf(m, s.x), cam_x + W * 0.3)
+	var gx := clampf(front + 130, cam_x + 120, minf(cam_x + W - 110, world_w - 90))
+	var gy = T.stand_y(gx, 0)
+	if gy == null:
+		gy = H * 0.7
+	gate = {"x": gx, "y": float(gy) - 58, "r": 44.0, "alpha": 0.0, "chev": 0, "open": 0.0, "spin": 0.0, "burst": 0.0}
+	banner("GATE ONLINE", Color("53d4e2"), "STEP THROUGH TO HQ")
+	Sfx.play("power")
+	for i in 40:
+		gate.alpha = (i + 1) / 40.0
+		if i % 4 == 0:
+			sparks(gx + (randf() - 0.5) * 90, gate.y + (randf() - 0.5) * 90, 2)
+		await wait(1)
+	for k in 9:
+		for i in 10:
+			gate.spin += 0.05
+			await wait(1)
+		gate.chev = k + 1
+		Sfx.play("tick")
+	Sfx.play("bigboom")
+	shake += 3
+	for i in 24:
+		gate.burst = 1.0 - absf(i - 8) / 16.0
+		gate.open = minf(1.0, i / 10.0)
+		await wait(1)
+	gate.burst = 0.0
+	# everyone walks in; each fades as they cross the horizon
+	for s in al:
+		var pts: Array = []
+		var x: float = s.x
+		var dir := signf(gx - x)
+		while absf(gx - x) > 3:
+			x += dir * 3
+			var sy = T.stand_y(x, 0)
+			pts.append([x, float(sy) if sy != null else s.y, false])
+		s.pose = ""; s.pose_t = 0
+		s.walk = pts
+		s.walk_i = 0
+	var n := 0
+	while n < 360 and al.any(func(s): return not s.gone):
+		for s in al:
+			if not s.gone and absf(s.x - gx) < 14:
+				s.alpha = maxf(0.0, s.alpha - 0.08)
+				if s.alpha <= 0.0:
+					s.gone = true
+					s.walk = null
+					Sfx.play("ping")
+		n += 1
+		await wait(1)
+	for i in 20:
+		gate.open = 1.0 - (i + 1) / 20.0
+		await wait(1)
+	await wait(20)
 
 func sync_back() -> void:
 	## Writes HP and deaths back to the persistent squad.

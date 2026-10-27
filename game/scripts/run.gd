@@ -28,7 +28,12 @@ var extra_picks := 0       # Double Down: the next level-up takes two options
 var intel := ""            # this mission's briefing condition (W2)
 var side := ""             # "outpost" while an Elite Outpost side fight is running (W1)
 var threat := 0            # threat level chosen for this run (W5)
+var qm_cache := {}         # the Quartermaster's shelf for this HQ visit
 var temp_luck := 0         # Luck that only lasts for the current mission
+var level := {}            # the generated mission for the level being played (biome + tier)
+var dial: Array = []       # the two biomes on the gate dial right now
+var burned: Array = []     # biomes skipped or already played this run; they never come back
+var sway_mul := 1.0        # the current biome's sway rule, read by Data.card during a battle
 var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": []}   # kept across runs (W4, W5); memorial = the fallen
 const META_PATH := "user://meta.json"
 
@@ -77,10 +82,74 @@ func roll_intel() -> void:
 			pool.append(k)
 	intel = pool[randi() % pool.size()] if mission > 0 else "clear"
 
-func route_offers() -> Array:
-	var others: Array = ["outpost", "powcamp", "hospital"]
-	others.shuffle()
-	return ["depot"] + others.slice(0, 2)
+# ---------------------------------------------------------------- biomes and the gate dial
+func current_mission() -> Dictionary:
+	## The mission being played: the generated level, or the fixed list when none was generated.
+	return level if not level.is_empty() else Data.MISSIONS[mini(mission, Data.MISSIONS.size() - 1)]
+
+func roll_dial() -> Array:
+	## Two biomes from this level's pool, never one already played or burned.
+	var pool: Array = Data.LEVELS[mini(mission, Data.LEVELS.size() - 1)].pool.filter(func(b): return not burned.has(b))
+	pool.shuffle()
+	dial = pool.slice(0, 2)
+	return dial
+
+func pick_biome(id: String) -> void:
+	## Dial in a biome. Both dial options are burned: the one you skip and the one you play.
+	for b in dial:
+		if not burned.has(b):
+			burned.append(b)
+	level = make_level(id, mission)
+	dial = []
+
+func make_level(id: String, tier: int) -> Dictionary:
+	## One continuous level: a start, two stretches, a camp, two more stretches, a camp, the boss.
+	var bm: Dictionary = Data.BIOMES[id]
+	var lv: Dictionary = Data.LEVELS[mini(tier, Data.LEVELS.size() - 1)]
+	var pool: Array = bm.segments.duplicate()
+	pool.shuffle()
+	while pool.size() < 4:
+		pool.append(bm.segments[randi() % bm.segments.size()])
+	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules,
+		"segments": ["start", pool[0], pool[1], "camp", pool[2], pool[3], "camp", bm.get("arena", "arena")],
+		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
+
+func start_finale() -> void:
+	level = Data.FINALE.duplicate(true)
+
+func is_final_mission() -> bool:
+	return current_mission().get("finale", false) or (level.is_empty() and mission >= Data.MISSIONS.size() - 1)
+
+func card_style(key: String) -> String:
+	## How a card fights, for the biome fit readout: long, close, arc, or "" for support cards.
+	var c: Dictionary = Data.CARDS[key]
+	if c.has("radius") and c.has("dmg"):
+		return "arc"
+	if c.type == "MELEE" or c.has("pellets"):
+		return "close"
+	if c.type == "LINE" and c.has("dmg"):
+		return "close"
+	if c.type == "AIM":
+		return "long"
+	return ""
+
+func styles(s: Dictionary) -> Dictionary:
+	## Share of a soldier's deck in each fighting style.
+	var out := {"long": 0.0, "close": 0.0, "arc": 0.0}
+	if s.deck.is_empty():
+		return out
+	for inst in s.deck:
+		var st := card_style(inst if inst is String else inst.key)
+		if st != "":
+			out[st] += 1.0 / s.deck.size()
+	return out
+
+func fit(s: Dictionary, id: String) -> String:
+	## "great", "ok" or "rough": how well this soldier's deck suits a biome.
+	var bm: Dictionary = Data.BIOMES[id]
+	var sh := styles(s)
+	var sc: float = sh[bm.favor] - sh[bm.rough]
+	return "great" if sc >= 0.3 else ("rough" if sc <= -0.25 else "ok")
 
 func evolutions(s: Dictionary) -> Array:
 	## M4: an Epic or better card plus the matching kit evolves into a Metal Slug weapon.
@@ -127,6 +196,11 @@ func new_run() -> void:
 	intel = ""
 	side = ""
 	temp_luck = 0
+	qm_cache = {}
+	level = {}
+	dial = []
+	burned = []
+	sway_mul = 1.0
 	total_score = 0
 	uid = 1
 	seed_val = randi()
@@ -490,7 +564,7 @@ func roll_item(min_tier := 0, slots := ["weapon", "armor", "kit"]) -> Dictionary
 
 func medals(st: Dictionary) -> Array:
 	## Debrief medals (L9). Each one earns a supply crate, up to three; a win always earns one.
-	var segs: int = Data.MISSIONS[mission].segments.size()
+	var segs: int = current_mission().segments.filter(func(sg): return sg != "camp").size()
 	var out: Array = []
 	if st.get("kia", 0) == 0:
 		out.append(["FLAWLESS", "Nobody went down"])
