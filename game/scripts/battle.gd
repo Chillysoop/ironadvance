@@ -435,6 +435,8 @@ func banner(text: String, c := Color("ffb23e"), sub := "") -> void:
 	banners.append({"text": text, "c": c, "sub": sub, "t": 0, "dur": 90})
 
 func bark(u: Unit, text: String) -> void:
+	if u == null:
+		return  # ownerless blasts (barrels, volatile elites) have no one to shout
 	barks = barks.filter(func(b): return b.u != u)
 	barks.append({"u": u, "text": text, "t": 0})
 
@@ -1197,7 +1199,7 @@ func kill(tg: Unit, src) -> void:
 			if tg.elite == "volatile":
 				booms.append({"t": 16, "x": tg.x, "y": tg.y - tg.h / 2.0, "r": 46.0, "dmg": 12, "owner": null})
 				float_text(tg, "VOLATILE!", Color("ff7a3d"), true)
-			if randf() < 0.3:
+			if src is Unit and src.team == "squad" and randf() < 0.3:
 				bark(src, pick(Data.BARKS.kill))
 		if tg.type == "boss":
 			boss_dead = true
