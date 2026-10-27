@@ -40,6 +40,7 @@ var busy := false
 var round_n := 0
 var alert := 0
 var rounds_since_scroll := 0
+const STALL_ROUNDS := 3   # rounds on one screen before alert starts climbing (one fewer on threat 1)
 var wind := 0
 var score := 0
 var combo := 0
@@ -72,6 +73,8 @@ var act_card := ""       # name of the card behind the current action, for the k
 var pop_next := false    # the next kill was an overkill: the Jackal bursts instead of leaving a body
 var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0, "kia": 0, "max_alert": 0, "pows_total": 0, "loot": 0, "tags": 0, "best_combo": 0, "fallen": []}
 var act_once := {}        # tag-team combos that pay out once per action
+var squad_bonks := {}     # "id:id" or id -> tick of the last squadmate bonk for that pair or that soldier
+const BONK_RESET := 120   # ticks before the same two soldiers can bonk again
 var act_crushed := 0      # Jackals crushed by debris during the current action (DOMINO)
 var act_crush_at := Vector2.ZERO
 var crate_bump := 0       # kill combo x5: the next crate rolls one rarity higher
@@ -1564,6 +1567,8 @@ func collision_dmg(u: Unit, amt: float, label: String) -> void:
 		d = int(ceil(d / 2.0))
 	if d < 1 or u.dead:
 		return
+	if debug:
+		print("[coll r%d] %s %s %d" % [round_n, u.def.key if u.team == "squad" else u.type, label, d])
 	float_text(u, label, Color("e8dcc2"))
 	shake += 2
 	Sfx.play("bonk")
@@ -3148,6 +3153,13 @@ func detour_round() -> void:
 		detour.scav += 1
 		float_text(e, "SCAVENGER", Color("ff7a3d"), true)
 
+func stall_limit() -> int:
+	return STALL_ROUNDS - (1 if Run.threat_on(1) else 0)
+
+func stalled() -> bool:
+	## The line has sat on one screen long enough for alert to climb each enemy phase.
+	return rounds_since_scroll >= stall_limit()
+
 func scroll_to(tx: float, reason: String, who = null) -> void:
 	tx = clampf(tx, 0, world_w - W)
 	if tx <= cam_x + 4:
@@ -3590,7 +3602,7 @@ func start_player_turn() -> void:
 		var al := squad_alive()
 		sel = al[-1] if al.size() else null
 	banner("ROUND %d" % round_n, Color.WHITE, ("WIND %s %d" % [">>" if wind > 0 else "<<", absi(wind)]) if wind else "NO WIND")
-	log_msg("Round %d. Alert %d/10.%s" % [round_n, alert, " The line has stalled: alert is rising." if rounds_since_scroll >= 2 else ""])
+	log_msg("Round %d. Alert %d/10.%s" % [round_n, alert, " The line has stalled: alert is rising." if stalled() else ""])
 	ui_dirty = true
 	resolve(func(): await wait(1))
 
@@ -3857,7 +3869,7 @@ func enemy_phase() -> void:
 	rounds_since_scroll += 1
 	var before := alert
 	var calls := 0
-	if rounds_since_scroll >= (1 if Run.threat_on(1) else 2):
+	if stalled():
 		alert = mini(10, alert + 1)
 	var radios := units.filter(func(u): return u.type == "radio" and u.active and not u.dead)
 	if radios.is_empty():
@@ -3877,12 +3889,18 @@ func enemy_phase() -> void:
 		banner("ALERT %d" % alert, Color("ff4d3d"), "AIR SUPPORT AUTHORIZED" if alert >= 10 else ("THEY KNOW YOU ARE HERE" if alert >= 6 else "THE JACKALS ARE ORGANIZING"))
 		Sfx.play("alarm")
 		await wait(50)
-	if rounds_since_scroll >= 3 and alert >= 6 and not boss_dead and randf() < 0.4:
+	if rounds_since_scroll > stall_limit() and alert >= 6 and not boss_dead and randf() < 0.4:
 		calls += 1
 	if calls and not boss_dead:
 		var n := 1 + alert / 4
+		var shields := 0
 		for i in n:
-			var type: String = pick(["grunt", "grunt", "shield", "sapper"] if mission_idx == 0 else ["skitter", "blinker", "shield", "sapper"])
+			var drop: Array = ["grunt", "grunt", "shield", "sapper"] if mission_idx == 0 else ["skitter", "blinker", "shield", "sapper"]
+			if shields > 0:
+				drop.erase("shield")  # one riot shield per drop, so a stall doesn't wall the screen with them
+			var type: String = pick(drop)
+			if type == "shield":
+				shields += 1
 			var e := mk_enemy(type, cam_x + W - 60 - randf() * 240, -30.0 - i * 40)
 			e.active = true; e.heavy = false; e.air = true; e.para = true
 			units.append(e)
@@ -5483,6 +5501,18 @@ func body_collisions(u: Unit) -> void:
 		if u.jumping and o.team == u.team:
 			continue
 		if absf(o.x - u.x) < (o.w + u.w) / 2.0 and u.y > o.y - o.h and u.y - u.h < o.y:
+			var mates: bool = not u.rushing and u.team == "squad" and o.team == "squad"
+			var mate_hurt := true
+			if mates:
+				# one blast, one bonk: a pair of squadmates bonks once (no rebound bonks), it only hurts
+				# the one knocked into, and each soldier takes at most one squadmate bonk per blast
+				var pair := "%d:%d" % [mini(u.id, o.id), maxi(u.id, o.id)]
+				if t - int(squad_bonks.get(pair, -BONK_RESET)) < BONK_RESET:
+					continue
+				squad_bonks[pair] = t
+				mate_hurt = t - int(squad_bonks.get(o.id, -BONK_RESET)) >= BONK_RESET
+				if mate_hurt:
+					squad_bonks[o.id] = t
 			if u.bumped == null:
 				u.bumped = {}
 			u.bumped[o.id] = true
@@ -5501,6 +5531,8 @@ func body_collisions(u: Unit) -> void:
 				cause.energy += 1
 				draw_cards(cause, 1)
 				float_at(o.x, o.y - 60, "STRIKE!", Color("ffd23a"), true)
+			if debug:
+				print("[bonk r%d] %s -> %s dmg %d" % [round_n, u.def.key if u.team == "squad" else u.type, o.def.key if o.team == "squad" else o.type, dmg])
 			float_text(o, "SMASH" if u.rushing else "BONK", Color("ffd23a"), true)
 			Sfx.play("bonk")
 			shake += 3
@@ -5512,13 +5544,15 @@ func body_collisions(u: Unit) -> void:
 				o.walk = null
 				o.bumped = {u.id: true}
 				o.last_hit_by = cause
-			damage(o, dmg, cause, {})
+			if mate_hurt:
+				damage(o, dmg, cause, {})
 			if not u.rushing and cause != null and u.team == "enemy" and o.team == "enemy":
 				add_status(u, "stun", 1, cause)
 				add_status(o, "stun", 1, cause)
 				tag("pileup", o.x, o.y - o.h, false)
 			if not u.rushing:
-				collision_dmg(u, sp * (0.3 if o.team == u.team else 0.8), "BONK")
+				if not mates:
+					collision_dmg(u, sp * (0.3 if o.team == u.team else 0.8), "BONK")
 				if not ks(cause, "gauntlet"):
 					u.vx *= 0.35
 
