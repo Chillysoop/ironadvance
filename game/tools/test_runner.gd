@@ -691,6 +691,25 @@ func hazards() -> void:
 	await shot("hz_bridge_after")
 	check(br.down, "bridge collapses when a post is blown")
 	check(rider != null and (rider.sunk or rider.dead), "the Jackal on the bridge goes into the river")
+	# the posts that are left are stepping stones: hop bank to post to post to the far bank
+	for o in b.units:
+		if o.team != "squad" and o.x > br.x0 - 150 and o.x < br.x1 + 150:
+			o.dead = true; o.gone = true  # clear the far bank so only the hops are tested
+	var hopper: Unit = b.squad()[0]
+	hopper.x = br.x0 - 14; hopper.y = b.T.stand_y(hopper.x, br.y - 40); hopper.air = false
+	var stops: Array = []
+	for px in br.posts:
+		if b.T.solid(px, br.y + 10) and not b.T.solid(px, br.y + 2):
+			stops.append(px)
+	stops.append(br.x1 + 20)
+	var hops := 0
+	for tx in stops:
+		if hopper.dead or hopper.sunk:
+			break
+		await hop_to(b, hopper, tx)
+		hops += 1
+	await shot("hz_bridge_hopped")
+	check(not hopper.sunk and not hopper.dead and hopper.x > br.x1, "a soldier hops the broken bridge post to post (%d hops of %d, at x %d, far bank %d)" % [hops, stops.size(), hopper.x, br.x1])
 	# fort: blow the base of the far wall and the whole fort drops onto its ground floor
 	var ft := find_struct(b, "fort")
 	cam_on(b, ft.x + ft.w / 2.0)
@@ -716,6 +735,18 @@ func hazards() -> void:
 	b = main.start_battle(1)
 	await until(func(): return b.state == "player" and not b.busy)
 	b.speed = 2.0
+	# the ridge cliff in mission 2 is a wall about head high: one hop gets up it
+	var climber: Unit = b.squad()[1]
+	var cl = null
+	for L in b.T.ladders:
+		if cl == null and L.offx > L.x and L.bot - L.top > 30:
+			cl = L
+	climber.x = cl.x - 16; climber.y = b.T.stand_y(climber.x, cl.bot - 30); climber.air = false
+	cam_on(b, climber.x + 200)
+	var y0 := climber.y
+	await hop_to(b, climber, cl.offx + 20)
+	check(climber.y < y0 - 30, "one hop gets a soldier up the %dpx ridge cliff (y %d -> %d)" % [cl.bot - cl.top, y0, climber.y])
+	check(climber.move_left == 0, "a hop uses the rest of the soldier's movement")
 	var mines := b.units.filter(func(u): return u.kind == "mine")
 	check(mines.size() >= 5, "mission 2 has a minefield (%d mines)" % mines.size())
 	var m0: Unit = mines[0]
@@ -840,6 +871,63 @@ func tags() -> void:
 	await frames_wait(10)
 	check(Run.soldiers.reduce(func(n, x): return n + x.tags, 0) == tags_before + 1, "the shop's DOG TAG service gives back one tag")
 
+func hop_to(b: Battle, u: Unit, tx: float) -> void:
+	## play the built-in Hop sized to land at tx
+	u.energy = 3; u.move_left = 100
+	b.state = "player"; b.busy = false
+	b.select_unit(u)
+	if not u.hand.any(func(h): return h.key == "hop"):
+		u.hand.append({"id": -4, "key": "hop", "tier": 0, "temp": true})
+	var aim := hop_aim(b, u, tx)
+	await play_hop(b, u, aim.v)
+
+func hop_aim(b: Battle, u: Unit, tx: float) -> Dictionary:
+	## search launch angle and power with the same stepping the body physics uses
+	var c := Data.card({"key": "hop", "tier": 0})
+	var best := Vector2.ZERO
+	var best_e := 1e9
+	var pmax: float = 10.5 * c.jpow
+	for a in range(20, 81, 2):
+		var p := 3.0
+		while p <= pmax:
+			var vx := cos(deg_to_rad(a)) * p * signf(tx - u.x)
+			var vy := -sin(deg_to_rad(a)) * p
+			var v0 := Vector2(vx, vy)
+			var x := u.x
+			var y := u.y
+			for k in 400:
+				vy = minf(vy + Battle.GRAV, 10.0)
+				if b.T.solid(x + vx, y - u.h * 0.5) or b.T.solid(x + vx, y - 6):
+					vx *= -0.25
+				else:
+					x += vx
+				if vy > 0 and b.T.solid(x, y + vy):
+					break
+				y += vy
+				if y > Battle.WATER_Y:
+					break
+			if y < Battle.WATER_Y and absf(x - tx) < best_e:
+				best_e = absf(x - tx)
+				best = v0
+			p += 0.25
+	return {"v": best, "e": best_e}
+
+func play_hop(b: Battle, u: Unit, v: Vector2) -> void:
+	var idx := -1
+	for i in u.hand.size():
+		if u.hand[i].key == "hop":
+			idx = i
+	if idx < 0 or v == Vector2.ZERO:
+		return
+	var c := Data.card(u.hand[idx])
+	var reach: float = 240.0 * c.jpow
+	var d: float = v.length() / (10.5 * c.jpow) * reach
+	b.select_card(idx)
+	b.commit_aim(b.hand_pos(u) + v.normalized() * d)
+	await until(func(): return not b.busy, 600)
+	await until(func(): return not u.air, 600)
+	await frames_wait(10)
+
 func force_card(u: Unit, key: String) -> int:
 	for i in u.hand.size():
 		if u.hand[i].key == key:
@@ -955,11 +1043,24 @@ func bot(mission: int, max_rounds: int, fresh := true) -> bool:
 				b.do_move(u, tx)
 				await until(func(): return res.done or not b.busy, 20000)
 				# take a ladder when one is right ahead and the way on foot is blocked
+				var climbed := false
 				for L in b.T.ladders:
 					if not u.dead and u.move_left > 20 and L.x > u.x - 10 and L.x - u.x < 40 and absf(L.bot - u.y) < 16 and L.offx > L.x - 30:
 						b.do_climb(u, L)
 						await until(func(): return res.done or not b.busy, 20000)
+						climbed = true
 						break
+				# otherwise hop the wall or gap, aiming for the farthest dry spot it can reach
+				if not climbed and not u.dead and u.move_left > 20 and u.energy >= 1 and b.state == "player" and b.sim_walk(u, u.x + 40, 40).used < 4:
+					var jx: float = u.x + 150.0
+					while jx > u.x + 30:
+						var jy = b.T.stand_y(jx, u.y - 90)
+						if jy != null and jy < Battle.WATER_Y - 4:
+							var aim := hop_aim(b, u, jx)
+							if aim.e < 6:
+								await play_hop(b, u, aim.v)
+								break
+						jx -= 10
 		if res.done:
 			break
 		if b.round_n - last_shot >= 3 or b.round_n == 1:
