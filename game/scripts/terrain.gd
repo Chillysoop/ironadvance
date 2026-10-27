@@ -20,6 +20,7 @@ var vid := 1
 var img: Image
 var tex: ImageTexture
 var dirty := false
+var rev := 0  # bumped on every cell change so decorations can re-read the surface
 var ladders: Array = []
 var pits: Array = []
 var sandbags: Array = []
@@ -59,6 +60,7 @@ func set_cell(cx: int, cy: int, m: int) -> void:
 	if m == 0:
 		data[i * 2 + 1] = 0
 	dirty = true
+	rev += 1
 
 func fill_r(x: float, y: float, w: float, h: float, m: int) -> void:
 	for cy in range(int(floor(y / CELL)), int(ceil((y + h) / CELL))):

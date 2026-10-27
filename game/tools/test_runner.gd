@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, levels, hazards.
+## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards.
 ## --mission=N picks the mission for bot.
 
 var out_dir := "user://shots"
@@ -161,6 +161,20 @@ func run() -> void:
 				main.screen.done.emit()
 				await frames_wait(20)
 				await shot("flow_brief%d" % (m + 1))
+		"alive":
+			# ambient life: idle gunfire, critters, flags, smoke; then a blast to scatter the critters
+			for m in 3:
+				Run.new_run()
+				var b: Battle = main.start_battle(m)
+				await until(func(): return b.state == "player" and not b.busy)
+				await frames_wait(240)
+				await shot("alive_m%d_a" % m)
+				await until(func(): return b.tracers.size() > 0, 900)
+				await frames_wait(1)
+				await shot("alive_m%d_b" % m)
+				b.explode(b.cam_x + 500, b.T.ground_at(b.cam_x + 500) - 4, 20, 0, null)
+				await frames_wait(12)
+				await shot("alive_m%d_blast" % m)
 		"bot":
 			await bot(mission_arg, 70)
 		"levels":
