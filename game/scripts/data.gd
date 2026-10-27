@@ -452,6 +452,15 @@ const STOPS := {
 	"hospital": {"name": "FIELD HOSPITAL", "text": "Heal everyone to full and give back one dog tag each."},
 }
 
+# Camp choices: every camp revives the downed and heals a little, then the squad picks one of these.
+const CAMP_PICKS := [
+	{"id": "patch", "name": "PATCH UP", "text": "Everyone heals to full HP."},
+	{"id": "upgrade", "name": "FIELD UPGRADE", "text": "One card in each soldier's deck goes up a rarity tier."},
+	{"id": "cache", "name": "SUPPLY CACHE", "text": "Dig up 60 scrip."},
+	{"id": "quiet", "name": "LIE LOW", "text": "Alert drops to 0 and everyone gets +1 energy right now."},
+]
+const CAMP_HEAL := 0.25     # share of max HP everyone gets back just for reaching camp
+
 # Briefing intel (W2): each mission rolls one condition.
 const INTEL := {
 	"clear": {"name": "CLEAR SKIES", "text": "No surprises.", "w": 3},
@@ -608,6 +617,8 @@ const SEGMENTS := {
 		"structs": [{"t": "fort", "x": 260, "w": 190, "floors": 2, "fh": 64}],
 		"spawns": [["grunt", 210], ["mg", 300], ["fuel", 400], ["barrel", 420], ["nade", 320, {"hold": 1, "up": 84}], ["pow", 380, {"up": 84}], ["grunt", 420, {"hold": 1, "up": 84}],
 			["grunt", 360, {"hold": 1, "up": 148}], ["mine", 520], ["mine", 580], ["brute", 600], ["mine", 650], ["engineer", 700], ["radio", 760]]},
+	# a safe camp inside the level: a fire, two tents and a supply crate, no Jackals
+	"camp": {"w": 560, "sandbags": [60, 500], "pits": [], "camp": true, "structs": [], "spawns": []},
 	"arena": {"w": 1200, "sandbags": [120, 360], "pits": [], "flat": true,
 		"structs": [{"t": "tower", "x": 580, "h": 96}, {"t": "tower", "x": 760, "h": 110}, {"t": "boulder", "col": 850, "colH": 236, "bx": 960, "rope": 18, "r": 32}],
 		"spawns": [["grunt", 580, {"hold": 1}], ["grunt", 760, {"hold": 1}], ["boss", 960]]},
@@ -618,11 +629,11 @@ const SEGMENTS := {
 }
 
 const MISSIONS := [
-	{"name": "THE JACKAL LINE", "theme": "dusk", "segments": ["start", "trenches", "fort", "gully", "boulder", "arena"],
+	{"name": "THE JACKAL LINE", "theme": "dusk", "segments": ["start", "trenches", "fort", "camp", "gully", "boulder", "camp", "arena"],
 	 "boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "Clear the trenches, storm the outpost and cross the gully before the IRON BOAR closes the road east."},
-	{"name": "RIVER CROSSING", "theme": "jungle", "segments": ["start", "ridge", "overhang", "river", "mortar", "arena"],
+	{"name": "RIVER CROSSING", "theme": "jungle", "segments": ["start", "ridge", "overhang", "camp", "river", "mortar", "camp", "arena"],
 	 "boss_hp": 160, "plate": 46, "hp_mul": 1.15, "brief": "The ridge is mined and the river bridge is held. Their second BOAR is waiting at the ford."},
-	{"name": "IRON HARBOR", "theme": "night", "segments": ["start", "docks", "warehouse", "gauntlet", "pier"],
+	{"name": "IRON HARBOR", "theme": "night", "segments": ["start", "docks", "warehouse", "camp", "gauntlet", "fort", "camp", "pier"],
 	 "boss_hp": 210, "plate": 60, "hp_mul": 1.3, "brief": "Night raid on the harbor. Fight along the piers, gut the warehouse, and drop a crane load on the flagship BOAR."},
 ]
 
