@@ -1222,11 +1222,11 @@ func kill(tg: Unit, src) -> void:
 	elif tg.team == "squad":
 		stats.kia += 1
 		if tg.s.tags > 0:
-			# a dog tag buys their life: out for this mission, back for the next
+			# a dog tag buys their life: out until the next camp, or back next mission
 			tg.s.tags -= 1
 			tg.downed = true
 			float_text(tg, "DOWN! %d TAG%s LEFT" % [tg.s.tags, "" if tg.s.tags == 1 else "S"], Color("ffb23e"), true)
-			log_msg("%s is down and out of this mission. %d dog tag%s left." % [tg.def.name, tg.s.tags, "" if tg.s.tags == 1 else "s"])
+			log_msg("%s is down until the next camp. %d dog tag%s left." % [tg.def.name, tg.s.tags, "" if tg.s.tags == 1 else "s"])
 		else:
 			stats.fallen.append(tg.def.name)
 			float_text(tg, "KIA", Color("ff4d3d"), true)
@@ -2150,10 +2150,83 @@ func _act_walk(u: Unit, pts: Array, cost: float) -> void:
 
 # ---------------------------------------------------------------- screen scrolling
 func check_push(u: Unit) -> void:
+	await check_camp(u)
 	if u.dead or cam_x >= world_w - W:
 		return
 	if u.x - cam_x > W * 0.72:
 		await scroll_to(clampf(u.x - W * 0.5, cam_x, world_w - W), "push", u)
+
+func check_camp(u: Unit) -> void:
+	## Reaching a camp with the area clear makes camp: the downed get back up, everyone patches up,
+	## and the squad picks one camp perk before moving on.
+	if u.dead or u.team != "squad" or state != "player":
+		return
+	for c in T.camps:
+		if c.used or u.x < c.x0 + 40 or u.x > c.x1:
+			continue
+		var hostile := units.filter(func(e): return e.team == "enemy" and not e.dead and e.active and e.x < c.x1 + 200)
+		if hostile.size():
+			if not c.get("warned", false):
+				c["warned"] = true
+				float_text(u, "CLEAR THE AREA TO MAKE CAMP", Color("ffb23e"))
+			return
+		c.used = true
+		await make_camp(c)
+		return
+
+func make_camp(c: Dictionary) -> void:
+	busy = true
+	banner("CAMP", Color("62d26f"), "SAFE FOR NOW")
+	Sfx.play("levelup")
+	await wait(30)
+	var i := 0
+	for s in squad():
+		if s.dead and s.downed:
+			# back on their feet at half HP, by the fire
+			s.dead = false
+			s.downed = false
+			s.gone = false
+			s.alpha = 1.0
+			s.hp = int(ceil(s.max_hp / 2.0))
+			s.x = c.fire - 40 + i * 26
+			var sy = T.stand_y(s.x, 0)
+			s.y = float(sy) if sy != null else s.y
+			s.vx = 0; s.vy = 0; s.air = false; s.walk = null
+			s.st = {}
+			s.pose = "cheer"; s.pose_t = 60
+			float_text(s, "BACK IN THE FIGHT", Color("62d26f"), true)
+			log_msg("%s rejoins the squad at camp." % s.def.name)
+			i += 1
+		elif not s.dead:
+			var add := int(ceil(s.max_hp * Data.CAMP_HEAL))
+			s.hp = mini(s.max_hp, s.hp + add)
+			float_text(s, "+%d" % add, Color("62d26f"))
+	await wait(30)
+	var opts: Array = Data.CAMP_PICKS.map(func(p): return {"kind": "service", "name": p.name, "text": p.text, "id": p.id})
+	var ch := await ask("camp", "MAKE CAMP", "The downed are back on their feet and everyone patched up a little. Pick one more.", opts)
+	match opts[maxi(ch, 0)].id:
+		"patch":
+			for s in squad_alive():
+				s.hp = s.max_hp
+			Sfx.play("power")
+		"upgrade":
+			for s in squad_alive():
+				var cands: Array = s.s.deck.filter(func(cd): return Run.upgradable(cd))
+				if cands.size():
+					var cd: Dictionary = pick(cands)
+					Run.raise_tier(cd)
+					float_text(s, Data.card(cd).name.to_upper(), Color("b48cff"))
+			Sfx.play("levelup")
+		"cache":
+			give_scrip(60, c.fire, T.ground_at(c.fire) - 40)
+		"quiet":
+			alert = 0
+			for s in squad_alive():
+				s.energy += 1
+			Sfx.play("power")
+	stats["camps"] = int(stats.get("camps", 0)) + 1
+	busy = false
+	ui_dirty = true
 
 func scroll_to(tx: float, reason: String, who = null) -> void:
 	tx = clampf(tx, 0, world_w - W)

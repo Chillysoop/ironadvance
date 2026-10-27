@@ -492,7 +492,7 @@ func roll_item(min_tier := 0, slots := ["weapon", "armor", "kit"]) -> Dictionary
 
 func medals(st: Dictionary) -> Array:
 	## Debrief medals (L9). Each one earns a supply crate, up to three; a win always earns one.
-	var segs: int = Data.MISSIONS[mission].segments.size()
+	var segs: int = Data.MISSIONS[mission].segments.filter(func(sg): return sg != "camp").size()
 	var out: Array = []
 	if st.get("kia", 0) == 0:
 		out.append(["FLAWLESS", "Nobody went down"])

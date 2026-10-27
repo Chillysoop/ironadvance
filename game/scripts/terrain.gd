@@ -29,6 +29,7 @@ var spawns: Array = []
 var chunks: Array = []
 var bridges: Array = []  # standing bridge structs: posts are checked after every carve
 var arena_x := 0
+var camps: Array = []    # safe camps inside the level: {x0, x1, used}
 
 func _init(battle) -> void:
 	b = battle
@@ -93,12 +94,14 @@ func build(mission: Dictionary) -> void:
 	var x := 0
 	var shapes: Array = []
 	var open_pits: Array = []
-	pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear()
+	pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear(); camps.clear()
 	arena_x = 1 << 20  # outposts have no arena
 	for sname in mission.segments:
 		var s: Dictionary = Data.SEGMENTS[sname]
 		if s.get("flat", false):
 			arena_x = x
+		if s.get("camp", false):
+			camps.append({"x0": x, "x1": x + s.w, "fire": x + s.w / 2, "used": false})
 		for p in s.pits:
 			pits.append([p[0] + x, p[1] + x])
 		for sb in s.sandbags:
@@ -139,6 +142,12 @@ func build(mission: Dictionary) -> void:
 		if wx > arena_x + 280:
 			h = lerpf(h, 404, clampf((wx - arena_x - 280) / 320.0, 0, 1))
 		heights[cx] = h
+	for c in camps:
+		# a level clearing to pitch the tents on
+		for cx in range(maxi(0, int((c.x0 - 120) / CELL)), mini(cols, int((c.x1 + 120) / CELL))):
+			var wx := float(cx * CELL)
+			var k := clampf(minf(wx - (c.x0 - 120), (c.x1 + 120) - wx) / 120.0, 0, 1)
+			heights[cx] = lerpf(heights[cx], 400.0, k)
 	for g in shapes:
 		shape_ground(g)
 	for p in pits:

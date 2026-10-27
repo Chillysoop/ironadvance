@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate.
+## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp.
 ## --mission=N picks the mission for bot.
 
 var out_dir := "user://shots"
@@ -651,6 +651,8 @@ func run() -> void:
 			await tags()
 		"gate":
 			await gate()
+		"camp":
+			await camp()
 		"campaign":
 			Run.new_run()
 			for m in 3:
@@ -777,6 +779,52 @@ func hazards() -> void:
 	await frames_wait(20)
 	await shot("hz_crane_after")
 	check(boss != null and (boss.cracked or boss.hp < boss.max_hp), "the crane container hits the Boar (hp %d/%d cracked %s)" % [boss.hp, boss.max_hp, boss.cracked])
+
+func camp() -> void:
+	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.
+	for m in Data.MISSIONS:
+		check(m.segments.count("camp") == 2 and m.segments[-2] == "camp", "%s has a mid camp and a camp before the boss" % m.name)
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	check(b.T.camps.size() == 2, "the level is built with two camps")
+	var c: Dictionary = b.T.camps[0]
+	cam_on(b, c.fire)
+	await frames_wait(20)
+	await shot("camp_before")
+	var sq: Array = b.squad()
+	var down: Unit = sq[1]
+	b.kill(down, null)
+	sq[2].hp = 5
+	var u: Unit = sq[0]
+	u.x = c.fire + 20
+	u.y = b.T.stand_y(u.x, 0)
+	# Jackals still around: no camp yet
+	var near: Array = b.units.filter(func(e): return e.team == "enemy" and not e.dead and e.x < c.x1 + 200)
+	for e in near:
+		e.active = true
+	if near.size():
+		await b.check_camp(u)
+		check(not c.used, "no camp while Jackals are still close")
+	for e in near:
+		e.dead = true
+		e.gone = true
+	var before: Array = u.s.deck.map(func(cd): return Data.tier_of(cd))
+	b.autopick = 1
+	await b.check_camp(u)
+	await frames_wait(30)
+	await shot("camp_made")
+	check(c.used, "the camp is made once the area is clear")
+	check(not down.dead and down.hp == int(ceil(down.max_hp / 2.0)), "a downed soldier rejoins at camp at half HP")
+	check(sq[2].hp > 5, "everyone patches up a little at camp")
+	var after: Array = u.s.deck.map(func(cd): return Data.tier_of(cd))
+	check(after != before, "FIELD UPGRADE raises a card's tier")
+	await b.check_camp(u)
+	check(int(b.stats.get("camps", 0)) == 1, "a camp only pays out once")
+	var c2: Dictionary = b.T.camps[1]
+	cam_on(b, c2.fire)
+	await frames_wait(20)
+	await shot("camp_preboss")
 
 func gate() -> void:
 	## Beating the boss opens the gate; the squad walks through and comes out at HQ.
