@@ -1087,7 +1087,7 @@ func soldat() -> void:
 	var tr := b.trace_bullet(eye.x, eye.y, aim, 2400, 0, s, false)
 	check(tr.hits.any(func(hh): return hh.u == up), "a bullet from below goes up through the grating into the Jackal")
 	var arc := b.sim_arc(up.x, top - 20, 0.0, 1.0, 0, 200)
-	check(arc.y > top + 12, "a grenade dropped on the grating falls through it (lands y %d, deck %d)" % [arc.y, top])
+	check(arc.end and arc.y <= top + 4, "the throw preview lands a grenade on the grating (y %d, deck %d)" % [arc.y, top])
 	check(not b.ray_clear(eye.x, eye.y, eye.x, b.T.ground_at(eye.x) + 20) or true, "sight lines run")
 	await shot("soldat_catwalk")
 	# --- chain-link: blocks walking and vaulting, not bullets; a Hop clears it
@@ -1106,6 +1106,14 @@ func soldat() -> void:
 	tr = b.trace_bullet(eye.x, eye.y, atan2(far.y - 20 - eye.y, far.x - eye.x), 2400, 0, s, false)
 	check(tr.hits.any(func(hh): return hh.u == far), "a bullet goes through the chain-link")
 	check(b.visibility(far, s) > 0, "Jackals can see and shoot through the chain-link")
+	var nade: Dictionary = b.mk_proj({"kind": "grenade", "x": fs.x - 30, "y": b.T.ground_at(fs.x) - 40, "vx": 6.0, "vy": -1.0, "bounce": true, "fuse": 9999})
+	for i in 80:
+		b.update_proj(nade)
+	check(nade.x < fs.x, "a grenade bounces off the chain-link (ended at %d, fence %d)" % [nade.x, fs.x])
+	var drop: Dictionary = b.mk_proj({"kind": "grenade", "x": mid + 20, "y": top - 60, "vx": 0.0, "vy": 0.0, "bounce": true, "fuse": 9999})
+	for i in 120:
+		b.update_proj(drop)
+	check(drop.y <= top + 2 and not drop.dead, "a grenade lands on the grating instead of falling through (y %d, deck %d)" % [drop.y, top])
 	await b.enemy_advance(far, fs.x - 80, 150)
 	check(far.x > fs.x, "a Jackal can't vault the fence (stopped at %d, fence %d)" % [far.x, fs.x])
 	await shot("soldat_fence")

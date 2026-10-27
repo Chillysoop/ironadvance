@@ -1630,7 +1630,7 @@ func update_proj(p: Dictionary) -> void:
 			p.dead = true
 			return
 		var hu = unit_hit(p) if p.age > 2 else null
-		if p.get("lizard", false) and hu == null and T.hard(p.x, p.y):
+		if p.get("lizard", false) and hu == null and proj_solid(p, p.x, p.y):
 			# Iron Lizard: hug the ground and keep crawling until it meets a body or a tall wall
 			var sy = T.stand_y(p.x, p.y - 14)
 			p.crawl = p.get("crawl", 0.0) + absf(p.vx / n)
@@ -1639,13 +1639,13 @@ func update_proj(p: Dictionary) -> void:
 				p.vy = 0.0
 				p.vx = signf(p.vx) * 5.0
 				continue
-		if T.hard(p.x, p.y) or hu != null:
+		if proj_solid(p, p.x, p.y) or hu != null:
 			if p.bounce:
 				if hu != null:
 					p.x = px; p.y = py; p.vx *= -0.2; p.vy *= -0.2
 					break
-				var sx := T.hard(p.x, py)
-				var sy := T.hard(px, p.y)
+				var sx := proj_solid(p, p.x, py)
+				var sy := proj_solid(p, px, p.y)
 				p.x = px
 				p.y = py
 				if sx or not sy:
@@ -1668,8 +1668,12 @@ func update_proj(p: Dictionary) -> void:
 	if p.age > 700:
 		detonate(p)
 
-func sim_arc(sx: float, sy: float, vx: float, vy: float, wind_f: float, steps: int, body := false) -> Dictionary:
-	## Thrown things fly through grating and chain-link; a body (a jump) lands on them.
+func proj_solid(p: Dictionary, x: float, y: float) -> bool:
+	## Thrown things (grenades, bombs) bounce off grating and chain-link; rockets fly through like bullets.
+	return T.solid(x, y) if p.grav > 0 else T.hard(x, y)
+
+func sim_arc(sx: float, sy: float, vx: float, vy: float, wind_f: float, steps: int) -> Dictionary:
+	## Thrown things and jumping bodies both land on grating and chain-link.
 	var pts: Array = []
 	var x := sx
 	var y := sy
@@ -1679,7 +1683,7 @@ func sim_arc(sx: float, sy: float, vx: float, vy: float, wind_f: float, steps: i
 		x += vx
 		y += vy
 		pts.append(Vector2(x, y))
-		if y > WATER_Y or x < 0 or x > world_w or (T.solid(x, y) if body else T.hard(x, y)):
+		if y > WATER_Y or x < 0 or x > world_w or T.solid(x, y):
 			return {"pts": pts, "x": x, "y": y, "end": true}
 	return {"pts": pts, "x": x, "y": y, "end": false}
 
