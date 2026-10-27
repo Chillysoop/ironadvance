@@ -30,6 +30,8 @@ func _draw() -> void:
 	for u in b.units:
 		if not u.dead:
 			draw_unit(u)
+			if u.drill != null:
+				draw_drill(u, Vector2(u.drill.dx, u.drill.dy), true)
 	draw_smokes()
 	draw_projs()
 	for tr in b.tracers:
@@ -146,6 +148,8 @@ func pick_anim(u: Unit) -> Array:
 		return ["throw", clampi((n - u.pose_t) / 6, 0, 3), true]
 	if u.pose == "cheer":
 		return ["cheer", (b.t / 10) % 2, false]
+	if u.drill != null:
+		return ["run", (u.anim / 2) % 8, true]
 	if u.para or u.air:
 		return ["jump", 0 if u.vy < 0 else 1, true]
 	if u.walk != null:
@@ -310,6 +314,22 @@ func draw_pad(u: Unit, pos: Vector2) -> void:
 		draw_rect(Rect2(pos.x - 6, pos.y - 26, 12, 12), Color(B.c, a), false, 1.0)
 		Art.text(self, B.glyph, Vector2(pos.x + 1, pos.y - 16), 8, Color(B.c, 0.8), HORIZONTAL_ALIGNMENT_CENTER, 0)
 		Art.text(self, "%s IN %d" % [B.name, L.t], Vector2(pos.x, pos.y - 30), 8, Color(B.c, 0.85), HORIZONTAL_ALIGNMENT_CENTER)
+
+func draw_drill(u: Unit, d: Vector2, spin: bool) -> void:
+	## A drill bit held out in front: a steel cone along the bore line, its threads turning.
+	var base := Vector2(u.x + d.x * 6, u.y - u.h / 2.0 + d.y * 6)
+	var tip := base + d * 16
+	var n := Vector2(-d.y, d.x)
+	draw_colored_polygon(PackedVector2Array([base + n * 6, tip, base - n * 6]), Color("2a2622"))
+	draw_colored_polygon(PackedVector2Array([base + n * 5 + d, tip - d, base - n * 5 + d]), Color("a9b0b6"))
+	var ph := float(b.t % 4) / 4.0 if spin else 0.0
+	for k in 3:
+		var f := (k + ph) / 3.0
+		var w := 5.0 * (1.0 - f)
+		var m := base + d * (2 + 13 * f)
+		draw_line(m + n * w, m - n * w + d * 2, Color("5d646b"), 1.0)
+	draw_rect(Rect2(base.x - 4, base.y - 4, 8, 8), Color("ffb23e"))
+	draw_rect(Rect2(base.x - 4, base.y - 4, 8, 8), Color("2a2622"), false, 1.0)
 
 func draw_ghost(u: Unit, sim: Dictionary, col: Color, label: String) -> void:
 	## Where a soldier will end up: a dotted path and a see-through copy of them at the end.
@@ -784,6 +804,17 @@ func draw_targeting() -> void:
 					Art.draw_char(self, u.sheet, "idle", 0, Vector2(gs.x, gs.y), u.face, false, 0, 0.5)
 				else:
 					Art.text(self, "NO GRIP", Vector2(gs.ax, gs.ay - 10), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif c.get("drill", false):
+				var d := b.drill_dir(u, m)
+				var reach: float = u.move_left + c.get("reach", 0)
+				var sim := b.sim_drill(u, d, b.drill_len(u, c, m))
+				var o := Vector2(u.x, u.y - u.h / 2.0)
+				draw_dashed_line(o, o + d * reach, Color(1, 0.82, 0.23, 0.35), 1.0, 4.0)
+				draw_drill(u, d, false)
+				if sim.pts.size():
+					draw_ghost(u, sim, Color("ffd23a"), "DRILL %dpx" % int(Vector2(sim.x, sim.y).distance_to(Vector2(u.x, u.y))))
+				else:
+					Art.text(self, "CAN'T DRILL THERE", Vector2(u.x, u.y - u.h - 8), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.get("jump", false) or c.get("rush", false):
 				var v := b.jump_vel(u, m, c.get("jpow", 1.0)) if c.get("jump", false) else b.rush_vel(u, m)
 				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50, true)

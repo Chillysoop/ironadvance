@@ -426,6 +426,29 @@ func carve(x: float, y: float, r: float, cause) -> void:
 		check_floating(x, y, r + 8, cause)
 		check_bridges(cause)
 
+func bore(x: float, y0: float, y1: float, r: float) -> bool:
+	## The Drill: clears every cell of any material inside an upright capsule from (x, y0) up to
+	## (x, y1). No scorch and no steel exception. Returns whether anything was cut.
+	var any := false
+	for cy in range(int(floor((y1 - r) / CELL)), int(floor((y0 + r) / CELL)) + 1):
+		for cx in range(int(floor((x - r) / CELL)), int(floor((x + r) / CELL)) + 1):
+			if cx < 0 or cy < 0 or cx >= cols or cy >= ROWS:
+				continue
+			var i := cy * cols + cx
+			var m := grid[i]
+			if m == 0:
+				continue
+			var px := cx * CELL + 2.0
+			var py := clampf(cy * CELL + 2.0, y1, y0)
+			var dx := px - x
+			var dy := cy * CELL + 2.0 - py
+			if dx * dx + dy * dy <= r * r:
+				set_cell(cx, cy, 0)
+				any = true
+				if randf() < 0.06:
+					b.debris(px, cy * CELL + 2, m)
+	return any
+
 func _count(x: float, y: float, w: float, h: float) -> int:
 	var n := 0
 	for cy in range(int(floor(y / CELL)), int(ceil((y + h) / CELL))):

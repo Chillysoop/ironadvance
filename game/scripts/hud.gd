@@ -205,6 +205,8 @@ func hint_text() -> String:
 		var c := Data.card(u.hand[b.card_idx])
 		if c.get("rush", false):
 			return "OVERDRIVE: aim the launch. Anyone in the way gets smashed into the scenery."
+		if c.get("drill", false):
+			return "DRILL: aim through the terrain in your way. It bores until your movement runs out; click, SPACE or ESC stops it early."
 		if c.get("jump", false):
 			return "JUMP PACK: aim the arc. You land soft. Landing in the push zone counts as a push."
 		if c.get("beacon", false):

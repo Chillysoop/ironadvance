@@ -25,6 +25,7 @@ var anim := 0
 var walk = null       # Array of [x, y, inside]
 var walk_i := 0
 var zip = null        # grapple zip state
+var drill = null      # Drill card in progress: {dx, dy, left, stop, air, n}
 var vault = null
 var alpha := 1.0
 var dead_t := 0

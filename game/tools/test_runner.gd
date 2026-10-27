@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat,
+## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -636,6 +636,8 @@ func run() -> void:
 			await biomes()
 		"soldat":
 			await soldat()
+		"drill":
+			await drill()
 		"detours":
 			await detours()
 		"hq":
@@ -1058,6 +1060,123 @@ func camp() -> void:
 	cam_on(b, c2.fire)
 	await frames_wait(20)
 	await shot("camp_preboss")
+
+func play_drill(b: Battle, u: Unit, p: Vector2, stop_after := -1.0) -> void:
+	b.state = "player"; b.busy = false
+	b.select_unit(u)
+	var i := force_card(u, "drill")
+	b.select_card(i)
+	b.commit_aim(p)
+	if stop_after >= 0:
+		var x0 := u.x
+		await until(func(): return absf(u.x - x0) >= stop_after or not b.busy, 1200)
+		b.stop_drill()
+	await until(func(): return not b.busy, 1200)
+	await frames_wait(4)
+
+func drill() -> void:
+	## The Drill card: in every starting deck, bores through dirt, stone and steel, spends movement,
+	## stops early on a click, goes down too, and refuses with no movement left.
+	Run.new_run()
+	check(Run.soldiers.all(func(x): return x.deck.any(func(c): return c.key == "drill")), "every soldier starts with a Drill in the deck")
+	check(Data.card("drill").cost == 0, "the Drill costs 0 energy")
+	check(not Data.offer_keys().has("drill"), "the Drill isn't offered in level-ups or the shop")
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var s: Unit = b.squad()[0]
+	var x := 900.0
+	while not flat_open(b, x, 260) and x < b.world_w - 600:
+		x += 20
+	for o in b.units:
+		if o != s and (o.team == "enemy" or o.kind != "soldier") and absf(o.x - x - 130) < 400:
+			o.gone = true
+	for o in b.squad():
+		if o != s:
+			ground_unit(b, o, x - 200, 0)
+	cam_on(b, x + 130)
+	ground_unit(b, s, x, 0)
+	var gy: float = s.y
+	# a dirt bank, a stone wall and a steel plate, all taller than a hop clears
+	b.T.fill_r(x + 30, gy - 70, 40, 72, 1)
+	b.T.fill_r(x + 70, gy - 70, 30, 72, 4)
+	b.T.fill_r(x + 100, gy - 70, 12, 72, 2)
+	await frames_wait(10)
+	check(b.sim_walk(s, x + 200, 200).used < 30, "the wall blocks walking")
+	s.move_left = 220; s.energy = 3
+	var di := force_card(s, "drill")
+	b.select_unit(s)
+	b.select_card(di)
+	b.mouse = Vector2(x + 200, gy - 17)
+	await frames_wait(6)
+	await shot("drill_aim")
+	var e0 := s.energy
+	b.commit_aim(b.mouse)
+	await frames_wait(40)
+	await shot("drill_boring")
+	await until(func(): return not b.busy, 1200)
+	await frames_wait(6)
+	await shot("drill_through")
+	check(s.x > x + 120, "the Drill bores through dirt, stone and steel (x %d, wall ends %d)" % [s.x, x + 112])
+	check(absf(s.y - gy) < 6, "a level drill keeps the soldier at ground height (y %d vs %d)" % [s.y, gy])
+	check(s.energy == e0, "drilling spent no energy (%d -> %d)" % [e0, s.energy])
+	check(absf(s.move_left - (220 - (s.x - x))) < 4, "drilling spends movement by the distance (%d left of 220 after %dpx)" % [s.move_left, s.x - x])
+	check(s.x < x + 206, "the drill stops at the cursor (x %d, cursor %d)" % [s.x, x + 200])
+	check(not s.hand.any(func(c): return c.key == "drill") and s.disc.any(func(c): return c.key == "drill"), "the Drill is spent to the discard until it's drawn again")
+	check(s.hp == s.max_hp, "the soldier came out of the wall unhurt (%d/%d)" % [s.hp, s.max_hp])
+	# manual stop
+	ground_unit(b, s, x - 60, 0)
+	b.T.fill_r(x - 40, gy - 70, 200, 72, 4)
+	s.move_left = 200
+	var sx := s.x
+	await play_drill(b, s, Vector2(s.x + 300, s.y - 17), 40.0)
+	check(s.x - sx > 10 and s.x - sx < 120, "clicking stops the drill early (went %dpx of 200)" % int(s.x - sx))
+	check(s.move_left > 70, "stopping early keeps the unused movement (%d left)" % s.move_left)
+	# straight down
+	ground_unit(b, s, x + 300, 0)
+	cam_on(b, x + 300)
+	var y1 := s.y
+	s.move_left = 60
+	await play_drill(b, s, Vector2(s.x, s.y + 200))
+	await shot("drill_down")
+	check(s.y > y1 + 30, "the Drill goes straight down too (y %d -> %d)" % [y1, s.y])
+	# no movement, no drill
+	s.move_left = 0
+	b.state = "player"; b.busy = false
+	var di2 := force_card(s, "drill")
+	b.select_card(di2)
+	b.commit_aim(Vector2(s.x + 100, s.y - 17))
+	await frames_wait(4)
+	check(not b.busy and s.hand.any(func(c): return c.key == "drill"), "with no movement left the Drill won't start and stays in hand")
+	# the mission 2 ridge cliff: bore into it at boot height instead of hopping it
+	b = main.start_battle(1)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 0.5
+	var cl = null
+	for L in b.T.ladders:
+		if cl == null and L.offx > L.x and L.bot - L.top > 30:
+			cl = L
+	var dr: Unit = b.squad()[1]
+	ground_unit(b, dr, cl.x - 24, cl.bot - 30)
+	for o in b.units:
+		if (o.kind == "crate" or o.team == "enemy") and absf(o.x - cl.offx) < 300:
+			o.gone = true
+	cam_on(b, dr.x + 200)
+	dr.move_left = 160
+	b.state = "player"; b.busy = false
+	b.select_unit(dr)
+	b.select_card(force_card(dr, "drill"))
+	b.mouse = Vector2(dr.x + 150, dr.y - 17)
+	await frames_wait(6)
+	await shot("drill_cliff_aim")
+	var cx0 := dr.x
+	b.commit_aim(b.mouse)
+	await until(func(): return dr.x > cx0 + 60, 1200)
+	await shot("drill_cliff_boring")
+	await until(func(): return not b.busy, 2400)
+	await frames_wait(20)
+	await shot("drill_cliff_after")
+	check(dr.x > cx0 + 100, "a soldier drills into the ridge cliff (x %d -> %d)" % [cx0, dr.x])
 
 func ground_unit(b: Battle, u: Unit, x: float, from_y := 0.0) -> void:
 	u.x = x; u.y = b.T.stand_y(x, from_y); u.air = false; u.vx = 0; u.vy = 0; u.walk = null
@@ -1954,7 +2073,7 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 								var pw := Vector2(sol.vx, sol.vy).length()
 								b.commit_aim(Vector2(hx, hy) + Vector2(sol.vx, sol.vy).normalized() * (pw / 13.0 * 220))
 								played = true
-						elif c.type == "LINE" and not c.get("grapple", false) and not c.get("jump", false) and not c.get("rush", false) and absf(e.x - u.x) > 80 and rocket_safe(b, u, c, e):
+						elif c.type == "LINE" and not c.get("grapple", false) and not c.get("jump", false) and not c.get("rush", false) and not c.get("drill", false) and absf(e.x - u.x) > 80 and rocket_safe(b, u, c, e):
 							bot_last = c.get("name", "?")
 							b.select_card(i)
 							b.commit_aim(Vector2(e.x, e.y - 12))
@@ -2009,6 +2128,16 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 						await until(func(): return res.done or not b.busy, 20000)
 						climbed = true
 						break
+				# a wall right ahead and a Drill in hand: bore straight through it
+				var di: int = u.hand.map(func(h): return h.key).find("drill")
+				if not climbed and di >= 0 and not u.dead and u.move_left > 20 and b.state == "player" and b.sim_walk(u, u.x + 40, 40).used < 4 and b.drill_face(u, u.x, u.y, Vector2(1, 0)):
+					var x0d: float = u.x
+					b.select_card(di)
+					b.commit_aim(Vector2(u.x + 200, u.y - u.h / 2.0))
+					await until(func(): return res.done or not b.busy, 20000)
+					if playtest_debug:
+						print("[drill r%d] %s %d -> %d" % [b.round_n, u.def.key, int(x0d), int(u.x)])
+					climbed = true
 				# otherwise hop the wall, gap or mine, aiming for the farthest dry spot it can reach
 				var mine_ahead: bool = b.units.any(func(o): return o.kind == "mine" and not o.primed and not o.gone and o.x > u.x and o.x - u.x < 30 and absf(o.y - u.y) < 12)
 				if not climbed and not u.dead and u.move_left > 20 and u.energy >= 1 and b.state == "player" and (mine_ahead or b.sim_walk(u, u.x + 40, 40).used < 4):
