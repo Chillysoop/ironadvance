@@ -1,7 +1,7 @@
 extends Control
 ## The Armory: four gear slots per soldier, the shared stash and the consumable belt.
-## Opened from the Quartermaster (with the item shelf, selling and the gunsmith) or
-## from the debrief. Click an item to select it, then use the action buttons.
+## Opened at HQ (selling, the gunsmith's affix reroll and COPY ITEM) or from the debrief.
+## Click an item to select it, then use the action buttons.
 
 signal done
 
@@ -156,6 +156,8 @@ func build_actions(it) -> void:
 	x = merge_actions(it, x)
 	if shop_mode and where in ["stash", "belt"]:
 		x = action("SELL %d$" % Run.sell_value(it), Color("ffd23a"), sell_sel, x)
+	if shop_mode and Run.fab_options().has(it):
+		x = action("COPY %d$" % price(Data.FAB_PRICE), Color("b48cff"), copy_sel, x, Run.scrip < price(Data.FAB_PRICE))
 	if shop_mode and it.get("affixes", []).size() > 0:
 		var cost := 0 if Run.reroll_tokens > 0 else gunsmith_price()
 		x = action("REROLL AFFIX %s" % ("FREE" if cost == 0 else "%d$" % cost), Color("b48cff"), reroll_sel, x, Run.scrip < cost)
@@ -250,6 +252,20 @@ func move_belt(to_belt: bool) -> void:
 	pick = {}
 	build()
 
+func copy_sel() -> void:
+	## M5, moved here from the Quartermaster: copy a Common or Uncommon item to finish a triple.
+	var it = selected_item()
+	var p := price(Data.FAB_PRICE)
+	if it == null or Run.scrip < p:
+		Sfx.play("deny")
+		return
+	Run.scrip -= p
+	var cp := Run.fabricate(it)
+	Sfx.play("buy")
+	say("Copied %s.%s" % [Data.item_name(cp), " A triple is ready: press MERGE." if Run.merge_group_of(cp).size() == 3 else ""])
+	pick = {"where": "stash", "i": Run.stash.find(cp)}
+	build()
+
 func sell_sel() -> void:
 	var it = selected_item()
 	Run.stash.erase(it)
@@ -314,11 +330,11 @@ func _draw() -> void:
 	var hz: Texture2D = Art.tex.ui_hazard
 	for x in range(0, 960, 32):
 		draw_texture_rect(hz, Rect2(x, 0, 32, 8), false)
-	Art.text(self, "ARMORY", Vector2(24, 40), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
-	Art.text(self, "Click an item, then pick what to do with it. Weapons put their cards in that soldier's deck.", Vector2(150, 40), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+	Art.text(self, "ARMORY", Vector2(24, 50), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+	Art.text(self, "Click an item, then pick what to do with it. Weapons put their cards in that soldier's deck.", Vector2(150, 48), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	var sc := "%d SCRIP" % Run.scrip
-	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 8) - 14, 26, 10, 10), false)
-	Art.text(self, sc, Vector2(936, 36), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
+	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 8) - 14, 38, 10, 10), false)
+	Art.text(self, sc, Vector2(936, 48), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
 	for i in Run.soldiers.size():
 		var s: Dictionary = Run.soldiers[i]
 		var x := 24.0 + i * 230
@@ -329,7 +345,7 @@ func _draw() -> void:
 			Art.text(self, sets, Vector2(x, 186), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 	Art.text(self, "STASH %d/%d" % [Run.stash.size(), Data.STASH_MAX], Vector2(24, 214), 8, Color("ffb23e") if Run.stash.size() <= Data.STASH_MAX else Color("ff4d3d"))
 	Art.text(self, "BELT: USE MID-MISSION, NO CARD NEEDED", Vector2(470, 214), 8, Color("62d26f"))
-	if shop_mode:
+	if shop_mode and shelf.size():
 		Art.text(self, "ITEM SHELF" + ("  %d%% OFF" % int(Run.discount * 100) if Run.discount > 0 else ""), Vector2(470, 288), 8, Color("53d4e2"))
 	if Run.reroll_tokens > 0:
 		Art.text(self, "FREE REROLLS: %d" % Run.reroll_tokens, Vector2(808, 410), 8, Color("b48cff"))

@@ -1,22 +1,37 @@
 extends Control
-## Two HQ buildings share this screen. The Quartermaster sells cards and squad gear and
-## upgrades, removes and heals; the Barracks recruits replacements and restores dog tags.
-## Prices are paid in scrip earned in the field.
+## Two HQ buildings share this screen. The Quartermaster sells things: field cards for one
+## soldier's deck, squad gear, and the item shelf. The Barracks recruits replacements and
+## restores dog tags. Card changes live at the Workshop, healing at the Doc's Lab and
+## item copying at the Armory. Prices are paid in scrip earned in the field.
 
 signal done
 signal chosen(i: int)
 
 const HudScript := preload("res://scripts/hud.gd")
 const ArmoryScript := preload("res://scripts/armory.gd")
+const HubUI := preload("res://scripts/hub_ui.gd")
+const Services := preload("res://scripts/services.gd")
+
+const BAR := Vector2(16, 80)
+const CARD_Y := 148.0
+const SHELF_Y := 372.0
+const BARKS := [
+	"Cards up top go into one soldier's deck. Click a card, then the soldier. Or drag it onto them.",
+	"Squad gear helps everyone at once. Shelf items go to the stash; equip them from a soldier's Dossier.",
+	"Want a card changed? Polish, mods, fusing and burning are next door at the Workshop.",
+]
 
 var stock_cards: Array = []
 var stock_gear: Array = []
-var shelf: Array = []       # item shelf for the Armory: 3 items, a mystery crate, sometimes a black-market legendary
+var shelf: Array = []       # item shelf: 3 items, a mystery crate, sometimes a black-market legendary
 var t := 0
 var msg := ""
 var msg_t := 0
 var chooser: Control = null
 var mode := "shop"          # "shop" (Quartermaster) or "barracks"
+var bar: Control = null
+var shelf_pick := -1
+var bark := -1              # Q6: which Quartermaster line is showing, -1 for none
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -27,6 +42,11 @@ func _ready() -> void:
 		shelf = Run.qm_cache.shelf
 	else:
 		restock()
+	if mode == "shop":
+		if not Run.qm_cache.get("barked", false) and not Run.meta.get("tips_off", false):
+			bark = 0
+		Run.qm_cache["barked"] = true
+		Run.qm_cache["seen"] = true
 	build()
 
 func restock() -> void:
@@ -49,10 +69,12 @@ func restock() -> void:
 	if randf() < 0.25:
 		var lg := Run.roll_item(Data.TIER_MAX)
 		shelf.append({"item": lg, "price": 300, "black": true})
-	Run.qm_cache = {"mission": Run.mission, "cards": stock_cards, "gear": stock_gear, "shelf": shelf}
+	var keep := Run.qm_cache.duplicate() if Run.qm_cache.get("mission", -1) == Run.mission else {}
+	Run.qm_cache = {"mission": Run.mission, "cards": stock_cards, "gear": stock_gear, "shelf": shelf,
+		"barked": keep.get("barked", false), "seen": keep.get("seen", false)}
 
 func price(n: int) -> int:
-	return int(ceil(n * (1.0 - Run.discount - (0.1 if Run.hq("armory") >= 2 else 0.0))))
+	return Services.price(n)
 
 func recruit_price() -> int:
 	return Data.RECRUIT_PRICE / (2 if Run.hq("barracks") >= 3 else 1)
@@ -61,7 +83,6 @@ func open_armory() -> void:
 	Sfx.play("click")
 	var a: Control = ArmoryScript.new()
 	a.shop_mode = true
-	a.shelf = shelf
 	a.done.connect(func(): a.queue_free(); build())
 	add_child(a)
 
@@ -72,6 +93,11 @@ func say(s: String) -> void:
 func build() -> void:
 	for c in get_children():
 		c.queue_free()
+	chooser = null
+	bar = HubUI.SquadBar.new()
+	bar.position = BAR
+	bar.picked.connect(open_dossier)
+	add_child(bar)
 	if mode == "barracks":
 		build_barracks()
 		return
@@ -81,7 +107,7 @@ func build() -> void:
 		var cv := CardView.new()
 		cv.opt = o
 		cv.size = Vector2(cw, 146)
-		cv.position = Vector2(24 + i * (cw + 8), 92)
+		cv.position = Vector2(24 + i * (cw + 8), CARD_Y)
 		cv.price = o.price
 		cv.disabled = o.get("sold", false) or Run.scrip < o.price
 		if o.get("sold", false):
@@ -94,7 +120,7 @@ func build() -> void:
 		var cv := CardView.new()
 		cv.opt = o
 		cv.size = Vector2(cw, 146)
-		cv.position = Vector2(600 + i * (cw + 8), 92)
+		cv.position = Vector2(600 + i * (cw + 8), CARD_Y)
 		cv.price = o.price
 		cv.disabled = o.get("sold", false) or Run.scrip < o.price
 		if o.get("sold", false):
@@ -102,39 +128,62 @@ func build() -> void:
 		var idx := i
 		cv.pressed.connect(func(): buy_gear(idx))
 		add_child(cv)
-	var fusable := Run.soldiers.any(func(s): return s.alive and (Run.fusable(s).size() > 0 or Run.evolutions(s).size() > 0))
-	var services := [
-		["HOSPITAL", "Heal the whole squad to full.", 40, heal_all, Color("53d4e2")],
-		["UPGRADE", "Raise one card a rarity tier.", 60, upgrade_card, Color("53d4e2")],
-		["MOD", "Gunsmith: add an upgrade branch to a card (2 per card).", Data.MOD_PRICE, mod_card, Color("53d4e2")],
-		["REMOVE", "Thin a deck: burn one card.", 50, remove_card, Color("53d4e2")],
-		["WORKBENCH", "Fuse three copies of a card into one a tier higher, or evolve an Epic card with its kit.", 0, fuse_cards, Color("b48cff")],
-		["FABRICATOR", "Copy a Common or Uncommon item.", Data.FAB_PRICE, fabricate, Color("b48cff")],
-		["RESTOCK", "New cards and gear on the shelf.", 20, reroll, Color("9aa2ae")],
-	]
-	for i in services.size():
-		var sv: Array = services[i]
-		var bt := HudScript.PixButton.new()
-		bt.text = sv[0]
-		bt.sub = "FREE" if sv[2] == 0 else "%d$" % price(sv[2])
-		bt.color = sv[4]
-		bt.size = Vector2(108, 34)
-		bt.small = true
-		bt.position = Vector2(24 + i * 114, 264)
-		bt.disabled = Run.scrip < price(sv[2]) or (sv[3] == fuse_cards and not fusable) or (sv[3] == fabricate and Run.fab_options().is_empty())
-		bt.tooltip_text = sv[1]
-		bt.pressed.connect(sv[3])
-		add_child(bt)
-	var go := HudScript.PixButton.new()
+	for i in shelf.size():
+		var o: Dictionary = shelf[i]
+		var tile := ArmoryScript.ItemTile.new()
+		tile.item = null if o.get("mystery", false) else o.item
+		tile.mystery = o.get("mystery", false)
+		tile.black = o.get("black", false)
+		tile.price = -1 if o.get("sold", false) else price(o.price)
+		tile.sold = o.get("sold", false)
+		tile.position = Vector2(24 + i * 112, SHELF_Y)
+		tile.selected = shelf_pick == i
+		var idx := i
+		tile.pressed.connect(func(): Sfx.play("click"); shelf_pick = -1 if shelf_pick == idx else idx; build())
+		add_child(tile)
+	if shelf_pick >= 0 and shelf_pick < shelf.size() and not shelf[shelf_pick].get("sold", false):
+		var o: Dictionary = shelf[shelf_pick]
+		var p := price(o.price)
+		var tile := HubUI.ActionTile.new()
+		tile.color = Color("62d26f")
+		tile.size = Vector2(336, 64)
+		tile.position = Vector2(600, SHELF_Y - 8)
+		tile.cost = p
+		if o.get("mystery", false):
+			tile.title = "BUY MYSTERY CRATE"
+			tile.line = "A random item of any rarity. Goes to the stash."
+		else:
+			var it: Dictionary = o.item
+			tile.title = "BUY %s" % Data.item_name(it).to_upper()
+			var sl: Array = Data.stat_lines(Data.item_stats(it))
+			tile.line = "%s %s. Goes to the %s." % [Data.tier_name(it.tier).capitalize(), ", ".join(sl) if sl.size() else Data.ITEMS[it.id].text, "belt" if Data.ITEMS[it.id].slot == "belt" else "stash"]
+		tile.ok = Run.scrip >= p
+		tile.why = Services.short(p)
+		tile.pressed.connect(buy_shelf)
+		add_child(tile)
+	var rs := HubUI.ActionTile.new()
+	rs.title = "NEW STOCK"
+	rs.cost = price(Services.RESTOCK)
+	rs.color = Color("9aa2ae")
+	rs.line = "Replace the cards, gear and shelf on sale."
+	rs.ok = Run.scrip >= rs.cost
+	rs.why = Services.short(rs.cost)
+	rs.size = Vector2(220, 52)
+	rs.position = Vector2(24, SHELF_Y + 64)
+	rs.pressed.connect(reroll)
+	add_child(rs)
 	add_child(back_button())
-	var arm := HudScript.PixButton.new()
-	arm.text = "ARMORY"
-	arm.sub = "GEAR %d  STASH %d" % [Run.soldiers.reduce(func(a, s): return a + s.equip.values().filter(func(x): return x != null).size(), 0), Run.stash.size()]
-	arm.color = Color("53d4e2")
-	arm.size = Vector2(190, 44)
-	arm.position = Vector2(546, 482)
-	arm.pressed.connect(open_armory)
-	add_child(arm)
+	if bark >= 0:
+		var b := Bark.new()
+		b.shop = self
+		add_child(b)
+
+func open_dossier(i: int) -> void:
+	## The squad bar here opens the soldier's Dossier over the shop.
+	var d: Control = load("res://scripts/dossier.gd").new()
+	d.idx = i
+	d.done.connect(func(): d.queue_free(); build())
+	add_child(d)
 
 func back_button() -> Control:
 	var go := HudScript.PixButton.new()
@@ -146,22 +195,30 @@ func back_button() -> Control:
 	return go
 
 func build_barracks() -> void:
-	var services := [
-		["RECRUIT", "Hire a replacement for a soldier killed in action.", recruit_price(), recruit, Run.fallen_slots().is_empty()],
-		["DOG TAG", "Give a soldier back one spent dog tag.", Data.TAG_PRICE, restore_tag, not Run.soldiers.any(func(s): return s.alive and s.tags < Data.DOG_TAGS)],
+	var fallen := Run.fallen_slots()
+	var rp := price(recruit_price())
+	var tp := price(Data.TAG_PRICE)
+	var short_tags: Array = Run.soldiers.filter(func(s): return s.alive and s.tags < Data.DOG_TAGS)
+	var tags_line := ", ".join(short_tags.map(func(s): return "%s has %d" % [s.def.name, s.tags])) if short_tags.size() else "Everyone has both"
+	var tiles := [
+		["RECRUIT", rp, "Hire a replacement for a soldier killed in action. Pick from %d recruits." % (3 if Run.hq("barracks") >= 1 else 2), recruit,
+			"Nobody has fallen. The squad is at full strength." if fallen.is_empty() else Services.short(rp), not fallen.is_empty() and Run.scrip >= rp],
+		["DOG TAG", tp, "Give a soldier back one spent dog tag. %s." % tags_line, restore_tag,
+			"Everyone still has both dog tags." if short_tags.is_empty() else Services.short(tp), short_tags.size() > 0 and Run.scrip >= tp],
 	]
-	for i in services.size():
-		var sv: Array = services[i]
-		var bt := HudScript.PixButton.new()
-		bt.text = sv[0]
-		bt.sub = "%d$" % price(sv[2])
-		bt.color = Color("62d26f")
-		bt.size = Vector2(200, 40)
-		bt.position = Vector2(24 + i * 212, 236)
-		bt.disabled = Run.scrip < price(sv[2]) or sv[4]
-		bt.tooltip_text = sv[1]
-		bt.pressed.connect(sv[3])
-		add_child(bt)
+	for i in tiles.size():
+		var sv: Array = tiles[i]
+		var tile := HubUI.ActionTile.new()
+		tile.title = sv[0]
+		tile.cost = sv[1]
+		tile.line = sv[2]
+		tile.why = sv[4]
+		tile.ok = sv[5]
+		tile.color = Color("62d26f")
+		tile.size = Vector2(300, 74)
+		tile.position = Vector2(24 + i * 312, 150)
+		tile.pressed.connect(sv[3])
+		add_child(tile)
 	add_child(back_button())
 
 func _process(_d: float) -> void:
@@ -178,60 +235,52 @@ func _draw() -> void:
 	var hz: Texture2D = Art.tex.ui_hazard
 	for x in range(0, 960, 32):
 		draw_texture_rect(hz, Rect2(x, 0, 32, 8), false)
-		draw_texture_rect(hz, Rect2(x, 252, 32, 6), false)
-	Art.text(self, "QUARTERMASTER" if mode == "shop" else "BARRACKS", Vector2(24, 40), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
-	var sub := "Spend scrip before the next drop. Cards go to the soldier you pick." if mode == "shop" else "Hire replacements for the fallen. Buy back spent dog tags. Two tags each; lose the last and they are gone for good."
-	Art.text(self, sub, Vector2(24, 60), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+	var title := "QUARTERMASTER" if mode == "shop" else "BARRACKS"
+	Art.text(self, title, Vector2(24, 60), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+	var sub := "Buy cards, gear and items. Card changes are at the Workshop." if mode == "shop" else "Hire replacements. Buy back spent dog tags."
+	Art.text(self, sub, Vector2(24 + Art.text_width(title, 16) + 24, 58), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	var sc := "%d SCRIP" % Run.scrip
-	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 16) - 22, 26, 16, 16), false)
-	Art.text(self, sc, Vector2(936, 42), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
+	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 16) - 22, 44, 16, 16), false)
+	Art.text(self, sc, Vector2(936, 60), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
 	if mode == "shop":
-		Art.text(self, "FIELD CARDS", Vector2(24, 84), 8, Color("53d4e2"))
-		Art.text(self, "SQUAD GEAR", Vector2(600, 84), 8, Color("62d26f"))
+		Art.text(self, "FIELD CARDS: ONE SOLDIER'S DECK", Vector2(24, 140), 8, Color("53d4e2"))
+		Art.text(self, "SQUAD GEAR: HELPS EVERYONE", Vector2(600, 140), 8, Color("62d26f"))
+		for x in range(0, 960, 32):
+			draw_texture_rect(hz, Rect2(x, 346, 32, 6), false)
+		Art.text(self, "ITEM SHELF: GOES TO THE STASH", Vector2(24, SHELF_Y - 8), 8, Color("ffb23e"))
+		draw_card_fits()
 	else:
 		var fallen: int = Run.fallen_slots().size()
-		Art.text(self, "%d KILLED IN ACTION THIS RUN" % fallen if fallen else "THE SQUAD IS AT FULL STRENGTH", Vector2(24, 100), 8, Color("ff4d3d") if fallen else Color("62d26f"))
-		Art.text(self, "%d NAMES ON THE MEMORIAL" % Run.meta.memorial.size(), Vector2(24, 120), 8, Color("9aa2ae"))
-	# squad roster
-	Art.text(self, "THE SQUAD", Vector2(24, 316), 8, Color("ffb23e"))
-	for i in Run.soldiers.size():
-		var s: Dictionary = Run.soldiers[i]
-		var x := 24.0 + i * 180
-		var y := 326.0
-		draw_rect(Rect2(x, y, 172, 148), Color(0.05, 0.035, 0.03))
-		draw_rect(Rect2(x + 1, y + 1, 170, 146), Color("2a2e34"))
-		draw_rect(Rect2(x + 1, y + 1, 170, 2), Color("6c7480"))
-		var anim := "idle" if s.alive else "die"
-		Art.draw_char(self, "sq_" + s.key, anim, (t / 12 + i) % 4 if s.alive else 5, Vector2(x + 30, y + 80), 1, false, 0, 1.0, 0, false, 1.1)
-		Art.text(self, s.def.name, Vector2(x + 62, y + 20), 8, Color.WHITE)
-		Art.text(self, "LV%d" % s.lvl, Vector2(x + 164, y + 20), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
-		if s.alive:
-			Art.draw_tags(self, Vector2(x + 8, y + 8), s.tags)
-		Art.text(self, s.def.cls, Vector2(x + 62, y + 36), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
-		if s.alive:
-			draw_rect(Rect2(x + 62, y + 44, 100, 6), Color(0.05, 0.035, 0.03))
-			draw_rect(Rect2(x + 63, y + 45, 98.0 * s.hp / Run.eff_max_hp(s), 4), Color("62d26f") if s.hp > Run.eff_max_hp(s) * 0.3 else Color("ff4d3d"))
-			Art.text(self, "HP %d/%d" % [s.hp, Run.eff_max_hp(s)], Vector2(x + 62, y + 64), 8, Color("e8dcc2"))
-		else:
-			Art.text(self, "KIA", Vector2(x + 62, y + 60), 16, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_LEFT, 2)
-		Art.text(self, "DECK %d  XP %d" % [s.deck.size(), s.xp], Vector2(x + 8, y + 94), 8, Color("e8dcc2"))
-		var perks: Array = Run.archetypes(s).map(func(a): return "%s %s" % [a[0], ["I", "II", "III"][a[1] - 1]])
-		var yy := y + 112
-		for line in CardView.wrap_text(", ".join(perks) if perks.size() else "No abilities yet", 156, 16):
-			Art.text(self, line, Vector2(x + 8, yy), 16, Color("ffd23a") if perks.size() else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
-			yy += 13
-	# owned gear
-	var gx := 24.0
-	Art.text(self, "GEAR:", Vector2(gx, 500), 8, Color("62d26f"))
-	var names: Array = Run.gear.map(func(g): return "%s (%s)" % [Data.gear(g).name, Data.tier_name(Run.gear_tier.get(g, 0)).capitalize()])
-	var gl := ", ".join(names) if names.size() else "none"
-	while Art.text_width(gl, 16, true) > 460 and gl.length() > 4:
-		gl = gl.substr(0, gl.length() - 4) + "."
-	Art.text(self, gl, Vector2(gx + 50, 501), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		Art.text(self, "%d KILLED IN ACTION THIS RUN" % fallen if fallen else "THE SQUAD IS AT FULL STRENGTH", Vector2(24, 140), 8, Color("ff4d3d") if fallen else Color("62d26f"))
+		Art.text(self, "Lose the last dog tag and a soldier is gone for good. %d names on the Memorial; recruits of a fallen soldier's class can inherit one of their abilities." % Run.meta.memorial.size(), Vector2(24, 250), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	if msg_t > 0 and not chooser is TilePicker:
 		var w := Art.text_width(msg, 16, true) + 20
-		draw_rect(Rect2(480 - w / 2, 296, w, 20), Color(0.05, 0.035, 0.03, 0.9))
-		Art.text(self, msg, Vector2(480, 311), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
+		draw_rect(Rect2(480 - w / 2, 316, w, 20), Color(0.05, 0.035, 0.03, 0.9))
+		Art.text(self, msg, Vector2(480, 331), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
+
+func users(key: String) -> Array:
+	## Living soldiers whose class pool has this card, so it fits how they fight.
+	return Run.soldiers.filter(func(s): return s.alive and s.def.pool.has(key))
+
+func draw_card_fits() -> void:
+	## Q5: under each shop card, the faces of who it suits and any archetype it feeds.
+	for i in stock_cards.size():
+		var o: Dictionary = stock_cards[i]
+		if o.get("sold", false):
+			continue
+		var x := 24.0 + i * 112
+		var us := users(o.key)
+		for k in us.size():
+			Art.draw_char(self, "sq_" + us[k].key, "idle", 0, Vector2(x + 10 + k * 22, CARD_Y + 186), 1, false, 0, 1.0, 0, false, 0.6)
+		if us.is_empty():
+			Art.text(self, "ANYONE", Vector2(x, CARD_Y + 180), 8, Color("6c7480"))
+		for s in Run.soldiers:
+			if not s.alive:
+				continue
+			var fit := Services.branch_fit(s, o.key)
+			if fit != "":
+				Art.text(self, "FITS " + fit.to_upper(), Vector2(x + 52, CARD_Y + 196), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+				break
 
 # ---------------------------------------------------------------- choosers
 func choose(title: String, opts: Array, card_size := Vector2(104, 146)) -> int:
@@ -272,16 +321,20 @@ func choose_soldier(title: String, alive_only := true, focus := Rect2()) -> Dict
 	return cand[i] if i >= 0 else {}
 
 func tile_rect(i: int) -> Rect2:
-	## A squad tile along the bottom of the screen, as _draw lays them out.
-	return Rect2(24.0 + i * 180, 326.0, 172, 148)
+	## A soldier's plate on the squad bar, in screen space.
+	var r: Rect2 = bar.plate(i) if bar != null else Rect2()
+	return Rect2(r.position + BAR, r.size)
 
-func pick_tile(title: String, cand: Array, focus := Rect2()) -> int:
-	## The squad tiles light up and the soldier is picked by clicking one; everything else dims.
-	## Returns the index into cand, or -1 on cancel.
+func pick_tile(title: String, cand: Array, focus := Rect2(), hint := Callable(), drag := {}) -> int:
+	## The squad bar plates light up and the soldier is picked by clicking one, or by
+	## dropping a dragged card on one; everything else dims. Returns the index into cand, or -1.
 	var tp := TilePicker.new()
 	tp.title = title
 	tp.focus = focus
 	tp.tiles = cand.map(func(s): return tile_rect(Run.soldiers.find(s)))
+	if hint.is_valid():
+		tp.hint = func(k: int) -> String: return hint.call(cand[k])
+	tp.drag = drag
 	tp.picked.connect(func(k): chosen.emit(k))
 	chooser = tp
 	add_child(tp)
@@ -289,15 +342,6 @@ func pick_tile(title: String, cand: Array, focus := Rect2()) -> int:
 	tp.queue_free()
 	chooser = null
 	return r
-
-func choose_card(title: String, s: Dictionary, filter := Callable()) -> Dictionary:
-	var cand: Array = s.deck if not filter.is_valid() else s.deck.filter(filter)
-	if cand.is_empty():
-		say("No cards to pick from.")
-		return {}
-	var opts: Array = cand.map(func(c): return {"kind": "card", "key": c.key, "tier": Data.tier_of(c)})
-	var i := await choose(title, opts, Vector2(96, 132))
-	return cand[i] if i >= 0 else {}
 
 func pay(n: int) -> bool:
 	if Run.scrip < n:
@@ -310,12 +354,20 @@ func pay(n: int) -> bool:
 
 func buy_card(i: int) -> void:
 	var o: Dictionary = stock_cards[i]
-	if o.get("sold", false) or Run.scrip < o.price:
+	if o.get("sold", false) or Run.scrip < o.price or chooser != null:
 		Sfx.play("deny")
 		return
-	var s := await choose_soldier("WHO GETS %s?" % Data.card(o).name.to_upper(), true, Rect2(24 + i * 112, 92, 104, 146))
-	if s.is_empty() or not pay(o.price):
+	var hint := func(s: Dictionary) -> String:
+		var fit := Services.branch_fit(s, o.key)
+		return "%s: deck %d > %d.%s" % [s.def.name, s.deck.size(), s.deck.size() + 1, (" Feeds %s." % fit) if fit != "" else ""]
+	var cand: Array = Run.soldiers.filter(func(s): return s.alive)
+	if cand.is_empty():
 		return
+	var drag := {"opt": o, "held": Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)}
+	var k := await pick_tile("WHO GETS %s?" % Data.card(o).name.to_upper(), cand, Rect2(24 + i * 112, CARD_Y, 104, 146), hint, drag)
+	if k < 0 or not pay(o.price):
+		return
+	var s: Dictionary = cand[k]
 	s.deck.append(Run.new_card(o.key, o.tier, "shop"))
 	o["sold"] = true
 	say("%s added to %s's deck." % [Data.card(o).name, s.def.name])
@@ -330,114 +382,18 @@ func buy_gear(i: int) -> void:
 	say("%s issued to the squad." % o.name)
 	build()
 
-func heal_all() -> void:
-	if not Run.soldiers.any(func(s): return s.alive and s.hp < Run.eff_max_hp(s)):
-		say("Everyone is already at full health.")
+func buy_shelf() -> void:
+	if shelf_pick < 0:
 		return
-	if not pay(price(40)):
+	var o: Dictionary = shelf[shelf_pick]
+	var p := price(o.price)
+	if o.get("sold", false) or not pay(p):
 		return
-	for s in Run.soldiers:
-		if s.alive:
-			s.hp = Run.eff_max_hp(s)
-	say("The squad is patched up.")
-	build()
-
-func upgrade_card() -> void:
-	if Run.scrip < price(60):
-		Sfx.play("deny")
-		return
-	var s := await choose_soldier("UPGRADE WHOSE CARD?")
-	if s.is_empty():
-		return
-	var c := await choose_card("PICK A CARD TO UPGRADE", s, Run.upgradable)
-	if c.is_empty() or not pay(price(60)):
-		return
-	Run.raise_tier(c)
-	say("%s is now %s." % [Data.CARDS[c.key].name, Data.tier_name(Data.tier_of(c)).capitalize()])
-	build()
-
-func remove_card() -> void:
-	if Run.scrip < price(50):
-		Sfx.play("deny")
-		return
-	var s := await choose_soldier("THIN WHOSE DECK?")
-	if s.is_empty():
-		return
-	if s.deck.size() <= 5:
-		say("%s needs at least 5 cards." % s.def.name)
-		return
-	var c := await choose_card("PICK A CARD TO BURN", s)
-	if c.is_empty() or not pay(price(50)):
-		return
-	s.deck.erase(c)
-	say("%s removed from %s's deck." % [Data.CARDS[c.key].name, s.def.name])
-	build()
-
-func mod_card() -> void:
-	## P3: pick a card, then one of its upgrade branches. A card holds two mods.
-	if Run.scrip < price(Data.MOD_PRICE):
-		Sfx.play("deny")
-		return
-	var s := await choose_soldier("MOD WHOSE CARD?")
-	if s.is_empty():
-		return
-	var c := await choose_card("PICK A CARD TO MOD", s, func(x): return Data.mod_options(x).size() > 0)
-	if c.is_empty():
-		return
-	var mods := Data.mod_options(c)
-	var opts: Array = mods.map(func(m): return {"kind": "service", "name": m.name, "text": m.text, "icon": "ic_up"})
-	var i := await choose("%s: PICK A MOD" % Data.card(c).name.to_upper(), opts)
-	if i < 0 or not pay(price(Data.MOD_PRICE)):
-		return
-	if not c.has("mods"):
-		c["mods"] = []
-	c.mods.append(mods[i].id)
-	say("%s gets %s." % [Data.CARDS[c.key].name, mods[i].name])
-	build()
-
-func fuse_cards() -> void:
-	## M3: three copies of one card at one rarity fuse into a single card a tier higher.
-	var cand: Array = []
-	for s in Run.soldiers:
-		if s.alive:
-			for g in Run.fusable(s):
-				cand.append({"s": s, "g": g})
-			for ev in Run.evolutions(s):
-				cand.append({"s": s, "ev": ev})
-	if cand.is_empty():
-		say("Nothing to fuse or evolve yet.")
-		return
-	var opts: Array = cand.map(func(o):
-		if o.has("ev"):
-			return {"kind": "card", "key": o.ev.rule.into, "tier": Data.tier_of(o.ev.card), "label": "%s: EVOLVE" % o.s.def.name}
-		return {"kind": "card", "key": o.g[0].key, "tier": Data.tier_of(o.g[0]) + 1, "label": "%s: 3 INTO 1" % o.s.def.name})
-	var i := await choose("WORKBENCH: FUSE OR EVOLVE", opts)
-	if i < 0:
-		return
-	if cand[i].has("ev"):
-		var ev: Dictionary = cand[i].ev
-		var from: String = Data.CARDS[ev.card.key].name
-		Run.evolve(ev.card, ev.rule)
-		Sfx.play("levelup")
-		say("%s evolved into %s!" % [from, Data.CARDS[ev.rule.into].name])
-		build()
-		return
-	var c := Run.fuse(cand[i].s, cand[i].g)
-	Sfx.play("levelup")
-	say("%s fused into %s %s." % [Data.CARDS[c.key].name, Data.tier_name(Data.tier_of(c)).capitalize(), Data.card(c).name])
-	build()
-
-func fabricate() -> void:
-	## M5: duplicate a Common or Uncommon item to finish a triple.
-	var cand := Run.fab_options()
-	if cand.is_empty():
-		say("The Fabricator only copies Common and Uncommon items.")
-		return
-	var i := await choose("COPY WHICH ITEM?", cand.map(func(it): return Run.item_opt(it)))
-	if i < 0 or not pay(price(Data.FAB_PRICE)):
-		return
-	var cp := Run.fabricate(cand[i])
-	say("Fabricated a copy of %s.%s" % [Data.item_name(cp), " A triple is ready at the Armory." if Run.merge_group_of(cp).size() == 3 else ""])
+	o.sold = true
+	var it: Dictionary = o.item if not o.get("mystery", false) else Run.roll_item()
+	var where := Run.add_loot(it)
+	say("%s %s added to the %s." % [Data.tier_name(it.tier).capitalize(), Data.item_name(it), where])
+	shelf_pick = -1
 	build()
 
 func recruit() -> void:
@@ -479,9 +435,10 @@ func restore_tag() -> void:
 	build()
 
 func reroll() -> void:
-	if not pay(price(20)):
+	if not pay(price(Services.RESTOCK)):
 		return
 	restock()
+	shelf_pick = -1
 	build()
 
 class Chooser extends Control:
@@ -493,13 +450,61 @@ class Chooser extends Control:
 		draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.86))
 		Art.text(self, title, Vector2(480, 70), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 
+class Bark extends Control:
+	## Q6: the Quartermaster explains the tent once per run. Click to go on; SKIP or NEVER AGAIN.
+	var shop
+	func _ready() -> void:
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		var x := 560.0
+		for b in [["NEXT", 0], ["SKIP", 1], ["DON'T SHOW AGAIN", 2]]:
+			var bt := HudScript.PixButton.new()
+			bt.text = b[0]
+			bt.color = Color("ffd23a") if b[1] == 0 else Color("9aa2ae")
+			bt.size = Vector2(Art.text_width(b[0], 8) + 30, 22)
+			bt.position = Vector2(x, 504)
+			x += bt.size.x + 8
+			var k: int = b[1]
+			bt.pressed.connect(func(): press(k))
+			add_child(bt)
+	func press(k: int) -> void:
+		Sfx.play("click")
+		if k == 2:
+			Run.meta["tips_off"] = true
+			Run.save_meta()
+		if k == 0 and shop.bark < BARKS.size() - 1:
+			shop.bark += 1
+			return
+		shop.bark = -1
+		queue_free()
+	func _gui_input(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			press(0)
+	func _process(_d: float) -> void:
+		queue_redraw()
+	func _draw() -> void:
+		draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.45))
+		var r := Rect2(24, 430, 912, 104)
+		draw_rect(r, Color(0.05, 0.035, 0.03, 0.96))
+		draw_rect(r, Color("ffd23a"), false, 2.0)
+		draw_rect(Rect2(36, 442, 60, 60), Color("2e3a24"))
+		Art.text(self, "QM", Vector2(66, 478), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+		Art.text(self, "THE QUARTERMASTER  %d/%d" % [shop.bark + 1, BARKS.size()], Vector2(110, 452), 8, Color("ffd23a"))
+		var y := 474.0
+		for ln in CardView.wrap_text(BARKS[maxi(shop.bark, 0)], 800, 16):
+			Art.text(self, ln, Vector2(110, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+			y += 16
+
 class TilePicker extends Control:
-	## Soldier pick over the shop: candidate squad tiles pulse and take the click,
-	## right-click, ESC or CANCEL backs out.
+	## Soldier pick over the shop: candidate squad-bar plates pulse and take the click (or the
+	## drop of a dragged card); right-click, ESC or CANCEL backs out.
 	signal picked(i: int)
 	var title := ""
 	var tiles: Array = []      # Rect2 per candidate
 	var focus := Rect2()       # what is being handed out (a shop card), left undimmed
+	var hint := Callable()     # k -> a line about what picking candidate k does
+	var drag := {}             # {opt, held}: a shop card following the mouse until it is dropped
 	var hover := -1
 	var t := 0
 	func _ready() -> void:
@@ -514,18 +519,26 @@ class TilePicker extends Control:
 		add_child(cancel)
 	func _process(_d: float) -> void:
 		t += 1
+		hover = -1
+		var mp := get_local_mouse_position()
+		for k in tiles.size():
+			if tiles[k].has_point(mp):
+				hover = k
 		queue_redraw()
 	func _input(ev: InputEvent) -> void:
 		if ev is InputEventKey and ev.pressed and ev.keycode == KEY_ESCAPE:
 			get_viewport().set_input_as_handled()
 			picked.emit(-1)
-	func _gui_input(ev: InputEvent) -> void:
-		if ev is InputEventMouseMotion:
-			hover = -1
+		elif ev is InputEventMouseButton and not ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and drag.get("held", false):
+			# the card was dragged: dropping it on a plate picks that soldier, anywhere else keeps the pick open
+			drag.held = false
 			for k in tiles.size():
-				if tiles[k].has_point(ev.position):
-					hover = k
-		elif ev is InputEventMouseButton and ev.pressed:
+				if tiles[k].has_point(get_local_mouse_position()):
+					get_viewport().set_input_as_handled()
+					Sfx.play("select")
+					picked.emit(k)
+	func _gui_input(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed:
 			if ev.button_index == MOUSE_BUTTON_RIGHT:
 				picked.emit(-1)
 			elif ev.button_index == MOUSE_BUTTON_LEFT:
@@ -561,12 +574,15 @@ class TilePicker extends Control:
 				x = maxf(x, r.y)
 			if x < 960:
 				draw_rect(Rect2(x, y0, 960 - x, y1 - y0), dim)
-		# title banner across the middle, right above the tiles
-		draw_rect(Rect2(0, 252, 960, 56), Color(0.05, 0.035, 0.03, 0.94))
-		draw_rect(Rect2(0, 252, 960, 2), Color("ffd23a"))
-		draw_rect(Rect2(0, 306, 960, 2), Color("ffd23a"))
-		Art.text(self, title, Vector2(480, 280), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
-		Art.text(self, "Click a soldier below.  Right-click or ESC to cancel.", Vector2(480, 299), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		var by := 360.0
+		draw_rect(Rect2(0, by, 960, 60), Color(0.05, 0.035, 0.03, 0.94))
+		draw_rect(Rect2(0, by, 960, 2), Color("ffd23a"))
+		draw_rect(Rect2(0, by + 58, 960, 2), Color("ffd23a"))
+		Art.text(self, title, Vector2(480, by + 26), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+		var sub := "Click a soldier on the bar at the top, or drag the card onto them. Right-click or ESC to cancel."
+		if hover >= 0 and hint.is_valid():
+			sub = hint.call(hover)
+		Art.text(self, sub, Vector2(480, by + 46), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 		var pulse := 0.55 + 0.45 * sin(t / 8.0)
 		for k in tiles.size():
 			var r: Rect2 = tiles[k]
@@ -575,7 +591,13 @@ class TilePicker extends Control:
 			draw_rect(r.grow(3), Color(col, 1.0 if on else pulse), false, 3.0)
 			if on:
 				draw_rect(r, Color(1, 1, 1, 0.08))
-			# a bouncing arrow over each pickable soldier
+			# a bouncing arrow under each pickable soldier, pointing up at them
 			var ax := r.get_center().x
-			var ay := r.position.y - 4 - (2 if (t / 10) % 2 == 0 else 0)
-			draw_colored_polygon(PackedVector2Array([Vector2(ax - 6, ay - 6), Vector2(ax + 6, ay - 6), Vector2(ax, ay)]), col)
+			var ay := r.end.y + 6 + (2 if (t / 10) % 2 == 0 else 0)
+			draw_colored_polygon(PackedVector2Array([Vector2(ax - 6, ay + 6), Vector2(ax + 6, ay + 6), Vector2(ax, ay)]), col)
+		if drag.get("held", false):
+			var mp := get_local_mouse_position()
+			var r := Rect2(mp - Vector2(44, 20), Vector2(88, 40))
+			draw_rect(r, Color(0.05, 0.035, 0.03, 0.9))
+			draw_rect(r, Color("ffd23a"), false, 2.0)
+			Art.text(self, Data.card(drag.opt).name, r.get_center() + Vector2(0, 5), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 0, true)

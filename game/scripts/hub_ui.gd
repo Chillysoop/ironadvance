@@ -83,6 +83,7 @@ class ActionTile extends Control:
 	signal pressed
 	var title := ""
 	var cost := -1             # -1: no price shown, 0: FREE
+	var desc := ""             # what the service is, always shown (Workshop tiles)
 	var line := ""             # what happens
 	var why := ""              # why it can't happen right now
 	var ok := true
@@ -114,10 +115,56 @@ class ActionTile extends Control:
 		Art.text(self, title, Vector2(6, 16), 8, c if ok else Color("8a9099"))
 		if cost >= 0:
 			Art.text(self, "FREE" if cost == 0 else "%d$" % cost, Vector2(w - 5, 16), 8, Color("ffd23a") if ok else Color("8a7a40"), HORIZONTAL_ALIGNMENT_RIGHT)
-		var body := line if ok else why
 		var y := 30.0
+		for ln in CardView.wrap_text(desc, w - 10, 16):
+			Art.text(self, ln, Vector2(6, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			y += 12
+		if desc != "":
+			y += 4
+		var body := line if ok else why
 		for ln in CardView.wrap_text(body, w - 10, 16):
 			if y > h - 2:
 				break
-			Art.text(self, ln, Vector2(6, y), 16, Color("e8dcc2") if ok else Color("8a9099"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			Art.text(self, ln, Vector2(6, y), 16, (Color("62d26f") if desc != "" else Color("e8dcc2")) if ok else Color("8a9099"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 			y += 12
+
+class NavStrip extends Control:
+	## B2: every building one click (or one key) away, along the top of each HQ screen.
+	## A dot marks a building that has something ready (the same checks as the HQ badges).
+	signal go(id: String)
+	const STOPS := [["HQ", "hq", "H"], ["QM TENT", "qm", "Q"], ["WORKSHOP", "workshop", "W"], ["ARMORY", "armory", "A"],
+		["DOC'S LAB", "doc", "D"], ["BARRACKS", "barracks", "B"], ["MEMORIAL", "memorial", "M"]]
+	var current := "hq"
+	var badges := {}           # id -> short badge text
+	var hover := -1
+	func _ready() -> void:
+		size = Vector2(928, 18)
+		position = Vector2(16, 12)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+	func cell(i: int) -> Rect2:
+		var w := (size.x - 6 * 4) / 7.0
+		return Rect2(i * (w + 4), 0, w, size.y)
+	func _gui_input(ev: InputEvent) -> void:
+		if ev is InputEventMouseMotion:
+			hover = -1
+			for i in STOPS.size():
+				if cell(i).has_point(ev.position):
+					hover = i
+		elif ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			for i in STOPS.size():
+				if cell(i).has_point(ev.position) and STOPS[i][1] != current:
+					go.emit(STOPS[i][1])
+	func _process(_d: float) -> void:
+		queue_redraw()
+	func _draw() -> void:
+		for i in STOPS.size():
+			var r := cell(i)
+			var on: bool = STOPS[i][1] == current
+			draw_rect(r, INK)
+			draw_rect(r.grow(-1), Color("ffd23a") if on else (Color("3a4048") if hover == i else Color("2a2e34")))
+			Art.text(self, STOPS[i][0], Vector2(r.get_center().x, r.position.y + 13), 8, INK if on else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0)
+			Art.text(self, STOPS[i][2], Vector2(r.position.x + 4, r.position.y + 13), 8, Color(0, 0, 0, 0.5) if on else Color("6c7480"), HORIZONTAL_ALIGNMENT_LEFT, 0)
+			if badges.get(STOPS[i][1], "") != "":
+				draw_rect(Rect2(r.end.x - 9, r.position.y + 5, 7, 7), INK)
+				draw_rect(Rect2(r.end.x - 8, r.position.y + 6, 5, 5), Color("ff4d3d"))

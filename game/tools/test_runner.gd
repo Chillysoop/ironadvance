@@ -712,6 +712,8 @@ func run() -> void:
 			await doc()
 		"dossier":
 			await dossier()
+		"hub":
+			await hub()
 		"aliens":
 			await aliens()
 		"aliens2":
@@ -777,11 +779,6 @@ func picker() -> void:
 	sh.chosen.emit(-1)
 	await frames_wait(10)
 	check(not sh.stock_cards[1].get("sold", false) and sh.chooser == null, "cancelling a pick buys nothing")
-	sh.remove_card()
-	await frames_wait(20)
-	await shot("picker_remove")
-	sh.chosen.emit(-1)
-	await frames_wait(10)
 	sh.mode = "barracks"
 	sh.build()
 	sh.restore_tag()
@@ -923,6 +920,119 @@ func dossier() -> void:
 	await frames_wait(6)
 	check(not ro.get_children().any(func(o): return o.get_script() != null and o.get("why") != null), "a read-only Dossier shows no service buttons")
 	ro.queue_free()
+
+func hub() -> void:
+	## The HQ hub: buildings with one job each, a nav strip between them, ready badges, the
+	## gate reminder, the walk, the Workshop's shortcuts and Patch Up at the Doc's Lab.
+	Run.new_run()
+	Run.meta["tips_off"] = false
+	Run.scrip = 500
+	Run.soldiers[0].hp = 9
+	Run.soldiers[2].deck.append(Run.new_card("frag", 0, "shop"))
+	Run.stash.append(Run.new_item("ghillie", 0))
+	Run.stash.append(Run.new_item("ghillie", 0))
+	main.show_hq(false)
+	await frames_wait(20)
+	var hq: Control = main.screen
+	var b: Dictionary = hq.badges()
+	check(b.get("qm", "") == "NEW STOCK" and b.has("workshop") and b.get("doc", "") == "HURT", "badges: new stock, fusions ready, someone hurt: %s" % b)
+	check(hq.reminders().any(func(l): return l.contains("scrip unspent")) and hq.reminders().any(func(l): return l.contains("MOSS")), "the gate reminds about scrip and Moss's HP")
+	hq.dial_btn.hover = true
+	await frames_wait(4)
+	await shot("hub_hq")
+	hq.dial_btn.hover = false
+	# walking to a building opens it after the squad gets there
+	hq.walk_to("qm")
+	await frames_wait(14)
+	await shot("hub_walk")
+	await until(func(): return hq.sub != null and is_instance_valid(hq.sub), 120)
+	await frames_wait(10)
+	var qm: Control = hq.sub
+	check(qm.get("mode") == "shop" and qm.bark == 0, "the walk ends in the Quartermaster, who explains the tent once")
+	await shot("hub_qm_bark")
+	check(hq.get_node_or_null("Nav") != null, "the nav strip sits over the building")
+	qm.bark = -1
+	qm.build()
+	check(not hq.badges().has("qm"), "the NEW STOCK badge clears after a visit")
+	qm.shelf_pick = 0
+	qm.build()
+	await frames_wait(6)
+	await shot("hub_qm")
+	var n_stash: int = Run.stash.size() + Run.belt.size()
+	qm.buy_shelf()
+	check(Run.stash.size() + Run.belt.size() == n_stash + 1, "the Quartermaster sells shelf items straight to the stash")
+	# drag a card onto a soldier
+	qm.buy_card(0)
+	await frames_wait(6)
+	var tp: Control = qm.chooser
+	tp.drag = {"opt": qm.stock_cards[0], "held": true}
+	await frames_wait(4)
+	await shot("hub_pick")
+	tp.picked.emit(1)
+	await frames_wait(6)
+	check(qm.stock_cards[0].get("sold", false) and Run.soldiers[1].deck.any(func(c): return c.get("from", "") == "shop"), "a shop card dropped on Hex goes in Hex's deck")
+	# the nav strip jumps between buildings
+	hq.go("workshop")
+	await frames_wait(10)
+	var ws: Control = hq.sub
+	check(ws.get_script() == load("res://scripts/workshop.gd"), "the nav strip opens the Workshop")
+	await shot("hub_workshop")
+	var svs: Array = ws.services()
+	check(svs[2][6] and svs[2][4].contains("VEE"), "Workshop FUSE lists Vee's ready Frags: " + svs[2][4])
+	check(not svs[3][6] and svs[3][5] != "", "Workshop EVOLVE says what it needs: " + svs[3][5])
+	ws.start_pick("polish")
+	await frames_wait(6)
+	check(ws.bar.pickable.size() == 4, "every soldier has a card to polish")
+	await shot("hub_workshop_pick")
+	ws.on_pick(0)
+	await frames_wait(10)
+	check(ws.sub != null and ws.sub.filt == "polish" and ws.sub.idx == 0, "picking Moss opens her Dossier filtered to polishable cards")
+	check(not hq.get_node("Nav").visible, "the nav strip steps aside while a Dossier is open")
+	ws.sub.done.emit()
+	await frames_wait(6)
+	var frags: Array = Run.soldiers[2].deck.filter(func(c): return c.key == "frag")
+	ws.open_dossier(2, "fuse", frags[0], "fuse")
+	await frames_wait(10)
+	await shot("hub_workshop_fuse")
+	ws.sub.modal.confirm.pressed.emit()
+	await frames_wait(10)
+	check(Run.fusable(Run.soldiers[2]).is_empty(), "the READY NOW shortcut fuses Vee's Frags")
+	ws.sub.done.emit()
+	# Doc's Lab: Patch Up works before the lab is built
+	hq.go("doc")
+	await frames_wait(10)
+	await shot("hub_doc")
+	var patch: Control = hq.get_children().filter(func(c): return c.get("title") == "PATCH UP")[0]
+	patch.pressed.emit()
+	await frames_wait(6)
+	check(Run.soldiers[0].hp == Run.eff_max_hp(Run.soldiers[0]), "Patch Up at the Doc's Lab heals Moss")
+	# Armory: copy an item
+	hq.go("armory")
+	await frames_wait(10)
+	var arm: Control = hq.sub
+	arm.select({"where": "stash", "i": Run.stash.find(Run.stash.filter(func(it): return it.id == "ghillie")[0])})
+	await frames_wait(6)
+	await shot("hub_armory")
+	arm.copy_sel()
+	await frames_wait(6)
+	check(Run.stash.filter(func(it): return it.id == "ghillie").size() == 3 and Run.any_merge(), "COPY at the Armory finishes a triple")
+	check(hq.badges().get("armory", "") == "TRIPLE READY", "the Armory badge lights for the triple")
+	hq.go("barracks")
+	await frames_wait(10)
+	await shot("hub_barracks")
+	# keys: ESC goes home, W opens the Workshop
+	var esc := InputEventKey.new()
+	esc.keycode = KEY_ESCAPE
+	esc.pressed = true
+	hq._unhandled_input(esc)
+	await frames_wait(6)
+	check(hq.idle(), "ESC from a building goes home")
+	var w := InputEventKey.new()
+	w.keycode = KEY_W
+	w.pressed = true
+	hq._unhandled_input(w)
+	await frames_wait(6)
+	check(hq.sub != null and hq.sub.get_script() == load("res://scripts/workshop.gd"), "W opens the Workshop")
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)
