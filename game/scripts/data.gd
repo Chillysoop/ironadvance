@@ -290,6 +290,8 @@ const ELITES := {
 	"alpha": {"name": "ALPHA", "vharr": true, "text": "Others of its kind within 160px act twice while it lives."},
 	"anchored": {"name": "ANCHORED", "vharr": true, "text": "Can't be knocked back. Crush it or burn it."},
 	"hungry": {"name": "HUNGRY", "vharr": true, "text": "Eats a body within 60px each turn to heal 8."},
+	# H6: a Jackal carrying a Vharr parasite (also what an Overseer's link does)
+	"thrall": {"name": "THRALL", "text": "Shrugs off the first knockback. A Skitter bursts out when it dies."},
 }
 # Named POWs with a specialty (L5). Anyone else gives +1 Luck.
 const POW_SPECIAL := {
@@ -637,6 +639,10 @@ const ETYPES := {
 	"grappler": {"name": "Grappler", "faction": "vharr", "hp": 22, "dmg": 6, "range": 360, "yank": 200, "speed": 40, "heavy": true, "score": 200, "w": 50, "h": 44, "note": "Heavy. Shoots its tongue at anyone in a clear line within 360px and yanks them up to 200px toward it, over ledges and into mines. Cover breaks the line."},
 	"bloater": {"name": "Bloater", "faction": "vharr", "hp": 18, "dmg": 12, "speed": 80, "radius": 40, "score": 150, "w": 40, "h": 46, "note": "Swells every turn and pops when it reaches you. Kill it and it pops anyway: knock it into its friends first. Blast radius grows from 40 to 80."},
 	"weaver": {"name": "Dome Weaver", "faction": "vharr", "hp": 10, "dmg": [2, 3], "range": 420, "speed": 70, "prefer": 300, "score": 175, "w": 26, "h": 56, "note": "Hangs back and covers an ally with a dome that stops bullets and blasts for 2 turns. Melee, crushing and slams go through. Kill the Weaver first."},
+	"prism": {"name": "Prism Drone", "faction": "vharr", "weight": "hover", "hp": 12, "pod": 6, "dmg": 3, "range": 460, "speed": 60, "prefer": 260, "alt": 90, "score": 150, "w": 30, "h": 36, "note": "Floats slowly and turns its mirror toward you. Bullets that hit the mirror bounce off at the mirrored angle: bank shots off it. Hit it from behind, or use ARC and MELEE."},
+	"warden": {"name": "Gravity Warden", "faction": "vharr", "hp": 14, "dmg": 3, "speed": 60, "prefer": 340, "well": 140, "pull": 60, "score": 175, "w": 30, "h": 50, "note": "Keeps its distance and drops a gravity well on the squad. Everything in the well is pulled to its center each turn, and ARC shots bend toward it. Kill the Warden and the well collapses with a small blast."},
+	"stalker": {"name": "Phase Stalker", "faction": "vharr", "hp": 14, "dmg": 8, "speed": 140, "phase_move": 240, "score": 175, "w": 24, "h": 54, "note": "Phased every other turn: it walks through walls and bullets pass through it, blasts still hit. If it turns solid inside rock it is crushed, so bring the ceiling down on it."},
+	"overseer": {"name": "Overseer", "faction": "vharr", "weight": "hover", "hp": 26, "pod": 10, "crash": 30, "dmg": 4, "range": 460, "speed": 70, "alt": 120, "links": 2, "score": 300, "w": 34, "h": 44, "note": "A brain in a floating tank that hides behind its Jackals and turns two of them into Thralls. Kill it and the links break, stunning the freed Jackals. Break the tank's pod and the fall shatters it."},
 	"hive": {"name": "Hive Pod", "faction": "vharr", "hp": 20, "static": true, "heavy": true, "hatch": 2, "brood": 2, "score": 200, "w": 26, "h": 26, "note": "Hatches two Skitters when its timer runs out. Bursts into acid when killed: anyone standing in it at the end of the enemy phase takes 3."},
 	"burrow": {"name": "Skitter Tunnel", "faction": "vharr", "hp": 14, "static": true, "heavy": true, "waves": [3, 4, 3], "score": 150, "w": 30, "h": 14, "note": "Sends a wave of Skitters each enemy phase (the next wave's size is shown), then caves in. Blow it up to stop the swarm."},
 	"boss": {"name": "IRON BOAR", "hp": 150, "dmg": [3, 4], "shots": 4, "range": 660, "heavy": true, "score": 3000, "w": 120, "h": 64, "note": "Armored tank: shrugs off 60% of damage until its armor cracks. Crushing debris cracks it at once."},
@@ -804,14 +810,14 @@ const BIOMES := {
 # Each level of a run has its own pool. Played and burned biomes never come back.
 # Which Vharr fill the rifleman slots in each biome (Z on the alien page).
 const BIOME_ALIENS := {
-	"desert": ["skitter", "burrower", "squid"],
-	"fortress": ["blinker", "skitter", "weaver"],
-	"jungle": ["grappler", "skitter", "blinker"],
-	"delta": ["squid", "bloater", "skitter"],
-	"refinery": ["bloater", "weaver", "squid"],
-	"mountain": ["squid", "burrower", "blinker"],
-	"harbor": ["squid", "grappler", "bloater"],
-	"palace": ["blinker", "weaver", "skitter"],
+	"desert": ["skitter", "burrower", "squid", "warden"],
+	"fortress": ["blinker", "skitter", "weaver", "prism"],
+	"jungle": ["grappler", "skitter", "blinker", "stalker"],
+	"delta": ["squid", "bloater", "skitter", "prism"],
+	"refinery": ["bloater", "weaver", "squid", "warden"],
+	"mountain": ["squid", "burrower", "blinker", "warden"],
+	"harbor": ["squid", "grappler", "bloater", "prism"],
+	"palace": ["stalker", "weaver", "skitter", "blinker"],
 }
 
 const LEVELS := [

@@ -25,6 +25,7 @@ func _draw() -> void:
 	for r in b.ropes:
 		draw_line(Vector2(r.x, r.y), Vector2(r.u.x, r.u.y - 20), r.get("c", Color("d8d0b8")), 3.0 if r.has("c") else 1.0)
 	draw_acids()
+	draw_wells()
 	for u in b.units:
 		if u.dead:
 			draw_unit(u)
@@ -292,6 +293,10 @@ func draw_unit(u: Unit) -> void:
 			Art.draw_char(self, u.sheet, a[0], a[1], pos + kick + o, u.face, true, rot, u.alpha * rim.a, u.gun_angle, false, 1.0, Color(rim, 1.0))
 	var sc := 1.0 + 0.1 * maxi(0, u.fl.get("swell", 0)) if u.type == "bloater" else 1.0
 	Art.draw_char(self, u.sheet, a[0], a[1], pos + kick, u.face, white, rot, u.alpha, u.gun_angle, a[2], sc)
+	if not u.dead and (u.elite == "thrall" or u.fl.get("thrall", false)):
+		# parasite veins showing through the Jackal's skin
+		for k in 3:
+			draw_rect(Rect2(pos.x - 6 + k * 5, pos.y - u.h * 0.75 + (k % 2) * 6, 2, 6), Color(C_OOZE, 0.75 + 0.2 * sin(b.t / 7.0 + k)))
 	if u.dome > 0 and not u.dead:
 		var r := maxf(u.w, u.h) / 2.0 + 8
 		var c := pos + Vector2(0, -u.h / 2.0)
@@ -953,6 +958,31 @@ func draw_burrow(u: Unit, pos: Vector2, white: bool) -> void:
 		for k in 3:
 			if (b.t / 20 + k) % 3 != 0:
 				draw_rect(Rect2(pos.x - 6 + k * 5, pos.y - 7, 2, 1), C_OOZE)
+
+func draw_wells() -> void:
+	## Gravity Warden wells: a slow violet swirl, and the threads from an Overseer to its Thralls.
+	for w in b.wells:
+		var c := Vector2(w.x, w.y)
+		draw_circle(c, w.r, Color(0.48, 0.24, 0.69, 0.07))
+		draw_arc(c, w.r, 0, TAU, 48, Color("c47bff", 0.45), 1.5)
+		for k in 3:
+			var a0: float = b.t / 30.0 + k * TAU / 3
+			var rr: float = w.r * (0.35 + 0.2 * k)
+			draw_arc(c, rr, a0, a0 + 1.6, 12, Color("c47bff", 0.5 - 0.1 * k), 2.0)
+		draw_circle(c, 5, Color("e2b8ff", 0.8))
+	for u in b.units:
+		if u.dead or not u.fl.has("link"):
+			continue
+		for o in b.units:
+			if o.id == u.fl.link and not o.dead:
+				var p0 := Vector2(o.x, o.y - o.h * 0.6)
+				var p1 := Vector2(u.x, u.y - u.h + 6)
+				var mid := (p0 + p1) / 2 + Vector2(0, 14 + sin(b.t / 10.0 + u.id) * 4)
+				var pts := PackedVector2Array()
+				for i in 9:
+					var t := i / 8.0
+					pts.append(p0.lerp(mid, t).lerp(mid.lerp(p1, t), t))
+				draw_polyline(pts, Color("ff6ad5", 0.7), 1.0)
 
 func draw_acids() -> void:
 	for a in b.acids:
