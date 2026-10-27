@@ -506,10 +506,26 @@ const HQ_BUILDINGS := [
 	{"id": "barracks", "name": "BARRACKS", "ranks": ["Choose from 3 recruits instead of 2.", "Recruits arrive at level 2.", "Recruits cost half."]},
 	{"id": "armory", "name": "ARMORY", "ranks": ["+1 Luck at the start of every run.", "Quartermaster prices are 10% lower.", "Elite outposts pay Legendary gear."]},
 	{"id": "mess", "name": "MESS HALL", "ranks": ["Camps heal 5 more HP.", "Start each run with 40 more scrip.", "Camps offer all 4 detours."]},
+	{"id": "doc", "name": "DOC'S LAB", "ranks": ["Opens surgery: 1 implant slot per class.", "2 implant slots per class.", "3 implant slots per class."]},
 	{"id": "motor", "name": "MOTOR POOL", "ranks": ["The SV-001 Slug is on call once per level.", "The Slug stays for 2 rounds.", "The Slug is on call twice per level."]},
 ]
 const HQ_COST := [10, 20, 30]   # Salvage for rank 1, 2, 3
 const BOSS_SALVAGE := 5         # every Boar you beat pays this much Salvage
+const BOSS_BIO := 1             # ...and a Bio-part for the Doc
+
+# The Doc's surgeries (step 7): installed on a CLASS, so every future soldier of that class has it
+# and permadeath never erases it. Upside and side effect are both fixed and shown up front.
+# cls "" = any class. Slots per class = the Doc's Lab rank; a new surgery past the cap replaces the oldest.
+const SURGERIES := {
+	"cybereye": {"name": "CYBER EYE", "cls": "moss", "up": "Aimed shots sway 25% less.", "side": "Cannot aim through smoke at all, even your own."},
+	"thirdarm": {"name": "THIRD ARM", "cls": "hex", "up": "+1 hand size.", "side": "15 less movement."},
+	"asbestos": {"name": "ASBESTOS HIDE", "cls": "vee", "up": "Immune to your own explosions.", "side": "Heals on this soldier restore 25% less."},
+	"spine": {"name": "TITANIUM SPINE", "cls": "rook", "up": "+6 max HP and no fall damage.", "side": "Cannot use the Jump Pack."},
+	"adrenal": {"name": "ADRENAL PUMP", "cls": "", "up": "Start every fight at 25 adrenaline.", "side": "3 less max HP."},
+	"magnet": {"name": "MAGNET HAND", "cls": "", "up": "Grab loot from 3x as far.", "side": "Grenades thrown at this soldier curve toward them."},
+}
+const SURGERY_BIO := 2
+const SURGERY_SALVAGE := 5
 const WRECK_SALVAGE := 3
 const ELITE_BIO := 2     # share of max HP everyone gets back just for reaching camp
 

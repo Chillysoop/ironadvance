@@ -139,8 +139,13 @@ func setup(idx: int, custom := {}) -> void:
 		u.fuel_max = int(u.g("jet"))
 		u.fuel = u.fuel_max
 		var deck: Array = s.deck.duplicate()
+		if Run.implanted(s, "spine"):
+			# Titanium Spine: too heavy for the Jump Pack
+			deck = deck.filter(func(cd): return not (cd if cd is String else cd.key) in ["jumppack", "rocketjump"])
 		deck.shuffle()
 		u.draw = deck
+		if Run.implanted(s, "adrenal"):
+			u.adr = 25
 		units.append(u)
 		i += 1
 	var pi := randi() % Data.POW_NAMES.size()
@@ -817,6 +822,10 @@ func trace_bullet(x: float, y: float, ang: float, max_len: float, bounces: int, 
 		if ny > H or ny < -80 or nx < 0 or nx > world_w:
 			segs.append([sx, sy, nx, ny])
 			return {"segs": segs, "hits": hits, "pings": pings, "ping_d": ping_d, "len": trav, "end": null}
+		if shooter is Unit and shooter.team == "squad" and Run.implanted(shooter.s, "cybereye") and smoke_at(nx, ny):
+			# Cyber Eye: the optics see nothing through smoke, so the shot goes nowhere
+			segs.append([sx, sy, nx, ny])
+			return {"segs": segs, "hits": hits, "pings": pings, "ping_d": ping_d, "len": trav, "end": null}
 		var u = unit_at_point(nx, ny, shooter, trav, skip)
 		if u != null:
 			hits.append({"u": u, "x": nx, "y": ny, "dx": dx, "d": trav, "head": not u.heavy and not u.is_prop() and ny < u.y - u.h * 0.72})
@@ -1384,6 +1393,8 @@ func kill(tg: Unit, src) -> void:
 
 func collision_dmg(u: Unit, amt: float, label: String) -> void:
 	var d := int(round(amt))
+	if label == "FALL" and u.team == "squad" and Run.implanted(u.s, "spine"):
+		return
 	if u.team == "squad" and Run.relic_tier("boots") >= 3:
 		d = 0
 	elif u.team == "squad" and (u.def.key == "rook" or Run.has_gear("boots") or u.g("fall_half") > 0):
@@ -1490,13 +1501,15 @@ func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> vo
 		var f := 1 - (d / r) * 0.6
 		var dm := maxi(1, int(round(dmg * f))) + bonus
 		if u == owner:
-			dm = 0 if u.perk("blastproof") else maxi(1, int(round(dm * 0.4)))
+			dm = 0 if u.perk("blastproof") or (u.team == "squad" and Run.implanted(u.s, "asbestos")) else maxi(1, int(round(dm * 0.4)))
 		if not u.heavy and not u.is_prop() and not u.immovable:
 			var ang := atan2(cy - y - 6, cx - x)
 			var k := ((1 - d / r) * 6 + 2.5) * kb(u)
 			if u == owner and u.perk("kinetic"):
 				k *= 1.6
 				u.jumping = true
+			if u == owner and u.team == "squad" and Run.implanted(u.s, "asbestos"):
+				u.jumping = true  # Asbestos Hide: her own blast can't hurt her, landing included
 			u.vx = cos(ang) * k
 			u.vy = minf(-2.5, sin(ang) * k - 3)
 			u.air = true
@@ -1610,6 +1623,11 @@ func update_proj(p: Dictionary) -> void:
 			p.vy = sin(cur) * sp
 	p.vx += wind * 0.006 * p.wind
 	p.vy += GRAV * p.grav
+	if p.grav > 0 and p.owner is Unit and p.owner.team == "enemy":
+		# Magnet Hand: Jackal grenades bend toward the soldier wearing it
+		for m in units:
+			if m.team == "squad" and not m.dead and absf(m.x - p.x) < 160 and Run.implanted(m.s, "magnet"):
+				p.vx += signf(m.x - p.x) * 0.06
 	var n := maxi(1, int(ceil(Vector2(p.vx, p.vy).length() / 2.0)))
 	for i in n:
 		var px: float = p.x
@@ -1849,6 +1867,8 @@ func sway_of(u: Unit, c: Dictionary) -> float:
 	if Run.has_gear("laser"):
 		s *= 0.7
 	s *= maxf(0.2, 1.0 - float(u.g("sway", 0.0)))
+	if u.team == "squad" and Run.implanted(u.s, "cybereye"):
+		s *= 0.75
 	return s
 
 func aim_angle(u: Unit, c: Dictionary, p: Vector2) -> Dictionary:
@@ -2255,6 +2275,8 @@ func _act_ally(u: Unit, idx: int, c: Dictionary, tg: Unit) -> void:
 		Sfx.play("power")
 	if c.has("heal"):
 		var h := heal_amount(u, c)
+		if Run.implanted(tg.s, "asbestos"):
+			h = int(ceil(h * 0.75))  # Asbestos Hide: the skin fights the medicine
 		var before := tg.hp
 		var over := maxi(0, tg.hp + h - tg.max_hp)
 		tg.hp = mini(tg.max_hp, tg.hp + h)
@@ -3024,7 +3046,7 @@ func stow_hand(s: Unit) -> void:
 	s.hand = s.hand.filter(func(c): return c.get("od", false) or c.get("temp", false))
 
 func hand_size(s: Unit) -> int:
-	return maxi(2, 4 + s.s.bonus.hand + (1 if s.perk("fieldkit") else 0) + relay_hand - (1 if Run.threat_on(3) else 0))
+	return maxi(2, 4 + s.s.bonus.hand + (1 if s.perk("fieldkit") else 0) + (1 if Run.implanted(s.s, "thirdarm") else 0) + relay_hand - (1 if Run.threat_on(3) else 0))
 
 func start_player_turn() -> void:
 	round_n += 1
@@ -3037,7 +3059,7 @@ func start_player_turn() -> void:
 			s.energy += s.s.bonus.energy1 + int(s.g("energy1")) + (1 if Run.has_gear("bandolier") else 0)
 		elif round_n == 2 and Run.relic_tier("bandolier") >= 3:
 			s.energy += 1
-		s.move_left = s.def.spd + s.s.bonus.move + int(s.g("move")) + (60 if s.perk("charge") else 0)
+		s.move_left = s.def.spd + s.s.bonus.move + int(s.g("move")) + (60 if s.perk("charge") else 0) - (15 if Run.implanted(s.s, "thirdarm") else 0)
 		s.moved = false
 		s.attacked = false
 		s.aim_discount = false
@@ -4136,6 +4158,8 @@ func victory() -> void:
 		# the Boar's wreck is worth stripping for HQ
 		Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.BOSS_SALVAGE
 		stats["salvage"] = int(stats.get("salvage", 0)) + Data.BOSS_SALVAGE
+		Run.meta.bio = int(Run.meta.get("bio", 0)) + Data.BOSS_BIO
+		stats["bio"] = int(stats.get("bio", 0)) + Data.BOSS_BIO
 		Run.save_meta()
 	Sfx.play("levelup")
 	for s in squad_alive():
@@ -4336,7 +4360,7 @@ func step() -> void:
 			physics(u)
 		if u.team == "squad" and not u.dead:
 			for p in units:
-				if p.kind == "loot" and not p.gone and not p.sunk and absf(p.x - u.x) < 22 and absf(p.y - u.y) < 30:
+				if p.kind == "loot" and not p.gone and not p.sunk and absf(p.x - u.x) < (66 if Run.implanted(u.s, "magnet") else 22) and absf(p.y - u.y) < 30:
 					collect(u, p)
 				if p.kind == "wreck" and not p.stripped and absf(p.x - u.x) < 28 and absf(p.y - u.y) < 30:
 					strip_wreck(p, u)

@@ -17,6 +17,7 @@ var t := 0
 var sub: Control = null     # the building screen that is open, if any
 var memorial_open := false
 var upgrades_open := false
+var doc_open := false
 var held := {}              # textures must stay referenced until the frame renders
 
 func _ready() -> void:
@@ -62,6 +63,58 @@ func build() -> void:
 	up.position = Vector2(40, 486)
 	up.pressed.connect(open_upgrades)
 	add_child(up)
+	var doc := HudScript.PixButton.new()
+	doc.text = "DOC'S LAB"
+	doc.sub = "%d BIO-PARTS" % int(Run.meta.get("bio", 0)) if Run.hq("doc") >= 1 else "NOT BUILT YET"
+	doc.color = Color("9df25c")
+	doc.small = true
+	doc.size = Vector2(170, 44)
+	doc.position = Vector2(750, 486)
+	doc.pressed.connect(open_doc)
+	add_child(doc)
+
+func open_doc() -> void:
+	## The Doc's Lab: surgeries installed on a class, paid in Bio-parts and Salvage.
+	Sfx.play("click")
+	doc_open = true
+	for c in get_children():
+		c.queue_free()
+	sub = null
+	var ids: Array = Data.SURGERIES.keys()
+	for i in ids.size():
+		var id: String = ids[i]
+		var S: Dictionary = Data.SURGERIES[id]
+		var classes: Array = Data.SQUAD_DEFS.map(func(d): return d.key) if S.cls == "" else [S.cls]
+		for j in classes.size():
+			var cls: String = classes[j]
+			var bt := HudScript.PixButton.new()
+			bt.small = true
+			var why := Run.surgery_block(id, cls)
+			if classes.size() == 1:
+				bt.size = Vector2(176, 28)
+				bt.position = Vector2(744, 106 + i * 54)
+				bt.text = "INSTALL" if why == "" else why
+			else:
+				bt.size = Vector2(86, 28)
+				bt.position = Vector2(744 + (j % 2) * 90, 98 + i * 54 + (j / 2) * 22)
+				bt.size.y = 20
+				bt.text = Data.squad_def(cls).name + (" OK" if why == "INSTALLED" else "")
+			bt.color = Color("9df25c")
+			bt.disabled = why != ""
+			bt.pressed.connect(func():
+				if Run.operate(id, cls):
+					Sfx.play("power")
+					open_doc()
+				else:
+					Sfx.play("deny"))
+			add_child(bt)
+	var close := HudScript.PixButton.new()
+	close.text = "BACK TO HQ"
+	close.color = Color("9aa2ae")
+	close.size = Vector2(150, 30)
+	close.position = Vector2(405, 498)
+	close.pressed.connect(func(): doc_open = false; build())
+	add_child(close)
 
 func open_upgrades() -> void:
 	## The HQ upgrade board: each building's next rank, bought with Salvage.
@@ -76,7 +129,7 @@ func open_upgrades() -> void:
 		var bt := HudScript.PixButton.new()
 		bt.small = true
 		bt.size = Vector2(170, 30)
-		bt.position = Vector2(750, 112 + i * 62)
+		bt.position = Vector2(750, 108 + i * 56)
 		if r >= Data.HQ_COST.size():
 			bt.text = "FULLY BUILT"
 			bt.disabled = true
@@ -166,13 +219,15 @@ func _draw() -> void:
 		draw_mess_hall()
 	if Run.hq("motor") >= 1:
 		draw_motor_pool()
+	if Run.hq("doc") >= 1:
+		draw_doc_lab()
 	draw_quartermaster()
 	draw_barracks()
 	draw_armory()
 	draw_memorial()
 	draw_rank_pips(230, "barracks")
 	draw_rank_pips(600, "armory")
-	if not memorial_open and not upgrades_open:
+	if not memorial_open and not upgrades_open and not doc_open:
 		for k in Run.hq("gate"):
 			# Gate Control: a lit beacon on the ring for every rank
 			var a := -PI / 2 + (k - 1) * 0.5
@@ -205,6 +260,8 @@ func _draw() -> void:
 		draw_memorial_panel()
 	elif upgrades_open:
 		draw_upgrades_panel()
+	elif doc_open:
+		draw_doc_panel()
 
 func draw_quartermaster() -> void:
 	## A supply tent with crates stacked beside it.
@@ -275,9 +332,9 @@ func draw_upgrades_panel() -> void:
 	for i in Data.HQ_BUILDINGS.size():
 		var B: Dictionary = Data.HQ_BUILDINGS[i]
 		var r := Run.hq(B.id)
-		var y := 104.0 + i * 62
-		draw_rect(Rect2(32, y, 896, 54), Color(0.08, 0.07, 0.06, 0.9))
-		draw_rect(Rect2(32, y, 896, 54), Color("53d4e2") if r > 0 else Color("4a505a"), false, 1)
+		var y := 100.0 + i * 56
+		draw_rect(Rect2(32, y, 896, 50), Color(0.08, 0.07, 0.06, 0.9))
+		draw_rect(Rect2(32, y, 896, 50), Color("53d4e2") if r > 0 else Color("4a505a"), false, 1)
 		Art.text(self, B.name, Vector2(44, y + 18), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 		for k in 3:
 			draw_rect(Rect2(44 + k * 16, y + 28, 12, 12), Color(0.05, 0.035, 0.03))
@@ -285,8 +342,46 @@ func draw_upgrades_panel() -> void:
 		for k in 3:
 			var col := Color("62d26f") if k < r else (Color("e8dcc2") if k == r else Color("6c7480"))
 			var mark := "OK " if k < r else ("NEXT " if k == r else "")
-			Art.text(self, "%d  %s%s" % [k + 1, mark, B.ranks[k]], Vector2(262, y + 14 + k * 15), 8, col)
-	Art.text(self, "DOC'S LAB opens with the Doc's surgeries.   MEMORIAL is free: the fallen hang their tags there.", Vector2(480, 430), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "%d  %s%s" % [k + 1, mark, B.ranks[k]], Vector2(262, y + 13 + k * 14), 8, col)
+	Art.text(self, "MEMORIAL is free: the fallen hang their tags there.", Vector2(480, 452), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+
+func draw_doc_panel() -> void:
+	draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.03, 0.02, 0.97))
+	Art.text(self, "THE DOC'S LAB", Vector2(40, 52), 32, Color("9df25c"), HORIZONTAL_ALIGNMENT_LEFT, 3)
+	Art.text(self, "\"Hold still. Or don't, it's more fun.\"", Vector2(40, 76), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+	Art.text(self, "%d BIO-PARTS   %d SALVAGE" % [int(Run.meta.get("bio", 0)), int(Run.meta.get("salvage", 0))], Vector2(920, 52), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
+	var r := Run.hq("doc")
+	var line := "%d BIO + %d SALVAGE EACH. %d SLOT%s PER CLASS. IT STAYS WITH THE CLASS." % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE, r, "" if r == 1 else "S"] if r >= 1 else "BUILD THE DOC'S LAB ON THE UPGRADE BOARD FIRST."
+	Art.text(self, line, Vector2(920, 76), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT)
+	var ids: Array = Data.SURGERIES.keys()
+	for i in ids.size():
+		var S: Dictionary = Data.SURGERIES[ids[i]]
+		var y := 92.0 + i * 54
+		draw_rect(Rect2(32, y, 896, 48), Color(0.06, 0.08, 0.06, 0.9))
+		draw_rect(Rect2(32, y, 896, 48), Color("4a5a4a"), false, 1)
+		Art.text(self, S.name, Vector2(44, y + 20), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+		Art.text(self, ("ANY CLASS" if S.cls == "" else Data.squad_def(S.cls).cls.to_upper()), Vector2(44, y + 38), 8, Color("9aa2ae"))
+		Art.text(self, "+ " + S.up, Vector2(260, y + 18), 8, Color("62d26f"))
+		Art.text(self, "- " + S.side, Vector2(260, y + 34), 8, Color("ff7a5a"))
+	# what each class carries now
+	var x := 40.0
+	for d in Data.SQUAD_DEFS:
+		var have: Array = Run.implants(d.key).map(func(k): return Data.SURGERIES[k].name)
+		Art.text(self, "%s: %s" % [d.cls.to_upper(), ", ".join(have) if have.size() else "-"], Vector2(x, 424 + (Data.SQUAD_DEFS.find(d) / 2) * 16), 8, Color("53d4e2"))
+		x = 40.0 if x > 40 else 480.0
+	if r >= 1:
+		Art.text(self, "A class at its slot cap loses its oldest implant to a new one.", Vector2(480, 470), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+
+func draw_doc_lab() -> void:
+	## Doc's Lab: a back-row hut behind the Memorial with a green-lit window and a lightning rod.
+	var d := Color(0.05, 0.035, 0.03)
+	draw_rect(Rect2(806, 326, 96, 60), d)
+	draw_rect(Rect2(808, 328, 92, 58), Color("4a5248"))
+	var glow := 0.7 + 0.3 * sin(t / 9.0)
+	draw_rect(Rect2(820, 340, 26, 16), Color(0.55 * glow, 1.0 * glow, 0.36 * glow))
+	draw_rect(Rect2(872, 300, 2, 28), d)
+	if t % 140 < 6:
+		draw_line(Vector2(873, 298), Vector2(866, 286), Color("e8f8ff"), 2.0)
 
 func draw_rank_pips(x: float, id: String) -> void:
 	## Three little lamps over a building's button: one lit per rank bought.

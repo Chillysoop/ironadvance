@@ -636,6 +636,8 @@ func run() -> void:
 			await detours()
 		"hq":
 			await hq_upgrades()
+		"doc":
+			await doc()
 		"aliens":
 			await aliens()
 		"aliens2":
@@ -1353,6 +1355,74 @@ func detour_battle(id: String) -> Battle:
 	check(b.detour.get("id") == id, "the mid camp starts the %s detour" % id)
 	return b
 
+func doc() -> void:
+	## Step 7: the Doc's surgeries go on a class, cost Bio-parts and Salvage, and do exactly what they say.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.meta.hq = {}
+	Run.meta.implants = {}
+	Run.meta.bio = 20
+	Run.meta.salvage = 200
+	Run.new_run()
+	check(Run.surgery_block("cybereye", "moss") == "BUILD THE DOC'S LAB", "no surgery before the Doc's Lab is built")
+	Run.hq_upgrade("doc")
+	check(Run.surgery_block("cybereye", "hex") == "WRONG CLASS", "Cyber Eye is Marksman only")
+	for op in [["cybereye", "moss"], ["thirdarm", "hex"], ["asbestos", "vee"], ["spine", "rook"]]:
+		check(Run.operate(op[0], op[1]), "%s installs on %s" % op)
+	check(int(Run.meta.bio) == 20 - 4 * Data.SURGERY_BIO and int(Run.meta.salvage) == 190 - 4 * Data.SURGERY_SALVAGE, "each surgery costs %d Bio and %d Salvage" % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE])
+	check(Run.operate("magnet", "moss") and Run.implants("moss") == ["magnet"], "one slot: a new implant replaces the oldest")
+	Run.hq_upgrade("doc")
+	check(Run.operate("cybereye", "moss") and Run.implants("moss") == ["magnet", "cybereye"], "two slots hold two implants")
+	check(Run.operate("adrenal", "vee"), "Adrenal Pump goes on any class")
+	main.show_hq(false)
+	await frames_wait(20)
+	await shot("doc_hq")
+	main.screen.open_doc()
+	await frames_wait(20)
+	await shot("doc_lab")
+	# effects in battle
+	var moss: Dictionary = Run.soldier("moss")
+	var vee: Dictionary = Run.soldier("vee")
+	var rook: Dictionary = Run.soldier("rook")
+	check(Run.eff_max_hp(rook) == rook.max_hp + 6 and Run.eff_max_hp(vee) == vee.max_hp - 3, "Titanium Spine +6 max HP, Adrenal Pump -3")
+	rook.deck.append(Run.new_card("jumppack"))
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	var U := {}
+	for u in b.squad():
+		U[u.s.key] = u
+	check(U.vee.adr >= 25, "Adrenal Pump: Vee starts at 25 adrenaline")
+	check(not U.rook.draw.any(func(cd): return cd.key == "jumppack") and not U.rook.hand.any(func(cd): return cd.key == "jumppack"), "Titanium Spine: the Jump Pack never comes up")
+	check(b.hand_size(U.hex) == b.hand_size(U.moss) + 1, "Third Arm: +1 hand size")
+	U.moss.moved = false
+	var c := Data.card("rifle")
+	var s1 := b.sway_of(U.moss, c)
+	check(absf(s1 - b.sway_of(U.rook, c) * 0.75) < 0.0001 or U.rook.g("sway", 0.0) != U.moss.g("sway", 0.0), "Cyber Eye: 25% less sway")
+	# smoke blinds the Cyber Eye: the shot stops in the cloud
+	b.smokes.append({"x": U.moss.x + 120, "y": U.moss.y - 24, "r": 64.0, "turns": 2, "seed": 0.0})
+	var gy: float = U.moss.y - 24
+	var tr: Dictionary = b.trace_bullet(U.moss.x + 14, gy, 0.0, 600, 0, U.moss, false)
+	var tr2: Dictionary = b.trace_bullet(U.rook.x + 14, gy, 0.0, 600, 0, U.rook, false)
+	check(tr.len < 140 and tr2.len > 140, "Cyber Eye can't see through smoke (%d px vs %d px)" % [tr.len, tr2.len])
+	b.smokes.clear()
+	# Asbestos Hide: own blast does nothing; heals on Vee are cut by a quarter
+	U.vee.x += 260  # away from the others, so nobody gets blown into her
+	U.vee.y = b.T.stand_y(U.vee.x, 0)
+	var hp0: int = U.vee.hp
+	b.explode(U.vee.x, U.vee.y - 6, 40, 12, U.vee)
+	await frames_wait(60)
+	check(U.vee.hp == hp0, "Asbestos Hide: immune to her own explosions (hp %d -> %d, st %s)" % [hp0, U.vee.hp, U.vee.st])
+	# Titanium Spine: no fall damage
+	var rh: int = U.rook.hp
+	b.collision_dmg(U.rook, 9, "FALL")
+	check(U.rook.hp == rh, "Titanium Spine: no fall damage")
+	# Magnet Hand: loot from 3x as far
+	var lt: Unit = b.drop_loot(U.moss.x + 50, U.moss.y - 4, {"type": "scrip", "n": 5}, 0.0)
+	await frames_wait(30)
+	check(lt.gone, "Magnet Hand grabs loot 50px away")
+	main.clear()
+	Run.meta = keep
+	Run.save_meta()
+
 func hq_upgrades() -> void:
 	## Step 6: HQ buildings bought with Salvage, each rank doing what its line says.
 	var keep: Dictionary = Run.meta.duplicate(true)
@@ -1368,7 +1438,7 @@ func hq_upgrades() -> void:
 	check(Run.hq_upgrade("gate") and Run.hq("gate") == 1 and int(Run.meta.salvage) == 5, "rank 1 costs 10 Salvage")
 	check(not Run.hq_upgrade("gate"), "rank 2 needs 20 Salvage")
 	Run.meta.salvage = 500
-	for id in ["gate", "barracks", "armory", "mess", "motor"]:
+	for id in ["gate", "barracks", "armory", "mess", "motor", "doc"]:
 		while Run.hq_upgrade(id):
 			pass
 		check(Run.hq(id) == 3, "%s builds to rank 3" % id)
