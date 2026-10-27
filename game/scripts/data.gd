@@ -515,14 +515,23 @@ const BOSS_BIO := 1             # ...and a Bio-part for the Doc
 
 # The Doc's surgeries (step 7): installed on a CLASS, so every future soldier of that class has it
 # and permadeath never erases it. Pure upgrades, no side effects: the only choice is what fills the slots.
-# cls "" = any class. Slots per class = the Doc's Lab rank; a new surgery past the cap replaces the oldest.
+# Any class can take any surgery. Slots per class = the Doc's Lab rank; past the cap the oldest comes out.
+# "stats" feed the same bonus table gear uses (Run.gear_bonus); the rest have their own hooks in battle.
 const SURGERIES := {
-	"cybereye": {"name": "CYBER EYE", "cls": "moss", "up": "Aimed shots sway 25% less."},
-	"thirdarm": {"name": "THIRD ARM", "cls": "hex", "up": "+1 hand size."},
-	"asbestos": {"name": "ASBESTOS HIDE", "cls": "vee", "up": "Immune to your own explosions."},
-	"spine": {"name": "TITANIUM SPINE", "cls": "rook", "up": "+6 max HP and no fall damage."},
+	"cybereye": {"name": "CYBER EYE", "cls": "", "up": "Aimed shots sway 25% less."},
+	"thirdarm": {"name": "THIRD ARM", "cls": "", "up": "+1 hand size."},
+	"asbestos": {"name": "ASBESTOS HIDE", "cls": "", "up": "Immune to your own explosions."},
+	"spine": {"name": "TITANIUM SPINE", "cls": "", "up": "+6 max HP and no fall damage."},
 	"adrenal": {"name": "ADRENAL PUMP", "cls": "", "up": "Start every fight at 25 adrenaline."},
 	"magnet": {"name": "MAGNET HAND", "cls": "", "up": "Grab loot from 3x as far."},
+	"legs": {"name": "HYDRAULIC LEGS", "cls": "", "up": "+40 movement every turn.", "stats": {"move": 40}},
+	"reflex": {"name": "REFLEX WIRING", "cls": "", "up": "+8 dodge.", "stats": {"dodge": 8}},
+	"plating": {"name": "SUBDERMAL PLATING", "cls": "", "up": "3 armor every turn.", "stats": {"armor_turn": 3}},
+	"regen": {"name": "REGEN GLAND", "cls": "", "up": "Heal 2 HP every turn.", "stats": {"regen": 2}},
+	"chip": {"name": "TARGETING CHIP", "cls": "", "up": "+2 damage on every aimed shot.", "stats": {"aim_dmg": 2}},
+	"boom": {"name": "BLAST AMPLIFIER", "cls": "", "up": "Your explosions are 20% bigger.", "stats": {"blast": 0.2}},
+	"instinct": {"name": "KILLER INSTINCT", "cls": "", "up": "Kills give 10 more adrenaline.", "stats": {"kill_adr": 10}},
+	"medchip": {"name": "MED CHIP", "cls": "", "up": "Your heals restore 3 more HP.", "stats": {"heal": 3}},
 }
 const SURGERY_BIO := 2
 const SURGERY_SALVAGE := 5

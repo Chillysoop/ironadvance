@@ -73,6 +73,10 @@ func build() -> void:
 	doc.pressed.connect(open_doc)
 	add_child(doc)
 
+func doc_cell(i: int) -> Rect2:
+	## Surgery i on the lab board: two columns of cards.
+	return Rect2(32 + (i % 2) * 452, 96 + (i / 2) * 56, 444, 50)
+
 func open_doc() -> void:
 	## The Doc's Lab: surgeries installed on a class, paid in Bio-parts and Salvage.
 	Sfx.play("click")
@@ -83,22 +87,15 @@ func open_doc() -> void:
 	var ids: Array = Data.SURGERIES.keys()
 	for i in ids.size():
 		var id: String = ids[i]
-		var S: Dictionary = Data.SURGERIES[id]
-		var classes: Array = Data.SQUAD_DEFS.map(func(d): return d.key) if S.cls == "" else [S.cls]
-		for j in classes.size():
-			var cls: String = classes[j]
+		var cr := doc_cell(i)
+		for j in Data.SQUAD_DEFS.size():
+			var cls: String = Data.SQUAD_DEFS[j].key
+			var why := Run.surgery_block(id, cls)
 			var bt := HudScript.PixButton.new()
 			bt.small = true
-			var why := Run.surgery_block(id, cls)
-			if classes.size() == 1:
-				bt.size = Vector2(176, 28)
-				bt.position = Vector2(744, 106 + i * 54)
-				bt.text = "INSTALL" if why == "" else why
-			else:
-				bt.size = Vector2(86, 28)
-				bt.position = Vector2(744 + (j % 2) * 90, 98 + i * 54 + (j / 2) * 22)
-				bt.size.y = 20
-				bt.text = Data.squad_def(cls).name + (" OK" if why == "INSTALLED" else "")
+			bt.size = Vector2(58, 20)
+			bt.position = Vector2(cr.end.x - 124 + (j % 2) * 62, cr.position.y + 4 + (j / 2) * 22)
+			bt.text = Data.SQUAD_DEFS[j].name + (" OK" if why == "INSTALLED" else "")
 			bt.color = Color("9df25c")
 			bt.disabled = why != ""
 			bt.pressed.connect(func():
@@ -112,7 +109,7 @@ func open_doc() -> void:
 	close.text = "BACK TO HQ"
 	close.color = Color("9aa2ae")
 	close.size = Vector2(150, 30)
-	close.position = Vector2(405, 498)
+	close.position = Vector2(405, 500)
 	close.pressed.connect(func(): doc_open = false; build())
 	add_child(close)
 
@@ -351,25 +348,17 @@ func draw_doc_panel() -> void:
 	Art.text(self, "\"Hold still. Or don't, it's more fun.\"", Vector2(40, 76), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	Art.text(self, "%d BIO-PARTS   %d SALVAGE" % [int(Run.meta.get("bio", 0)), int(Run.meta.get("salvage", 0))], Vector2(920, 52), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
 	var r := Run.hq("doc")
-	var line := "%d BIO + %d SALVAGE EACH. %d SLOT%s PER CLASS. IT STAYS WITH THE CLASS." % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE, r, "" if r == 1 else "S"] if r >= 1 else "BUILD THE DOC'S LAB ON THE UPGRADE BOARD FIRST."
+	var line := "%d BIO + %d SALVAGE EACH. %d SLOT%s PER CLASS, OLDEST COMES OUT WHEN FULL." % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE, r, "" if r == 1 else "S"] if r >= 1 else "BUILD THE DOC'S LAB ON THE UPGRADE BOARD FIRST."
 	Art.text(self, line, Vector2(920, 76), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT)
 	var ids: Array = Data.SURGERIES.keys()
 	for i in ids.size():
 		var S: Dictionary = Data.SURGERIES[ids[i]]
-		var y := 92.0 + i * 54
-		draw_rect(Rect2(32, y, 896, 48), Color(0.06, 0.08, 0.06, 0.9))
-		draw_rect(Rect2(32, y, 896, 48), Color("4a5a4a"), false, 1)
-		Art.text(self, S.name, Vector2(44, y + 20), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
-		Art.text(self, ("ANY CLASS" if S.cls == "" else Data.squad_def(S.cls).cls.to_upper()), Vector2(44, y + 38), 8, Color("9aa2ae"))
-		Art.text(self, "+ " + S.up, Vector2(260, y + 28), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
-	# what each class carries now
-	var x := 40.0
-	for d in Data.SQUAD_DEFS:
-		var have: Array = Run.implants(d.key).map(func(k): return Data.SURGERIES[k].name)
-		Art.text(self, "%s: %s" % [d.cls.to_upper(), ", ".join(have) if have.size() else "-"], Vector2(x, 424 + (Data.SQUAD_DEFS.find(d) / 2) * 16), 8, Color("53d4e2"))
-		x = 40.0 if x > 40 else 480.0
-	if r >= 1:
-		Art.text(self, "A class at its slot cap loses its oldest implant to a new one.", Vector2(480, 470), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+		var cr := doc_cell(i)
+		var on: Array = Data.SQUAD_DEFS.filter(func(d): return Run.implants(d.key).has(ids[i]))
+		draw_rect(cr, Color(0.06, 0.08, 0.06, 0.9))
+		draw_rect(cr, Color("9df25c") if on.size() else Color("4a5a4a"), false, 1)
+		Art.text(self, S.name, Vector2(cr.position.x + 10, cr.position.y + 20), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+		Art.text(self, "+ " + S.up, Vector2(cr.position.x + 10, cr.position.y + 38), 8, Color("62d26f"))
 
 func draw_doc_lab() -> void:
 	## Doc's Lab: a back-row hut behind the Memorial with a green-lit window and a lightning rod.

@@ -698,6 +698,11 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 		if sets[set_id] >= 2:
 			for k in Data.SETS[set_id].bonus:
 				out[k] = out.get(k, 0) + Data.SETS[set_id].bonus[k]
+	if s.has("key"):
+		for id in implants(s.key):
+			var st: Dictionary = Data.SURGERIES[id].get("stats", {})
+			for k in st:
+				out[k] = out.get(k, 0) + st[k]
 	return out
 
 func eff_max_hp(s: Dictionary) -> int:
