@@ -6884,5 +6884,250 @@
    }
   },
   "flash_row_offset": 9
+ },
+ "en_queen": {
+  "frame": [
+   32,
+   32
+  ],
+  "anchor": [
+   16,
+   32
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 4,
+    "shoulder": [
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 4,
+    "shoulder": [
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 4,
+    "shoulder": [
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 1,
+    "shoulder": [
+     [
+      16,
+      16
+     ]
+    ],
+    "gun": [
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 5,
+    "shoulder": [
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 2,
+    "shoulder": [
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 4,
+    "shoulder": [
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 4,
+    "shoulder": [
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 4,
+    "shoulder": [
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ],
+     [
+      16,
+      16
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false
+    ]
+   }
+  },
+  "flash_row_offset": 9
  }
 }

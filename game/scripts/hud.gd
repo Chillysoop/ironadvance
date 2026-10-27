@@ -619,7 +619,18 @@ class Overlay extends Control:
 		for u in b.units:
 			if u.type == "boss":
 				boss = u
-		if boss != null and b.boss_active and not boss.dead:
+		if boss == null or not b.boss_active:
+			for u in b.units:
+				if u.type == "queen" and u.active and not u.dead:
+					boss = u
+		if boss != null and boss.type == "queen":
+			var bw := 360.0
+			var bx := 480 - bw / 2
+			Art.text(self, "BURROW QUEEN" + ("  UNDERGROUND: BLASTS ONLY" if boss.weight == "buried" else "  SURFACED: HIT HER NOW"), Vector2(bx, 52), 8, Color("c47bff") if boss.weight == "buried" else Color("9df25c"))
+			draw_rect(Rect2(bx - 2, 56, bw + 4, 12), ink)
+			draw_rect(Rect2(bx, 58, bw, 8), Color("2a0d3a"))
+			draw_rect(Rect2(bx, 58, bw * boss.hp / float(boss.max_hp), 8), Color("b06ae0"))
+		elif boss != null and b.boss_active and not boss.dead:
 			var bw := 360.0
 			var bx := 480 - bw / 2
 			Art.text(self, "IRON BOAR" + ("  ARMORED: CRUSH IT TO CRACK" if boss.plate > 0 else "  ARMOR CRACKED"), Vector2(bx, 52), 8, Color("9fb4c9") if boss.plate > 0 else Color("ffb23e"))
@@ -629,7 +640,7 @@ class Overlay extends Control:
 			if boss.plate > 0:
 				draw_rect(Rect2(bx, 58, bw * minf(1, boss.plate / float(b.mission.plate)), 2), Color("9fb4c9"))
 		# log
-		var ly := 52.0 if boss == null or not b.boss_active else 84.0
+		var ly := 52.0 if boss == null or (not b.boss_active and boss.type != "queen") else 84.0
 		for i in b.log_lines.size():
 			var a := 0.55 + 0.45 * float(i + 1) / b.log_lines.size()
 			Art.text(self, b.log_lines[i], Vector2(10, ly + i * 14), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
