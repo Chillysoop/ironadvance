@@ -29,6 +29,79 @@ func _ready() -> void:
 		fo.hinting = TextServer.HINTING_NONE
 		fo.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
 
+# ---------------------------------------------------------------- U3 soldier looks
+# The class palettes the squad sheets were drawn with (tools/gen_art.py SQUAD_PAL): headgear h/H/j,
+# shirt u/U/v, pants p/P/q. A soldier's look swaps them for one of the sets below, light to dark.
+const SQUAD_PAL := {
+	"moss": {"hat": ["9cb04c", "748a34", "4c5c20"], "shirt": ["8c9c5c", "6a7a40", "46522a"], "pants": ["7a7a4c", "5c5c34", "3c3c22"]},
+	"hex": {"hat": ["f4f2ea", "cccac0", "8c8a84"], "shirt": ["4ca0a0", "2f7a7a", "1e5050"], "pants": ["3c6a6a", "2a4e4e", "1a3434"]},
+	"vee": {"hat": ["ff5a40", "d63a2a", "8c2418"], "shirt": ["c89c5c", "a07a40", "6a5028"], "pants": ["6a5a3a", "4e4228", "322a18"]},
+	"rook": {"hat": ["6c9cf0", "3c6ad0", "22408c"], "shirt": ["6a8c4c", "4c6a34", "30461e"], "pants": ["5a6a40", "42502c", "2a321a"]},
+}
+const LOOK_HEADS := ["helmet", "boonie", "bandana", "beret", "hardhat", "shades"]
+const LOOK_COLORS := [
+	["9cb04c", "748a34", "4c5c20"],  # olive
+	["d8c08a", "b09a62", "7a6a40"],  # desert tan
+	["5a5e66", "3e4248", "24272c"],  # gunmetal
+	["e05a48", "b03a2e", "6e2018"],  # red
+	["5a7ac8", "3a56a0", "22346a"],  # navy
+	["f0ece0", "c8c4b8", "8a8780"],  # white
+	["ff9a3a", "d6741c", "8a4410"],  # orange
+	["8a5ab4", "6a3e90", "40245a"],  # purple
+	["3a3a3a", "262626", "121212"],  # black
+	["4cb0a0", "2f8a7a", "1e5a50"],  # teal
+]
+const LOOK_NAMES := ["OLIVE", "TAN", "GUNMETAL", "RED", "NAVY", "WHITE", "ORANGE", "PURPLE", "BLACK", "TEAL"]
+
+func base_head(cls: String) -> String:
+	return {"moss": "boonie", "hex": "medic", "vee": "bandana", "rook": "shades"}.get(cls, "helmet")
+
+func look_sheet(s: Dictionary) -> String:
+	## The sheet key for a soldier record, built (and cached) the first time a look needs it.
+	var cls: String = s.key
+	var lk: Dictionary = s.get("look", {})
+	var head: String = lk.get("head", "")
+	var base := "sq_" + cls if head == "" or head == base_head(cls) else "sq_%s_%s" % [cls, head]
+	if not meta.has(base):
+		base = "sq_" + cls
+	var parts := []
+	for part in ["hat", "shirt", "pants"]:
+		parts.append(int(lk.get(part, -1)))
+	if parts.all(func(v): return v < 0):
+		return base
+	var key := "%s|%d|%d|%d" % [base, parts[0], parts[1], parts[2]]
+	if tex.has(key):
+		return key
+	var swap := {}
+	var pal: Dictionary = SQUAD_PAL.get(cls, SQUAD_PAL.moss)
+	for i in 3:
+		if parts[i] < 0:
+			continue
+		var src: Array = pal[["hat", "shirt", "pants"][i]]
+		var dst: Array = LOOK_COLORS[parts[i] % LOOK_COLORS.size()]
+		for k in 3:
+			swap[Color(src[k]).to_rgba32()] = Color(dst[k])
+	tex[key] = recolor(tex[base], swap)
+	tex[key + "_gun"] = recolor(tex[base + "_gun"], swap)
+	tex[key + "_gun_w"] = tex[base + "_gun_w"]
+	meta[key] = meta[base]
+	return key
+
+func recolor(t: Texture2D, swap: Dictionary) -> Texture2D:
+	var img := t.get_image()
+	img.convert(Image.FORMAT_RGBA8)
+	for y in img.get_height():
+		for x in img.get_width():
+			var c := img.get_pixel(x, y)
+			if c.a > 0:
+				var k := Color(c.r, c.g, c.b, 1.0).to_rgba32()
+				if swap.has(k):
+					img.set_pixel(x, y, swap[k])
+	return ImageTexture.create_from_image(img)
+
+func random_look() -> Dictionary:
+	return {"head": LOOK_HEADS[randi() % LOOK_HEADS.size()], "hat": randi() % LOOK_COLORS.size(), "shirt": randi() % LOOK_COLORS.size(), "pants": randi() % LOOK_COLORS.size()}
+
 func anim_info(sheet: String, anim: String) -> Dictionary:
 	return meta[sheet].anims.get(anim, meta[sheet].anims.idle)
 

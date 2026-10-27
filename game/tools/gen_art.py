@@ -2058,6 +2058,20 @@ def alien_frames():
     return meta
 
 
+# U3 soldier looks: every class in every headgear. Colors are swapped at runtime (Art.look_sheet).
+LOOK_HEADS = ['helmet', 'boonie', 'bandana', 'beret', 'hardhat', 'shades']
+
+def look_sheets(meta):
+    for key in ('moss', 'hex', 'vee', 'rook'):
+        pal = palette(SQUAD_PAL[key])
+        for head in LOOK_HEADS:
+            if head == CHAR_STYLE[key]['head']:
+                continue
+            vk = key + '_' + head
+            CHAR_STYLE[vk] = dict(CHAR_STYLE[key], head=head)
+            fr = char_frames(vk, pal)
+            meta['sq_' + vk] = write_sheet('sq_' + vk, fr, gun_image(CHAR_STYLE[key]['gun'], pal))
+
 def main():
     os.makedirs(os.path.join(OUT, 'sprites'), exist_ok=True)
     os.makedirs(os.path.join(OUT, 'bg'), exist_ok=True)
@@ -2066,6 +2080,7 @@ def main():
         pal = palette(SQUAD_PAL[key])
         fr = char_frames(key, pal)
         meta['sq_' + key] = write_sheet('sq_' + key, fr, gun_image(CHAR_STYLE[key]['gun'], pal))
+    look_sheets(meta)
     for key in ('grunt', 'shield', 'nade', 'mg', 'radio', 'engineer', 'sapper', 'mortarcrew', 'para', 'jetter'):
         pal = palette(ENEMY_PAL[key])
         fr = char_frames(key, pal)

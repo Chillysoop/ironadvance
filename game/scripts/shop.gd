@@ -221,7 +221,36 @@ func build_barracks() -> void:
 		tile.position = Vector2(24 + i * 312, 150)
 		tile.pressed.connect(sv[3])
 		add_child(tile)
+	# U3: change any soldier's headgear and kit colors, free
+	for i in Run.soldiers.size():
+		if not Run.soldiers[i].alive:
+			continue
+		for j in 2:
+			var lb := HudScript.PixButton.new()
+			lb.text = ["HEADGEAR", "COLORS"][j]
+			lb.color = Color("53d4e2")
+			lb.size = Vector2(82, 20)
+			lb.position = Vector2(24 + i * 180 + j * 90, 470)
+			lb.tooltip_text = "Free. Cycle this soldier's headgear." if j == 0 else "Free. Roll new colors for hat, shirt and pants."
+			var si := i
+			lb.pressed.connect(func(): restyle(si, j == 0))
+			add_child(lb)
 	add_child(back_button())
+
+func restyle(i: int, head: bool) -> void:
+	var s: Dictionary = Run.soldiers[i]
+	var lk: Dictionary = s.get("look", {}).duplicate()
+	if head:
+		var opts: Array = [""] + Art.LOOK_HEADS
+		var cur: String = lk.get("head", "")
+		lk["head"] = opts[(opts.find(cur) + 1) % opts.size()]
+	else:
+		var r := Art.random_look()
+		for k in ["hat", "shirt", "pants"]:
+			lk[k] = r[k]
+	s["look"] = lk
+	Sfx.play("click")
+	say("%s: %s" % [s.def.name, "NEW HEADGEAR" if head else "NEW COLORS"])
 
 func _process(_d: float) -> void:
 	t += 1
@@ -255,6 +284,15 @@ func _draw() -> void:
 		var fallen: int = Run.fallen_slots().size()
 		Art.text(self, "%d KILLED IN ACTION THIS RUN" % fallen if fallen else "THE SQUAD IS AT FULL STRENGTH", Vector2(24, 140), 8, Color("ff4d3d") if fallen else Color("62d26f"))
 		Art.text(self, "Lose the last dog tag and a soldier is gone for good. %d names on the Memorial; recruits of a fallen soldier's class can inherit one of their abilities." % Run.meta.memorial.size(), Vector2(24, 250), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		# U3: the squad's looks, each with its restyle buttons below
+		Art.text(self, "SQUAD LOOKS: FREE", Vector2(24, 352), 8, Color("53d4e2"))
+		for i in Run.soldiers.size():
+			var s: Dictionary = Run.soldiers[i]
+			var x := 24.0 + i * 180
+			draw_rect(Rect2(x, 362, 172, 100), Color(0.05, 0.035, 0.03))
+			draw_rect(Rect2(x + 1, 363, 170, 98), Color("2a2e34"))
+			Art.draw_char(self, Art.look_sheet(s), "idle" if s.alive else "die", (t / 12 + i) % 4 if s.alive else 5, Vector2(x + 86, 450), 1, false, 0, 1.0, 0, true, 1.6)
+			Art.text(self, s.def.name, Vector2(x + 8, 378), 8, Color.WHITE if s.alive else Color("8a7a7a"))
 	if msg_t > 0 and not chooser is TilePicker:
 		var w := Art.text_width(msg, 16, true) + 20
 		draw_rect(Rect2(480 - w / 2, 316, w, 20), Color(0.05, 0.035, 0.03, 0.9))
@@ -273,7 +311,7 @@ func draw_card_fits() -> void:
 		var x := 24.0 + i * 112
 		var us := users(o.key)
 		for k in us.size():
-			Art.draw_char(self, "sq_" + us[k].key, "idle", 0, Vector2(x + 10 + k * 22, CARD_Y + 186), 1, false, 0, 1.0, 0, false, 0.6)
+			Art.draw_char(self, Art.look_sheet(us[k]), "idle", 0, Vector2(x + 10 + k * 22, CARD_Y + 186), 1, false, 0, 1.0, 0, false, 0.6)
 		if us.is_empty():
 			Art.text(self, "ANYONE", Vector2(x, CARD_Y + 180), 8, Color("6c7480"))
 		for s in Run.soldiers:

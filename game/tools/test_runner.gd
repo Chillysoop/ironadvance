@@ -708,6 +708,8 @@ func run() -> void:
 			await soldat4()
 		"soldat5":
 			await soldat5()
+		"soldat6":
+			await soldat6()
 		"drill":
 			await drill()
 		"detours":
@@ -2472,6 +2474,61 @@ func soldat5() -> void:
 	check(Run.temp_luck == l0 + 5, "luck: +2 capture, +1 holding, +2 more when it locks (%d -> %d)" % [l0, Run.temp_luck])
 	await frames_wait(6)
 	await shot("soldat5_relay")
+
+func soldat6() -> void:
+	## Soldat round 2, U3 soldier looks: recruits arrive in their own headgear and colors, and the
+	## Barracks restyles anyone for free.
+	Run.new_run()
+	var missing: Array = []
+	for cls in ["moss", "hex", "vee", "rook"]:
+		for hd in Art.LOOK_HEADS:
+			if hd != Art.base_head(cls) and not Art.meta.has("sq_%s_%s" % [cls, hd]):
+				missing.append(cls + "_" + hd)
+	check(missing.is_empty(), "every class has a sheet in every headgear (missing %s)" % str(missing))
+	check(Art.look_sheet(Run.soldiers[0]) == "sq_" + Run.soldiers[0].key, "the starting squad keeps its own look")
+	Run.soldiers[1].alive = false
+	var offer: Dictionary = Run.recruit_offers(1)[0]
+	var rec := Run.hire(1, offer)
+	check(rec.has("look") and rec.look.has("head"), "a recruit arrives with a look (%s)" % str(rec.get("look", {})))
+	rec.look = {"head": "beret", "hat": 3, "shirt": 4, "pants": 1}
+	var key := Art.look_sheet(rec)
+	check(Art.tex.has(key) and Art.tex.has(key + "_gun") and Art.meta.has(key), "a look builds its own sheet (%s)" % key)
+	var base: String = "sq_%s_beret" % rec.key if Art.base_head(rec.key) != "beret" else "sq_" + rec.key
+	var a: Image = Art.tex[base].get_image()
+	var bimg: Image = Art.tex[key].get_image()
+	var diff := 0
+	for y in range(0, a.get_height(), 2):
+		for x in range(0, a.get_width(), 2):
+			if a.get_pixel(x, y) != bimg.get_pixel(x, y):
+				diff += 1
+	check(diff > 200, "and its colors are swapped (%d pixels differ)" % diff)
+	check(Art.look_sheet(rec) == key, "built once, then cached")
+	for i in Run.soldiers.size():
+		if i != 1:
+			Run.soldiers[i]["look"] = Art.random_look()
+	var lvl := {"name": "LOOKS", "theme": "dusk", "segments": ["start", "trenches", "camp", "arena"],
+		"boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "", "rules": {"pads": 0}}
+	var b: Battle = main.start_battle(0, lvl)
+	await until(func(): return b.state == "player" and not b.busy)
+	var sq: Array = b.squad()
+	check(sq.all(func(u): return u.sheet == Art.look_sheet(u.s)), "in the field each soldier wears their look")
+	await frames_wait(10)
+	await shot("soldat6_field")
+	main.show_hq(false)
+	await frames_wait(30)
+	main.screen.open_shop("barracks")
+	await frames_wait(20)
+	var shop = main.screen.sub
+	var h0: String = Run.soldiers[0].get("look", {}).get("head", "")
+	shop.restyle(0, true)
+	check(Run.soldiers[0].look.head != h0, "the Barracks cycles headgear (%s -> %s)" % [h0, Run.soldiers[0].look.head])
+	var c0: Dictionary = Run.soldiers[2].look.duplicate()
+	for k in 4:
+		shop.restyle(2, false)
+	check(Run.soldiers[2].look.head == c0.head and str(Run.soldiers[2].look) != str(c0), "and rolls new colors without touching the headgear (%s -> %s)" % [str(c0), str(Run.soldiers[2].look)])
+	check(shop.get_children().filter(func(c): return c.get("text") == "HEADGEAR").size() == 4, "every living soldier has a HEADGEAR and COLORS button")
+	await frames_wait(10)
+	await shot("soldat6_barracks")
 
 func peak_after_bounce(pts: Array, gy: float) -> float:
 	## Highest point (smallest y) a grenade reaches after it first touches the ground.

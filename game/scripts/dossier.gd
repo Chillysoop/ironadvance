@@ -603,7 +603,7 @@ func draw_left(me: Dictionary) -> void:
 	var pr := Rect2(LEFT.position + Vector2(8, 8), Vector2(LEFT.size.x - 16, 108))
 	draw_rect(pr, Color("15181c"))
 	draw_rect(Rect2(pr.position.x, pr.end.y - 10, pr.size.x, 10), Color("2e3a24"))
-	Art.draw_char(self, "sq_" + me.key, "idle" if me.alive else "die", (t / 12) % 4 if me.alive else 4, Vector2(pr.get_center().x, pr.end.y - 10), 1, false, 0, 1.0, 0, true, 2.2)
+	Art.draw_char(self, Art.look_sheet(me), "idle" if me.alive else "die", (t / 12) % 4 if me.alive else 4, Vector2(pr.get_center().x, pr.end.y - 10), 1, false, 0, 1.0, 0, true, 2.2)
 	var x := LEFT.position.x + 10
 	var y := pr.end.y + 18
 	Art.text(self, me.def.name, Vector2(x, y), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 2)

@@ -89,7 +89,7 @@ class SquadBar extends Control:
 			var pb := Rect2(r.position + Vector2(3, 3), Vector2(32, 32))
 			draw_rect(pb, Color("1a1d22"))
 			if s.alive:
-				Art.draw_char(self, "sq_" + s.key, "idle", (t / 14 + i) % 4, pb.position + Vector2(16, 31), 1, false, 0, 1.0, 0, false, 0.72)
+				Art.draw_char(self, Art.look_sheet(s), "idle", (t / 14 + i) % 4, pb.position + Vector2(16, 31), 1, false, 0, 1.0, 0, false, 0.72)
 			else:
 				Art.text(self, "KIA", pb.get_center() + Vector2(0, 4), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			var x := r.position.x + 42

@@ -456,7 +456,7 @@ func _draw() -> void:
 				anim = "run"
 				frame = (walk.t / 3 + i) % 8
 			x = lerpf(x, tx, k)
-		Art.draw_char(self, "sq_" + s.key, anim, frame, Vector2(x, GROUND), face, false, 0, a, 0, true, 1.4)
+		Art.draw_char(self, Art.look_sheet(s), anim, frame, Vector2(x, GROUND), face, false, 0, a, 0, true, 1.4)
 		if a >= 1.0:
 			var on := Run.soldiers.find(s) == hover_troop
 			Art.text(self, s.def.name, Vector2(x, GROUND + 16), 8, Color("ffd23a") if on else Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
