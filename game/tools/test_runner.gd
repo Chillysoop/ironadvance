@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
+## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -584,6 +584,32 @@ func run() -> void:
 			b.next_unit()
 			await frames_wait(10)
 			print("[qol] state after NEXT with nobody ready ", b.state)
+		"fx":
+			# effects pass: brass and impacts on a shot, a helmet off a kill, a blast's flash and chunks
+			Run.new_run()
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			var u: Unit = b.sel
+			var e := nearest_enemy(b, u)
+			b.select_card(force_card(u, "rifle"))
+			b.mouse = Vector2(e.x, e.y - e.h * 0.6)
+			await frames_wait(8)
+			b.commit_aim(b.mouse)
+			await frames_wait(5)
+			await shot("fx_shot")
+			await until(func(): return not b.busy)
+			b.damage(e, 999, u)
+			await frames_wait(14)
+			await shot("fx_kill")
+			b.explode(u.x + 150, b.T.ground_at(u.x + 150) - 4, 30, 0, null)
+			await frames_wait(5)
+			await shot("fx_blast")
+			await frames_wait(40)
+			await shot("fx_after")
+			u.jetting = true  # just the thruster art, no flight
+			await frames_wait(12)
+			await shot("fx_jet")
+			u.jetting = false
 		"bot":
 			await bot(mission_arg, 70)
 		"levels":

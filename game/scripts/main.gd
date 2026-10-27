@@ -258,7 +258,7 @@ class Screen extends Control:
 		for s in Run.soldiers if Run.soldiers.size() else Data.SQUAD_DEFS.map(func(d): return {"key": d.key, "alive": true, "def": d, "lvl": 1}):
 			var x := 480 - 150 + i * 100
 			var a := anim if s.alive else "die"
-			Art.draw_char(self, "sq_" + s.key, a, (t / 6) % 8 if a == "run" else ((t / 12 + i) % 4 if a == "idle" else (t / 10) % 2 if a == "cheer" else 4), Vector2(x, y), 1, false, 0, 1.0, 0, a != "cheer" and a != "die", 2.0)
+			Art.draw_char(self, "sq_" + s.key, a, (t / 6) % 8 if a == "run" else ((t / 12 + i) % 4 if a == "idle" else (t / 10) % 2 if a == "cheer" else 5), Vector2(x, y), 1, false, 0, 1.0, 0, a != "cheer" and a != "die", 2.0)
 			Art.text(self, s.def.name, Vector2(x, y + 18), 8, Color.WHITE if s.alive else Color("8a7a7a"), HORIZONTAL_ALIGNMENT_CENTER)
 			if s.has("lvl"):
 				Art.text(self, "LV%d" % s.lvl, Vector2(x, y + 30), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
