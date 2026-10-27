@@ -66,6 +66,7 @@ var elite := ""       # elite Jackal modifier (Data.ELITES key)
 var weight := ""      # Vharr weight class: "light" (knocked twice as far) or "hover" (holds altitude on a pod)
 var pod := 0          # hover: pod HP; when it breaks the alien drops
 var crash := false    # pod just broke: takes crash damage when it lands
+var dome := 0         # Dome Weaver shield on this unit: enemy phases left
 var loot = null       # payload for a loot pickup or a crate
 var kill_drawn := false
 var gb: Dictionary = {}  # squad: gear bonuses for this mission
