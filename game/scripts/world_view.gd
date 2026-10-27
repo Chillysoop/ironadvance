@@ -6,6 +6,8 @@ extends Node2D
 @onready var b: Battle = get_parent()
 
 const C_DARK := Color(0.05, 0.035, 0.03)
+const C_ALIEN := Color("c47bff")  # Vharr markers and labels
+const C_OOZE := Color("9df25c")
 
 func _draw() -> void:
 	if b.T == null:
@@ -37,6 +39,7 @@ func _draw() -> void:
 	draw_fx()
 	for u in b.units:
 		draw_plate(u)
+	draw_alien_marks()
 	draw_targeting()
 	draw_texts()
 	draw_barks()
@@ -256,6 +259,8 @@ func draw_unit(u: Unit) -> void:
 		var glow := Color(1, 0.7, 0.24, 0.30) if u.adr >= 100 else Color(1, 0.48, 0.24, 0.20)
 		var r := 18.0 + sin(b.t / 6.0) * 2
 		draw_circle(pos + Vector2(0, -18), r, glow)
+	if u.weight == "hover" and not u.dead:
+		draw_pod(pos, white)
 	var kick := Vector2(-u.face * 2, 0) if u.pose == "recoil" else Vector2.ZERO
 	Art.draw_char(self, u.sheet, a[0], a[1], pos + kick, u.face, white, rot, u.alpha, u.gun_angle, a[2])
 	if not u.dead:
@@ -403,6 +408,12 @@ func draw_plate(u: Unit) -> void:
 	draw_rect(Rect2(x - w / 2, y, roundf(w * u.hp / u.max_hp), 3), Color("ff4d3d"))
 	for k in range(1, 4):
 		draw_rect(Rect2(x - w / 2 + k * w / 4, y, 1, 3), C_DARK)
+	if u.pod > 0 and u.weight == "hover":
+		var pm: int = int(round(Data.ETYPES[u.type].pod * b.mission.hp_mul))
+		draw_rect(Rect2(x - w / 2 - 1, y + 4, w + 2, 4), C_DARK)
+		draw_rect(Rect2(x - w / 2, y + 5, roundf(w * u.pod / maxf(1, pm)), 2), C_ALIEN)
+	if u.weight != "" and u.elite == "":
+		Art.text(self, u.weight.to_upper(), Vector2(x, y - 4), 8, C_ALIEN, HORIZONTAL_ALIGNMENT_CENTER)
 	if u.elite != "":
 		draw_rect(Rect2(x - w / 2 - 2, y - 2, w + 4, 7), Color("ffd23a"), false, 1.0)
 		Art.text(self, Data.ELITES[u.elite].name, Vector2(x, y - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -756,6 +767,66 @@ func draw_brackets(r: Rect2, col: Color) -> void:
 		draw_line(corner, corner + Vector2(l * sx, 0), col, 2.0)
 		draw_line(corner, corner + Vector2(0, l * sy), col, 2.0)
 
+func draw_pod(pos: Vector2, white: bool) -> void:
+	## The Squid Trooper's saucer: a steel dish under its tentacles, lights chasing round the rim.
+	var c := Color.WHITE if white else Color("8e939a")
+	draw_rect(Rect2(pos.x - 13, pos.y - 2, 26, 5), C_DARK)
+	draw_rect(Rect2(pos.x - 12, pos.y - 1, 24, 3), c)
+	draw_rect(Rect2(pos.x - 8, pos.y + 2, 16, 3), C_DARK)
+	draw_rect(Rect2(pos.x - 7, pos.y + 2, 14, 2), Color("5c6068") if not white else c)
+	for k in 4:
+		var on: bool = (b.t / 6 + k) % 4 == 0
+		draw_rect(Rect2(pos.x - 9 + k * 6, pos.y, 2, 1), C_OOZE if on else Color("3c3e46"))
+	var a := 0.25 + 0.15 * sin(b.t / 5.0)
+	draw_rect(Rect2(pos.x - 4, pos.y + 5, 8, 6), Color(C_OOZE, a))
+
+func draw_alien_marks() -> void:
+	## Every Vharr power is shown a turn ahead: the Skitter's pounce reticle, the Squid's ray line,
+	## the Blinker's rune. Ooze green over a dark edge so it reads against any sky.
+	var pulse := 0.7 + 0.3 * sin(b.t / 7.0)
+	var mk := Color(C_OOZE, pulse)
+	var edge := Color(C_DARK, 0.8)
+	for u in b.units:
+		if u.dead or u.gone or u.sunk or u.team != "enemy" or not on_screen(u.x, 400):
+			continue
+		if u.pounce != null:
+			var p: Vector2 = u.pounce
+			var a0 := Vector2(u.x, u.y - 6)
+			for k in range(1, 8):
+				var f := k / 8.0
+				var q := a0.lerp(p, f) + Vector2(0, -sin(f * PI) * 40)
+				draw_rect(Rect2(q.x - 2, q.y - 2, 4, 4), edge)
+				draw_rect(Rect2(q.x - 1, q.y - 1, 2, 2), mk)
+			draw_reticle(p + Vector2(1, -9), edge)
+			draw_reticle(p + Vector2(0, -10), mk)
+			Art.text(self, "POUNCE", p + Vector2(0, -24), 8, C_OOZE, HORIZONTAL_ALIGNMENT_CENTER)
+		if u.beam != null:
+			var bp: Dictionary = b.beam_path(u, u.beam)
+			var o: Vector2 = u.center()
+			var seg: Vector2 = bp.end - o
+			var n := int(seg.length() / 8.0)
+			for k in n:
+				if (k + b.t / 3) % 3 != 0:
+					var q1: Vector2 = o + seg * (k / float(n))
+					var q2: Vector2 = o + seg * ((k + 0.6) / float(n))
+					draw_line(q1, q2, edge, 4.0)
+					draw_line(q1, q2, mk, 2.0)
+			for h in bp.hits:
+				if h.team == "squad":
+					draw_brackets(Rect2(h.x - h.w / 2.0 - 3, h.y - h.h - 3, h.w + 6, h.h + 6), mk)
+		if u.rune != null:
+			var r: Vector2 = u.rune
+			draw_set_transform(r + Vector2(0, -2), 0, Vector2(1, 0.35))
+			draw_arc(Vector2.ZERO, 16, 0, TAU, 24, edge, 4.0)
+			draw_arc(Vector2.ZERO, 16, 0, TAU, 24, mk, 2.0)
+			draw_arc(Vector2.ZERO, 10, b.t / 10.0, b.t / 10.0 + PI * 1.4, 12, Color(C_ALIEN, pulse), 2.0)
+			draw_set_transform_matrix(Transform2D.IDENTITY)
+			for k in 3:
+				var gy := r.y - 6 - k * 9 - (b.t % 18) / 2.0
+				draw_rect(Rect2(r.x - 2 + (k - 1) * 6, gy - 1, 4, 5), edge)
+				draw_rect(Rect2(r.x - 1 + (k - 1) * 6, gy, 2, 3), mk)
+			Art.text(self, "BLINK", r + Vector2(0, -40), 8, C_OOZE, HORIZONTAL_ALIGNMENT_CENTER)
+
 func draw_reticle(p: Vector2, col: Color) -> void:
 	var s := 7.0 + sin(b.t / 6.0)
 	draw_arc(p, s, 0, TAU, 16, col, 1.0)
@@ -795,6 +866,10 @@ func draw_hover() -> void:
 	if h.team == "enemy":
 		var E: Dictionary = Data.ETYPES[h.type]
 		lines = [E.name.to_upper(), "HP %d/%d" % [h.hp, h.max_hp], E.note]
+		if h.weight == "hover":
+			lines.append("POD %d: soaks damage first. Break it and it drops." % h.pod)
+		elif h.weight == "light":
+			lines.append("LIGHT: knockback sends it twice as far.")
 		if h.type == "boss":
 			lines.append("ARMOR PLATE %d" % h.plate if h.plate > 0 else "ARMOR CRACKED: TAKES +30%")
 		if h.elite != "":
