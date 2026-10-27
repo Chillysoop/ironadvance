@@ -2135,6 +2135,8 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 					b.select_card(di)
 					b.commit_aim(Vector2(u.x + 200, u.y - u.h / 2.0))
 					await until(func(): return res.done or not b.busy, 20000)
+					if res.done:
+						break
 					if playtest_debug:
 						print("[drill r%d] %s %d -> %d" % [b.round_n, u.def.key, int(x0d), int(u.x)])
 					climbed = true
