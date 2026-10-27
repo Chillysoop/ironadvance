@@ -27,6 +27,7 @@ var sandbags: Array = []
 var structs: Array = []
 var spawns: Array = []
 var chunks: Array = []
+var bridges: Array = []  # standing bridge structs: posts are checked after every carve
 var arena_x := 0
 
 func _init(battle) -> void:
@@ -90,20 +91,32 @@ func stand_y(x: float, from_y: float):
 func build(mission: Dictionary) -> void:
 	# lay segments end to end
 	var x := 0
-	pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear()
+	var shapes: Array = []
+	var open_pits: Array = []
+	pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear()
 	for sname in mission.segments:
 		var s: Dictionary = Data.SEGMENTS[sname]
-		if sname == "arena":
+		if s.get("flat", false):
 			arena_x = x
 		for p in s.pits:
 			pits.append([p[0] + x, p[1] + x])
 		for sb in s.sandbags:
 			sandbags.append(sb + x)
+		for g in s.get("ground", []):
+			var gg: Dictionary = g.duplicate()
+			gg.x0 += x; gg.x1 += x
+			shapes.append(gg)
 		for st in s.structs:
-			var t: Dictionary = st.duplicate()
-			for k in ["px", "x0", "x1", "x", "col", "bx", "post"]:
+			var t: Dictionary = st.duplicate(true)
+			for k in ["px", "x0", "x1", "x", "col", "bx", "post", "jib", "hook"]:
 				if t.has(k):
 					t[k] += x
+			if t.has("posts"):
+				t.posts = t.posts.map(func(v): return v + x)
+			# bridges and docks span open water: their gap is a pit with no planks over it
+			if t.t == "bridge" or t.t == "docks":
+				pits.append([t.x0, t.x1])
+				open_pits.append([t.x0, t.x1])
 			structs.append(t)
 		for sp in s.spawns:
 			spawns.append([sp[0], sp[1] + x, sp[2] if sp.size() > 2 else {}])
@@ -125,6 +138,8 @@ func build(mission: Dictionary) -> void:
 		if wx > arena_x + 280:
 			h = lerpf(h, 404, clampf((wx - arena_x - 280) / 320.0, 0, 1))
 		heights[cx] = h
+	for g in shapes:
+		shape_ground(g)
 	for p in pits:
 		flatten(p[0], p[1], 70)
 	for s in structs:
@@ -132,6 +147,10 @@ func build(mission: Dictionary) -> void:
 			flatten(s.x - 110, s.x + s.w, 20)
 		if s.t == "over":
 			flatten(minf(s.px, s.x0), maxf(s.px, s.x1), 10)
+		if s.t == "fort":
+			flatten(s.x - 30, s.x + s.w + 10, 10)
+		if s.t == "crane":
+			flatten(s.x - 12, s.x + 24, 6)
 	for cx in cols:
 		var cxx := cx * CELL + 2
 		var in_pit := false
@@ -145,16 +164,41 @@ func build(mission: Dictionary) -> void:
 		for cy in range(top, ROWS):
 			set_cell(cx, cy, 4 if cy > deep else 1)
 	for p in pits:
+		if open_pits.has(p):
+			continue
 		var y := ground_at(p[0] - 12)
 		fill_r(p[0] - 8, y, p[1] - p[0] + 16, 8, 3)
 	for s in structs:
 		build_struct(s)
 	for sx in sandbags:
-		var g := ground_at(sx)
-		fill_r(sx, g - 12, 20, 24, 2)
+		# the top sits one step above the ground just before the bags, so a soldier walking up
+		# a slope can still hop them; the bottom reaches down to wherever the ground under them is
+		var g := ground_at(sx - CELL)
+		var deep := maxf(maxf(ground_at(sx), ground_at(sx + 10)), ground_at(sx + 19))
+		fill_r(sx, g - 12, 20, maxf(24, deep - g + 12), 2)
 	img = Image.create_from_data(cols, ROWS, false, Image.FORMAT_RG8, data)
 	tex = ImageTexture.create_from_image(img)
 	dirty = false
+
+func shape_ground(g: Dictionary) -> void:
+	## raise a ridge (dh > 0) or dig a trench (dh < 0) between x0 and x1, with ramps of g.ramp px.
+	## A ridge with no ramp is a cliff, and gets a ladder up its near face.
+	var ramp: float = g.get("ramp", 40)
+	var c0 := maxi(0, int(floor((g.x0 - ramp) / CELL)))
+	var c1 := mini(cols - 1, int(ceil((g.x1 + ramp) / CELL)))
+	for cx in range(c0, c1 + 1):
+		var wx := float(cx * CELL)
+		var k := 1.0
+		if wx < g.x0:
+			k = 1.0 - (g.x0 - wx) / ramp if ramp > 0 else 0.0
+		elif wx > g.x1:
+			k = 1.0 - (wx - g.x1) / ramp if ramp > 0 else 0.0
+		k = clampf(k, 0, 1)
+		k = k * k * (3 - 2 * k)
+		heights[cx] -= g.dh * k
+	if g.dh > 0 and ramp <= 8:
+		var top := ground_at(g.x0 + 8)
+		ladders.append({"x": g.x0 - 10, "top": top, "bot": ground_at(g.x0 - 20), "offx": g.x0 + 10})
 
 func flatten(a: float, bb: float, margin: float) -> void:
 	var ref := heights[clampi(int(floor((a - margin) / CELL)), 0, cols - 1)]
@@ -201,6 +245,68 @@ func build_struct(s: Dictionary) -> void:
 			fill_r(s.col + 22, top, s.bx - s.col - 18, 8, 3)
 			fill_r(s.bx - 2, top + 8, 4, s.rope, 3)
 			fill_disc(s.bx, top + 8 + s.rope + s.r - 2, s.r, 4)
+		"fort":
+			# a multi-storey outpost: wooden walls and floors, a concrete roof, windows and a door in
+			# the near wall and ladders zigzagging inside. The far wall is the one unbroken column
+			# holding it all up: blow its base and the whole fort drops a storey onto the ground floor.
+			var g := ground_at(s.x + s.w / 2.0)
+			var n: int = s.floors
+			var fh: float = s.fh
+			var top: float = g - n * fh
+			s["top"] = top
+			fill_r(s.x, top, 8, n * fh + 8, 3)
+			fill_r(s.x + s.w - 8, top, 8, n * fh + 8, 3)
+			for k in range(1, n + 1):
+				var fy: float = g - k * fh
+				fill_r(s.x, fy, s.w, 8, 2 if k == n else 3)
+				# windows: chest-high slits in the near wall for upper floors, a doorway at the bottom
+				if k < n:
+					fill_r(s.x, fy - 30, 8, 16, 0)
+			fill_r(s.x, g - 38, 8, 38, 0)
+			# roof parapet
+			fill_r(s.x - 4, top - 8, 8, 8, 2)
+			fill_r(s.x + s.w - 4, top - 8, 8, 8, 2)
+			for k in n:
+				var bot: float = g - k * fh
+				var lx: float = s.x + (s.w - 22.0 if k % 2 == 0 else 22.0)
+				var off: float = s.x + (s.w - 44.0 if k % 2 == 0 else 44.0)
+				ladders.append({"x": lx, "top": bot - fh, "bot": bot, "offx": off})
+		"bridge":
+			# a plank deck flush with both banks, held up only by its posts. The posts stop short of
+			# the riverbed, so the deck hangs off the banks; check_bridges cuts it loose.
+			var g := ground_at(s.x0 - 12)
+			s["y"] = g
+			s["down"] = false
+			fill_r(s.x0, g, s.x1 - s.x0, 8, 3)
+			s["post_cells"] = []
+			for px in s.posts:
+				fill_r(px - 4, g + 8, 8, Data.WATER_Y + 12 - g - 8, 3)
+				fill_r(px - 8, g + 8, 16, 4, 3)
+				s.post_cells.append(_count(px - 4, g + 8, 8, Data.WATER_Y + 12 - g - 8))
+			bridges.append(s)
+		"docks":
+			# a pier over open water on pilings driven into the bed
+			var g := ground_at(s.x0 - 12)
+			fill_r(s.x0, g, s.x1 - s.x0, 8, 3)
+			var px: float = s.x0 + s.pile / 2.0
+			while px < s.x1:
+				fill_r(px - 4, g + 8, 8, Data.H - g - 8, 4)
+				fill_r(px - 10, g + 8, 20, 4, 3)
+				px += s.pile
+		"crane":
+			# mast on the bank, a jib reaching back over the field, and a steel container on a cable
+			var g := ground_at(s.x + 6)
+			var top: float = g - s.h
+			fill_r(s.x, top, 12, s.h + 8, 4)
+			fill_r(s.x - 8, g - 8, 28, 8, 2)
+			var j0: float = minf(s.jib, s.x)
+			var j1: float = maxf(s.jib, s.x + 12) + 24
+			fill_r(j0, top, j1 - j0, 8, 3)
+			fill_r(j1 - 20, top + 8, 16, 12, 2)
+			fill_r(s.hook - 2, top + 8, 4, s.rope, 3)
+			var cy: float = top + 8 + s.rope
+			fill_r(s.hook - s.cw / 2.0, cy, s.cw, 4, 3)
+			fill_r(s.hook - s.cw / 2.0, cy + 4, s.cw, s.ch, 2)
 		"bunker":
 			var g := ground_at(s.x + 4)
 			var top: float = g - s.h
@@ -253,6 +359,39 @@ func carve(x: float, y: float, r: float, cause) -> void:
 				dirty = true
 	if any:
 		check_floating(x, y, r + 8, cause)
+		check_bridges(cause)
+
+func _count(x: float, y: float, w: float, h: float) -> int:
+	var n := 0
+	for cy in range(int(floor(y / CELL)), int(ceil((y + h) / CELL))):
+		for cx in range(int(floor(x / CELL)), int(ceil((x + w) / CELL))):
+			if cx >= 0 and cy >= 0 and cx < cols and cy < ROWS and grid[cy * cols + cx] != 0:
+				n += 1
+	return n
+
+func check_bridges(cause) -> void:
+	## A bridge goes down as soon as any of its posts is half gone: the deck snaps free of
+	## both banks and drops, with everything standing on it.
+	for s in bridges:
+		if s.down:
+			continue
+		var weak := false
+		for i in s.posts.size():
+			var px: float = s.posts[i]
+			if _count(px - 4, s.y + 8, 8, Data.WATER_Y + 12 - s.y - 8) < s.post_cells[i] * 0.5:
+				weak = true
+		if not weak:
+			continue
+		s.down = true
+		for ex in [s.x0, s.x0 + CELL, s.x1 - CELL, s.x1 - 2 * CELL]:
+			for k in 3:
+				var cx := int(floor(ex / CELL))
+				var cy := int(floor(s.y / CELL)) + k
+				if cx >= 0 and cy >= 0 and cx < cols and cy < ROWS and grid[cy * cols + cx]:
+					b.debris(cx * CELL + 2, cy * CELL + 2, grid[cy * cols + cx])
+					set_cell(cx, cy, 0)
+		b.bridge_down(s)
+		check_floating((s.x0 + s.x1) / 2.0, s.y + 40, (s.x1 - s.x0) / 2.0 + 16, cause)
 
 func check_floating(x: float, y: float, R: float, cause) -> void:
 	vid += 1

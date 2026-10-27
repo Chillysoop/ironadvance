@@ -12,6 +12,7 @@ func _draw() -> void:
 		return
 	var cx := b.cam_x
 	draw_ladders(cx)
+	draw_bridges()
 	draw_strikes(cx)
 	for r in b.ropes:
 		draw_line(Vector2(r.x, r.y), Vector2(r.u.x, r.u.y - 20), Color("d8d0b8"), 1.0)
@@ -56,6 +57,28 @@ func draw_ladders(_cx: float) -> void:
 			draw_rect(Rect2(x - 6, y, 12, 2), Color("b88a4a"))
 			draw_rect(Rect2(x - 6, y + 2, 12, 1), C_DARK)
 			y += 8
+
+func draw_bridges() -> void:
+	## rope handrails on standing bridges, slung between the deck ends and the posts
+	for s in b.T.bridges:
+		if s.down or not (on_screen(s.x0, 300) or on_screen(s.x1, 300)):
+			continue
+		var pts: Array = [s.x0 + 2.0] + s.posts + [s.x1 - 2.0]
+		for i in pts.size():
+			var px: float = pts[i]
+			if not b.T.solid(px, s.y + 2):
+				continue
+			draw_rect(Rect2(px - 2, s.y - 18, 4, 18), C_DARK)
+			draw_rect(Rect2(px - 1, s.y - 17, 2, 17), Color("8a5a2a"))
+			if i + 1 < pts.size() and b.T.solid(pts[i + 1], s.y + 2):
+				var a := Vector2(px, s.y - 16)
+				var bb := Vector2(pts[i + 1], s.y - 16)
+				var prev := a
+				for k in range(1, 9):
+					var f := k / 8.0
+					var p := a.lerp(bb, f) + Vector2(0, sin(f * PI) * 5)
+					draw_line(prev, p, Color("d8c8a0"), 1.0)
+					prev = p
 
 func draw_strikes(_cx: float) -> void:
 	for s in b.strikes:
@@ -113,6 +136,18 @@ func draw_unit(u: Unit) -> void:
 			return
 		"barrel":
 			draw_sprite("barrel_w" if white else "barrel", pos, Vector2(0.5, 1.0))
+			return
+		"mine":
+			# a dished steel plate half buried in the dirt, its light blinking faster when someone is close
+			var near := b.squad_alive().any(func(s): return absf(s.x - u.x) < 70 and absf(s.y - u.y) < 40)
+			draw_rect(Rect2(pos.x - 7, pos.y - 4, 14, 4), C_DARK)
+			draw_rect(Rect2(pos.x - 6, pos.y - 4, 12, 3), Color("5a5f4a") if not white else Color.WHITE)
+			draw_rect(Rect2(pos.x - 3, pos.y - 6, 6, 2), Color("3c4032"))
+			var per := 8 if u.primed else (16 if near else 48)
+			if b.t % per < per / 2:
+				draw_rect(Rect2(pos.x - 1, pos.y - 7, 2, 2), Color("ff4d3d"))
+				if near or u.primed:
+					draw_circle(Vector2(pos.x, pos.y - 6), 4, Color(1, 0.3, 0.24, 0.35))
 			return
 		"pow":
 			var fr := (b.t / 20) % 2
@@ -205,7 +240,7 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel"] or u.type == "boss" or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "mine"] or u.type == "boss" or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -553,6 +588,8 @@ func draw_hover() -> void:
 		lines = ["FUEL TANK", ("Leaking: blows after %d more enemy phase(s)." % h.leak) if h.leak != null else "Shoot it: it leaks and blows in 2 turns.", "Blast it: it goes up now. Blast 84."]
 	elif h.kind == "charge":
 		lines = ["SAPPER CHARGE", "Blows when the Jackals move next.", "Shoot it to defuse. Blast 48."]
+	elif h.kind == "mine":
+		lines = ["JACKAL MINE", "Your soldiers set it off by stepping on it.", "Jackals only trip it when they land on it: knock them onto it.", "Shoot or blast it to clear it. Blast 38."]
 	elif h.is_prop():
 		lines = ["FUEL BARREL", "Explodes when hit. Blast 44."]
 	else:

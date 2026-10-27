@@ -1,12 +1,14 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive.
+## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards.
+## --mission=N picks the mission for bot.
 
 var out_dir := "user://shots"
 var scenario := ""
 var main: Node
 var frames := 0
+var mission_arg := 0
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -18,6 +20,8 @@ func _ready() -> void:
 			scenario = a.substr(11)
 		elif a.begins_with("--out="):
 			out_dir = a.substr(6)
+		elif a.begins_with("--mission="):
+			mission_arg = int(a.substr(10))
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	await get_tree().process_frame
 	main = get_tree().current_scene
@@ -172,7 +176,49 @@ func run() -> void:
 				await frames_wait(12)
 				await shot("alive_m%d_blast" % m)
 		"bot":
-			await bot(0, 70)
+			await bot(mission_arg, 70)
+		"levels":
+			# pan across every mission and photograph each screen of the layout
+			for m in 3:
+				Run.new_run()
+				var b: Battle = main.start_battle(m)
+				await until(func(): return b.state == "player" and not b.busy)
+				var x := 0.0
+				var i := 0
+				while x < b.world_w - Battle.W + Battle.W * 0.75:
+					b.cam_x = minf(x, b.world_w - Battle.W); b.cam_tx = b.cam_x
+					await frames_wait(6)
+					await shot("level_m%d_%02d" % [m, i])
+					x += Battle.W * 0.75
+					i += 1
+				# walk a soldier along the whole mission and list every spot where walking stops
+				var u: Unit = b.squad()[0]
+				var stops: Array = []
+				var guard := 0
+				while u.x < b.world_w - 80 and guard < 400:
+					guard += 1
+					b.cam_x = clampf(u.x - 200, 0, b.world_w - Battle.W); b.cam_tx = b.cam_x
+					var sim := b.sim_walk(u, u.x + 300, 300)
+					if sim.used >= 1:
+						u.x = sim.x; u.y = sim.y
+						continue
+					var L = null
+					for l in b.T.ladders:
+						if absf(l.x - u.x) < 30 and absf(l.bot - u.y) < 16:
+							L = l
+					var y = null
+					var nx := u.x
+					while y == null or y >= Battle.WATER_Y - 4:
+						nx += 4
+						y = b.T.stand_y(nx, maxf(0, u.y - 130))
+						if nx > u.x + 400:
+							break
+					stops.append("%d%s%s" % [u.x, " ladder" if L != null else "", " water" if nx - u.x > 40 else ""])
+					u.x = nx; u.y = y if y != null else u.y
+				print("[walk] mission ", m, " stops ", stops)
+				print("[levels] mission ", m, " width ", b.world_w, " structs ", b.T.structs.map(func(s): return s.t), " ladders ", b.T.ladders.size(), " mines ", b.units.filter(func(u): return u.kind == "mine").size())
+		"hazards":
+			await hazards()
 		"campaign":
 			Run.new_run()
 			for m in 3:
@@ -186,6 +232,119 @@ func run() -> void:
 			print("unknown scenario")
 	print("[test] done")
 	get_tree().quit()
+
+func cam_on(b: Battle, x: float) -> void:
+	b.cam_x = clampf(x - Battle.W / 2.0, 0, b.world_w - Battle.W); b.cam_tx = b.cam_x
+	b.activate_enemies()
+
+func find_struct(b: Battle, t: String) -> Dictionary:
+	for s in b.T.structs:
+		if s.t == t:
+			return s
+	return {}
+
+func check(ok: bool, what: String) -> void:
+	print("[hazard] ", "PASS " if ok else "FAIL ", what)
+
+func hazards() -> void:
+	## Set off each new set piece directly and check the physics does what the layout promises.
+	# bridge: blow a post, the deck and the Jackal on it go into the river
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var br := find_struct(b, "bridge")
+	cam_on(b, (br.x0 + br.x1) / 2.0)
+	var rider: Unit = null
+	for u in b.units:
+		if u.team == "enemy" and u.x > br.x0 and u.x < br.x1:
+			rider = u
+	await frames_wait(10)
+	await shot("hz_bridge_before")
+	b.explode(br.posts[0], br.y + 40, 22, 0, b.squad()[0])
+	await frames_wait(20)
+	await shot("hz_bridge_falling")
+	await until(func(): return b.settled(), 1200)
+	await frames_wait(30)
+	await shot("hz_bridge_after")
+	check(br.down, "bridge collapses when a post is blown")
+	check(rider != null and (rider.sunk or rider.dead), "the Jackal on the bridge goes into the river")
+	# fort: blow the base of the far wall and the whole fort drops onto its ground floor
+	var ft := find_struct(b, "fort")
+	cam_on(b, ft.x + ft.w / 2.0)
+	await frames_wait(10)
+	await shot("hz_fort_before")
+	var g: float = b.T.ground_at(ft.x + ft.w / 2.0)
+	var upper := b.units.filter(func(u): return u.team == "enemy" and not u.dead and absf(u.x - ft.x - ft.w / 2.0) < ft.w / 2.0 and u.y < g - 30)
+	b.explode(ft.x + ft.w - 4, g - 16, 24, 0, b.squad()[0])
+	await frames_wait(30)
+	await shot("hz_fort_falling")
+	await until(func(): return b.settled(), 1500)
+	await frames_wait(20)
+	await shot("hz_fort_after")
+	var roof_y := -1.0
+	for yy in range(int(ft.top) - 20, int(g) + 8, 2):
+		if b.T.mat(ft.x + ft.w / 2.0, yy) == 2:
+			roof_y = yy
+			break
+	check(roof_y < 0 or roof_y > ft.top + 24, "fort roof came down (roof was at %d, now %d, ground %d)" % [ft.top, roof_y, g])
+	check(upper.any(func(u): return u.dead or u.hp < u.max_hp), "Jackals upstairs were hurt in the collapse (%d upstairs)" % upper.size())
+	# mines: knock a Jackal onto one and walk a soldier onto another
+	Run.new_run()
+	b = main.start_battle(1)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var mines := b.units.filter(func(u): return u.kind == "mine")
+	check(mines.size() >= 5, "mission 2 has a minefield (%d mines)" % mines.size())
+	var m0: Unit = mines[0]
+	cam_on(b, m0.x)
+	await frames_wait(10)
+	await shot("hz_mine_before")
+	var s0: Unit = b.squad()[0]
+	s0.x = m0.x - 30; s0.y = b.T.stand_y(s0.x, m0.y - 40)
+	var hp0 := s0.hp
+	var sim := b.sim_walk(s0, m0.x + 10, 80)
+	b.walk_along(s0, sim.pts)
+	await frames_wait(6)
+	await shot("hz_mine_click")
+	await until(func(): return m0.gone, 400)
+	await until(func(): return b.settled(), 800)
+	check(m0.gone and s0.hp < hp0, "a soldier stepping on a mine sets it off")
+	var m1: Unit = mines[1]
+	var e := b.mk_enemy("grunt", m1.x - 4, m1.y - 50)
+	b.units.append(e)
+	e.vx = 0.3; e.vy = -2.0; e.air = true
+	await until(func(): return m1.gone or (not e.air and e.vx == 0), 400)
+	await until(func(): return b.settled(), 800)
+	check(m1.gone, "a Jackal knocked onto a mine sets it off (landed %d, mine %d)" % [e.x, m1.x])
+	var walker := b.mk_enemy("grunt", mines[2].x - 30, b.T.stand_y(mines[2].x - 30, mines[2].y - 40))
+	b.units.append(walker)
+	var ws := b.sim_walk(walker, mines[2].x + 30, 80)
+	await b.walk_along(walker, ws.pts)
+	await frames_wait(30)
+	check(not mines[2].primed, "a Jackal walking over its own mine leaves it alone")
+	# crane: shoot the cable, the container drops on the Boar
+	Run.new_run()
+	b = main.start_battle(2)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var cranes := b.T.structs.filter(func(s): return s.t == "crane")
+	var cr: Dictionary = cranes[-1]
+	cam_on(b, cr.hook)
+	await frames_wait(20)
+	var boss: Unit = null
+	for u in b.units:
+		if u.type == "boss":
+			boss = u
+	await shot("hz_crane_before")
+	var top: float = b.T.ground_at(cr.x + 6) - cr.h
+	b.T.carve(cr.hook, top + 8 + cr.rope / 2.0, 5, b.squad()[0])
+	await frames_wait(40)
+	await shot("hz_crane_falling")
+	await until(func(): return b.settled(), 1200)
+	await frames_wait(20)
+	await shot("hz_crane_after")
+	check(boss != null and (boss.cracked or boss.hp < boss.max_hp), "the crane container hits the Boar (hp %d/%d cracked %s)" % [boss.hp, boss.max_hp, boss.cracked])
 
 func force_card(u: Unit, key: String) -> int:
 	for i in u.hand.size():
@@ -227,7 +386,7 @@ func bot(mission: int, max_rounds: int, fresh := true) -> bool:
 			var guard := 0
 			while guard < 8 and not res.done and b.state == "player":
 				guard += 1
-				await until(func(): return not b.busy or res.done, 20000)
+				await until(func(): return res.done or not b.busy, 20000)
 				if res.done or u.dead:
 					break
 				var played := false
@@ -284,10 +443,10 @@ func bot(mission: int, max_rounds: int, fresh := true) -> bool:
 						break
 				if not played:
 					break
-				await until(func(): return not b.busy or res.done, 20000)
+				await until(func(): return res.done or not b.busy, 20000)
 			if res.done or b.state != "player":
 				break
-			await until(func(): return not b.busy or res.done, 20000)
+			await until(func(): return res.done or not b.busy, 20000)
 			if u.move_left > 20 and not u.dead:
 				var e2 := nearest_enemy(b, u)
 				# keep spacing: each soldier stops 46px behind the one ahead
@@ -300,7 +459,13 @@ func bot(mission: int, max_rounds: int, fresh := true) -> bool:
 				if tx < u.x + 4:
 					tx = u.x - 30 if order.find(u) > 0 else u.x
 				b.do_move(u, tx)
-				await until(func(): return not b.busy or res.done, 20000)
+				await until(func(): return res.done or not b.busy, 20000)
+				# take a ladder when one is right ahead and the way on foot is blocked
+				for L in b.T.ladders:
+					if not u.dead and u.move_left > 20 and L.x > u.x - 10 and L.x - u.x < 40 and absf(L.bot - u.y) < 16 and L.offx > L.x - 30:
+						b.do_climb(u, L)
+						await until(func(): return res.done or not b.busy, 20000)
+						break
 		if res.done:
 			break
 		if b.round_n - last_shot >= 3 or b.round_n == 1:

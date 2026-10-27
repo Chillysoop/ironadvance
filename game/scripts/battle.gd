@@ -115,12 +115,17 @@ func setup(idx: int) -> void:
 		if type == "fuel":
 			var u := mk_unit(); u.team = "neutral"; u.kind = "fuel"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.w = 22; u.h = 30
 			units.append(u); continue
+		if type == "mine":
+			var u := mk_unit(); u.team = "neutral"; u.kind = "mine"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.w = 12; u.h = 6
+			units.append(u); continue
 		if type == "pow":
-			var u := mk_unit(); u.team = "neutral"; u.kind = "pow"; u.x = x; u.y = T.stand_y(x, 0); u.face = -1
+			var u := mk_unit(); u.team = "neutral"; u.kind = "pow"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - opt.up) if opt.has("up") else T.stand_y(x, 0); u.face = -1
 			u.pow_name = Data.POW_NAMES[pi % Data.POW_NAMES.size()]; pi += 1
 			units.append(u); continue
 		var E: Dictionary = Data.ETYPES[type]
 		var y = T.stand_y(x, 0) if (opt.has("hold") or opt.has("top")) and not opt.has("inside") else T.stand_y(x, T.ground_at(x) - 40)
+		if opt.has("up"):
+			y = T.stand_y(x, T.ground_at(x) - opt.up)
 		var u := mk_enemy(type, x, y)
 		u.hold = opt.has("hold")
 		if type == "boss":
@@ -568,6 +573,10 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 			float_text(tg, "LEAKING! 2 TURNS", Color("ffd23a"), true)
 			Sfx.play("splash")
 			log_msg("A fuel tank is leaking. It blows at the end of the next enemy phase.")
+		return
+	if tg.kind == "mine":
+		if not tg.primed:
+			prime_mine(tg, own, 4)
 		return
 	if tg.kind == "charge":
 		if tg.primed:
@@ -2148,6 +2157,7 @@ func step() -> void:
 					p.dead_t = 0
 					float_text(p, "THANK YOU!", Color("62d26f"), true)
 					pow_queue.append({"pow": p, "u": u})
+	update_mines()
 	for p in projs.duplicate():
 		update_proj(p)
 	projs = projs.filter(func(p): return not p.dead)
@@ -2304,6 +2314,42 @@ func physics(u: Unit) -> void:
 		if not u.dead:
 			float_at(u.x, WATER_Y - 30, (u.def.name + " DROWNED") if u.team == "squad" else "SPLASH!", Color("9fe3f0"), true)
 			kill(u, u.last_hit_by if u.last_hit_by != null and u.last_hit_by is Unit and u.last_hit_by.team == "squad" else null)
+
+# ---------------------------------------------------------------- level hazards
+var mine_air := {}  # unit id -> was airborne last frame
+var mine_by := {}   # unit id -> who last sent it flying, kept past the landing that clears it
+
+func prime_mine(m: Unit, owner, delay: int) -> void:
+	m.primed = true
+	m.flash = 40
+	Sfx.play("tick")
+	booms.append({"t": delay, "x": m.x, "y": m.y - 3, "r": 38.0, "dmg": 15, "owner": owner, "barrel": m})
+
+func update_mines() -> void:
+	## Jackal mines: your soldiers set them off by stepping on them. Jackals know where they
+	## are buried and only set them off when they land on one, so knock them onto the field.
+	var mines := units.filter(func(m): return m.kind == "mine" and not m.primed and not m.gone)
+	for u in units:
+		var was_air: bool = mine_air.get(u.id, false)
+		mine_air[u.id] = u.air
+		if u.air:
+			mine_by[u.id] = u.last_hit_by
+		if mines.is_empty() or u.dead or u.gone or u.sunk or u.air or u.is_prop() or u.kind == "pow" or u.para:
+			continue
+		if u.team != "squad" and not was_air:
+			continue
+		for m in mines:
+			if not m.primed and absf(u.x - m.x) < u.w / 2.0 + 5 and absf(u.y - m.y) < 8:
+				float_text(m, "CLICK!", Color("ff4d3d"), true)
+				var by = mine_by.get(u.id) if was_air else null
+				prime_mine(m, by if by is Unit and by.team == "squad" else null, 16)
+
+func bridge_down(s: Dictionary) -> void:
+	banner("BRIDGE DOWN!", Color("ffb23e"))
+	Sfx.play("thud")
+	shake += 8
+	score += 200
+	log_msg("The bridge is coming down. Anyone on it is going for a swim.")
 
 # ---------------------------------------------------------------- chunk sprites
 func chunk_created(c: Dictionary) -> void:
