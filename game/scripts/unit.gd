@@ -78,6 +78,8 @@ var rot := 0.0        # a body's tumble while it flies
 var fuel := 0         # Jet Boots: fuel left, refilled each turn that starts on the ground
 var fuel_max := 0
 var jetting := false
+var hang := false     # J4: held at the top of a jump for one mid-air shot
+var rolling := false  # J3: mid Combat Roll
 # squad only
 var s: Dictionary = {}  # persistent Run soldier record
 var def: Dictionary = {}
