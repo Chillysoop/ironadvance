@@ -505,7 +505,7 @@ func settled() -> bool:
 	for u in units:
 		if u.sunk or u.gone:
 			continue
-		if u.walk != null or u.zip != null or u.drill != null or (u.air and not u.para):
+		if u.walk != null or u.zip != null or u.drill != null or (u.air and not u.para and not u.hang):
 			return false
 	return true
 
@@ -744,7 +744,7 @@ func tick_statuses(team: String) -> void:
 			damage(u, 2, u.st_by.get("toxic", null), {"status": true})
 			kill_how = ""
 			u.armor = a
-		for k in ["burn", "toxic", "mark", "berserk", "cloak", "flamegod", "vest"]:
+		for k in ["burn", "toxic", "mark", "berserk", "cloak", "flamegod", "vest", "roll"]:
 			if u.st.has(k):
 				u.st[k] -= 1
 				if u.st[k] <= 0:
@@ -1223,6 +1223,11 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 			ui_dirty = true
 			return
 	tg.flash = 10
+	if tg.jetting and tg.team == "enemy" and amt > 0:
+		# J5: a hit in flight knocks the jet pack out
+		tg.jetting = false
+		tg.crash = true
+		float_text(tg, "PACK HIT!", Color("ff7a3d"), true)
 	if tg.team == "squad":
 		if debug:
 			print("[dmg r%d] %s -%d (hp %d) by %s %s" % [round_n, tg.def.key, amt, tg.hp, (src.team + ":" + (src.type if src.team != "squad" else src.def.key)) if src is Unit else str(src), str(o)])
@@ -1355,6 +1360,8 @@ func kill(tg: Unit, src) -> void:
 			if state == "player" and (src.air or src.zip != null) and src.last_cost > 0 and tag("skydiver", src.x, src.y - src.h):
 				src.energy += src.last_cost
 				float_text(src, "CARD REFUNDED", Color("ffd23a"))
+			if src.hang and tag("topgun", src.x, src.y - src.h, true, src):
+				gain_adr(src, 15)
 			gain_adr(src, 8 + int(src.g("kill_adr")))
 			give_xp(src, 4 + base / 50)
 			if src.g("kill_draw") > 0 and not src.kill_drawn and state == "player":
@@ -1837,6 +1844,10 @@ func resolve(fn: Callable) -> void:
 	act_once = {}
 	act_crushed = 0
 	await fn.call()
+	for s in squad():
+		if s.hang and s.fl.get("hung_shot", false):
+			s.fl.erase("hung_shot")
+			drop_hang(s)
 	await until(settled)
 	await wait(8)
 	if act_crushed >= 3:
@@ -1884,6 +1895,11 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 	u.hand.remove_at(idx)
 	u.energy -= cost
 	u.last_cost = cost
+	if u.hang:
+		if Data.is_attack(c):
+			u.fl["hung_shot"] = true
+		else:
+			drop_hang(u)
 	act_unit = u
 	act_card = c.get("name", "")
 	u.played += 1
@@ -2104,6 +2120,13 @@ func commit_aim(p: Vector2) -> void:
 		if c.get("rush", false):
 			resolve(func(): await _act_rush(u, idx, p))
 			return
+		if c.get("roll", false):
+			if u.air:
+				float_text(u, "NOT IN THE AIR", Color("ff7a3d"))
+				Sfx.play("deny")
+				return
+			resolve(func(): await _act_roll(u, idx, c, p))
+			return
 		resolve(func(): await _act_rocket(u, idx, c, p, sc))
 
 func _act_aim(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
@@ -2238,11 +2261,16 @@ func _act_jump(u: Unit, idx: int, p: Vector2) -> void:
 	Sfx.play("rocket")
 	for i in 10:
 		part({"x": u.x, "y": u.y, "vx": (randf() - .5) * 2, "vy": randf() * 2, "life": 24, "max": 24, "c": pick([Color("ffb23e"), Color("ff7a3d"), Color("9a9a9a")]), "s": 3.0, "g": 0.05, "fire": true})
-	if c.get("frags", 0) > 0:
+	if not c.get("hop", false):
 		await until(func(): return u.vy >= 0 or not u.air or u.dead)
-		for k in c.frags:
+		for k in c.get("frags", 0):
 			projs.append(mk_proj({"kind": "frag", "x": u.x, "y": u.y - 10, "vx": (k - 1) * 1.6 + u.vx * 0.3, "vy": 1.0, "r": 34.0 * blast_scale(u), "dmg": 11, "bounce": true, "fuse": 50 + k * 10, "owner": u}))
-		Sfx.play("toss")
+		if c.get("frags", 0) > 0:
+			Sfx.play("toss")
+		hang_up(u)
+		if u.hang:
+			u.moved = true
+			return
 	await until(func(): return not u.air or u.dead)
 	u.moved = true
 
@@ -2421,7 +2449,81 @@ func _act_jet(u: Unit, aim: Callable, held: Callable) -> void:
 	u.jetting = false
 	if u.fuel <= 0:
 		float_text(u, "FUEL OUT", Color("ff7a3d"))
+	else:
+		hang_up(u)  # let go of the jets with fuel left: time stops for a mid-air shot
+	if u.hang:
+		u.moved = true
+		return
 	await until(func(): return not u.air or u.dead)
+	u.moved = true
+
+func can_shoot(u: Unit) -> bool:
+	return u.hand.any(func(inst): return Data.is_attack(Data.card(inst)) and u.energy >= card_cost(u, inst))
+
+func hang_up(u: Unit) -> void:
+	## J4 mid-air shots: at the top of a jump (or when the jets cut out) time stops for one shot.
+	if u.dead or not u.air or u.team != "squad" or state != "player" or not can_shoot(u):
+		return
+	u.hang = true
+	u.vx = 0.0
+	u.vy = 0.0
+	u.fl["hung_shot"] = false
+	float_text(u, "TOP GUN: TAKE THE SHOT", Color("ffd23a"))
+
+func drop_hang(u) -> void:
+	if u is Unit and u.hang:
+		u.hang = false
+		u.vy = 0.5
+
+func drop_all_hangs() -> void:
+	for u in squad():
+		drop_hang(u)
+
+func roll_path(u: Unit, c: Dictionary, p: Vector2) -> Dictionary:
+	## J3: low enough to pass crawl-height gaps, but never stops where it can't stand up.
+	var d: float = c.get("dist", 150)
+	var dir := 1 if p.x >= u.x else -1
+	var h0 := u.h
+	u.h = 16
+	var sim := sim_walk(u, u.x + dir * d, d)
+	u.h = h0
+	while sim.pts.size():
+		var q: Array = sim.pts[-1]
+		var clear := true
+		var hy: float = q[1] - h0 + 2
+		while hy < q[1] - 1:
+			if T.solid(q[0], hy):
+				clear = false
+				break
+			hy += CELL
+		if clear:
+			break
+		sim.pts.pop_back()
+	if sim.pts.size():
+		sim.x = sim.pts[-1][0]
+		sim.y = sim.pts[-1][1]
+	else:
+		sim.x = u.x
+		sim.y = u.y
+	return sim
+
+func _act_roll(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
+	c = spend_card(u, idx, c)
+	var sim := roll_path(u, c, p)
+	u.st["roll"] = 1
+	u.face = 1 if p.x >= u.x else -1
+	if sim.pts.is_empty():
+		float_text(u, "TUCK", Color("e8dcc2"))
+		return
+	var h0 := u.h
+	u.h = 16
+	u.rolling = true
+	Sfx.play("toss", -6)
+	await walk_along(u, sim.pts)
+	u.rolling = false
+	u.rot = 0.0
+	u.h = h0
+	dust(u.x, u.y, Color("b9a27a"), 4)
 	u.moved = true
 
 func _act_rush(u: Unit, idx: int, p: Vector2) -> void:
@@ -3476,6 +3578,7 @@ func end_turn(force := false) -> void:
 			s.energy = 0
 		stow_hand(s)
 	card_idx = -1
+	drop_all_hangs()
 	enemy_phase()
 
 func enemy_phase() -> void:
@@ -3673,6 +3776,12 @@ func enemy_shoot(e: Unit, tg: Unit, spec: Dictionary) -> void:
 		var pts := visible_points(m.x, m.y, tg)
 		var py: float = pick(pts) if pts.size() else tg.y - tg.h / 2.0
 		var err := maxf(0.015, 0.075 - (10 if e.elite == "veteran" else alert) * 0.005) + tg.dodge * 0.002
+		if tg.has_st("roll"):
+			# J3: the soldier tucked into a roll; this one goes over their head
+			tg.st.erase("roll")
+			py = tg.y - tg.h - 16
+			err = 0.0
+			float_text(tg, "ROLLED UNDER", Color("e8dcc2"))
 		var ang := atan2(py - m.y, tg.x - m.x) + gauss() * err
 		if e.type == "boss":
 			e.aim_a = clampf(atan2(-(py - m.y), -(tg.x - m.x)), -0.4, 0.6)
@@ -3826,6 +3935,76 @@ func lob(e: Unit, tg: Unit, dmg: int, r: float, err_mul: float) -> bool:
 	projs.append(mk_proj({"kind": "egren", "x": sx, "y": sy, "vx": (sol.vx * c - sol.vy * s) * k, "vy": (sol.vx * s + sol.vy * c) * k, "wind": 1.0, "r": r, "dmg": int(round(dmg * (1 + alert * 0.06))), "owner": e, "cluster": cl}))
 	await wait(6)
 	return true
+
+func jet_roost(e: Unit):
+	## J5: the highest roof a Jet Jackal can reach this turn, on screen, nearest first on a tie.
+	var reach: float = Data.ETYPES[e.type].jet
+	var best = null
+	var x := e.x - reach
+	while x <= e.x + reach:
+		if x > cam_x + 30 and x < cam_x + W - 30:
+			var y = T.stand_y(x, 0)
+			var yl = T.stand_y(x - 8, 0)
+			var yr = T.stand_y(x + 8, 0)
+			var flat: bool = y != null and yl != null and yr != null and absf(yl - y) <= 4 and absf(yr - y) <= 4
+			if flat and y < WATER_Y - 8 and not units.any(func(o): return o != e and not o.dead and not o.gone and o.team != "neutral" and absf(o.x - x) < 14 and absf(o.y - y) < 20):
+				if best == null or y < best.y - 6 or (absf(y - best.y) <= 6 and absf(x - e.x) < absf(best.x - e.x)):
+					best = Vector2(x, y)
+		x += 12
+	return best
+
+func jet_fly(e: Unit, dest: Vector2) -> void:
+	## Burn up above the roof, drift over and drop onto it. Hit in flight and the pack cuts out.
+	e.jetting = true
+	e.walk = null
+	e.air = true
+	e.face = 1 if dest.x >= e.x else -1
+	Sfx.play("rocket", -6)
+	var over := false
+	for f in 300:
+		await wait(1)
+		if e.dead or not e.jetting:
+			break
+		# climb to just above the roof first, then slide over and settle onto it
+		var ty: float = dest.y - 40
+		var want_vy := clampf((ty - e.y) * 0.08, -3.5, 2.0)
+		var want_vx := 0.0
+		if e.y < dest.y - 20 or absf(e.x - dest.x) < 40:
+			want_vx = clampf((dest.x - e.x) * 0.06, -3.0, 3.0)
+		e.vx = move_toward(e.vx, want_vx, 0.35)
+		e.vy = move_toward(e.vy, want_vy, 0.35) - grav  # the pack cancels gravity while it burns
+		e.air = true
+		if absf(e.x - dest.x) < 3 and absf(e.y - ty) < 12:
+			over = true
+			e.x = dest.x
+			break
+		if t % 2 == 0:
+			part({"x": e.x - e.face * 6, "y": e.y - 12, "vx": (randf() - .5) * 0.6, "vy": 1.6 + randf(), "life": 14, "max": 14, "c": pick([Color("ffd23a"), Color("ff7a3d")]), "s": 2.0, "g": 0.0, "fire": true})
+		if f % 24 == 12:
+			await overwatch_check(e)
+	if e.jetting and not e.dead:
+		e.jetting = false
+		if over:
+			e.vx = 0.0
+			e.vy = 0.0
+	await until(func(): return not e.air or e.dead)
+
+func jetter_act(e: Unit) -> void:
+	var E: Dictionary = Data.ETYPES[e.type]
+	var r = jet_roost(e) if not e.hold else null
+	if r != null and r.y < e.y - 24:
+		float_text(e, "JETS!", Color("53d4e2"))
+		await jet_fly(e, r)
+	elif not e.hold:
+		var tg = nearest_squad(e)
+		if tg != null:
+			await enemy_advance(e, tg.x + (E.prefer * 0.5 if tg.x < e.x else -E.prefer * 0.5), E.speed)
+	if e.dead or e.air:
+		return
+	var best = best_shot(e, foes_of(e), E.range)
+	if best != null:
+		await wait(6)
+		await enemy_shoot(e, best.t, E)
 
 func jackal_nade(e: Unit) -> bool:
 	## A Jackal that grabbed a grenade kit throws it at the nearest soldier.
@@ -4036,6 +4215,9 @@ func enemy_act(e: Unit) -> void:
 				bsc = sc
 				best = s
 		await lob(e, best, E.dmg, E.radius, 1.6 if E.get("heavyArc", false) else 1.0)
+		return
+	if E.get("jet", 0) > 0:
+		await jetter_act(e)
 		return
 	if E.get("builds", false):
 		if e.built > 0:
@@ -4781,7 +4963,9 @@ func step() -> void:
 				u.air = false
 			continue
 		if u.walk != null:
-			for k in 2:
+			if u.rolling:
+				u.rot += 0.42 * u.face
+			for k in (3 if u.rolling else 2):
 				if u.walk_i >= u.walk.size():
 					u.walk = null
 					break
@@ -4924,6 +5108,11 @@ func body_collisions(u: Unit) -> void:
 func physics(u: Unit) -> void:
 	if u.walk != null or (u.kind == "pow" and u.freed):
 		return
+	if u.hang:
+		# J4: hanging at the top of the arc until the shot; anything that pushes them lets go
+		if u.vx == 0 and u.vy == 0 and not u.dead:
+			return
+		u.hang = false
 	if u.weight == "hover" and not u.dead:
 		hover_physics(u)
 		return
@@ -5167,6 +5356,8 @@ func dial_fuse(d: int) -> void:
 func select_unit(u: Unit) -> void:
 	if u == null or u.dead or busy:
 		return
+	if u != sel:
+		drop_hang(sel)
 	sel = u
 	card_idx = -1
 	jet_armed = false
@@ -5193,6 +5384,9 @@ func world_click(p: Vector2) -> void:
 	if tg != null and tg.team == "squad" and not tg.dead:
 		if tg != u:
 			select_unit(tg)
+		return
+	if u != null and u.hang:
+		drop_hang(u)  # clicking the ground lets go and drops
 		return
 	if u != null and not u.dead and u.move_left > 1:
 		var L = ladder_at(p)
@@ -5295,6 +5489,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if busy and ev.keycode in [KEY_SPACE, KEY_ESCAPE, KEY_ENTER] and stop_drill():
 			return
 		if ev.keycode == KEY_ESCAPE:
+			if card_idx < 0:
+				drop_hang(sel)
 			cancel_card()
 			return
 		if state != "player" or busy:

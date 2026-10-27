@@ -47,6 +47,7 @@ ENEMY_PAL = {
     'sapper':     dict(JACKAL, h='#3a3a3a', H='#262626', j='#121212', u='#8c7c58', U='#6a5c3c', v='#463c26'),
     'mortarcrew': dict(JACKAL, h='#8a6a3a', H='#6a4e26', j='#443018', u='#b8c07c', U='#929a58', v='#646a38'),
     'para':       dict(JACKAL, h='#d84a3a', H='#a8302a', j='#6a1c18'),
+    'jetter':     dict(JACKAL, h='#3ab0a8', H='#24807a', j='#14504c'),
 }
 
 def palette(over):
@@ -235,6 +236,18 @@ BACKS = {
         "..XXXXX.",
         "........",
     ],
+    'jetpack': [
+        "........",
+        "........",
+        "........",
+        "...g.g..",
+        "..gGgGg.",
+        "..GkGkG.",
+        "..GkGkG.",
+        "..GkGkG.",
+        "..kOkOk.",
+        "...Y.Y..",
+    ],
 }
 # Legs: 12 wide, 7 tall at (4, 17). Front leg uses P/p, back leg q.
 LEGS = {
@@ -326,6 +339,7 @@ CHAR_STYLE = {
     'sapper':     dict(head='mask', torso='jackal', back='satchel', gun='none'),
     'mortarcrew': dict(head='helmet', torso='bomber', back='none', gun='none'),
     'para':       dict(head='helmet', torso='jackal', back='pack', gun='rifle'),
+    'jetter':     dict(head='helmet', torso='jackal', back='jetpack', gun='rifle'),
 }
 
 FW = FH = 24  # frame size in art pixels
@@ -1926,7 +1940,7 @@ def main():
         pal = palette(SQUAD_PAL[key])
         fr = char_frames(key, pal)
         meta['sq_' + key] = write_sheet('sq_' + key, fr, gun_image(CHAR_STYLE[key]['gun'], pal))
-    for key in ('grunt', 'shield', 'nade', 'mg', 'radio', 'engineer', 'sapper', 'mortarcrew', 'para'):
+    for key in ('grunt', 'shield', 'nade', 'mg', 'radio', 'engineer', 'sapper', 'mortarcrew', 'para', 'jetter'):
         pal = palette(ENEMY_PAL[key])
         fr = char_frames(key, pal)
         g = CHAR_STYLE[key]['gun']

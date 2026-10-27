@@ -72,6 +72,7 @@ const CARDS := {
 	"medkit": {"name": "Field Dressing", "type": "ALLY", "cost": 1, "heal": 9, "range": 110, "text": "Patch up a squadmate.", "rarity": 0, "up": {"heal": 13}},
 	"stim": {"name": "Stim Shot", "type": "ALLY", "cost": 0, "energy": 1, "range": 110, "text": "+1 energy to a squadmate. Costs them 3 HP.", "rarity": 1, "up": {"range": 200}},
 	"digin": {"name": "Dig In", "type": "SELF", "cost": 1, "armor": 6, "text": "Armor until your next turn.", "rarity": 0, "up": {"armor": 10}},
+	"roll": {"name": "Combat Roll", "type": "LINE", "cost": 1, "roll": true, "dist": 150, "text": "Roll up to 150px without using movement. Fits through crawl-height gaps, and the next Jackal shot at you goes over your head.", "rarity": 0, "up": {"dist": 210}},
 	"sprint": {"name": "Sprint", "type": "SELF", "cost": 1, "move": 130, "text": "Extra movement this turn.", "rarity": 0, "up": {"move": 190}},
 	"dash": {"name": "Dash", "type": "SELF", "cost": 0, "move": 80, "text": "A quick burst of movement.", "rarity": 0, "up": {"move": 120}},
 	"overwatch": {"name": "Overwatch", "type": "SELF", "cost": 1, "overwatch": true, "ow": 1, "text": "Fire at the first enemies that move into view.", "rarity": 1, "up": {"ow": 2}},
@@ -145,6 +146,7 @@ const STATUS := {
 	"cloak": {"name": "PREDATOR", "short": "PRED", "c": Color("b48cff"), "text": "Can't be targeted, and bullets pass through, until it attacks."},
 	"flamegod": {"name": "FLAMEGOD", "short": "FLAME", "c": Color("ff9a3d"), "text": "Takes no damage. Its bullets set what they hit on fire."},
 	"vest": {"name": "VEST", "short": "VEST", "c": Color("9fb4c9"), "text": "Takes half damage."},
+	"roll": {"name": "ROLLING", "short": "ROLL", "c": Color("e8dcc2"), "text": "The next Jackal shot at it goes over its head."},
 	"cluster": {"name": "CLUSTER", "short": "CLUS", "c": Color("ffd23a"), "text": "Its next grenades burst into bomblets (counts grenades, not turns)."},
 	"nades": {"name": "GRENADE KIT", "short": "NADE", "c": Color("8fbf4a"), "text": "Throws a grenade on its next attack."},
 }
@@ -163,6 +165,7 @@ const BONUS_TURNS := 2
 const PAD_FIRST := [1, 2]   # rounds until each pad's first bonus (pads take turns)
 const PAD_RESET := 3        # rounds until a pad has its next bonus ready
 const TAGS := {
+	"topgun": {"name": "TOP GUN!", "text": "A kill from the top of a jump: +15 adrenaline."},
 	"skeet": {"name": "SKEET!", "text": "Shot a Jackal another soldier launched: double damage, +1 energy."},
 	"pileup": {"name": "PILE-UP", "text": "A launched body hit another Jackal: both stunned."},
 	"pinball": {"name": "PINBALL", "text": "One bullet hit 2+ Jackals: draw a card."},
@@ -314,19 +317,19 @@ const RECRUIT_TRAITS := [
 const SQUAD_DEFS := [
 	{"key": "moss", "name": "MOSS", "cls": "Marksman", "hp": 22, "dodge": 10, "spd": 180,
 	 "deck": ["snipe", "snipe", "rifle", "rifle", "pistol", "overwatch", "digin", "dash", "drill"],
-	 "pool": ["snipe", "rifle", "pistol", "burst", "overwatch", "digin", "dash", "grapple", "hmg", "adrenal", "tagshot", "bankshot", "holdbreath", "fanhammer", "quickdraw"],
+	 "pool": ["snipe", "rifle", "pistol", "burst", "overwatch", "digin", "dash", "roll", "grapple", "hmg", "adrenal", "tagshot", "bankshot", "holdbreath", "fanhammer", "quickdraw"],
 	 "trait": ["Eagle Eye", "Headshots deal 2x damage instead of 1.5x."], "bio": "Former game warden. Counts every round twice."},
 	{"key": "hex", "name": "HEX", "cls": "Field Medic", "hp": 24, "dodge": 14, "spd": 210,
 	 "deck": ["medkit", "medkit", "stim", "pistol", "pistol", "smoke", "sprint", "frag", "drill"],
-	 "pool": ["medkit", "stim", "smoke", "pistol", "sprint", "rally", "frag", "adrenal", "digin", "shotgun", "gasnade", "hotshot", "flashbang", "dartpistol", "defib"],
+	 "pool": ["medkit", "stim", "smoke", "pistol", "sprint", "roll", "rally", "frag", "adrenal", "digin", "shotgun", "gasnade", "hotshot", "flashbang", "dartpistol", "defib"],
 	 "trait": ["Bedside Manner", "Heals restore +3 HP."], "bio": "Patched up three wars. Still hates the sight of blood."},
 	{"key": "vee", "name": "VEE", "cls": "Demolitions", "hp": 27, "dodge": 6, "spd": 185,
 	 "deck": ["frag", "frag", "bazooka", "bazooka", "mortar", "pistol", "jumppack", "sprint", "drill"],
-	 "pool": ["frag", "mortar", "bazooka", "rocket", "clusterfrag", "beacon", "jumppack", "shotgun", "smoke", "gasnade", "rocketjump", "molotov", "shapedcharge"],
+	 "pool": ["frag", "mortar", "bazooka", "rocket", "clusterfrag", "beacon", "jumppack", "roll", "shotgun", "smoke", "gasnade", "rocketjump", "molotov", "shapedcharge"],
 	 "trait": ["Pyromaniac", "Explosions deal +3 damage. Her own blasts hurt her for 40%."], "bio": "Measures distance in fuse-seconds."},
 	{"key": "rook", "name": "ROOK", "cls": "Vanguard", "hp": 32, "dodge": 8, "spd": 200,
 	 "deck": ["rifle", "rifle", "rifle", "burst", "sprint", "knife", "frag", "grapple", "drill"],
-	 "pool": ["rifle", "burst", "shotgun", "hmg", "knife", "digin", "grapple", "sprint", "rally", "adrenal", "tagshot", "haymaker", "taunt", "suppress"],
+	 "pool": ["rifle", "burst", "shotgun", "hmg", "knife", "digin", "grapple", "sprint", "roll", "rally", "adrenal", "tagshot", "haymaker", "taunt", "suppress"],
 	 "trait": ["Thick Skull", "Takes half damage from falls, slams and crushing debris."], "bio": "First through every door. Usually the wrong one."},
 ]
 
@@ -619,6 +622,7 @@ const ETYPES := {
 	"shield": {"name": "Riot Jackal", "hp": 16, "dmg": [3, 4], "range": 340, "speed": 95, "prefer": 140, "shield": true, "score": 150, "w": 18, "h": 34, "note": "Shield soaks 75% of bullets from the front. Ricochet behind it, or blow it up."},
 	"nade": {"name": "Jackal Bomber", "hp": 10, "arc": true, "dmg": 9, "radius": 32, "range": 480, "speed": 100, "prefer": 380, "score": 150, "w": 16, "h": 34, "note": "Lobs grenades over cover. Aim tightens as alert rises."},
 	"brute": {"name": "Jackal Brute", "hp": 20, "acc": 85, "melee": true, "smash": true, "dmg": [9, 12], "speed": 190, "score": 200, "w": 22, "h": 44, "note": "Charges 190px and smashes through walls. Its machete sends you flying."},
+	"jetter": {"name": "Jet Jackal", "hp": 10, "dmg": [3, 5], "range": 480, "speed": 90, "prefer": 240, "jet": 300, "score": 175, "w": 16, "h": 34, "note": "Jets up to the highest roof within 300px and shoots down. Hit it in flight and it crashes."},
 	"mg": {"name": "MG Nest", "hp": 24, "dmg": [2, 3], "shots": 4, "range": 520, "static": true, "heavy": true, "score": 250, "w": 28, "h": 24, "note": "Static. Four rounds a turn. Too heavy to launch."},
 	"radio": {"name": "Jackal Radioman", "hp": 10, "dmg": [2, 3], "range": 380, "speed": 60, "prefer": 520, "radio": true, "score": 200, "w": 16, "h": 34, "note": "Calls in paratroopers when his timer hits zero. Kill him to stop it."},
 	"engineer": {"name": "Jackal Engineer", "hp": 12, "dmg": [2, 3], "range": 360, "speed": 80, "prefer": 320, "builds": true, "score": 150, "w": 16, "h": 34, "note": "Builds concrete walls for the Jackal line."},
@@ -663,7 +667,7 @@ const SEGMENTS := {
 	"start": {"w": 460, "sandbags": [420], "structs": [], "pits": [], "spawns": []},
 	"towers": {"w": 840, "sandbags": [600], "pits": [[700, 776]],
 		"structs": [{"t": "over", "px": 136, "x0": 136, "x1": 244, "h": 70}, {"t": "tower", "x": 380, "h": 96}],
-		"spawns": [["barrel", 124], ["grunt", 200, {"top": 1}], ["grunt", 380, {"hold": 1}], ["nade", 470]]},
+		"spawns": [["barrel", 124], ["grunt", 200, {"top": 1}], ["grunt", 380, {"hold": 1}], ["nade", 470], ["jetter", 560]]},
 	"boulder": {"w": 700, "sandbags": [710], "pits": [],
 		"structs": [{"t": "boulder", "col": 150, "colH": 150, "bx": 232, "rope": 22, "r": 22}],
 		"spawns": [["pow", 20], ["grunt", 162, {"hold": 1}], ["mg", 236], ["shield", 310], ["brute", 360], ["nade", 420], ["radio", 490]]},
@@ -672,7 +676,7 @@ const SEGMENTS := {
 		"spawns": [["barrel", 96], ["barrel", 112], ["mg", 182], ["grunt", 182, {"hold": 1, "inside": 1}], ["fuel", 252], ["grunt", 396], ["engineer", 420], ["brute", 480], ["radio", 560]]},
 	"overhang": {"w": 800, "sandbags": [], "pits": [],
 		"structs": [{"t": "over", "px": 224, "x0": 224, "x1": 400, "h": 76}, {"t": "tower", "x": 540, "h": 100}, {"t": "ledge", "x": 720, "w": 100, "dy": 112, "post": 766}],
-		"spawns": [["pow", 100], ["shield", 310, {"hold": 1}], ["shield", 380], ["sapper", 460], ["brute", 490], ["nade", 540, {"hold": 1}], ["radio", 640]]},
+		"spawns": [["pow", 100], ["shield", 310, {"hold": 1}], ["shield", 380], ["sapper", 460], ["brute", 490], ["nade", 540, {"hold": 1}], ["jetter", 600], ["radio", 640]]},
 	"mortar": {"w": 800, "sandbags": [110], "pits": [[760, 836]],
 		"structs": [{"t": "bunker", "x": 330, "w": 84, "h": 48}, {"t": "boulder", "col": 430, "colH": 160, "bx": 500, "rope": 24, "r": 24}],
 		"spawns": [["engineer", 140], ["fuel", 190], ["grunt", 260], ["mg", 372], ["grunt", 372, {"hold": 1, "inside": 1}], ["mortarcrew", 500, {"hold": 1}], ["barrel", 540], ["nade", 590], ["radio", 670]]},
@@ -718,7 +722,7 @@ const SEGMENTS := {
 	"catwalks": {"w": 860, "sandbags": [120], "pits": [],
 		"structs": [{"t": "catwalk", "x0": 220, "x1": 500, "dy": 84}, {"t": "catwalk", "x0": 560, "x1": 720, "dy": 138, "leg": 80}],
 		"spawns": [["grunt", 300, {"hold": 1, "up": 100}], ["nade", 440, {"hold": 1, "up": 100}], ["fuel", 360], ["grunt", 400], ["shield", 520],
-			["grunt", 650, {"hold": 1, "up": 150}], ["brute", 690], ["radio", 800]]},
+			["grunt", 650, {"hold": 1, "up": 150}], ["brute", 690], ["jetter", 760], ["radio", 800]]},
 	# a chain-link perimeter: they can shoot you through it and you them, but nobody walks through
 	"fenceline": {"w": 820, "sandbags": [150], "pits": [],
 		"structs": [{"t": "fence", "x": 280, "h": 72}, {"t": "fence", "x": 560, "h": 72}, {"t": "catwalk", "x0": 620, "x1": 740, "dy": 96}],

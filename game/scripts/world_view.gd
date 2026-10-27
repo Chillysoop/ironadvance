@@ -269,6 +269,10 @@ func draw_unit(u: Unit) -> void:
 		rot = u.face * 0.5
 	if u.dead and u.air:
 		rot = u.rot
+	if u.rolling:
+		# J3: tumble around the middle of the body
+		rot = u.rot
+		pos += Vector2(0, -9) + Vector2(0, 9).rotated(rot)
 	if u.para:
 		draw_set_transform(pos + Vector2(0, -50), 0, Vector2(Art.PX, Art.PX))
 		var pt: Texture2D = Art.tex.parachute
@@ -302,6 +306,12 @@ func draw_unit(u: Unit) -> void:
 			draw_rect(Rect2(sx - 2, pos.y - 29, 5, 26), Color.WHITE if white else Color("7d8590"))
 			draw_rect(Rect2(sx + (1 if u.face > 0 else -2), pos.y - 29, 2, 26), Color("c9d1da"))
 			draw_rect(Rect2(sx - 1, pos.y - 20, 3, 3), Color("2a6fb0"))
+		if u.jetting and u.team == "enemy":
+			var fl := 4.0 + (b.t % 4)
+			draw_rect(Rect2(pos.x - u.face * 7 - 2, pos.y - 12, 4, fl), Color("ffd23a"))
+			draw_rect(Rect2(pos.x - u.face * 7 - 1, pos.y - 12 + fl, 2, 3), Color("ff7a3d"))
+		if u.hang:
+			draw_arc(pos + Vector2(0, -17), 22 + sin(b.t / 6.0) * 2, 0, TAU, 24, Color(1, 0.82, 0.23, 0.6), 1.0)
 		if u.muzzle > 0 and u.sheet != "en_brute":
 			var mo := Art.muzzle_offset(u.sheet, a[0], a[1], u.gun_angle)
 			draw_muzzle(pos + kick + Vector2(mo.x * u.face, mo.y), u.face, u.gun_angle)
@@ -853,6 +863,17 @@ func draw_targeting() -> void:
 					draw_ghost(u, sim, Color("ffd23a"), "DRILL %dpx" % int(Vector2(sim.x, sim.y).distance_to(Vector2(u.x, u.y))))
 				else:
 					Art.text(self, "CAN'T DRILL THERE", Vector2(u.x, u.y - u.h - 8), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif c.get("roll", false):
+				var sim := b.roll_path(u, c, m)
+				var i := 0
+				while i < sim.pts.size():
+					draw_rect(Rect2(sim.pts[i][0] - 1, sim.pts[i][1] - 3, 3, 3), Color(0.91, 0.86, 0.76, 0.8))
+					i += 3
+				if sim.pts.size():
+					Art.draw_char(self, u.sheet, "idle", 0, Vector2(sim.x, sim.y), 1 if sim.x >= u.x else -1, false, 0, 0.45, 0.0, false, 1.0, Color("e8dcc2"))
+					Art.text(self, "ROLL %dpx" % int(absf(sim.x - u.x)), Vector2(sim.x, sim.y - u.h - 8), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+				else:
+					Art.text(self, "NO ROOM TO ROLL", Vector2(u.x, u.y - u.h - 8), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.get("jump", false) or c.get("rush", false):
 				var v := b.jump_vel(u, m, c.get("jpow", 1.0)) if c.get("jump", false) else b.rush_vel(u, m)
 				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50)
