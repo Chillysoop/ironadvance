@@ -15,6 +15,7 @@ var modal: Control
 var cards: Array = []
 var tags: Array = []
 var deck_view: Control = null
+var hand_x0 := 270.0      # left edge of the hand, so the action meter can sit beside it
 
 const INK := Color(0.05, 0.035, 0.03)
 
@@ -58,6 +59,13 @@ func setup(battle: Battle) -> void:
 	mute.size = Vector2(58, 24)
 	mute.pressed.connect(func(): Sfx.muted = not Sfx.muted; mute.text = "MUTE" if Sfx.muted else "SND")
 	root.add_child(mute)
+	for i in Run.belt_max():
+		var bs := BeltSlot.new()
+		bs.hud = self
+		bs.idx = i
+		bs.position = Vector2(830 + (i - (Run.belt_max() - 3)) * 41, 424)
+		bs.size = Vector2(38, 30)
+		root.add_child(bs)
 	modal = Control.new()
 	modal.set_anchors_preset(Control.PRESET_FULL_RECT)
 	modal.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -100,6 +108,7 @@ func refresh() -> void:
 		var gap := 6.0
 		var total := n * cw + maxf(0, n - 1) * gap
 		var x0 := 480 - total / 2.0
+		hand_x0 = x0
 		for i in n:
 			var cv := CardView.new()
 			cv.opt = want[i]
@@ -120,7 +129,32 @@ func refresh() -> void:
 		cv.selected = b.card_idx == i
 		cv.disabled = not my_turn or u.energy < cv.cost
 		cv.supercharged = u.adr >= 50 and not inst.get("od", false) and Data.is_attack(c)
+		cv.chain = b.chain_ready(u, inst) if my_turn else ""
 	overlay.queue_redraw()
+
+func _process(_d: float) -> void:
+	if b == null:
+		return
+	# the END TURN plunger says how many soldiers can still act, and asks twice if any can
+	var n := b.ready_count() if b.state == "player" else 0
+	if b.end_confirm_t > 0:
+		end_btn.sub = "PRESS AGAIN"
+		end_btn.color = Color("ffd23a") if b.t % 16 < 8 else Color("ff4d3d")
+	elif n > 0 and b.state == "player":
+		end_btn.sub = "%d CAN ACT" % n
+		end_btn.color = Color("ff4d3d")
+	else:
+		end_btn.sub = "SPACE"
+		end_btn.color = Color("ff4d3d") if b.t % 40 < 20 or b.state != "player" else Color("ff7a3d")
+
+func preview_cost() -> int:
+	## Energy the hovered (or armed) card would spend, for the blinking bolts.
+	for cv in cards:
+		if cv.hover and not cv.disabled:
+			return cv.cost
+	if b.card_idx >= 0 and b.card_idx < cards.size():
+		return cards[b.card_idx].cost
+	return 0
 
 func hint_text() -> String:
 	if b.state == "enemy":
@@ -138,7 +172,7 @@ func hint_text() -> String:
 			return "BEACON: lob it onto the Jackals. Three bombs land there when their phase starts."
 		return Data.TYPES[c.type].hint
 	if u.move_left > 1:
-		return "Click ground to move %s. Click a ladder top to climb. Ending in the push zone scrolls early and cuts the alert." % u.def.name
+		return "Click ground to move %s. Hold ALT for intel. Click a ladder top to climb. Ending in the push zone scrolls early and cuts the alert." % u.def.name
 	return "%s is out of movement. Play cards, switch soldier (TAB) or end the turn." % u.def.name
 
 # ---------------------------------------------------------------- modal: pick one
@@ -162,18 +196,42 @@ func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> 
 		cv.opt = o
 		cv.size = Vector2(cw, 176)
 		cv.position = Vector2(x0 + i * (cw + gap), 196)
-		if o.has("u"):
+		if o.get("label", "") != "":
+			cv.label_top = o.label
+		elif o.has("u"):
 			cv.label_top = "TO %s" % o.u.def.name
 		var idx := i
-		cv.pressed.connect(func(): Sfx.play("coin"); picked.emit(idx))
+		cv.pressed.connect(func():
+			Sfx.play("coin")
+			picked.emit(-100 - idx if bg.banish else idx))
 		modal.add_child(cv)
 	var skip := PixButton.new()
-	skip.text = "SKIP" if kind != "level" else "SKIP (NO BONUS)"
+	skip.text = {"level": "SKIP +15$", "loot": "TO STASH"}.get(kind, "SKIP")
 	skip.color = Color("9aa2ae")
-	skip.size = Vector2(170 if kind == "level" else 90, 26)
+	skip.size = Vector2(120 if kind in ["level", "loot"] else 90, 26)
 	skip.position = Vector2(480 - skip.size.x / 2, 392)
 	skip.pressed.connect(func(): picked.emit(-1))
 	modal.add_child(skip)
+	if kind == "level":
+		# P4: reroll the three options, or banish one from this soldier's pool for the run
+		var rr := PixButton.new()
+		rr.text = "REROLL (%d)" % Run.lvl_rerolls
+		rr.color = Color("53d4e2")
+		rr.size = Vector2(120, 26)
+		rr.position = Vector2(480 - 60 - 130, 392)
+		rr.disabled = Run.lvl_rerolls <= 0
+		rr.pressed.connect(func(): picked.emit(-2))
+		modal.add_child(rr)
+		var bn := PixButton.new()
+		bn.text = "BANISH (%d)" % Run.banishes
+		bn.color = Color("ff7a3d")
+		bn.size = Vector2(120, 26)
+		bn.position = Vector2(480 + 60 + 10, 392)
+		bn.disabled = Run.banishes <= 0
+		bn.pressed.connect(func():
+			bg.banish = not bg.banish
+			bn.text = "PICK ONE TO BANISH" if bg.banish else "BANISH (%d)" % Run.banishes)
+		modal.add_child(bn)
 	modal.visible = true
 	Sfx.play("levelup" if kind == "level" else "select")
 	var r: int = await picked
@@ -193,7 +251,8 @@ func show_deck() -> void:
 	var bg := ModalBG.new()
 	bg.title = "%s  LV%d  %s" % [u.def.name, u.s.lvl, u.def.cls.to_upper()]
 	var perks: Array = u.s.perks.map(func(p): return Data.perk(u.def.key, p).name)
-	bg.sub = "%s: %s   Abilities: %s" % [u.def.trait[0], u.def.trait[1], ", ".join(perks) if perks.size() else "none yet"]
+	var arch: Array = Run.archetypes(u.s).map(func(a): return "%s %s" % [a[0], ["I", "II", "III"][a[1] - 1]])
+	bg.sub = "%s: %s   Abilities: %s%s" % [u.def.trait[0], u.def.trait[1], ", ".join(perks) if perks.size() else "none yet", ("   (" + ", ".join(arch) + ")") if arch.size() else ""]
 	bg.who = u
 	bg.kind = "deck"
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -228,6 +287,7 @@ class PixButton extends Control:
 	var color := Color("ffb23e")
 	var disabled := false
 	var hover := false
+	var small := false        # force the small font on a tall button
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		mouse_entered.connect(func(): hover = true; queue_redraw())
@@ -254,9 +314,44 @@ class PixButton extends Control:
 		var ty := (h - 2) / 2.0 + 5 + press
 		if sub != "":
 			ty -= 5
-		Art.text(self, text, Vector2(w / 2.0, ty), 8 if h < 30 else 16, Color.WHITE if not disabled else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+		Art.text(self, text, Vector2(w / 2.0, ty), 8 if h < 30 or small else 16, Color.WHITE if not disabled else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 		if sub != "":
 			Art.text(self, sub, Vector2(w / 2.0, ty + 12), 8, Color(1, 1, 1, 0.7), HORIZONTAL_ALIGNMENT_CENTER, 1)
+
+class BeltSlot extends Control:
+	## One consumable on the squad belt. Click to use it on the selected soldier.
+	var hud
+	var idx := 0
+	var hover := false
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		mouse_entered.connect(func(): hover = true)
+		mouse_exited.connect(func(): hover = false)
+	func _gui_input(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			if idx < Run.belt.size():
+				hud.b.use_belt(idx)
+			else:
+				Sfx.play("deny")
+	func _process(_d: float) -> void:
+		queue_redraw()
+	func _draw() -> void:
+		var ink := Color(0.05, 0.035, 0.03)
+		draw_rect(Rect2(0, 0, size.x, size.y), ink)
+		draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color("2a2e34") if not hover else Color("3a4048"))
+		if idx >= Run.belt.size():
+			Art.text(self, "BELT", Vector2(size.x / 2, 19), 8, Color("4a505a"), HORIZONTAL_ALIGNMENT_CENTER)
+			return
+		var it: Dictionary = Run.belt[idx]
+		var icon: String = {"heal": "ic_heart", "ration": "ic_heart", "smoke": "ic_shield", "energy": "ic_bolt"}.get(Data.ITEMS[it.id].use, "ic_card")
+		draw_texture_rect(Art.tex[icon], Rect2(size.x / 2 - 8, 3, 16, 16), false)
+		Art.text(self, Data.item_name(it).split(" ")[0].to_upper().substr(0, 5), Vector2(size.x / 2, 28), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+		if hover:
+			var tip := "%s: %s" % [Data.item_name(it), Data.ITEMS[it.id].text]
+			var tw := Art.text_width(tip, 16, true) + 12
+			draw_rect(Rect2(size.x - tw, -24, tw, 20), Color(ink, 0.9))
+			Art.text(self, tip, Vector2(size.x - 6, -9), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT, 0, true)
 
 class Tag extends Control:
 	## A soldier's dog tag in the roster: portrait, name, level, HP and adrenaline.
@@ -297,6 +392,17 @@ class Tag extends Control:
 			draw_texture_rect(Art.tex.ic_skull, Rect2(x0 + 16, 6, 12, 12), false)
 		Art.text(self, u.def.name, Vector2(x0 + 36, 11), 8, Color.WHITE if not u.dead else Color("8a7a7a"))
 		Art.text(self, "LV%d" % u.s.lvl, Vector2(x0 + w - 4, 11), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
+		var b: Battle = hud.b
+		if not u.dead and b.state == "player":
+			# energy pips after the name, then a DONE stamp once they have nothing left
+			var nb := maxi(3, u.energy)
+			for i in nb:
+				var bx := x0 + 74 + i * 7
+				draw_rect(Rect2(bx, 4, 5, 7), Color(0.05, 0.035, 0.03))
+				draw_rect(Rect2(bx + 1, 5, 3, 5), Color("ffd23a") if i < u.energy else Color("3b3f45"))
+			if not b.can_act(u):
+				draw_rect(Rect2(x0 + 1, 1, w - 2, h - 2), Color(0.05, 0.035, 0.03, 0.55))
+				Art.text(self, "DONE", Vector2(x0 + w - 6, 20), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT, 1)
 		if not u.dead:
 			var bw := w - 40
 			draw_rect(Rect2(x0 + 36, 14, bw, 4), Color(0.05, 0.035, 0.03))
@@ -314,6 +420,7 @@ class ModalBG extends Control:
 	var sub := ""
 	var who = null
 	var kind := ""
+	var banish := false
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
 	func _process(_d: float) -> void:
@@ -346,10 +453,56 @@ class ModalBG extends Control:
 			Art.draw_char(self, who.sheet, "idle", (Time.get_ticks_msec() / 200) % 4, Vector2(100, 200), 1, false, 0, 1.0, 0, true, 2.0)
 
 class Overlay extends Control:
-	## Top bar, boss bar, log, hint and banners.
+	## Top bar, boss bar, log, hint, the selected soldier's action panel and banners.
 	var hud
 	func _process(_d: float) -> void:
 		queue_redraw()
+	func draw_action_panel(b: Battle) -> void:
+		## Big energy bolts and a movement gauge for the selected soldier, docked left of the hand.
+		var u: Unit = b.sel
+		if b.state != "player" or u == null or u.dead:
+			return
+		var ink := Color(0.05, 0.035, 0.03)
+		var r := Rect2(maxf(160.0, hud.hand_x0 - 52), 440, 46, 98)
+		draw_rect(r.grow(1), ink)
+		draw_rect(r, Color(0.16, 0.18, 0.2, 0.94))
+		draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 1), Color("6c7480"))
+		Art.text(self, "ENERGY", Vector2(r.get_center().x, r.position.y + 10), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+		var cost: int = hud.preview_cost()
+		var slots := clampi(maxi(3, u.energy), 3, 8)
+		for i in slots:
+			var bx := r.position.x + 4 + (i % 2) * 20
+			var by := r.position.y + 14 + (i / 2) * 15
+			var full := i < u.energy
+			var spend := full and i >= u.energy - cost
+			draw_rect(Rect2(bx, by, 18, 14), ink)
+			if full:
+				var a := 1.0
+				if spend:
+					a = 0.3 + 0.7 * float(b.t % 20 < 10)
+				draw_rect(Rect2(bx + 1, by + 1, 16, 12), Color(0.4, 0.33, 0.08, a))
+				draw_texture_rect(Art.tex.ic_bolt, Rect2(bx + 3, by + 1, 12, 12), false, Color(1, 1, 1, a))
+			else:
+				draw_rect(Rect2(bx + 1, by + 1, 16, 12), Color("2b2f35"))
+		# C1 momentum: three purple pips, the third card played this turn refunds an energy
+		var mom := u.played % Data.MOMENTUM
+		for i in Data.MOMENTUM:
+			var px := r.end.x + 3
+			var py := r.position.y + 14 + i * 10
+			draw_rect(Rect2(px, py, 7, 8), ink)
+			draw_rect(Rect2(px + 1, py + 1, 5, 6), Color("b48cff") if i < mom else Color("2b2f35"))
+		if mom == Data.MOMENTUM - 1 and b.t % 30 < 20:
+			Art.text(self, "+1", Vector2(r.end.x + 7, r.position.y + 50), 8, Color("b48cff"), HORIZONTAL_ALIGNMENT_CENTER)
+		var mv := maxf(0.0, u.move_left)
+		var full_mv: float = maxf(1.0, u.def.spd + u.s.bonus.move + (60 if u.perk("charge") else 0))
+		var my := r.end.y - 26
+		Art.text(self, "MOVE", Vector2(r.get_center().x, my), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+		draw_rect(Rect2(r.position.x + 3, my + 3, 40, 7), ink)
+		draw_rect(Rect2(r.position.x + 4, my + 4, 38.0 * clampf(mv / full_mv, 0, 1), 5), Color("62d26f") if mv > 1 else Color("4a505a"))
+		if mv > full_mv:
+			draw_rect(Rect2(r.position.x + 4, my + 4, 38, 1), Color("b48cff"))
+		Art.text(self, "%d" % int(mv), Vector2(r.get_center().x, my + 21), 8, Color("62d26f") if mv > 1 else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+
 	func _draw() -> void:
 		var b: Battle = hud.b
 		if b == null:
@@ -422,6 +575,14 @@ class Overlay extends Control:
 		for i in b.log_lines.size():
 			var a := 0.55 + 0.45 * float(i + 1) / b.log_lines.size()
 			Art.text(self, b.log_lines[i], Vector2(10, ly + i * 14), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		draw_action_panel(b)
+		# C6 kill combo meter, top right under the bar
+		if b.combo >= 2 and b.state == "player":
+			var cx := 940.0
+			var pulse := 1.0 + 0.1 * sin(b.t / 4.0)
+			Art.text(self, "COMBO x%d" % b.combo, Vector2(cx, 100 + pulse), 16, Color("ff7a3d") if b.combo < 5 else Color("b48cff"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
+			var nxt := "x3: SQUAD +10 ADRENALINE" if b.combo < 3 else ("x5: NEXT CRATE +1 RARITY" if b.combo < 5 else "CRATE BONUS READY")
+			Art.text(self, nxt, Vector2(cx, 116), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT)
 		# hint strip above the hand
 		var h: String = hud.hint_text()
 		if h != "":

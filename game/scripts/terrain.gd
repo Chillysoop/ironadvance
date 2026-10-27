@@ -94,6 +94,7 @@ func build(mission: Dictionary) -> void:
 	var shapes: Array = []
 	var open_pits: Array = []
 	pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear()
+	arena_x = 1 << 20  # outposts have no arena
 	for sname in mission.segments:
 		var s: Dictionary = Data.SEGMENTS[sname]
 		if s.get("flat", false):

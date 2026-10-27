@@ -18,88 +18,472 @@ const TYPES := {
 	"SELF": {"c": Color("b48cff"), "hint": "SELF: plays instantly."},
 }
 
-# rarity: 0 common, 1 uncommon, 2 rare, 3 overdrive (never offered)
-# "up" holds the changes an upgraded (+) copy gets.
+# Rarity tiers shared by cards, gear, level-up picks and crates. Rarity never sets a card's
+# energy cost: a higher tier only improves what the card does.
+const RARITY := [
+	{"name": "COMMON", "c": Color("c9ccd1"), "w": 55.0},
+	{"name": "UNCOMMON", "c": Color("62d26f"), "w": 27.0},
+	{"name": "RARE", "c": Color("4f9dff"), "w": 12.0},
+	{"name": "EPIC", "c": Color("b46cff"), "w": 5.0},
+	{"name": "LEGENDARY", "c": Color("ffb21e"), "w": 1.0},
+	{"name": "OVERDRIVE", "c": Color("ff4d3d"), "w": 0.0},
+]
+const TIER_MAX := 4
+const OD_TIER := 5
+# Bullets always fly the full distance. The aim laser only shows the first stretch of the
+# path, and how far depends on the gun. Index into LASER_LEN; gear can push a gun up a step.
+const FULL_RANGE := 2400
+const LASER_LEN := [140.0, 220.0, 420.0, 99999.0]
+const GUNS := {
+	"pistol": {"name": "PISTOL", "laser": 0},
+	"shotgun": {"name": "SHOTGUN", "laser": 0},
+	"smg": {"name": "SMG", "laser": 1},
+	"rifle": {"name": "RIFLE", "laser": 2},
+	"mg": {"name": "MACHINE GUN", "laser": 2},
+	"sniper": {"name": "SNIPER", "laser": 3},
+}
+
+# rarity: base tier of the card (0 common, 1 uncommon, 2 rare, 5 overdrive, never offered)
+# "up" holds the changes the first tier-up of a card gets; later tiers scale it further.
 const CARDS := {
-	"rifle": {"name": "Rifle Shot", "type": "AIM", "cost": 1, "dmg": [6, 8], "range": 720, "bounce": 1, "sway": 0.035, "text": "Ricochets once.", "rarity": 0, "up": {"dmg": [8, 10]}},
-	"burst": {"name": "Burst Fire", "type": "AIM", "cost": 2, "dmg": [4, 5], "shots": 3, "range": 620, "bounce": 1, "sway": 0.05, "spread": 0.06, "text": "Three rounds. Recoil spreads them.", "rarity": 1, "up": {"shots": 4}},
-	"pistol": {"name": "Sidearm", "type": "AIM", "cost": 1, "dmg": [4, 5], "range": 520, "bounce": 2, "sway": 0.022, "text": "Steady. Ricochets twice.", "rarity": 0, "up": {"dmg": [5, 7], "bounce": 3}},
-	"snipe": {"name": "Long Shot", "type": "AIM", "cost": 2, "dmg": [14, 18], "range": 1200, "bounce": 1, "sway": 0.007, "pierce": true, "still": true, "chip": 5, "text": "Pierces bodies. Sways 4x if you moved.", "rarity": 2, "up": {"dmg": [17, 22]}},
-	"shotgun": {"name": "Shotgun", "type": "AIM", "cost": 1, "dmg": [3, 4], "pellets": 6, "range": 170, "bounce": 0, "sway": 0.02, "spread": 0.16, "knock": 5, "text": "Six pellets. Launches targets up close.", "rarity": 1, "up": {"pellets": 8}},
-	"hmg": {"name": "Heavy MG", "type": "AIM", "cost": 1, "dmg": [3, 3], "shots": 5, "range": 660, "bounce": 0, "sway": 0.06, "spread": 0.07, "text": "Five rounds of spray. Shreds wood.", "rarity": 2, "up": {"shots": 7}},
+	"rifle": {"name": "Rifle Shot", "type": "AIM", "cost": 1, "dmg": [6, 8], "range": FULL_RANGE, "gun": "rifle", "bounce": 1, "sway": 0.035, "text": "Ricochets once.", "rarity": 0, "up": {"dmg": [8, 10]}},
+	"burst": {"name": "Burst Fire", "type": "AIM", "cost": 2, "dmg": [4, 5], "shots": 3, "range": FULL_RANGE, "gun": "smg", "bounce": 1, "sway": 0.05, "spread": 0.06, "text": "Three rounds. Recoil spreads them.", "rarity": 1, "up": {"shots": 4}},
+	"pistol": {"name": "Sidearm", "type": "AIM", "cost": 1, "dmg": [4, 5], "range": FULL_RANGE, "gun": "pistol", "bounce": 2, "sway": 0.022, "text": "Steady. Ricochets twice.", "rarity": 0, "up": {"dmg": [5, 7], "bounce": 3}},
+	"snipe": {"name": "Long Shot", "type": "AIM", "cost": 2, "dmg": [14, 18], "range": FULL_RANGE, "gun": "sniper", "bounce": 1, "sway": 0.007, "pierce": true, "still": true, "chip": 5, "text": "Pierces bodies. Sways 4x if you moved.", "rarity": 2, "up": {"dmg": [17, 22]}},
+	"shotgun": {"name": "Shotgun", "type": "AIM", "cost": 1, "dmg": [3, 4], "pellets": 6, "range": FULL_RANGE, "gun": "shotgun", "bounce": 0, "sway": 0.02, "spread": 0.16, "knock": 5, "text": "Six pellets that fan out. Launches targets.", "rarity": 1, "up": {"pellets": 8}},
+	"hmg": {"name": "Heavy MG", "type": "AIM", "cost": 1, "dmg": [3, 3], "shots": 5, "range": FULL_RANGE, "gun": "mg", "bounce": 0, "sway": 0.06, "spread": 0.07, "text": "Five rounds of spray. Shreds wood.", "rarity": 2, "up": {"shots": 7}},
 	"frag": {"name": "Frag Grenade", "type": "ARC", "cost": 1, "radius": 36, "dmg": 11, "fuse": 150, "bounce": true, "wind": 1.0, "text": "Bounces. 2.5s fuse.", "rarity": 0, "up": {"dmg": 14, "radius": 42}},
 	"clusterfrag": {"name": "Cluster Frag", "type": "ARC", "cost": 2, "radius": 30, "dmg": 9, "fuse": 120, "bounce": true, "wind": 1.0, "cluster": 3, "text": "Bursts into three bouncing bomblets.", "rarity": 2, "up": {"cluster": 5}},
 	"mortar": {"name": "Mortar Shell", "type": "ARC", "cost": 2, "radius": 50, "dmg": 15, "wind": 1.6, "text": "Explodes on impact. Heavy wind drift.", "rarity": 1, "up": {"dmg": 19, "radius": 58}},
-	"smoke": {"name": "Smoke Can", "type": "ARC", "cost": 1, "smoke": true, "wind": 1.0, "text": "Enemies cannot see through it for 2 rounds.", "rarity": 1, "up": {"cost": 0}},
-	"beacon": {"name": "Airstrike Beacon", "type": "ARC", "cost": 3, "beacon": true, "wind": 0.6, "text": "Three bombs hit around it at the start of the enemy phase.", "rarity": 2, "up": {"cost": 2}},
+	"smoke": {"name": "Smoke Can", "type": "ARC", "cost": 1, "smoke": true, "srad": 64.0, "sturns": 2, "wind": 1.0, "text": "Enemies cannot see through it.", "rarity": 1, "up": {"srad": 92.0, "sturns": 3}},
+	"beacon": {"name": "Airstrike Beacon", "type": "ARC", "cost": 3, "beacon": true, "wind": 0.6, "text": "Bombs hit around it at the start of the enemy phase.", "bombs": 3, "rarity": 2, "up": {"bombs": 5}},
 	"bazooka": {"name": "Bazooka", "type": "LINE", "cost": 2, "radius": 34, "dmg": 13, "speed": 10.0, "text": "Straight rocket. Big knockback.", "rarity": 1, "up": {"dmg": 17, "radius": 40}},
 	"rocket": {"name": "Rocket Pod", "type": "LINE", "cost": 2, "radius": 24, "dmg": 8, "speed": 11.0, "count": 3, "text": "Three rockets in a spread.", "rarity": 2, "up": {"count": 4}},
-	"grapple": {"name": "Grapple Hook", "type": "LINE", "cost": 1, "grapple": true, "range": 280, "text": "Zip onto a ledge or roof up to 280px away.", "rarity": 1, "up": {"cost": 0}},
-	"jumppack": {"name": "Jump Pack", "type": "LINE", "cost": 1, "jump": true, "text": "Launch yourself in an arc. Lands soft. Counts as a push.", "rarity": 1, "up": {"cost": 0}},
+	"grapple": {"name": "Grapple Hook", "type": "LINE", "cost": 1, "grapple": true, "range": 280, "text": "Zip onto a ledge or roof in reach.", "rarity": 1, "up": {"range": 400}},
+	"jumppack": {"name": "Jump Pack", "type": "LINE", "cost": 1, "jump": true, "jpow": 1.0, "text": "Launch yourself in an arc. Lands soft. Counts as a push.", "rarity": 1, "up": {"jpow": 1.3}},
 	"knife": {"name": "Knife", "type": "MELEE", "cost": 1, "dmg": [8, 10], "range": 38, "knock": 6, "text": "Never misses. Kicks them away.", "rarity": 0, "up": {"dmg": [11, 13]}},
-	"medkit": {"name": "Field Dressing", "type": "ALLY", "cost": 1, "heal": 9, "range": 110, "text": "Heal 9 HP.", "rarity": 0, "up": {"heal": 13}},
+	"medkit": {"name": "Field Dressing", "type": "ALLY", "cost": 1, "heal": 9, "range": 110, "text": "Patch up a squadmate.", "rarity": 0, "up": {"heal": 13}},
 	"stim": {"name": "Stim Shot", "type": "ALLY", "cost": 0, "energy": 1, "range": 110, "text": "+1 energy to a squadmate. Costs them 3 HP.", "rarity": 1, "up": {"range": 200}},
-	"digin": {"name": "Dig In", "type": "SELF", "cost": 1, "armor": 6, "text": "Gain 6 armor until your next turn.", "rarity": 0, "up": {"armor": 10}},
-	"sprint": {"name": "Sprint", "type": "SELF", "cost": 1, "move": 130, "text": "+130px of movement this turn.", "rarity": 0, "up": {"move": 190}},
-	"dash": {"name": "Dash", "type": "SELF", "cost": 0, "move": 80, "text": "+80px of movement. Free.", "rarity": 0, "up": {"move": 120}},
-	"overwatch": {"name": "Overwatch", "type": "SELF", "cost": 1, "overwatch": true, "text": "Fire at the first enemy that moves into view.", "rarity": 1, "up": {"cost": 0}},
-	"adrenal": {"name": "Adrenaline Spike", "type": "SELF", "cost": 0, "adrenal": 50, "selfdmg": 4, "text": "Lose 4 HP, gain 50 adrenaline.", "rarity": 1, "up": {"selfdmg": 2}},
-	"rally": {"name": "Rally Cry", "type": "SELF", "cost": 1, "rally": 70, "range": 220, "text": "Squad within 220px: +70 move and 10 adrenaline.", "rarity": 1, "up": {"rally": 110}},
+	"digin": {"name": "Dig In", "type": "SELF", "cost": 1, "armor": 6, "text": "Armor until your next turn.", "rarity": 0, "up": {"armor": 10}},
+	"sprint": {"name": "Sprint", "type": "SELF", "cost": 1, "move": 130, "text": "Extra movement this turn.", "rarity": 0, "up": {"move": 190}},
+	"dash": {"name": "Dash", "type": "SELF", "cost": 0, "move": 80, "text": "A quick burst of movement.", "rarity": 0, "up": {"move": 120}},
+	"overwatch": {"name": "Overwatch", "type": "SELF", "cost": 1, "overwatch": true, "ow": 1, "text": "Fire at the first enemies that move into view.", "rarity": 1, "up": {"ow": 2}},
+	"adrenal": {"name": "Adrenaline Spike", "type": "SELF", "cost": 0, "adrenal": 50, "selfdmg": 4, "text": "Hurt yourself to get angry.", "rarity": 1, "up": {"selfdmg": 2}},
+	"rally": {"name": "Rally Cry", "type": "SELF", "cost": 1, "rally": 70, "range": 220, "text": "Squad in range: extra movement and 10 adrenaline.", "rarity": 1, "up": {"rally": 110}},
+	"tagshot": {"name": "Tag Round", "type": "AIM", "cost": 0, "dmg": [1, 2], "range": FULL_RANGE, "gun": "rifle", "bounce": 1, "sway": 0.02, "mark": true, "text": "Marks what it hits. The next hit on a marked target crits.", "rarity": 1, "up": {"dmg": [3, 4], "bounce": 2}},
+	"gasnade": {"name": "Gas Canister", "type": "ARC", "cost": 1, "gas": true, "srad": 56.0, "sturns": 3, "wind": 1.0, "text": "A toxic cloud that drifts with the wind. Fire or a blast inside it explodes.", "rarity": 1, "up": {"srad": 76.0, "sturns": 4}},
+	# archetype cards (Phase 4)
+	"bankshot": {"name": "Bank Shot", "type": "AIM", "cost": 1, "dmg": [4, 5], "range": FULL_RANGE, "gun": "pistol", "bounce": 3, "sway": 0.025, "bankdmg": 3, "text": "+3 damage for every bounce before it hits.", "rarity": 1, "up": {"bankdmg": 5}},
+	"holdbreath": {"name": "Hold Breath", "type": "SELF", "cost": 1, "breath": 6, "text": "Your next AIM card has no sway and +6 damage.", "rarity": 1, "up": {"breath": 9}},
+	"fanhammer": {"name": "Fan the Hammer", "type": "AIM", "cost": 1, "dmg": [3, 4], "shots": 3, "range": FULL_RANGE, "gun": "pistol", "bounce": 1, "sway": 0.03, "spread": 0.1, "text": "Three wild pistol shots.", "rarity": 1, "up": {"shots": 4}},
+	"quickdraw": {"name": "Quickdraw", "type": "SELF", "cost": 0, "draw": 2, "text": "Draw 2 cards.", "rarity": 1, "up": {"draw": 3}},
+	"hotshot": {"name": "Hot Shot", "type": "ALLY", "cost": 1, "adrshot": 40, "range": 140, "text": "A squadmate gains adrenaline.", "rarity": 1, "up": {"adrshot": 60}},
+	"flashbang": {"name": "Flashbang", "type": "ARC", "cost": 1, "radius": 52, "dmg": 2, "fuse": 70, "bounce": true, "wind": 1.0, "flash": true, "text": "Stuns every Jackal in the blast. Barely hurts.", "rarity": 2, "up": {"radius": 66}},
+	"dartpistol": {"name": "Dart Pistol", "type": "AIM", "cost": 1, "dmg": [2, 3], "range": FULL_RANGE, "gun": "pistol", "bounce": 1, "sway": 0.02, "toxic": true, "text": "Poisons what it hits: Toxic for 3 rounds.", "rarity": 1, "up": {"dmg": [4, 5]}},
+	"defib": {"name": "Defib Paddles", "type": "MELEE", "cost": 1, "dmg": [4, 6], "range": 38, "knock": 3, "stun": true, "selfheal": 5, "text": "Stuns the target and heals you.", "rarity": 1, "up": {"selfheal": 8}},
+	"rocketjump": {"name": "Rocket Jump", "type": "LINE", "cost": 1, "jump": true, "jpow": 1.25, "rjump": true, "text": "A blast at your feet launches you and hurts anyone beside you.", "rarity": 1, "up": {"jpow": 1.5}},
+	"molotov": {"name": "Molotov", "type": "ARC", "cost": 1, "radius": 30, "dmg": 4, "wind": 1.0, "burnblast": true, "text": "Smashes on impact. Everything caught is Burning.", "rarity": 1, "up": {"radius": 40}},
+	"shapedcharge": {"name": "Shaped Charge", "type": "ARC", "cost": 1, "radius": 26, "dmg": 8, "fuse": 90, "wind": 0.6, "carve": 56, "text": "Small blast, huge hole. Drops structures.", "rarity": 1, "up": {"carve": 72}},
+	"haymaker": {"name": "Haymaker", "type": "MELEE", "cost": 1, "dmg": [6, 8], "range": 38, "knock": 11, "text": "Sends them flying. Aim the body at their friends.", "rarity": 1, "up": {"knock": 14}},
+	"taunt": {"name": "Taunt", "type": "SELF", "cost": 0, "taunt": true, "text": "Every Jackal that can targets you next phase.", "rarity": 1, "up": {"armor": 4}},
+	"suppress": {"name": "Suppressing Fire", "type": "AIM", "cost": 1, "dmg": [2, 2], "shots": 5, "range": FULL_RANGE, "gun": "mg", "bounce": 0, "sway": 0.06, "spread": 0.09, "supp": true, "text": "Everything hit is Suppressed.", "rarity": 1, "up": {"shots": 7}},
+	# weapon cards: only come from equipped weapons (G1)
+	"carbine": {"name": "Carbine Burst", "type": "AIM", "cost": 1, "dmg": [4, 5], "shots": 2, "range": FULL_RANGE, "gun": "smg", "bounce": 1, "sway": 0.04, "spread": 0.05, "text": "Two quick rounds.", "rarity": 0, "pool": false, "up": {"shots": 3}},
+	"huntshot": {"name": "Hunting Round", "type": "AIM", "cost": 1, "dmg": [8, 10], "range": FULL_RANGE, "gun": "rifle", "bounce": 1, "sway": 0.03, "text": "Heavy round. Ricochets once.", "rarity": 0, "pool": false, "up": {"dmg": [10, 13]}},
+	# letter weapons: temporary cards picked up in the field (L2)
+	"flameshot": {"name": "Flame Shot", "type": "AIM", "cost": 1, "dmg": [2, 3], "pellets": 7, "range": FULL_RANGE, "gun": "shotgun", "bounce": 0, "sway": 0.02, "spread": 0.12, "knock": 2, "chip": 7, "burn": true, "text": "A gout of fire. Chews wood.", "rarity": 2, "pool": false},
+	"lasergun": {"name": "Laser Gun", "type": "AIM", "cost": 1, "dmg": [9, 11], "range": FULL_RANGE, "gun": "sniper", "bounce": 3, "sway": 0.0, "pierce": true, "chip": 2, "text": "Pierces and bounces. No sway.", "rarity": 2, "pool": false},
+	"chaser": {"name": "Enemy Chaser", "type": "LINE", "cost": 1, "radius": 26, "dmg": 10, "speed": 6.5, "homing": true, "text": "A rocket that hunts the nearest Jackal.", "rarity": 2, "pool": false},
 	# overdrives: unlocked by full adrenaline, free, single use
-	"ricochet": {"name": "Ricochet Round", "type": "AIM", "cost": 0, "od": true, "dmg": [16, 20], "range": 1800, "bounce": 5, "sway": 0.0, "pierce": true, "chip": 5, "text": "Five bounces. Pierces every body it meets.", "rarity": 3},
-	"surge": {"name": "Adrenal Surge", "type": "SELF", "cost": 0, "od": true, "surge": true, "range": 240, "text": "Squad within 240px: heal 10, +1 energy, +80 move.", "rarity": 3},
-	"cluster": {"name": "Cluster Bomb", "type": "ARC", "cost": 0, "od": true, "radius": 40, "dmg": 12, "fuse": 110, "bounce": true, "wind": 1.0, "cluster": 5, "text": "Bursts into five bouncing bomblets.", "rarity": 3},
-	"rush": {"name": "Bull Rush", "type": "LINE", "cost": 0, "od": true, "rush": true, "text": "Launch yourself. Everyone you hit goes flying.", "rarity": 3},
+	"ricochet": {"name": "Ricochet Round", "type": "AIM", "cost": 0, "od": true, "dmg": [16, 20], "range": FULL_RANGE, "gun": "sniper", "bounce": 5, "sway": 0.0, "pierce": true, "chip": 5, "text": "Five bounces. Pierces every body it meets.", "rarity": 5},
+	"surge": {"name": "Adrenal Surge", "type": "SELF", "cost": 0, "od": true, "surge": true, "range": 240, "text": "Squad within 240px: heal 10, +1 energy, +80 move.", "rarity": 5},
+	"cluster": {"name": "Cluster Bomb", "type": "ARC", "cost": 0, "od": true, "radius": 40, "dmg": 12, "fuse": 110, "bounce": true, "wind": 1.0, "cluster": 5, "text": "Bursts into five bouncing bomblets.", "rarity": 5},
+	"rush": {"name": "Bull Rush", "type": "LINE", "cost": 0, "od": true, "rush": true, "text": "Launch yourself. Everyone you hit goes flying.", "rarity": 5},
+	# archetype Overdrives: a capstone perk swaps the soldier's Overdrive for one of these (P2)
+	"oneshot": {"name": "One Shot", "type": "AIM", "cost": 0, "od": true, "dmg": [28, 34], "range": FULL_RANGE, "gun": "sniper", "bounce": 0, "sway": 0.0, "pierce": true, "phase": true, "forcehead": true, "text": "No sway. A crit that passes through walls and bodies.", "rarity": 5},
+	"holdline": {"name": "Hold the Line", "type": "SELF", "cost": 0, "od": true, "overwatch": true, "ow": 8, "text": "Eight overwatch shots: fire at everything that moves.", "rarity": 5},
+	"deadmans": {"name": "Dead Man's Hand", "type": "AIM", "cost": 0, "od": true, "dmg": [5, 7], "shots": 6, "range": FULL_RANGE, "gun": "pistol", "bounce": 2, "sway": 0.01, "spread": 0.03, "text": "Six fast pistol rounds.", "rarity": 5},
+	"smokescreen": {"name": "Smokescreen", "type": "ARC", "cost": 0, "od": true, "smoke": true, "multi": 3, "srad": 80.0, "sturns": 3, "wind": 0.6, "text": "Three big clouds in a row.", "rarity": 5},
+	"blight": {"name": "Blight Shell", "type": "SELF", "cost": 0, "od": true, "blight": true, "text": "Every Jackal on screen is Toxic for 3 rounds.", "rarity": 5},
+	"triagefield": {"name": "Triage Field", "type": "SELF", "cost": 0, "od": true, "triage": 15, "range": 260, "text": "Squad within 260px: heal 15 and clear statuses.", "rarity": 5},
+	"barrage": {"name": "Barrage", "type": "ARC", "cost": 0, "od": true, "beacon": true, "barrage": 6, "wind": 0.6, "text": "Six shells walk across the marker. Right now.", "rarity": 5},
+	"airraid": {"name": "Air Raid", "type": "LINE", "cost": 0, "od": true, "jump": true, "jpow": 1.3, "frags": 3, "text": "Jump and drop three frags from the top of the arc.", "rarity": 5},
+	"napalmstrike": {"name": "Napalm Strike", "type": "ARC", "cost": 0, "od": true, "radius": 30, "dmg": 8, "wind": 0.6, "napalm": true, "text": "Lights a line of fire across the impact.", "rarity": 5},
+	"collapse": {"name": "Controlled Collapse", "type": "ARC", "cost": 0, "od": true, "radius": 40, "dmg": 10, "fuse": 60, "wind": 0.4, "carve": 96, "text": "A charge that tears out a huge chunk of terrain.", "rarity": 5},
+	"immovable": {"name": "Immovable", "type": "SELF", "cost": 0, "od": true, "immovable": true, "armor": 40, "text": "40 armor and no knockback until your next turn.", "rarity": 5},
+	"leadrain": {"name": "Lead Rain", "type": "AIM", "cost": 0, "od": true, "dmg": [3, 3], "shots": 16, "range": FULL_RANGE, "gun": "mg", "bounce": 0, "sway": 0.04, "spread": 0.09, "supp": true, "text": "Sixteen rounds. Everything hit is Suppressed.", "rarity": 5},
+	"breach": {"name": "Breach & Clear", "type": "LINE", "cost": 0, "od": true, "rush": true, "stab": 16, "text": "Charge through. 16 damage to every body you pass.", "rarity": 5},
+	# duo Overdrives (C4): two soldiers with Overdrive ready, standing within 120px
+	"spotter": {"name": "Spotter Strike", "type": "ARC", "cost": 0, "od": true, "duo": true, "beacon": true, "barrage": 8, "markall": true, "wind": 0.5, "text": "Moss marks everything near the marker, Vee walks 8 shells across it.", "rarity": 5},
+	"cannonball": {"name": "Human Cannonball", "type": "LINE", "cost": 0, "od": true, "duo": true, "rush": true, "cannon": true, "text": "Vee fires Rook like a shell. He lands with a blast.", "rarity": 5},
+	"adrenalcharge": {"name": "Adrenal Charge", "type": "LINE", "cost": 0, "od": true, "duo": true, "rush": true, "squadheal": 10, "text": "Rook charges while Hex juices the squad: heal 10 and +25 adrenaline each.", "rarity": 5},
+	"ownet": {"name": "Overwatch Net", "type": "SELF", "cost": 0, "od": true, "duo": true, "ownet": 2, "text": "Every soldier gets 2 overwatch shots.", "rarity": 5},
+	"shockawe": {"name": "Shock and Awe", "type": "AIM", "cost": 0, "od": true, "duo": true, "dmg": [5, 6], "shots": 10, "range": FULL_RANGE, "gun": "mg", "bounce": 1, "sway": 0.03, "spread": 0.06, "supp": true, "text": "Ten ricocheting rounds that Suppress.", "rarity": 5},
+	"firestorm": {"name": "Firestorm", "type": "ARC", "cost": 0, "od": true, "duo": true, "radius": 52, "dmg": 16, "wind": 0.8, "burnblast": true, "fuelgas": true, "text": "Hex's gas, Vee's match: a huge burning FUEL-AIR blast.", "rarity": 5},
+	"slugcall": {"name": "SV-001 Slug", "type": "SELF", "cost": 0, "od": true, "slug": true, "text": "Call in the Metal Slug for a round. It rolls forward crushing Jackals and shells them.", "rarity": 5},
+	# evolutions (M4): Epic+ card plus a specific kit
+	"heavym": {"name": "Heavy Machine Gun", "type": "AIM", "cost": 1, "dmg": [4, 4], "shots": 8, "range": FULL_RANGE, "gun": "mg", "bounce": 1, "sway": 0.04, "spread": 0.05, "pierce": true, "text": "H! Eight piercing rounds.", "rarity": 3, "pool": false},
+	"firebomb": {"name": "Fire Bomb", "type": "ARC", "cost": 1, "radius": 46, "dmg": 15, "wind": 1.0, "burnblast": true, "text": "Blows on impact and sets everything Burning.", "rarity": 3, "pool": false},
 }
+# ---------------------------------------------------------------- combos (C1, C3, C5, C6)
+const MOMENTUM := 3          # every 3rd card a soldier plays in a turn refunds 1 energy
+const STATUS := {
+	"burn": {"name": "BURNING", "short": "BURN", "c": Color("ff7a3d"), "text": "3 damage a turn. Spreads to bodies on wood and chars the wood."},
+	"toxic": {"name": "TOXIC", "short": "TOX", "c": Color("9be34a"), "text": "2 damage a turn, armor does not help."},
+	"supp": {"name": "SUPPRESSED", "short": "SUPP", "c": Color("c9d1da"), "text": "Half movement on its next turn."},
+	"mark": {"name": "MARKED", "short": "MARK", "c": Color("ff4d3d"), "text": "The next hit on it is a critical (x1.5)."},
+	"stun": {"name": "STUNNED", "short": "STUN", "c": Color("ffd23a"), "text": "Skips its next turn."},
+}
+const TAGS := {
+	"skeet": {"name": "SKEET!", "text": "Shot a Jackal another soldier launched: double damage, +1 energy."},
+	"pileup": {"name": "PILE-UP", "text": "A launched body hit another Jackal: both stunned."},
+	"pinball": {"name": "PINBALL", "text": "One bullet hit 2+ Jackals: draw a card."},
+	"fuelair": {"name": "FUEL-AIR", "text": "Blast inside smoke or gas: radius +50%."},
+	"domino": {"name": "DOMINO", "text": "Debris crushed 2+ Jackals: +1 energy to everyone and a loot drop."},
+	"skydiver": {"name": "SKY DIVER", "text": "Kill while airborne: the card is refunded."},
+	"crossfire": {"name": "CROSSFIRE", "text": "Hit from both sides in one turn: suppressed."},
+}
+# Legendary items made by a triple merge get a name and a unique line (M1).
+const LEGEND_NAMES := {"weapon": ["Old Faithful", "Widowmaker", "Last Word"], "armor": ["Old Iron", "Second Skin", "Hard Luck"], "kit": ["Lucky Break", "Sixth Sense", "Hot Hands"]}
+const LEGEND_BONUS := {"weapon": {"aim_dmg": 2}, "armor": {"armor_turn": 2}, "kit": {"luck": 1}}
+const CARD_NICKS := ["Old Faithful", "The Closer", "Sweet Talker", "Big Iron", "Last Call", "House Rules"]
+const FAB_PRICE := 70
+
 const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush"}
+# Metal Slug letter drops: 3 temporary cards in the collector's hand for the rest of the mission.
+const LETTERS := {"H": "hmg", "R": "bazooka", "F": "flameshot", "S": "shotgun", "L": "lasergun", "C": "chaser"}
+
+# ---------------------------------------------------------------- gear (G1-G6)
+# Four slots per soldier plus a squad stash and a 3-slot consumable belt.
+# "stats" scale with the item's rarity (TIER_MUL); weapons add their cards to the deck.
+const SLOT_NAMES := {"weapon": "WEAPON", "armor": "ARMOR", "kit": "KIT", "belt": "BELT"}
+const TIER_MUL := [1.0, 1.25, 1.5, 2.0, 2.5]
+const STASH_MAX := 8
+const BELT_MAX := 3
+const ITEMS := {
+	"carbine": {"name": "M-16 Carbine", "slot": "weapon", "cards": ["carbine", "carbine"], "text": "Adds 2 Carbine Burst cards."},
+	"huntrifle": {"name": "Hunting Rifle", "slot": "weapon", "cards": ["huntshot", "huntshot"], "text": "Adds 2 Hunting Round cards."},
+	"marksman": {"name": "Marksman Rifle", "slot": "weapon", "cards": ["snipe", "snipe"], "stats": {"laser_pct": 0.2}, "text": "Adds 2 Long Shot cards."},
+	"riotgun": {"name": "Riot Shotgun", "slot": "weapon", "cards": ["shotgun", "shotgun"], "text": "Adds 2 Shotgun cards."},
+	"service": {"name": "Service Pistol", "slot": "weapon", "cards": ["pistol", "pistol"], "stats": {"move": 10}, "text": "Adds 2 Sidearm cards."},
+	"greasegun": {"name": "Grease Gun", "slot": "weapon", "cards": ["burst", "burst"], "text": "Adds 2 Burst Fire cards."},
+	"tube": {"name": "Bazooka Tube", "slot": "weapon", "cards": ["bazooka", "bazooka"], "set": "boar", "text": "Adds 2 Bazooka cards."},
+	"nadebelt": {"name": "Grenade Belt", "slot": "weapon", "cards": ["frag", "frag"], "text": "Adds 2 Frag Grenade cards."},
+	"machete": {"name": "Machete", "slot": "weapon", "cards": ["knife", "knife"], "stats": {"move": 15}, "set": "desert", "text": "Adds 2 Knife cards."},
+	"medbag": {"name": "Medic Bag", "slot": "weapon", "cards": ["medkit", "medkit"], "stats": {"heal": 1}, "text": "Adds 2 Field Dressing cards."},
+	"flak": {"name": "Flak Vest", "slot": "armor", "stats": {"hp": 4}, "text": "Padding where it counts."},
+	"plate": {"name": "Riot Plate", "slot": "armor", "stats": {"armor_turn": 2}, "set": "boar", "text": "Armor at the start of every turn."},
+	"ghillie": {"name": "Ghillie Suit", "slot": "armor", "stats": {"dodge": 6}, "set": "desert", "text": "Hard to pin down."},
+	"cboots": {"name": "Combat Boots", "slot": "armor", "stats": {"move": 25}, "text": "Broken in."},
+	"steeltoe": {"name": "Steel-Toe Rig", "slot": "armor", "stats": {"hp": 2, "fall_half": 1}, "text": "Half damage from falls and slams."},
+	"sparemag": {"name": "Spare Mag", "slot": "kit", "stats": {"kill_draw": 1}, "text": "ON KILL: draw a card (once a turn)."},
+	"flashhider": {"name": "Flash Hider", "slot": "kit", "stats": {"head_adr": 15}, "text": "ON HEADSHOT: gain adrenaline."},
+	"ammopouch": {"name": "Ammo Pouch", "slot": "kit", "stats": {"energy1": 1}, "text": "+1 energy on round 1."},
+	"luckycoin": {"name": "Lucky Coin", "slot": "kit", "stats": {"luck": 1}, "text": "Better loot for the whole squad."},
+	"scope": {"name": "4x Scope", "slot": "kit", "stats": {"laser_step": 1}, "text": "This soldier's aim laser reaches a step further."},
+	"griptape": {"name": "Grip Tape", "slot": "kit", "stats": {"sway": 0.2}, "set": "desert", "text": "Less sway on every gun."},
+	"medpatch": {"name": "Med Patch", "slot": "kit", "stats": {"regen": 2}, "text": "Heal at the start of every turn."},
+	"detcord": {"name": "Det Cord", "slot": "kit", "stats": {"blast": 0.12}, "set": "boar", "text": "Bigger blasts."},
+	"rallypatch": {"name": "Rally Patch", "slot": "kit", "stats": {"push_draw": 1}, "text": "ON PUSH: draw a card."},
+	"adrenalgland": {"name": "Adrenal Gland", "slot": "kit", "stats": {"kill_adr": 10}, "text": "ON KILL: extra adrenaline."},
+	"tungsten": {"name": "Tungsten Core", "slot": "kit", "keystone": "moss", "stats": {"aim_dmg": 1}, "text": "KEYSTONE: every bounce before a hit adds 25% damage."},
+	"varga": {"name": "Varga's Scope", "slot": "kit", "keystone": "moss", "stats": {"laser_step": 1}, "text": "KEYSTONE: Long Shot passes through wood."},
+	"claymore": {"name": "Claymore Satchel", "slot": "kit", "keystone": "moss", "stats": {"armor_turn": 1}, "text": "KEYSTONE: overwatch shots explode where they hit."},
+	"twinrev": {"name": "Twin Revolvers", "slot": "weapon", "keystone": "moss", "cards": ["pistol", "pistol"], "text": "KEYSTONE: adds 2 Sidearms. Every Sidearm fires twice at 60%."},
+	"overcharger": {"name": "Overcharger Rig", "slot": "armor", "keystone": "hex", "stats": {"hp": 3}, "text": "KEYSTONE: duo Overdrives with this soldier need only one full bar."},
+	"canister": {"name": "Canister Launcher", "slot": "weapon", "keystone": "hex", "cards": ["smoke", "smoke"], "text": "KEYSTONE: adds 2 Smoke Cans. Smoke cards cost 0 and bounce."},
+	"weathervane": {"name": "Weather Vane", "slot": "kit", "keystone": "hex", "stats": {"luck": 1}, "text": "KEYSTONE: your gas drifts toward the nearest Jackal, not with the wind."},
+	"medrig": {"name": "Med-Rig Plate", "slot": "armor", "keystone": "hex", "stats": {"hp": 4}, "text": "KEYSTONE: every heal you give also gives you that much armor."},
+	"howitzer": {"name": "Howitzer Sights", "slot": "kit", "keystone": "vee", "stats": {"blast": 0.08}, "text": "KEYSTONE: Airstrike Beacon costs 1 less and calls 2 more bombs."},
+	"lizard": {"name": "Iron Lizard", "slot": "weapon", "keystone": "vee", "cards": ["bazooka", "bazooka"], "text": "KEYSTONE: adds 2 Bazookas. Rockets that hit the ground crawl along it."},
+	"fuelpack": {"name": "Fuel Backpack", "slot": "armor", "keystone": "vee", "stats": {"hp": 3}, "text": "KEYSTONE: fire you start burns for 4 rounds."},
+	"detbox": {"name": "Detonator Box", "slot": "kit", "keystone": "vee", "stats": {"blast": 0.1}, "text": "KEYSTONE: barrels and fuel tanks you set off blow at once for +50%."},
+	"gauntlet": {"name": "Pneumatic Gauntlet", "slot": "weapon", "keystone": "rook", "cards": ["haymaker", "haymaker"], "text": "KEYSTONE: adds 2 Haymakers. Bodies you launch keep their speed and hit 50% harder."},
+	"riotshield": {"name": "Riot Shield", "slot": "armor", "keystone": "rook", "stats": {"hp": 4}, "text": "KEYSTONE: blocks 75% of bullets from the front."},
+	"ammobelt": {"name": "Ammo Belt", "slot": "kit", "keystone": "rook", "stats": {"move": 10}, "text": "KEYSTONE: Heavy MG fires 3 more rounds."},
+	"zantetsu": {"name": "Zantetsu Sword", "slot": "weapon", "keystone": "rook", "cards": ["knife", "knife"], "text": "KEYSTONE: adds 2 Knives. Knife sweeps every body in reach and cuts terrain."},
+	"guidance": {"name": "Guidance Chip", "slot": "kit", "stats": {"aim_dmg": 1}, "text": "Rockets think for themselves."},
+	"napalmmix": {"name": "Napalm Mix", "slot": "kit", "stats": {"blast": 0.06}, "text": "Sticky, smelly, very flammable."},
+	# Armory unlocks (W4): locked until a feat is done once, in any run
+	"boarplate": {"name": "Boar Plating", "slot": "armor", "stats": {"hp": 3, "armor_turn": 2}, "set": "boar", "locked": true, "text": "Cut from a cracked Iron Boar."},
+	"skeetvest": {"name": "Skeet Vest", "slot": "armor", "stats": {"dodge": 8, "move": 10}, "locked": true, "text": "Pull!"},
+	"deflector": {"name": "Deflector Rounds", "slot": "kit", "stats": {"aim_dmg": 2}, "locked": true, "text": "Ricochets keep their bite."},
+	"zippo": {"name": "Zippo", "slot": "kit", "stats": {"blast": 0.06, "kill_adr": 4}, "locked": true, "text": "Never leave home without it."},
+	"medalcase": {"name": "Medal Case", "slot": "kit", "stats": {"luck": 2}, "locked": true, "text": "Polished every night."},
+	"antimat": {"name": "Anti-Materiel Rifle", "slot": "weapon", "cards": ["snipe", "snipe"], "stats": {"laser_step": 1, "aim_dmg": 1}, "locked": true, "text": "Adds 2 Long Shot cards."},
+	"b_medkit": {"name": "Medkit", "slot": "belt", "use": "heal", "n": 10, "text": "Heal 10. No card or energy needed."},
+	"b_smoke": {"name": "Smoke Pot", "slot": "belt", "use": "smoke", "text": "Smoke at your feet."},
+	"b_ration": {"name": "Ration", "slot": "belt", "use": "ration", "n": 5, "text": "Heal 5 and find 15 scrip."},
+	"b_ammo": {"name": "Ammo Crate", "slot": "belt", "use": "energy", "text": "+1 energy right now."},
+}
+# Affixes rolled onto gear: Common 0, Uncommon 1, Rare 2, Epic 2 (x1.5), Legendary 3 (x2).
+const AFFIXES := {
+	"hp": {"v": 3, "fmt": "+%d max HP"},
+	"move": {"v": 15, "fmt": "+%d move"},
+	"dodge": {"v": 3, "fmt": "+%d dodge"},
+	"kill_adr": {"v": 6, "fmt": "ON KILL: +%d adrenaline"},
+	"laser_pct": {"v": 0.25, "fmt": "+%d%% laser length", "pct": true},
+	"armor_turn": {"v": 1, "fmt": "+%d armor each turn"},
+	"aim_dmg": {"v": 1, "fmt": "+%d AIM damage"},
+	"blast": {"v": 0.08, "fmt": "+%d%% blast size", "pct": true},
+	"heal": {"v": 2, "fmt": "+%d healing"},
+	"regen": {"v": 1, "fmt": "Heal %d each turn"},
+}
+const AFFIX_COUNT := [0, 1, 2, 2, 3]
+const AFFIX_MUL := [1.0, 1.0, 1.0, 1.5, 2.0]
+const SETS := {
+	"desert": {"name": "Desert Rat", "bonus": {"move": 20, "dodge": 5}, "text": "Ghillie Suit, Grip Tape, Machete. 2 pieces: +20 move, +5 dodge."},
+	"boar": {"name": "Boar Salvage", "bonus": {"armor_turn": 2, "hp": 4}, "text": "Riot Plate, Det Cord, Bazooka Tube. 2 pieces: +2 armor each turn, +4 max HP."},
+}
+const STAT_FMT := {
+	"hp": "+%d max HP", "move": "+%d move", "dodge": "+%d dodge", "armor_turn": "+%d armor each turn",
+	"kill_draw": "ON KILL: draw %d", "head_adr": "ON HEADSHOT: +%d adrenaline", "energy1": "+%d energy round 1",
+	"luck": "+%d squad Luck", "laser_step": "+%d laser step", "sway": "-%d%% sway", "regen": "Heal %d each turn",
+	"blast": "+%d%% blast size", "push_draw": "ON PUSH: draw %d", "kill_adr": "ON KILL: +%d adrenaline",
+	"laser_pct": "+%d%% laser length", "heal": "+%d healing", "fall_half": "Half fall damage", "aim_dmg": "+%d AIM damage",
+}
+const PCT_STATS := ["sway", "blast", "laser_pct"]
+const FLAT_STATS := ["kill_draw", "energy1", "luck", "laser_step", "push_draw", "fall_half"]
+
+# Elite Jackals (L4): gold-outlined, one modifier, a guaranteed item drop.
+const ELITES := {
+	"armored": {"name": "ARMORED", "text": "Bullets do half damage. Blast or crush it."},
+	"volatile": {"name": "VOLATILE", "text": "Explodes when it dies."},
+	"veteran": {"name": "VETERAN", "text": "Shoots like the alert is maxed."},
+	"medic": {"name": "MEDIC", "text": "Heals nearby Jackals each turn."},
+	"shielded": {"name": "SHIELDED", "text": "Carries a riot shield."},
+}
+# Named POWs with a specialty (L5). Anyone else gives +1 Luck.
+const POW_SPECIAL := {
+	"Sgt. Bramble": {"id": "quartermaster", "text": "QUARTERMASTER: 20% off at the next shop"},
+	"Pvt. Okonkwo": {"id": "gunsmith", "text": "GUNSMITH: a free affix reroll"},
+	"Cpl. Teller": {"id": "medic", "text": "MEDIC: the squad heals 6"},
+}
+const TROPHIES := ["BOAR TREAD", "BOAR CANNON", "BOAR ENGINE"]
 const SHOP_PRICE := [45, 70, 100]
 
 const SQUAD_DEFS := [
 	{"key": "moss", "name": "MOSS", "cls": "Marksman", "hp": 22, "dodge": 10, "spd": 180,
 	 "deck": ["snipe", "snipe", "rifle", "rifle", "pistol", "overwatch", "digin", "dash"],
-	 "pool": ["snipe", "rifle", "pistol", "burst", "overwatch", "digin", "dash", "grapple", "hmg", "adrenal"],
+	 "pool": ["snipe", "rifle", "pistol", "burst", "overwatch", "digin", "dash", "grapple", "hmg", "adrenal", "tagshot", "bankshot", "holdbreath", "fanhammer", "quickdraw"],
 	 "trait": ["Eagle Eye", "Headshots deal 2x damage instead of 1.5x."], "bio": "Former game warden. Counts every round twice."},
 	{"key": "hex", "name": "HEX", "cls": "Field Medic", "hp": 24, "dodge": 14, "spd": 210,
 	 "deck": ["medkit", "medkit", "stim", "pistol", "pistol", "smoke", "sprint", "frag"],
-	 "pool": ["medkit", "stim", "smoke", "pistol", "sprint", "rally", "frag", "adrenal", "digin", "shotgun"],
+	 "pool": ["medkit", "stim", "smoke", "pistol", "sprint", "rally", "frag", "adrenal", "digin", "shotgun", "gasnade", "hotshot", "flashbang", "dartpistol", "defib"],
 	 "trait": ["Bedside Manner", "Heals restore +3 HP."], "bio": "Patched up three wars. Still hates the sight of blood."},
 	{"key": "vee", "name": "VEE", "cls": "Demolitions", "hp": 27, "dodge": 6, "spd": 185,
 	 "deck": ["frag", "frag", "bazooka", "bazooka", "mortar", "pistol", "jumppack", "sprint"],
-	 "pool": ["frag", "mortar", "bazooka", "rocket", "clusterfrag", "beacon", "jumppack", "shotgun", "smoke"],
+	 "pool": ["frag", "mortar", "bazooka", "rocket", "clusterfrag", "beacon", "jumppack", "shotgun", "smoke", "gasnade", "rocketjump", "molotov", "shapedcharge"],
 	 "trait": ["Pyromaniac", "Explosions deal +3 damage. Her own blasts hurt her for 40%."], "bio": "Measures distance in fuse-seconds."},
 	{"key": "rook", "name": "ROOK", "cls": "Vanguard", "hp": 32, "dodge": 8, "spd": 200,
 	 "deck": ["rifle", "rifle", "rifle", "burst", "sprint", "knife", "frag", "grapple"],
-	 "pool": ["rifle", "burst", "shotgun", "hmg", "knife", "digin", "grapple", "sprint", "rally", "adrenal"],
+	 "pool": ["rifle", "burst", "shotgun", "hmg", "knife", "digin", "grapple", "sprint", "rally", "adrenal", "tagshot", "haymaker", "taunt", "suppress"],
 	 "trait": ["Thick Skull", "Takes half damage from falls, slams and crushing debris."], "bio": "First through every door. Usually the wrong one."},
 ]
 
-# Ability unlocks offered on level-up, four per soldier.
-const PERKS := {
+# Four archetype branches per soldier (P1). Each has Minor, Major and Capstone perks; a
+# perk is offered only after the one before it. The Capstone swaps the Overdrive (P2).
+# "chain" is the archetype's signature sequence (C2), live from the start of the run.
+const BRANCHES := {
 	"moss": [
-		{"id": "steady", "name": "Steady Hands", "text": "All of Moss's sway is halved."},
-		{"id": "trick", "name": "Trick Shot", "text": "+1 ricochet on every AIM card."},
-		{"id": "doubletap", "name": "Double Tap", "text": "The first AIM card each turn costs 1 less."},
-		{"id": "sentinel", "name": "Sentinel", "text": "Overwatch fires twice."},
+		{"id": "ricochet", "name": "Ricochet Artist", "od": "ricochet", "keystone": "tungsten",
+		 "chain": {"name": "DOUBLE BANK", "text": "After a PINBALL, your next AIM card this turn costs 0."},
+		 "perks": [{"id": "trick", "name": "Trick Shot", "text": "+1 ricochet on every AIM card."},
+			{"id": "angles", "name": "Angles", "text": "Rounds that bounced first ignore riot shields."},
+			{"id": "mirrors", "name": "Hall of Mirrors", "text": "+2 ricochets on every AIM card."}]},
+		{"id": "headhunter", "name": "Headhunter", "od": "oneshot", "keystone": "varga",
+		 "chain": {"name": "SPOTTED", "text": "Tag Round, then Long Shot: the Long Shot is a guaranteed headshot."},
+		 "perks": [{"id": "steady", "name": "Steady Hands", "text": "All of Moss's sway is halved."},
+			{"id": "patience", "name": "Patience", "text": "AIM cards deal +30% damage if Moss hasn't moved this turn."},
+			{"id": "deadeye", "name": "Dead Eye", "text": "Headshot kills refund the card."}]},
+		{"id": "sentinel", "name": "Sentinel", "od": "holdline", "keystone": "claymore",
+		 "chain": {"name": "DUG IN", "text": "Dig In, then Overwatch: overwatch shots are crits."},
+		 "perks": [{"id": "sentinel", "name": "Sentinel", "text": "Overwatch fires twice."},
+			{"id": "hairtrigger", "name": "Hair Trigger", "text": "Overwatch also fires when a Jackal shoots or throws, not only when it moves."},
+			{"id": "tracker", "name": "Motion Tracker", "text": "Energy left at the end of your turn becomes overwatch shots."}]},
+		{"id": "gunslinger", "name": "Gunslinger", "od": "deadmans", "keystone": "twinrev",
+		 "chain": {"name": "SIX SHOOTER", "text": "Three AIM cards in a row: a free Sidearm lands in your hand."},
+		 "perks": [{"id": "doubletap", "name": "Double Tap", "text": "The first AIM card each turn costs 1 less."},
+			{"id": "cylinder", "name": "Spin the Cylinder", "text": "Playing a Sidearm draws a card."},
+			{"id": "highnoon", "name": "High Noon", "text": "Momentum pays out every 2 cards instead of 3."}]},
 	],
 	"hex": [
-		{"id": "triage", "name": "Triage", "text": "Heals restore +4 more HP."},
-		{"id": "pumpup", "name": "Pump Up", "text": "Anyone Hex heals gains 20 adrenaline."},
-		{"id": "fieldkit", "name": "Field Kit", "text": "Hex draws 1 extra card each turn."},
-		{"id": "smokedoc", "name": "Smoke Doctor", "text": "Squadmates inside smoke heal 3 each enemy phase."},
+		{"id": "juicer", "name": "Juicer", "od": "surge", "keystone": "overcharger",
+		 "chain": {"name": "JUICED", "text": "Stim a squadmate, and the next Overdrive they play this turn stays in their hand."},
+		 "perks": [{"id": "pumpup", "name": "Pump Up", "text": "Anyone Hex heals gains 20 adrenaline."},
+			{"id": "seconddose", "name": "Second Dose", "text": "Stim Shot no longer costs HP."},
+			{"id": "redline", "name": "Red Line", "text": "Healing past max HP turns into adrenaline (x4)."}]},
+		{"id": "ghost", "name": "Ghost Doctor", "od": "smokescreen", "keystone": "canister",
+		 "chain": {"name": "FROM THE FOG", "text": "Smoke, then Sprint, then any attack: that attack crits."},
+		 "perks": [{"id": "smokedoc", "name": "Smoke Doctor", "text": "Squadmates inside smoke heal 3 each enemy phase."},
+			{"id": "thicksmoke", "name": "Thick Smoke", "text": "Hex's clouds are 25% bigger and last a round longer."},
+			{"id": "ghillie", "name": "Ghillie", "text": "Squadmates inside smoke can't be targeted unless they attacked this turn."}]},
+		{"id": "chemist", "name": "Chemist", "od": "blight", "keystone": "weathervane",
+		 "chain": {"name": "THERMOBARIC", "text": "A blast inside Hex's gas is a FUEL-AIR with double radius."},
+		 "perks": [{"id": "fieldkit", "name": "Field Kit", "text": "Hex draws 1 extra card each turn."},
+			{"id": "badbatch", "name": "Bad Batch", "text": "Hex's heals poison Jackals within 90px of the patient."},
+			{"id": "pandemic", "name": "Pandemic", "text": "Toxic Jackals spread Toxic to their friends when they die."}]},
+		{"id": "surgeon", "name": "Battle Surgeon", "od": "triagefield", "keystone": "medrig",
+		 "chain": {"name": "SCRUBBED IN", "text": "Heal, then Shotgun on the same turn: +3 pellets."},
+		 "perks": [{"id": "triage", "name": "Triage", "text": "Heals restore +4 more HP."},
+			{"id": "hardplates", "name": "Hard Plates", "text": "Healing past max HP becomes armor."},
+			{"id": "lazarus", "name": "Lazarus", "text": "Once a mission, a squadmate who drops gets back up at 30% HP."}]},
 	],
 	"vee": [
-		{"id": "bigboom", "name": "Bigger Booms", "text": "Vee's blasts are 20% bigger."},
-		{"id": "blastproof", "name": "Blast Proof", "text": "Vee takes no damage from her own blasts."},
-		{"id": "shortfuse", "name": "Short Fuse", "text": "Vee's grenade fuses are halved and deal +2."},
-		{"id": "chain", "name": "Chain Reaction", "text": "Barrels and fuel tanks Vee sets off hit twice as hard."},
+		{"id": "artillerist", "name": "Artillerist", "od": "barrage", "keystone": "howitzer",
+		 "chain": {"name": "CRATER", "text": "Two of Vee's blasts on the same spot in one turn: a big crater, and everyone in it is stunned."},
+		 "perks": [{"id": "bigboom", "name": "Bigger Booms", "text": "Vee's blasts are 20% bigger."},
+			{"id": "rangefinder", "name": "Rangefinder", "text": "Vee's blasts deal +2 damage per 200px they travelled."},
+			{"id": "fireforeffect", "name": "Fire for Effect", "text": "Mortar Shells land a second shell on the spot next enemy phase."}]},
+		{"id": "rocketjumper", "name": "Rocket Jumper", "od": "airraid", "keystone": "lizard",
+		 "chain": {"name": "DEATH FROM ABOVE", "text": "Jump, then any ARC or LINE attack on the same turn: +50% damage."},
+		 "perks": [{"id": "blastproof", "name": "Blast Proof", "text": "Vee takes no damage from her own blasts."},
+			{"id": "kinetic", "name": "Kinetic Boots", "text": "Vee's own blasts throw her 60% further, and she lands soft."},
+			{"id": "meteor", "name": "Meteor", "text": "Landing from a jump or a blast explodes."}]},
+		{"id": "pyro", "name": "Pyro", "od": "napalmstrike", "keystone": "fuelpack",
+		 "chain": {"name": "ACCELERANT", "text": "Molotov, then any blast this turn: that blast sets everything Burning."},
+		 "perks": [{"id": "shortfuse", "name": "Short Fuse", "text": "Vee's grenade fuses are halved and deal +2."},
+			{"id": "accelerant", "name": "Accelerant", "text": "Fire Vee starts burns for +2 damage a turn."},
+			{"id": "napalm", "name": "Napalm Mix", "text": "All of Vee's blasts leave things Burning."}]},
+		{"id": "wrecker", "name": "Wrecker", "od": "collapse", "keystone": "detbox",
+		 "chain": {"name": "DEMOLITION", "text": "A DOMINO from Vee's action refunds the card."},
+		 "perks": [{"id": "chain", "name": "Chain Reaction", "text": "Barrels and fuel tanks Vee sets off hit twice as hard."},
+			{"id": "weakpoints", "name": "Weak Points", "text": "Vee's blasts tear 35% more terrain."},
+			{"id": "democrew", "name": "Demolition Crew", "text": "Debris Vee brings down crushes for double damage."}]},
 	],
 	"rook": [
-		{"id": "bulldozer", "name": "Bulldozer", "text": "Bodies Rook launches deal double collision damage."},
-		{"id": "ironhide", "name": "Iron Hide", "text": "Rook starts every turn with 3 armor."},
-		{"id": "secondwind", "name": "Second Wind", "text": "Once per mission, survive a killing blow at 1 HP."},
-		{"id": "charge", "name": "Charge!", "text": "+60 movement every turn."},
+		{"id": "bowler", "name": "Bowler", "od": "rush", "keystone": "gauntlet",
+		 "chain": {"name": "SPARE", "text": "When a squadmate SKEETs a Jackal Rook launched, Rook gets +1 energy too."},
+		 "perks": [{"id": "bulldozer", "name": "Bulldozer", "text": "Bodies Rook launches deal double collision damage."},
+			{"id": "ricobody", "name": "Ricochet Body", "text": "Jackals Rook launches bounce off the first wall instead of stopping."},
+			{"id": "strike", "name": "STRIKE!", "text": "One body that hits 3 others: +1 energy and a card for Rook."}]},
+		{"id": "juggernaut", "name": "Juggernaut", "od": "immovable", "keystone": "riotshield",
+		 "chain": {"name": "COME AND GET IT", "text": "Taunt, then Dig In: double armor."},
+		 "perks": [{"id": "ironhide", "name": "Iron Hide", "text": "Rook starts every turn with 3 armor."},
+			{"id": "secondwind", "name": "Second Wind", "text": "Once per mission, survive a killing blow at 1 HP."},
+			{"id": "payback", "name": "Payback", "text": "Armor left when Rook's turn starts is added to his next hit."}]},
+		{"id": "heavy", "name": "Heavy Gunner", "od": "leadrain", "keystone": "ammobelt",
+		 "chain": {"name": "PINNED", "text": "Suppress 2+ Jackals, then push the line: +1 energy for the squad."},
+		 "perks": [{"id": "bipod", "name": "Bipod", "text": "Heavy MG, Burst Fire and Suppressing Fire sway half as much."},
+			{"id": "pindown", "name": "Pin Down", "text": "Rook's machine-gun hits Suppress."},
+			{"id": "hosepipe", "name": "Hosepipe", "text": "Rook's machine-gun rounds pierce bodies and shred wood."}]},
+		{"id": "breacher", "name": "Breacher", "od": "breach", "keystone": "zantetsu",
+		 "chain": {"name": "ZIP STRIKE", "text": "Grapple, then Knife: refund 1 energy."},
+		 "perks": [{"id": "charge", "name": "Charge!", "text": "+60 movement every turn."},
+			{"id": "hookshot", "name": "Hookshot", "text": "Grappling next to a Jackal yanks it off its feet toward Rook."},
+			{"id": "blitz", "name": "Blitz", "text": "Every push puts a free Knife in Rook's hand."}]},
 	],
 }
+const PERK_TIER := ["MINOR", "MAJOR", "CAPSTONE"]
+
+# Legendary keystone items live in ITEMS (one per archetype). Anyone can wear one, which makes hybrids.
+const KEYSTONE_IDS := ["tungsten", "varga", "claymore", "twinrev", "overcharger", "canister", "weathervane", "medrig", "howitzer", "lizard", "fuelpack", "detbox", "gauntlet", "riotshield", "ammobelt", "zantetsu"]
+
+# Branching card upgrades (P3): the Gunsmith adds up to 2 mods per card. A cost cut is one option.
+const MAX_MODS := 2
+const CARD_MODS := {
+	"frag": [{"id": "sticky", "name": "Impact", "text": "No bounce: blows on impact.", "erase": ["fuse"], "set": {"bounce": false}},
+		{"id": "bigbang", "name": "Big Bang", "text": "+12 blast radius.", "add": {"radius": 12}},
+		{"id": "quickfuse", "name": "Short Fuse", "text": "1s fuse and +3 damage.", "set": {"fuse": 60}, "add": {"dmg": 3}},
+		{"id": "shrapnel", "name": "Shrapnel", "text": "Sprays 6 bullets when it bursts.", "set": {"shrapnel": 6}}],
+	"shotgun": [{"id": "slug", "name": "Slug", "text": "One heavy slug that pierces.", "set": {"pellets": 1, "dmg": [11, 14], "pierce": true, "spread": 0.0}},
+		{"id": "wide", "name": "Wide Choke", "text": "+3 pellets.", "add": {"pellets": 3}}],
+	"snipe": [{"id": "hollow", "name": "Hollow Point", "text": "+5 damage, no pierce.", "add": {"dmg": [5, 5]}, "set": {"pierce": false}},
+		{"id": "quickscope", "name": "Quickscope", "text": "No sway penalty for moving.", "erase": ["still"]}],
+	"bazooka": [{"id": "tandem", "name": "Tandem", "text": "Fires 2 rockets.", "set": {"count": 2}},
+		{"id": "heat", "name": "HEAT", "text": "+3 damage and +8 blast radius.", "add": {"dmg": 3, "radius": 8}}],
+	"medkit": [{"id": "stimpack", "name": "Stim Pack", "text": "The patient also gets +1 energy.", "set": {"medenergy": 1}},
+		{"id": "reach", "name": "Long Reach", "text": "+90 range.", "add": {"range": 90}}],
+	"smoke": [{"id": "wall", "name": "Smoke Wall", "text": "+28 cloud radius.", "add": {"srad": 28.0}},
+		{"id": "linger", "name": "Linger", "text": "Clouds last 2 more rounds.", "add": {"sturns": 2}}],
+	"knife": [{"id": "lunge", "name": "Lunge", "text": "+40 reach.", "add": {"range": 40}},
+		{"id": "serrated", "name": "Serrated", "text": "Marks the target.", "set": {"mark": true}}],
+	"rifle": [{"id": "ap", "name": "AP Rounds", "text": "Pierces bodies.", "set": {"pierce": true}},
+		{"id": "match", "name": "Match Grade", "text": "+2 damage, sway -40%.", "add": {"dmg": [2, 2]}, "mul": {"sway": 0.6}}],
+	"mortar": [{"id": "airburst", "name": "Airburst", "text": "+14 blast radius.", "add": {"radius": 14}},
+		{"id": "incendiary", "name": "Incendiary", "text": "Everything caught is Burning.", "set": {"burnblast": true}}],
+}
+const GEN_MODS := [
+	{"id": "lean", "name": "Lean", "text": "Costs 1 less.", "add": {"cost": -1}},
+	{"id": "echo", "name": "Echo", "text": "Draw a card when you play it.", "set": {"echo": 1}},
+	{"id": "keen", "name": "Keen", "text": "+1 ricochet, 40% less sway.", "add": {"bounce": 1}, "mul": {"sway": 0.6}, "aim": true},
+	{"id": "heavy", "name": "Heavy", "text": "Stronger: more damage, healing, armor or movement.", "heavy": true},
+]
+const MOD_PRICE := 45
+
+# ---------------------------------------------------------------- Phase 5: campaign & extras
+const DUOS := [
+	{"pair": ["moss", "vee"], "card": "spotter", "holder": "vee"},
+	{"pair": ["rook", "vee"], "card": "cannonball", "holder": "rook"},
+	{"pair": ["hex", "rook"], "card": "adrenalcharge", "holder": "rook"},
+	{"pair": ["hex", "moss"], "card": "ownet", "holder": "moss"},
+	{"pair": ["moss", "rook"], "card": "shockawe", "holder": "rook"},
+	{"pair": ["hex", "vee"], "card": "firestorm", "holder": "vee"},
+]
+const DUO_RANGE := 120.0
+
+const EVOLUTIONS := [
+	{"card": "hmg", "kit": "ammobelt", "into": "heavym"},
+	{"card": "bazooka", "kit": "guidance", "into": "chaser"},
+	{"card": "frag", "kit": "napalmmix", "into": "firebomb"},
+	{"card": "rifle", "kit": "scope", "into": "lasergun"},
+]
+
+# Route stops between missions (W1). The Supply Depot is always on offer.
+const STOPS := {
+	"depot": {"name": "SUPPLY DEPOT", "text": "The Quartermaster: cards, gear, services and the Armory."},
+	"outpost": {"name": "ELITE OUTPOST", "text": "A short, hard fight against elite Jackals. Pays an Epic crate and a Boar part."},
+	"powcamp": {"name": "POW CAMP", "text": "Free a camp: a free crate, 2 level-up rerolls and a gunsmith token."},
+	"hospital": {"name": "FIELD HOSPITAL", "text": "Heal everyone to full and revive the fallen at half HP."},
+}
+
+# Briefing intel (W2): each mission rolls one condition.
+const INTEL := {
+	"clear": {"name": "CLEAR SKIES", "text": "No surprises.", "w": 3},
+	"monsoon": {"name": "MONSOON", "text": "Everything is soaked: fire does 1 damage and doesn't spread.", "w": 2},
+	"fog": {"name": "FOG", "text": "Jackals see 30% less far.", "w": 2},
+	"surplus": {"name": "SURPLUS", "text": "Twice the crates on the map.", "w": 2},
+	"veterans": {"name": "VETERAN JACKALS", "text": "Far more elites, and +2 Luck for this mission.", "w": 2},
+}
+
+# Radio relays (W3): end a turn standing on one to capture it. Alert +1.
+const RELAY_BUFFS := {
+	"hand": {"name": "SIGNAL BOOST", "text": "+1 card in hand for the squad this mission."},
+	"luck": {"name": "INTERCEPT", "text": "+2 Luck this mission."},
+	"intel": {"name": "SIGINT", "text": "Enemy intents always shown this mission."},
+}
+
+# Armory unlock feats (W4), kept across runs.
+const FEATS := [
+	{"id": "timber", "name": "TIMBER!", "text": "Crush 3 Jackals in one action.", "n": 1, "item": "boarplate"},
+	{"id": "skeet", "name": "PULL!", "text": "Score 3 SKEETs.", "n": 3, "item": "skeetvest"},
+	{"id": "pinball", "name": "TILT", "text": "Score 5 PINBALLs.", "n": 5, "item": "deflector"},
+	{"id": "pyro", "name": "SMOKEY", "text": "Kill 3 Jackals with fire.", "n": 3, "item": "zippo"},
+	{"id": "medals", "name": "DECORATED", "text": "Earn all 4 medals in one mission.", "n": 1, "item": "medalcase"},
+	{"id": "winrun", "name": "THE ROAD EAST", "text": "Win a campaign.", "n": 1, "item": "antimat"},
+]
+
+# Threat levels (W5): unlocked by winning; each adds to the ones below it.
+const THREATS := [
+	{"name": "JUMPY", "text": "Alert climbs after 1 stalled round instead of 2."},
+	{"name": "ELITE CORPS", "text": "+15% elite Jackals."},
+	{"name": "SHORT SUPPLY", "text": "-1 card in hand."},
+	{"name": "HARDENED", "text": "Jackals have +20% HP."},
+	{"name": "BOAR MK II", "text": "The Iron Boar has +40% HP and armor."},
+]
+
+# Commander perks (P5): one squad-wide pick after each mission win.
+const COMMANDS := [
+	{"id": "doubledown", "name": "Double Down", "text": "Your next level-up lets you take two of the three options."},
+	{"id": "brothers", "name": "Brothers in Arms", "text": "Tag-team combos also draw a card."},
+	{"id": "supply", "name": "Supply Lines", "text": "+1 belt slot."},
+	{"id": "tempo", "name": "Tempo", "text": "On round 1 of each mission, Momentum pays out every 2 cards."},
+	{"id": "decorated", "name": "Decorated", "text": "+1 supply crate after every mission."},
+	{"id": "rabbit", "name": "Rabbit's Foot", "text": "+2 Luck."},
+	{"id": "warchest", "name": "War Chest", "text": "Kills pay 50% more scrip."},
+	{"id": "killstreak", "name": "Killstreak", "text": "Kill combo rewards come at x2 and x4."},
+	{"id": "veterans", "name": "Veterans", "text": "+25% XP."},
+]
 
 const STAT_BOOSTS := [
 	{"id": "hp", "name": "Tough As Nails", "text": "+5 max HP and heal 5."},
@@ -114,7 +498,7 @@ const GEAR := [
 	{"id": "boots", "icon": "ic_boot", "name": "Steel-Toe Boots", "text": "Squad takes half fall and slam damage.", "price": 90},
 	{"id": "jammer", "icon": "ic_radio", "name": "Radio Jammer", "text": "Radiomen need 4 rounds to call backup, not 3.", "price": 110},
 	{"id": "rations", "icon": "ic_heart", "name": "Combat Rations", "text": "Every wave clear heals the squad 4 HP.", "price": 90},
-	{"id": "laser", "icon": "ic_up", "name": "Laser Sights", "text": "All AIM cards sway 30% less.", "price": 100},
+	{"id": "laser", "icon": "ic_up", "name": "Laser Sights", "text": "Every gun's aim laser reaches one step further. Sway -30%.", "price": 100},
 	{"id": "charm", "icon": "ic_star", "name": "Lucky Charm", "text": "The first soldier to die each mission lives at 1 HP.", "price": 140},
 	{"id": "bandolier", "icon": "ic_bolt", "name": "Bandolier", "text": "+1 energy for everyone on round 1.", "price": 100},
 	{"id": "dogtags", "icon": "ic_skull", "name": "Spare Dog Tags", "text": "Kills give 50% more XP.", "price": 80},
@@ -233,16 +617,83 @@ const THEMES := {
 	"night": {"water": [Color("0a1830"), Color("24508a")], "tint": Color(0.62, 0.66, 0.86), "grass": Color("4a7a52")},
 }
 
+func base_tier(key: String) -> int:
+	return int(CARDS[key].rarity)
+
+func tier_of(inst) -> int:
+	## A card instance's rarity tier. Old saves used a bool "up" for one tier-up.
+	if inst is String:
+		return base_tier(inst)
+	if inst.get("od", false) or CARDS[inst.key].get("od", false):
+		return OD_TIER
+	if inst.has("tier"):
+		return int(inst.tier)
+	return base_tier(inst.key) + (1 if inst.get("up", false) else 0)
+
 func card(inst) -> Dictionary:
-	## Resolved stats for a card instance {key, up}.
+	## Resolved stats for a card instance {key, tier}. Each tier above the card's base
+	## rarity improves its effect; the energy cost never changes with rarity.
 	var key: String = inst if inst is String else inst.key
 	var base: Dictionary = CARDS[key].duplicate(true)
-	if not (inst is String) and inst.get("up", false) and base.has("up"):
+	var tier := tier_of(inst)
+	var steps := tier - int(base.rarity) if tier != OD_TIER else 0
+	if steps >= 1 and base.has("up"):
 		for k in base.up:
-			base[k] = base.up[k]
-		base.name = base.name + "+"
+			if k != "cost":
+				base[k] = base.up[k]
+	var extra := steps - (1 if base.has("up") else 0)
+	for i in maxi(0, extra):
+		if base.has("dmg"):
+			if base.dmg is Array:
+				base.dmg = [base.dmg[0] + 2, base.dmg[1] + 2]
+			else:
+				base.dmg += 3
+		for k in [["heal", 3], ["armor", 3], ["move", 40], ["rally", 30], ["adrenal", 10]]:
+			if base.has(k[0]):
+				base[k[0]] += k[1]
+		if base.has("radius"):
+			base.radius += 4
+		if base.has("srad"):
+			base.srad += 14.0
+		if base.get("grapple", false):
+			base.range += 60
+		if base.has("jpow"):
+			base.jpow += 0.1
+		if base.has("energy") and key == "stim":
+			base.range += 40
+	if tier >= TIER_MAX:
+		for k in ["shots", "pellets", "count", "cluster", "bombs", "ow"]:
+			if base.has(k):
+				base[k] += 1
+		if base.type == "AIM":
+			base.bounce = base.get("bounce", 0) + 1
 	base["key"] = key
+	base["tier"] = tier
+	if inst is Dictionary and inst.get("mods", []).size():
+		var names: Array = []
+		for mid in inst.mods:
+			var m := find_mod(key, mid)
+			if not m.is_empty():
+				apply_mod(base, m)
+				names.append(m.name)
+		base["mod_names"] = names
+	if inst is Dictionary and inst.get("nick", "") != "":
+		base["base_name"] = base.name
+		base.name = inst.nick
 	return base
+
+func tier_color(t: int) -> Color:
+	return RARITY[clampi(t, 0, RARITY.size() - 1)].c
+
+func tier_name(t: int) -> String:
+	return RARITY[clampi(t, 0, RARITY.size() - 1)].name
+
+func laser_len(c: Dictionary, step_bonus := 0, pct := 0.0) -> float:
+	## How much of the bullet path the aim laser reveals for this card.
+	var g: Dictionary = GUNS.get(c.get("gun", "rifle"), GUNS.rifle)
+	var i: int = clampi(int(g.laser) + step_bonus, 0, LASER_LEN.size() - 1)
+	var L: float = LASER_LEN[i]
+	return L if L > 9999.0 else L * (1.0 + pct)
 
 func stat_line(c: Dictionary) -> String:
 	if c.type == "AIM":
@@ -255,10 +706,12 @@ func stat_line(c: Dictionary) -> String:
 		return "HEAL %d  RNG %d" % [c.heal, c.range]
 	if c.get("grapple", false):
 		return "RNG %d" % c.range
-	if c.get("smoke", false):
-		return "RADIUS 64  2 RNDS"
+	if c.get("smoke", false) or c.get("gas", false):
+		return "RADIUS %d  %d RNDS" % [int(c.srad), c.sturns]
 	if c.get("beacon", false):
-		return "3 BOMBS  DMG 15"
+		return "%d BOMBS  DMG 15" % c.bombs
+	if c.get("overwatch", false):
+		return "%d SHOT%s" % [c.ow, "S" if c.ow > 1 else ""]
 	if c.has("armor"):
 		return "ARMOR +%d" % c.armor
 	if c.has("move"):
@@ -272,13 +725,90 @@ func stat_line(c: Dictionary) -> String:
 	if c.get("rush", false):
 		return "LAUNCH  SLAM 14"
 	if c.get("jump", false):
-		return "LAUNCH  SAFE LANDING"
+		return "LAUNCH x%.1f  SOFT" % c.jpow
 	if c.get("surge", false):
 		return "SQUAD BOOST"
 	return ""
 
 func is_attack(c: Dictionary) -> bool:
 	return c.type == "AIM" or c.type == "MELEE" or (c.type == "ARC" and not c.get("smoke", false) and not c.get("beacon", false)) or (c.type == "LINE" and not c.get("grapple", false) and not c.get("rush", false) and not c.get("jump", false))
+
+func relic_text(id: String, t: int) -> String:
+	## Squad gear text at a given rarity tier.
+	match id:
+		"boots": return "Squad takes no fall or slam damage." if t >= 3 else "Squad takes half fall and slam damage."
+		"jammer": return "Radiomen need %d more rounds to call backup." % (2 if t >= 3 else 1)
+		"rations": return "Every wave clear heals the squad %d HP." % (4 + t * 2)
+		"laser": return "Aim lasers reach %s further. Sway -30%%." % ("two steps" if t >= TIER_MAX else "one step")
+		"charm": return "The first %s to die each mission live%s at 1 HP." % (["soldier", "s"] if t < 3 else ["two soldiers", ""])
+		"bandolier": return "+1 energy for everyone on round 1%s." % (" and 2" if t >= 3 else "")
+		"dogtags": return "Kills give %d%% more XP. +1 Luck." % int(30 + 10 * t)
+		"stimpack": return "Adrenaline builds %d%% faster." % int(30 + 10 * t)
+	return gear(id).get("text", "")
+
+func offer_keys() -> Array:
+	## Cards that can show up in level-ups, supply drops and the shop.
+	var out: Array = []
+	for k in CARDS:
+		if not CARDS[k].get("od", false) and CARDS[k].get("pool", true):
+			out.append(k)
+	return out
+
+func item_stats(it: Dictionary) -> Dictionary:
+	## Base stats scaled by rarity plus rolled affixes, for one item instance.
+	var d: Dictionary = ITEMS[it.id]
+	var t: int = it.get("tier", 0)
+	var out := {}
+	for k in d.get("stats", {}):
+		var v = d.stats[k]
+		if k in FLAT_STATS:
+			out[k] = v + (1 if t >= TIER_MAX and k in ["kill_draw", "push_draw", "laser_step"] else 0)
+		elif k in PCT_STATS:
+			out[k] = v * TIER_MUL[t]
+		else:
+			out[k] = int(round(v * TIER_MUL[t]))
+	if it.get("named", "") != "":
+		for k in LEGEND_BONUS[slot_group(d.slot)]:
+			out[k] = out.get(k, 0) + LEGEND_BONUS[slot_group(d.slot)][k]
+	for a in it.get("affixes", []):
+		var A: Dictionary = AFFIXES[a]
+		var v = A.v * AFFIX_MUL[t]
+		if not A.get("pct", false):
+			v = int(round(v))
+		out[a] = out.get(a, 0) + v
+	return out
+
+func stat_lines(st: Dictionary) -> Array:
+	var out: Array = []
+	for k in st:
+		var v = st[k]
+		var fmt: String = STAT_FMT.get(k, k + " %d")
+		if k in PCT_STATS:
+			out.append(fmt % int(round(v * 100)))
+		elif k == "fall_half":
+			out.append(fmt)
+		else:
+			out.append(fmt % v)
+	return out
+
+func item_name(it: Dictionary) -> String:
+	if it.get("named", "") != "":
+		return "%s \"%s\"" % [ITEMS[it.id].name, it.named]
+	return ITEMS[it.id].name
+
+func evolve_hint(item_id: String) -> String:
+	for r in EVOLUTIONS:
+		if r.kit == item_id:
+			return "EVOLVES an Epic %s into %s." % [CARDS[r.card].name, CARDS[r.into].name]
+	return ""
+
+func slot_group(slot: String) -> String:
+	return "kit" if slot.begins_with("kit") else slot
+
+func affix_text(a: String, t: int) -> String:
+	var A: Dictionary = AFFIXES[a]
+	var v = A.v * AFFIX_MUL[t]
+	return A.fmt % (int(round(v * 100)) if A.get("pct", false) else int(round(v)))
 
 func squad_def(key: String) -> Dictionary:
 	for d in SQUAD_DEFS:
@@ -287,10 +817,67 @@ func squad_def(key: String) -> Dictionary:
 	return {}
 
 func perk(key: String, id: String) -> Dictionary:
-	for p in PERKS.get(key, []):
-		if p.id == id:
-			return p
+	for b in BRANCHES.get(key, []):
+		for i in b.perks.size():
+			if b.perks[i].id == id:
+				var p: Dictionary = b.perks[i].duplicate()
+				p["branch"] = b.name
+				p["tier"] = i
+				return p
 	return {}
+
+func branch(key: String, id: String) -> Dictionary:
+	for b in BRANCHES.get(key, []):
+		if b.id == id:
+			return b
+	return {}
+
+func mod_options(inst: Dictionary) -> Array:
+	## Upgrade branches a card can still take (P3).
+	var taken: Array = inst.get("mods", [])
+	if taken.size() >= MAX_MODS or CARDS[inst.key].get("od", false):
+		return []
+	var c := card(inst)
+	var out: Array = CARD_MODS.get(inst.key, []).duplicate()
+	for m in GEN_MODS:
+		if m.id == "lean" and c.cost < 1:
+			continue
+		if m.get("aim", false) and c.type != "AIM":
+			continue
+		out.append(m)
+	return out.filter(func(m): return not taken.has(m.id))
+
+func find_mod(key: String, id: String) -> Dictionary:
+	for m in CARD_MODS.get(key, []) + GEN_MODS:
+		if m.id == id:
+			return m
+	return {}
+
+func apply_mod(c: Dictionary, m: Dictionary) -> void:
+	for k in m.get("erase", []):
+		c.erase(k)
+	for k in m.get("set", {}):
+		c[k] = m.set[k]
+	for k in m.get("add", {}):
+		var v = m.add[k]
+		if not c.has(k):
+			continue
+		if v is Array:
+			c[k] = [c[k][0] + v[0], c[k][1] + v[1]]
+		else:
+			c[k] = c[k] + v
+	for k in m.get("mul", {}):
+		if c.has(k):
+			c[k] = c[k] * m.mul[k]
+	if m.get("heavy", false):
+		if c.has("dmg"):
+			c.dmg = [c.dmg[0] + 3, c.dmg[1] + 3] if c.dmg is Array else c.dmg + 4
+		for k in [["heal", 4], ["armor", 4], ["move", 50], ["rally", 40], ["adrenal", 15], ["adrshot", 15], ["srad", 16.0], ["jpow", 0.15], ["draw", 1]]:
+			if c.has(k[0]):
+				c[k[0]] += k[1]
+		if c.has("radius"):
+			c.radius += 6
+	c.cost = maxi(0, int(c.cost))
 
 func gear(id: String) -> Dictionary:
 	for g in GEAR:
@@ -298,6 +885,6 @@ func gear(id: String) -> Dictionary:
 			return g
 	return {}
 
-func card_price(key: String, up := false) -> int:
-	var r: int = clampi(CARDS[key].rarity, 0, 2)
-	return SHOP_PRICE[r] + (40 if up else 0)
+func card_price(key: String, tier := -1) -> int:
+	var t: int = base_tier(key) if tier < 0 else tier
+	return SHOP_PRICE[clampi(base_tier(key), 0, 2)] + maxi(0, t - base_tier(key)) * 40

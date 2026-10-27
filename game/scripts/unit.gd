@@ -58,6 +58,14 @@ var planted := false
 var built := 0
 var dragged := false
 var tread := 0.0
+var elite := ""       # elite Jackal modifier (Data.ELITES key)
+var loot = null       # payload for a loot pickup or a crate
+var kill_drawn := false
+var gb: Dictionary = {}  # squad: gear bonuses for this mission
+var st: Dictionary = {}  # statuses (Data.STATUS key -> turns left)
+var st_by: Dictionary = {}  # who applied each status, for kill credit
+var hit_sides: Dictionary = {}  # this round: squad unit id -> side they hit from (CROSSFIRE)
+var rico := false     # Ricochet Body: already bounced off a wall this flight
 # squad only
 var s: Dictionary = {}  # persistent Run soldier record
 var def: Dictionary = {}
@@ -71,6 +79,12 @@ var overwatch := 0
 var moved := false
 var attacked := false
 var aim_discount := false
+var played := 0       # cards played this turn (momentum)
+var last_cost := 0    # energy paid for the last card (SKY DIVER refund)
+var seq: Array = []   # [key, type] of each card played this turn (signature chains)
+var fl: Dictionary = {}  # per-turn flags for chains and perks
+var payback := 0      # Juggernaut capstone: armor carried into the next hit
+var immovable := false
 var second_wind := false
 var xp_gain := 0
 
@@ -78,7 +92,17 @@ func center() -> Vector2:
 	return Vector2(x, y - h / 2.0)
 
 func is_prop() -> bool:
-	return kind == "barrel" or kind == "fuel" or kind == "charge" or kind == "mine"
+	return kind == "barrel" or kind == "fuel" or kind == "charge" or kind == "crate" or kind == "strongbox" or kind == "mine"
+
+func is_pickup() -> bool:
+	## Loot on the ground and buried caches: bullets and blasts pass through them.
+	return kind == "loot" or kind == "cache" or kind == "relay"
+
+func has_st(k: String) -> bool:
+	return st.get(k, 0) > 0
+
+func g(k: String, d = 0):
+	return gb.get(k, d)
 
 func perk(id_: String) -> bool:
 	return s.has("perks") and s.perks.has(id_)

@@ -137,6 +137,31 @@ func draw_unit(u: Unit) -> void:
 		"barrel":
 			draw_sprite("barrel_w" if white else "barrel", pos, Vector2(0.5, 1.0))
 			return
+		"crate":
+			draw_sprite("crate_w" if white else "crate", pos, Vector2(0.5, 1.0))
+			if b.t % 90 < 6:
+				draw_rect(Rect2(pos.x + 4, pos.y - 14, 2, 2), Color(1, 1, 0.8))
+			return
+		"strongbox":
+			draw_strongbox(pos, white)
+			return
+		"loot":
+			draw_loot(u, pos)
+			return
+		"relay":
+			draw_relay(u, pos)
+			return
+		"slug":
+			draw_slug(u, pos, white)
+			return
+		"cache":
+			# a glint in the dirt every couple of seconds
+			var gy: float = b.T.ground_at(u.x)
+			if (b.t + u.id * 37) % 120 < 10:
+				var a := sin(((b.t + u.id * 37) % 120) / 10.0 * PI)
+				draw_rect(Rect2(pos.x - 3, gy - 2, 7, 1), Color(1, 0.92, 0.5, a))
+				draw_rect(Rect2(pos.x, gy - 5, 1, 7), Color(1, 0.92, 0.5, a))
+			return
 		"mine":
 			# a dished steel plate half buried in the dirt, its light blinking faster when someone is close
 			var near := b.squad_alive().any(func(s): return absf(s.x - u.x) < 70 and absf(s.y - u.y) < 40)
@@ -204,6 +229,42 @@ func draw_unit(u: Unit) -> void:
 			var mo := Art.muzzle_offset(u.sheet, a[0], a[1], u.gun_angle)
 			draw_muzzle(pos + kick + Vector2(mo.x * u.face, mo.y), u.face, u.gun_angle)
 
+func draw_strongbox(pos: Vector2, white: bool) -> void:
+	var r := Rect2(pos.x - 10, pos.y - 14, 20, 14)
+	draw_rect(r.grow(1), C_DARK)
+	draw_rect(r, Color.WHITE if white else Color("4a5a3a"))
+	draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 3), Color("6a7a52"))
+	draw_rect(Rect2(r.position.x + 3, r.position.y, 2, r.size.y), Color("2e3a24"))
+	draw_rect(Rect2(r.end.x - 5, r.position.y, 2, r.size.y), Color("2e3a24"))
+	draw_rect(Rect2(pos.x - 2, pos.y - 9, 4, 4), Color("ffd23a"))
+	draw_rect(Rect2(pos.x - 1, pos.y - 7, 2, 2), C_DARK)
+
+func draw_loot(u: Unit, pos: Vector2) -> void:
+	## A pickup: a small box glowing in its rarity color, a letter disc, a coin pile or a trophy.
+	var L: Dictionary = u.loot
+	var bob := sin((b.t + u.id * 13) / 9.0) * 2 if not u.air else 0.0
+	var p := pos + Vector2(0, -6 + bob)
+	match L.type:
+		"letter":
+			draw_circle(p + Vector2(0, -4), 10, C_DARK)
+			draw_circle(p + Vector2(0, -4), 9, Color("ffd23a") if b.t % 20 < 14 else Color("ffb23e"))
+			Art.text(self, L.key, p + Vector2(1, 1), 16, Color("8a1a0a"), HORIZONTAL_ALIGNMENT_CENTER)
+		"scrip":
+			draw_texture_rect(Art.tex.ic_coin, Rect2(p.x - 6, p.y - 10, 12, 12), false)
+		"trophy":
+			draw_circle(p + Vector2(0, -4), 11, Color(1, 0.7, 0.12, 0.3 + 0.2 * sin(b.t / 5.0)))
+			draw_texture_rect(Art.tex.ic_star, Rect2(p.x - 8, p.y - 12, 16, 16), false)
+		_:
+			var t: int = L.item.tier
+			var col := Data.tier_color(t)
+			draw_circle(p + Vector2(0, -4), 9 + (2 if t >= 3 else 0), Color(col, 0.25 + 0.15 * sin(b.t / 6.0)))
+			draw_rect(Rect2(p.x - 6, p.y - 10, 12, 10), C_DARK)
+			draw_rect(Rect2(p.x - 5, p.y - 9, 10, 8), col.darkened(0.2))
+			draw_rect(Rect2(p.x - 5, p.y - 9, 10, 2), col.lightened(0.3))
+			draw_rect(Rect2(p.x - 1, p.y - 9, 2, 8), C_DARK)
+			if t >= 3 and b.t % 30 < 4:
+				draw_rect(Rect2(p.x + 5, p.y - 14, 2, 2), Color.WHITE)
+
 func draw_sprite(key: String, pos: Vector2, anchor: Vector2, alpha := 1.0, flip := false) -> void:
 	var tx: Texture2D = Art.tex[key]
 	var sz := Vector2(tx.get_width(), tx.get_height())
@@ -238,9 +299,38 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 	if u.cracked and not u.dead and b.t % 10 == 0:
 		b.puff(u.x + randf_range(-20, 30), u.y - 50, 1.0)
 
+func draw_relay(u: Unit, pos: Vector2) -> void:
+	## W3: a radio mast. Blinks red until a soldier ends a turn on it, then flies a green pennant.
+	var taken: bool = u.loot.taken
+	var metal := Color("6c7480")
+	draw_rect(Rect2(pos.x - 1, pos.y - 34, 3, 34), metal)
+	draw_line(pos + Vector2(-7, 0), pos + Vector2(0, -20), metal, 2)
+	draw_line(pos + Vector2(8, 0), pos + Vector2(1, -20), metal, 2)
+	draw_rect(Rect2(pos.x - 6, pos.y - 30, 6, 6), Color("9aa2ae"))
+	var lit := Color("62d26f") if taken else (Color("ff4d3d") if b.t % 40 < 20 else Color("5a1a14"))
+	draw_rect(Rect2(pos.x - 1, pos.y - 38, 3, 3), lit)
+	if taken:
+		draw_colored_polygon(PackedVector2Array([pos + Vector2(2, -34), pos + Vector2(14, -31), pos + Vector2(2, -28)]), Color("62d26f"))
+	else:
+		var bf: Dictionary = Data.RELAY_BUFFS[u.loot.buff]
+		Art.text(self, "RELAY: " + bf.name, pos + Vector2(0, -44), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+
+func draw_slug(u: Unit, pos: Vector2, white: bool) -> void:
+	## The SV-001: the Boar's chassis, repainted in squad green and facing east.
+	var tx: Texture2D = Art.tex.boss
+	var ph := int(u.tread / 3) % 2
+	var mod := Color(0.62, 1.0, 0.6) if not white else Color(1.6, 1.6, 1.6)
+	var bt: Texture2D = Art.tex.boss_barrel
+	draw_set_transform(pos + Vector2(10, -30), -0.25, Vector2(Art.PX, Art.PX))
+	draw_texture(bt, Vector2(-2, -bt.get_height() / 2.0), mod)
+	draw_set_transform(pos, 0, Vector2(-Art.PX, Art.PX))
+	draw_texture_rect_region(tx, Rect2(-32, -40, 64, 40), Rect2(ph * 64, 0, 64, 40), mod)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	Art.text(self, "SV-001", pos + Vector2(0, -92), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "mine"] or u.type == "boss" or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine"] or u.type == "boss" or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -254,6 +344,15 @@ func draw_plate(u: Unit) -> void:
 	draw_rect(Rect2(x - w / 2, y, roundf(w * u.hp / u.max_hp), 3), Color("ff4d3d"))
 	for k in range(1, 4):
 		draw_rect(Rect2(x - w / 2 + k * w / 4, y, 1, 3), C_DARK)
+	if u.elite != "":
+		draw_rect(Rect2(x - w / 2 - 2, y - 2, w + 4, 7), Color("ffd23a"), false, 1.0)
+		Art.text(self, Data.ELITES[u.elite].name, Vector2(x, y - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+	draw_statuses(u, x, y - (14 if u.elite != "" else 4))
+	if b.inspect and b.state == "player":
+		var it := b.intent_of(u)
+		var tw := Art.text_width(it, 8) + 6
+		draw_rect(Rect2(x - tw / 2, y - 24, tw, 12), Color(C_DARK, 0.85))
+		Art.text(self, it, Vector2(x, y - 14), 8, Color("ff8a80"), HORIZONTAL_ALIGNMENT_CENTER)
 	if u.type == "radio" and b.radio_t != null and u.active:
 		var col := Color("ff4d3d") if b.radio_t <= 1 else Color("ffd23a")
 		draw_texture_rect(Art.tex.ic_radio, Rect2(clampf(x, b.cam_x + 44, b.cam_x + 916) - 34, y - 16, 16, 16), false)
@@ -284,9 +383,16 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 		Art.text(self, str(u.armor), Vector2(x - w / 2 - 14, y + 7), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_RIGHT)
 	if u.overwatch > 0:
 		Art.text(self, "OW", Vector2(x, y + 18), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+	draw_statuses(u, x, y + (28 if u.overwatch > 0 else 18))
 	if b.state == "player":
 		for i in u.energy:
 			draw_texture_rect(Art.tex.ic_bolt, Rect2(x - u.energy * 4.5 + i * 9, y - 12 - u.h - 8, 8, 8), false)
+	if b.inspect and b.state == "player":
+		var info := "%dE  %dpx  ADR %d%s" % [u.energy, int(maxf(0, u.move_left)), u.adr, "  OW" if u.overwatch > 0 else ""]
+		var tw := Art.text_width(info, 8) + 6
+		var iy := u.y - u.h - 58 - b.squad().find(u) * 13
+		draw_rect(Rect2(x - tw / 2, iy, tw, 12), Color(C_DARK, 0.85))
+		Art.text(self, info, Vector2(x, iy + 10), 8, Color("62d26f") if b.can_act(u) else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 	if sel and b.state == "player":
 		var by := u.y - u.h - 36 + sin(b.t / 8.0) * 2
 		var pts := PackedVector2Array([Vector2(x - 6, by), Vector2(x + 6, by), Vector2(x, by + 7)])
@@ -294,8 +400,33 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 		draw_colored_polygon(pts, Color("ffb23e"))
 		Art.text(self, "%s LV%d" % [u.def.name, u.s.lvl], Vector2(x, by - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 
+func draw_statuses(u: Unit, x: float, y: float) -> void:
+	## Short colored tags for C5 statuses, plus AIR for a body a squadmate launched (SKEET bait).
+	var tags: Array = []
+	if u.team == "enemy" and u.air and not u.para and u.last_hit_by is Unit and u.last_hit_by.team == "squad":
+		tags.append(["AIR", Color("9fe3f0")])
+	for k in u.st:
+		if u.st[k] > 0:
+			tags.append([Data.STATUS[k].short, Data.STATUS[k].c])
+	if tags.is_empty():
+		return
+	var tw := 0.0
+	for tg in tags:
+		tw += Art.text_width(tg[0], 8) + 4
+	var cx := x - tw / 2
+	draw_rect(Rect2(cx - 2, y - 9, tw + 2, 11), Color(C_DARK, 0.8))
+	for tg in tags:
+		Art.text(self, tg[0], Vector2(cx, y), 8, tg[1])
+		cx += Art.text_width(tg[0], 8) + 4
+
 # ---------------------------------------------------------------- effects
 func draw_smokes() -> void:
+	for g in b.gases:
+		for i in 8:
+			var a: float = i / 8.0 * TAU + b.t / 160.0 + g.seed
+			var r: float = g.r * 0.45
+			var pulse := 0.05 * sin(b.t / 20.0 + i)
+			draw_circle(Vector2(g.x + cos(a) * r * 0.9, g.y + sin(a) * r * 0.5), g.r * 0.45, Color(0.55 + pulse, 0.85, 0.3, 0.28))
 	for s in b.smokes:
 		for i in 9:
 			var a: float = i / 9.0 * TAU + b.t / 200.0 + s.seed
@@ -409,8 +540,8 @@ func draw_targeting() -> void:
 			for s in [L, R]:
 				var i := 0
 				while i < s.pts.size():
-					draw_rect(Rect2(s.pts[i][0] - 1, s.pts[i][1] - 2, 2, 2), Color(0.38, 0.82, 0.44, 0.55))
-					i += 3
+					draw_rect(Rect2(s.pts[i][0] - 1, s.pts[i][1] - 2, 3, 2), Color(0.38, 0.82, 0.44, 0.7))
+					i += 2
 				if s.pts.size():
 					draw_rect(Rect2(s.x - 1, s.y - 12, 2, 12), Color("62d26f"))
 			var hov = b.unit_at_p(m)
@@ -445,30 +576,51 @@ func draw_targeting() -> void:
 		"AIM":
 			var aa := b.aim_angle(u, c, m)
 			var tr := b.trace_bullet(aa.mx, aa.my, aa.a, c.range, c.get("bounce", 0) + b.bounce_bonus(u, sc), u, c.get("pierce", false))
+			# the laser only reveals the first stretch of the path; the bullet keeps going
+			var L := b.laser_of(u, c)
+			var acc := 0.0
+			var tip := Vector2(aa.mx, aa.my)
 			for i in tr.segs.size():
 				var s: Array = tr.segs[i]
+				var a0 := Vector2(s[0], s[1])
+				var a1 := Vector2(s[2], s[3])
+				var sl := a0.distance_to(a1)
+				var cut := a1 if acc + sl <= L else a0.lerp(a1, clampf((L - acc) / maxf(sl, 0.001), 0, 1))
 				if i == 0:
-					draw_line(Vector2(s[0], s[1]), Vector2(s[2], s[3]), Color(1, 0.24, 0.24, 0.95), 2.0)
+					draw_line(a0, cut, Color(1, 0.24, 0.24, 0.95), 2.0)
 				else:
-					draw_dashed_line(Vector2(s[0], s[1]), Vector2(s[2], s[3]), Color(1, 0.35, 0.35, 0.6), 1.0, 5.0)
-			for p in tr.pings:
-				draw_rect(Rect2(p.x - 2, p.y - 2, 4, 4), Color.WHITE)
+					draw_dashed_line(a0, cut, Color(1, 0.35, 0.35, 0.6), 1.0, 5.0)
+				tip = cut
+				acc += sl
+				if acc >= L:
+					break
+			var cut_short: bool = tr.len > L
+			if cut_short:
+				draw_circle(tip, 2.0, Color(1, 0.35, 0.35, 0.5 + 0.3 * sin(b.t / 6.0)))
+			for i in tr.pings.size():
+				if tr.ping_d[i] <= L:
+					var p: Vector2 = tr.pings[i]
+					draw_rect(Rect2(p.x - 2, p.y - 2, 4, 4), Color.WHITE)
 			if c.has("spread") and c.has("pellets"):
+				var sp := minf(L, 400.0)
 				for d in [-c.spread, c.spread]:
-					draw_line(Vector2(aa.mx, aa.my), Vector2(aa.mx + cos(aa.a + d) * c.range, aa.my + sin(aa.a + d) * c.range), Color(1, 0.35, 0.35, 0.35), 1.0)
-			for hh in tr.hits:
+					draw_line(Vector2(aa.mx, aa.my), Vector2(aa.mx + cos(aa.a + d) * sp, aa.my + sin(aa.a + d) * sp), Color(1, 0.35, 0.35, 0.35), 1.0)
+			var seen: Array = tr.hits.filter(func(hh): return hh.d <= L)
+			for hh in seen:
 				var tg: Unit = hh.u
 				var col := Color("ffb23e") if hh.head else Color("ff4d3d")
 				draw_brackets(Rect2(tg.x - tg.w / 2 - 4, tg.y - tg.h - 4, tg.w + 8, tg.h + 8), col)
 				var lab := "BODY"
 				if tg.kind == "fuel": lab = "LEAK"
 				elif tg.kind == "charge": lab = "DEFUSE"
+				elif tg.kind == "crate": lab = "OPEN"
+				elif tg.kind == "strongbox": lab = "LOCKED: BLAST OR PRY"
 				elif tg.is_prop(): lab = "BOOM"
 				elif hh.head: lab = "HEAD!"
 				elif tg.shield and hh.dx > 0: lab = "SHIELD"
 				elif tg.type == "boss" and tg.plate > 0: lab = "ARMOR"
 				Art.text(self, lab, Vector2(tg.x, tg.y - tg.h - 22), 16 if hh.head else 8, col, HORIZONTAL_ALIGNMENT_CENTER)
-			if tr.hits.is_empty():
+			if seen.is_empty() and not cut_short:
 				var ls: Array = tr.segs[-1]
 				var em: int = tr.end.m if tr.end != null else 0
 				var lab := "MISS"
@@ -476,6 +628,8 @@ func draw_targeting() -> void:
 				elif em == 1: lab = "DIGS DIRT"
 				elif em: lab = "BLOCKED"
 				Art.text(self, lab, Vector2(ls[2], ls[3] - 10), 8, Color("ffd23a") if em == 3 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+			var gun: Dictionary = Data.GUNS.get(c.get("gun", "rifle"), Data.GUNS.rifle)
+			Art.text(self, "%s SIGHT %s" % [gun.name, ("FULL" if L > 9999.0 else "%dpx" % int(L))], Vector2(m.x + 12, m.y + 22), 8, Color("ff8a80"))
 			var sw := b.sway_of(u, c)
 			Art.text(self, "STEADY" if sw < 0.01 else ("WILD SWAY" if sw > 0.06 else ("SWAY  [SHIFT] HOLD" if not b.aim_hold else "HOLDING")), Vector2(aa.mx, u.y + 30), 8, Color("ff7a3d") if sw > 0.06 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 			draw_reticle(m, Color(1, 0.3, 0.3))
@@ -501,7 +655,7 @@ func draw_targeting() -> void:
 				else:
 					Art.text(self, "NO GRIP", Vector2(gs.ax, gs.ay - 10), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.get("jump", false) or c.get("rush", false):
-				var v := b.jump_vel(u, m) if c.get("jump", false) else b.rush_vel(u, m)
+				var v := b.jump_vel(u, m, c.get("jpow", 1.0)) if c.get("jump", false) else b.rush_vel(u, m)
 				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50)
 				for i in sim.pts.size():
 					if i % 2 == 0:
@@ -584,10 +738,26 @@ func draw_hover() -> void:
 		lines = [E.name.to_upper(), "HP %d/%d" % [h.hp, h.max_hp], E.note]
 		if h.type == "boss":
 			lines.append("ARMOR PLATE %d" % h.plate if h.plate > 0 else "ARMOR CRACKED: TAKES +30%")
+		if h.elite != "":
+			lines.append("ELITE %s: %s Drops an item." % [Data.ELITES[h.elite].name, Data.ELITES[h.elite].text])
+		for k in h.st:
+			lines.append("%s %d: %s" % [Data.STATUS[k].name, h.st[k], Data.STATUS[k].text])
 	elif h.kind == "fuel":
 		lines = ["FUEL TANK", ("Leaking: blows after %d more enemy phase(s)." % h.leak) if h.leak != null else "Shoot it: it leaks and blows in 2 turns.", "Blast it: it goes up now. Blast 84."]
 	elif h.kind == "charge":
 		lines = ["SAPPER CHARGE", "Blows when the Jackals move next.", "Shoot it to defuse. Blast 48."]
+	elif h.kind == "crate":
+		lines = ["SUPPLY CRATE", "Shoot it or blast it open. The loot pops out:", "careful, it can roll into a pit."]
+	elif h.kind == "strongbox":
+		lines = ["JACKAL STRONGBOX", "Pry it open with a MELEE card: quiet.", "Blast it: free, but ALERT +1 and it may damage the loot."]
+	elif h.kind == "loot":
+		var L: Dictionary = h.loot
+		match L.type:
+			"item": lines = ["%s %s" % [Data.tier_name(L.item.tier), Data.item_name(L.item).to_upper()], "Walk over it to pick it up."]
+			"letter": lines = ["%s: %s" % [L.key, Data.CARDS[Data.LETTERS[L.key]].name.to_upper()], "3 free shots for whoever grabs it."]
+			"scrip": lines = ["%d SCRIP" % L.n]
+			_: lines = ["TROPHY: " + L.name]
+		lines.append("Anything left behind goes to the stash.")
 	elif h.kind == "mine":
 		lines = ["JACKAL MINE", "Your soldiers set it off by stepping on it.", "Jackals only trip it when they land on it: knock them onto it.", "Shoot or blast it to clear it. Blast 38."]
 	elif h.is_prop():

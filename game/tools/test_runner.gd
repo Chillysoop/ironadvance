@@ -127,6 +127,280 @@ func run() -> void:
 			main.hud.show_deck()
 			await frames_wait(10)
 			await shot("deck")
+		"intel":
+			Run.new_run()
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			await frames_wait(120)
+			b.inspect = true
+			b.mouse = Vector2(300, 300)
+			main.hud.cards[1].hover = true
+			await frames_wait(10)
+			await shot("intel")
+			b.inspect = false
+			b.sel.energy = 0
+			b.sel.move_left = 0
+			b.ui_dirty = true
+			b.end_turn()
+			await frames_wait(10)
+			await shot("done_confirm")
+		"rarity":
+			Run.new_run()
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			var opts: Array = []
+			for t in 5:
+				opts.append({"kind": "card", "key": ["rifle", "frag", "medkit", "snipe", "knife"][t], "tier": t})
+			b.resolve(func(): await b.ask("supply", "RARITY CHECK", "Common to Legendary.", opts))
+			await frames_wait(60)
+			await shot("rarity")
+			main.hud.picked.emit(-1)
+			print("[rarity] weights m0 ", Run.tier_weights())
+			var counts := [0, 0, 0, 0, 0]
+			for i in 2000:
+				counts[Run.roll_tier()] += 1
+			print("[rarity] 2000 rolls ", counts)
+		"loot":
+			Run.new_run()
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			var u: Unit = b.sel
+			var cr := b.mk_unit(); cr.team = "neutral"; cr.kind = "crate"; cr.x = u.x + 60; cr.y = b.T.stand_y(cr.x, 0); cr.w = 16; cr.h = 14
+			b.units.append(cr)
+			var sb := b.mk_unit(); sb.team = "neutral"; sb.kind = "strongbox"; sb.x = u.x + 110; sb.y = b.T.stand_y(sb.x, 0); sb.w = 20; sb.h = 14
+			b.units.append(sb)
+			b.drop_loot(u.x + 150, u.y - 30, {"type": "letter", "key": "H"})
+			b.drop_loot(u.x + 180, u.y - 30, {"type": "item", "item": Run.roll_item(3)})
+			var e: Unit = b.units.filter(func(x): return x.team == "enemy")[0]
+			b.make_elite(e, "armored")
+			await frames_wait(60)
+			await shot("loot_field")
+			b.damage(cr, 5, u, {})
+			b.damage(sb, 5, u, {"blast": true})
+			await frames_wait(60)
+			await shot("loot_open")
+			b.autopick = 0
+			for l in b.units.filter(func(x): return x.kind == "loot" and not x.gone):
+				b.collect(u, l)
+			b.resolve(func(): await b.wait(2))
+			await until(func(): return not b.busy)
+			print("[loot] hand ", u.hand.map(func(c): return c.key), " stash ", Run.stash.map(func(i): return i.id), " equip ", u.s.equip)
+			await shot("loot_after")
+			b.sweep_loot(INF)
+		"combos":
+			Run.new_run()
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			var sq: Array = b.squad_alive()
+			var u: Unit = b.sel
+			var es: Array = b.units.filter(func(x): return x.team == "enemy" and not x.dead)
+			var e: Unit = es[0]
+			e.hp = 60; e.max_hp = 60
+			# mark: next hit crits
+			b.add_status(e, "mark", 2, u)
+			var h0 := e.hp
+			b.damage(e, 10, u, {})
+			print("[combos] mark 10 -> ", h0 - e.hp, " mark left ", e.has_st("mark"))
+			# burn ticks
+			b.add_status(e, "burn", 2, u)
+			h0 = e.hp
+			b.tick_statuses("enemy")
+			print("[combos] burn tick ", h0 - e.hp, " burn left ", e.st.get("burn", 0))
+			# crossfire: hits from both sides
+			var lft: Unit = sq[0]
+			var rgt: Unit = sq[1]
+			var ox := rgt.x
+			rgt.x = e.x + 80
+			b.damage(e, 1, lft, {})
+			b.damage(e, 1, rgt, {})
+			rgt.x = ox
+			print("[combos] crossfire supp ", e.has_st("supp"))
+			# momentum: third card refunds
+			u.energy = 5
+			while u.hand.size() < 3:
+				u.hand.append(Run.new_card("dash"))
+			for i in 3:
+				b.spend_card(u, 0)
+			print("[combos] momentum energy after 3 cards ", u.energy, " played ", u.played)
+			# fuel-air: blast inside gas
+			b.gases.append({"x": e.x, "y": e.y - 20, "r": 60.0, "turns": 3, "seed": 0.0, "owner": u})
+			await frames_wait(30)
+			await shot("combos_gas")
+			b.explode(e.x, e.y - 20, 30, 1, u)
+			print("[combos] gas left ", b.gases.size(), " burn ", e.has_st("burn"), " tags ", b.stats.tags)
+			# pile-up: throw one Jackal into another
+			if es.size() >= 2:
+				var e2: Unit = es[1]
+				e.x = e2.x - 30; e.y = e2.y - 4; e.vx = 7; e.vy = -1; e.air = true; e.last_hit_by = u; e.bumped = null
+				await frames_wait(60)
+				print("[combos] pileup stun ", e.has_st("stun"), e2.has_st("stun"))
+			b.combo = 4
+			b.add_status(es[-1], "toxic", 2, u)
+			b.gases.append({"x": u.x + 120, "y": u.y - 20, "r": 56.0, "turns": 3, "seed": 1.0, "owner": u})
+			await frames_wait(20)
+			await shot("combos_status")
+			# card fusion: Rook starts with three Rifle Shots
+			var rook: Dictionary = Run.soldiers[3]
+			var fg := Run.fusable(rook)
+			print("[combos] rook fusable ", fg.size())
+			var fc := Run.fuse(rook, fg[0])
+			print("[combos] fused ", fc, " deck ", rook.deck.size())
+			# gear triple merge
+			for i in 3:
+				Run.stash.append(Run.new_item("flak", 1))
+			var g := Run.merge_group_of(Run.stash[0])
+			print("[combos] merge group ", g.size(), " keep ", Run.merge_keep_options(g), " new ", Run.merge_new_options([]))
+			var mi := Run.merge_items(g, [Run.merge_keep_options(g)[0], "move"])
+			print("[combos] merged ", mi, " stash ", Run.stash.size())
+			for i in 3:
+				Run.stash.append(Run.new_item("scope", 3))
+			var lg := Run.merge_items(Run.merge_group_of(Run.stash[-1]), ["regen"])
+			print("[combos] legend ", Data.item_name(lg), " ", Data.item_stats(lg))
+			Run.stash.append(Run.new_item("ghillie", 0))
+			Run.stash.append(Run.new_item("ghillie", 0))
+			Run.fabricate(Run.stash[-1])
+			print("[combos] fab triple ", Run.merge_group_of(Run.stash[-1]).size())
+			Run.scrip = 300
+			main.show_shop()
+			await frames_wait(10)
+			await shot("combos_shop")
+			main.screen.open_armory()
+			await frames_wait(10)
+			var arm = main.screen.get_children()[-1]
+			arm.select({"where": "stash", "i": Run.stash.size() - 1})
+			await frames_wait(5)
+			arm.start_merge(Run.merge_group_of(Run.stash[-1]))
+			await frames_wait(10)
+			await shot("combos_merge")
+		"archetypes":
+			Run.new_run()
+			var moss: Dictionary = Run.soldiers[0]
+			print("[arch] offers ", Run.perk_offers(moss).map(func(o): return o.label + ":" + o.id))
+			moss.perks.append_array(["steady", "patience", "deadeye"])
+			print("[arch] moss od ", Run.od_key(moss), " arch ", Run.archetypes(moss))
+			print("[arch] offers after ", Run.perk_offers(moss).map(func(o): return o.id))
+			var c := Run.new_card("frag")
+			print("[arch] frag mods ", Data.mod_options(c).map(func(m): return m.id))
+			c["mods"] = ["sticky", "lean"]
+			print("[arch] frag modded ", Data.card(c))
+			var ks := Run.new_item("twinrev")
+			print("[arch] keystone ", ks, " ", Data.item_name(ks))
+			Run.equip(moss, ks)
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			var mu: Unit = b.squad().filter(func(x): return x.def.key == "moss")[0]
+			print("[arch] moss ks twinrev ", b.ks(mu, "twinrev"))
+			mu.hand = [Run.new_card("tagshot"), Run.new_card("snipe"), Run.new_card("rifle")]
+			mu.energy = 6
+			mu.seq = [["tagshot", "AIM"]]
+			print("[arch] chain ready snipe ", b.chain_ready(mu, mu.hand[1]))
+			var sc := b.spend_card(mu, 1)
+			print("[arch] spotted forcehead ", sc.get("forcehead", false))
+			# six shooter: two AIM played, third AIM
+			mu.seq = [["rifle", "AIM"], ["rifle", "AIM"]]
+			mu.fl = {}
+			mu.hand.append(Run.new_card("pistol"))
+			var hs := mu.hand.size()
+			print("[arch] six ready ", b.chain_ready(mu, mu.hand[-1]))
+			b.spend_card(mu, mu.hand.size() - 1)
+			print("[arch] six shooter temp ", mu.hand.map(func(x): return x.key + ("*" if x.get("free", false) else "")))
+			# rook taunt + payback
+			var rook: Unit = b.squad().filter(func(x): return x.def.key == "rook")[0]
+			rook.s.perks.append("payback")
+			rook.hand = [Run.new_card("taunt"), Run.new_card("digin")]
+			rook.energy = 4
+			b.play_self(0)
+			await until(func(): return not b.busy)
+			print("[arch] taunter ", b.taunter == rook, " ready ", b.chain_ready(rook, rook.hand[0]))
+			b.play_self(0)
+			await until(func(): return not b.busy)
+			print("[arch] rook armor after taunt+digin ", rook.armor)
+			# vee molotov/flashbang/shaped charge projectiles
+			var vee: Unit = b.squad().filter(func(x): return x.def.key == "vee")[0]
+			var es: Array = b.units.filter(func(x): return x.team == "enemy" and not x.dead)
+			var e: Unit = es[0]
+			e.hp = 80; e.max_hp = 80
+			e.x = vee.x + 160; e.y = b.T.stand_y(e.x, 0); e.active = true
+			b.sel = vee
+			for k in ["molotov", "flashbang", "shapedcharge", "gasnade"]:
+				vee.hand = [Run.new_card(k)]
+				vee.energy = 3
+				b.card_idx = 0
+				b.commit_aim(Vector2(e.x, e.y - 10))
+				await until(func(): return not b.busy, 700)
+				print("[arch] ", k, " -> e st ", e.st, " hp ", e.hp, " gases ", b.gases.size())
+			# overdrives
+			for k in ["barrage", "napalmstrike", "collapse", "smokescreen"]:
+				vee.hand = [{"id": -1, "key": k, "tier": Data.OD_TIER, "od": true}]
+				b.card_idx = 0
+				b.commit_aim(Vector2(e.x, e.y - 10))
+				await until(func(): return not b.busy, 700)
+				print("[arch] od ", k, " ok, smokes ", b.smokes.size(), " e hp ", e.hp)
+			var hex: Unit = b.squad().filter(func(x): return x.def.key == "hex")[0]
+			b.sel = hex
+			for k in ["blight", "triagefield"]:
+				hex.hand = [{"id": -1, "key": k, "tier": Data.OD_TIER, "od": true}]
+				b.play_self(0)
+				await until(func(): return not b.busy, 600)
+			print("[arch] blight toxic ", es.filter(func(x): return x.has_st("toxic")).size(), "/", es.size())
+			b.sel = rook
+			rook.hand = [{"id": -1, "key": "breach", "tier": Data.OD_TIER, "od": true}]
+			b.card_idx = 0
+			b.commit_aim(Vector2(rook.x + 200, rook.y - 30))
+			await until(func(): return not b.busy, 1500)
+			print("[arch] breach done")
+			await shot("archetypes")
+			# level up modal with reroll/banish
+			b.autopick = -1
+			b.level_up(mu)
+			await frames_wait(20)
+			await shot("arch_levelup")
+			b.hud.picked.emit(-2)
+			await frames_wait(10)
+			b.hud.picked.emit(-100)
+			await frames_wait(10)
+			b.hud.picked.emit(0)
+			await frames_wait(10)
+			print("[arch] rerolls ", Run.lvl_rerolls, " banishes ", Run.banishes, " banished ", Run.banished)
+			Run.scrip = 300
+			main.show_shop()
+			await frames_wait(10)
+			await shot("arch_shop")
+			main.show_debrief({"kia": 0, "rounds": 8, "pows": 1, "pows_total": 1, "max_alert": 3})
+			await frames_wait(5)
+			main.screen.open_all()
+			await frames_wait(90)
+			main.screen.advance()
+			await frames_wait(10)
+			await shot("arch_command")
+		"armory":
+			Run.new_run()
+			for i in 6:
+				Run.stash.append(Run.roll_item(i % 5))
+			Run.belt.append(Run.new_item("b_medkit"))
+			Run.equip(Run.soldiers[0], Run.new_item("marksman", 3))
+			Run.equip(Run.soldiers[3], Run.new_item("plate", 2))
+			Run.equip(Run.soldiers[3], Run.new_item("steeltoe", 1))
+			Run.scrip = 500
+			main.show_shop()
+			await frames_wait(10)
+			main.screen.open_armory()
+			await frames_wait(10)
+			var arm = main.screen.get_children()[-1]
+			arm.select({"where": "stash", "i": 0})
+			await frames_wait(10)
+			await shot("armory")
+			print("[armory] moss deck ", Run.soldiers[0].deck.map(func(c): return c.key), " rook bonus ", Run.gear_bonus(Run.soldiers[3]))
+		"debrief":
+			Run.new_run()
+			main.show_debrief({"kia": 0, "rounds": 8, "pows": 1, "pows_total": 1, "max_alert": 3})
+			await frames_wait(10)
+			await shot("debrief")
+			main.screen.open_all()
+			await frames_wait(40)
+			await shot("debrief_open")
+			await frames_wait(60)
+			await shot("debrief_done")
 		"shop":
 			Run.new_run()
 			Run.scrip = 400
@@ -157,10 +431,123 @@ func run() -> void:
 					break
 				press_first()
 				await frames_wait(20)
-				await shot("flow_shop%d" % m)
+				await shot("flow_debrief%d" % m)
+				main.screen.open_all()
+				await frames_wait(90)
 				main.screen.done.emit()
 				await frames_wait(20)
+				await shot("flow_route%d" % m)
+				if m == 0:
+					main.go_stop("depot")
+					await frames_wait(20)
+					await shot("flow_shop%d" % m)
+					main.screen.done.emit()
+				else:
+					main.go_stop("outpost")
+					await frames_wait(5)
+					var ob: Battle = main.battle
+					await until(func(): return ob.state == "player" and not ob.busy)
+					print("[flow] outpost elites ", ob.units.filter(func(x): return x.team == "enemy" and x.elite != "").size(), "/", ob.units.filter(func(x): return x.team == "enemy").size(), " boss ", ob.units.any(func(x): return x.type == "boss"))
+					await shot("flow_outpost")
+					for e in ob.units.filter(func(x): return x.team == "enemy"):
+						e.dead = true; e.gone = true
+					ob.end_turn(true)
+					await until(func(): return main.battle == null, 3000)
+					await frames_wait(20)
+					await shot("flow_outpost_result")
+					press_first()
+					await frames_wait(20)
+					main.screen.open_all()
+					await frames_wait(90)
+					await shot("flow_spoils")
+					print("[flow] trophies ", Run.trophies, " stash ", Run.stash.size())
+					main.screen.done.emit()
+				await frames_wait(20)
+				print("[flow] intel ", Run.intel, " mission ", Run.mission)
 				await shot("flow_brief%d" % (m + 1))
+		"phase5":
+			Run.new_run()
+			Run.meta = {"feats": {}, "unlocked": [], "threat_max": 2, "wins": 1}
+			main.show_title()
+			await frames_wait(20)
+			await shot("p5_title")
+			Run.threat = 5
+			Run.intel = "veterans"
+			Run.trophies = ["A", "B", "C"]
+			var b: Battle = main.start_battle(1)
+			await until(func(): return b.state == "player" and not b.busy)
+			print("[p5] hand size T3 ", b.hand_size(b.squad()[0]), " temp_luck ", Run.temp_luck, " relays ", b.units.filter(func(x): return x.kind == "relay").size())
+			print("[p5] slug card ", b.squad()[0].hand.any(func(c): return c.key == "slugcall"))
+			var sq: Array = b.squad()
+			var by := {}
+			for u in sq:
+				by[u.def.key] = u
+			# duo: moss + hex next to each other with Overdrives
+			by.hex.x = by.moss.x + 40
+			for u in sq:
+				u.adr = 100
+				b.grant_overdrive(u)
+			b.refresh_duos()
+			for u in sq:
+				print("[p5] ", u.def.key, " duos ", u.hand.filter(func(c): return c.has("duo")).map(func(c): return c.key + "/" + c.duo))
+			await shot("p5_duos")
+			# Overwatch Net from moss
+			var oi := -1
+			for i in by.moss.hand.size():
+				if by.moss.hand[i].key == "ownet":
+					oi = i
+			if oi >= 0:
+				b.sel = by.moss
+				b.play_self(oi)
+				await until(func(): return not b.busy)
+				print("[p5] ownet: overwatch ", sq.map(func(u): return u.overwatch), " hex od left ", by.hex.hand.any(func(c): return c.get("od", false) and not c.has("duo")))
+			# slug
+			b.call_slug(sq[0])
+			await frames_wait(60)
+			await shot("p5_slug")
+			var sl = b.units.filter(func(x): return x.kind == "slug")[0]
+			var e0: Array = b.units.filter(func(x): return x.team == "enemy" and not x.dead)
+			for e in e0.slice(0, 3):
+				e.x = sl.x + 150 + randf() * 80; e.y = b.T.stand_y(e.x, 0); e.active = true
+			var hp0: int = e0.slice(0, 3).reduce(func(acc, e): return acc + e.hp, 0)
+			await b.slug_act(sl)
+			print("[p5] slug dmg ", hp0 - e0.slice(0, 3).reduce(func(acc, e): return acc + maxi(0, e.hp), 0), " slug x ", sl.x)
+			# relay capture
+			var r = b.units.filter(func(x): return x.kind == "relay")[0]
+			var al0: int = b.alert
+			var cap: Unit = b.squad_alive()[0]
+			cap.x = r.x; cap.y = r.y
+			await frames_wait(10)
+			print("[p5] squad alive ", b.squad_alive().size(), " hp ", sq.map(func(u): return u.hp))
+			b.end_turn(true)
+			await until(func(): return b.state == "player" and not b.busy, 3000)
+			print("[p5] relay taken ", r.loot.taken, " buff ", r.loot.buff, " alert ", al0, "->", b.alert, " slug gone ", sl.gone)
+			await shot("p5_relay")
+			# feats
+			print("[p5] feat skeet x3 -> ", [Run.feat("skeet"), Run.feat("skeet"), Run.feat("skeet")], " unlocked ", Run.meta.unlocked)
+			b.announce_unlock("Skeet Vest")
+			await frames_wait(20)
+			await shot("p5_unlock")
+			# route + hospital + powcamp
+			Run.soldiers[2].alive = false
+			main.show_route()
+			await frames_wait(20)
+			await shot("p5_route")
+			main.go_stop("hospital")
+			await frames_wait(20)
+			await shot("p5_hospital")
+			print("[p5] hospital alive ", Run.alive_count(), " hp ", Run.soldiers.map(func(x): return x.hp))
+			var rr: int = Run.lvl_rerolls
+			main.go_stop("powcamp")
+			await frames_wait(20)
+			print("[p5] powcamp rerolls ", rr, "->", Run.lvl_rerolls, " tokens ", Run.reroll_tokens)
+			main.screen.open_all()
+			await frames_wait(90)
+			await shot("p5_powcamp")
+			main.screen.done.emit()
+			await frames_wait(20)
+			await shot("p5_brief")
+			print("[p5] brief intel ", Run.intel)
 		"alive":
 			# ambient life: idle gunfire, critters, flags, smoke; then a blast to scatter the critters
 			for m in 3:
@@ -471,7 +858,7 @@ func bot(mission: int, max_rounds: int, fresh := true) -> bool:
 		if b.round_n - last_shot >= 3 or b.round_n == 1:
 			last_shot = b.round_n
 			await shot("bot_m%d_r%02d" % [mission, b.round_n])
-		b.end_turn()
+		b.end_turn(true)
 		await until(func(): return res.done or (b.state == "player" and not b.busy) or b.state == "over", 30000)
 	if not res.done:
 		res.line = "rounds %d score %d kills %d cam %d/%d alive %d" % [b.round_n, b.score, b.stats.kills, int(b.cam_x), b.world_w, b.squad_alive().size()]

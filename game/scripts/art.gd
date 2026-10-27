@@ -16,7 +16,7 @@ func _ready() -> void:
 		if meta[k].has("gun_pivot"):
 			tex[k + "_gun"] = load("res://assets/sprites/%s_gun.png" % k)
 			tex[k + "_gun_w"] = load("res://assets/sprites/%s_gun_w.png" % k)
-	for n in ["pow", "boss", "boss_barrel", "barrel", "barrel_w", "fuel", "fuel_w", "charge", "charge_w", "sandbags", "crate", "explosion", "muzzle", "puff", "slash", "parachute"]:
+	for n in ["pow", "boss", "boss_barrel", "barrel", "barrel_w", "fuel", "fuel_w", "charge", "charge_w", "sandbags", "crate", "crate_w", "explosion", "muzzle", "puff", "slash", "parachute"]:
 		tex[n] = load("res://assets/sprites/%s.png" % n)
 	for n in ["panel", "hazard", "card", "tag", "bulb_off", "bulb_g", "bulb_y", "bulb_r"]:
 		tex["ui_" + n] = load("res://assets/ui/%s.png" % n)

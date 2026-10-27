@@ -6,9 +6,11 @@ signal done
 signal chosen(i: int)
 
 const HudScript := preload("res://scripts/hud.gd")
+const ArmoryScript := preload("res://scripts/armory.gd")
 
 var stock_cards: Array = []
 var stock_gear: Array = []
+var shelf: Array = []       # item shelf for the Armory: 3 items, a mystery crate, sometimes a black-market legendary
 var t := 0
 var msg := ""
 var msg_t := 0
@@ -20,18 +22,36 @@ func _ready() -> void:
 	build()
 
 func restock() -> void:
-	var keys: Array = []
-	for k in Data.CARDS:
-		if Data.CARDS[k].rarity < 3:
-			keys.append(k)
+	var keys: Array = Data.offer_keys()
 	keys.shuffle()
 	stock_cards.clear()
 	for i in 5:
-		var up := randf() < 0.2 + Run.mission * 0.1
-		stock_cards.append({"kind": "card", "key": keys[i], "up": up, "price": Data.card_price(keys[i], up)})
+		var t := Run.roll_card_tier(keys[i])
+		stock_cards.append({"kind": "card", "key": keys[i], "tier": t, "price": price(Data.card_price(keys[i], t))})
 	var gear: Array = Data.GEAR.filter(func(g): return not Run.has_gear(g.id))
 	gear.shuffle()
-	stock_gear = gear.slice(0, 3).map(func(g): return {"kind": "gear", "id": g.id, "icon": g.icon, "name": g.name, "text": g.text, "price": g.price})
+	stock_gear = gear.slice(0, 3).map(func(g):
+		var t := Run.roll_tier()
+		return {"kind": "gear", "id": g.id, "icon": g.icon, "name": g.name, "text": Data.relic_text(g.id, t), "tier": t, "price": price(int(g.price * (1.0 + 0.35 * t)))})
+	shelf.clear()
+	for i in 3:
+		var it := Run.roll_item() if i < 2 else Run.new_item(Run.random_item_id(["belt"]))
+		shelf.append({"item": it, "price": Run.item_price(it)})
+	shelf.append({"mystery": true, "price": 80})
+	if randf() < 0.25:
+		var lg := Run.roll_item(Data.TIER_MAX)
+		shelf.append({"item": lg, "price": 300, "black": true})
+
+func price(n: int) -> int:
+	return int(ceil(n * (1.0 - Run.discount)))
+
+func open_armory() -> void:
+	Sfx.play("click")
+	var a: Control = ArmoryScript.new()
+	a.shop_mode = true
+	a.shelf = shelf
+	a.done.connect(func(): a.queue_free(); build())
+	add_child(a)
 
 func say(s: String) -> void:
 	msg = s
@@ -67,21 +87,28 @@ func build() -> void:
 		var idx := i
 		cv.pressed.connect(func(): buy_gear(idx))
 		add_child(cv)
+	var fusable := Run.soldiers.any(func(s): return s.alive and (Run.fusable(s).size() > 0 or Run.evolutions(s).size() > 0))
 	var services := [
-		["FIELD HOSPITAL", "Heal the whole squad to full.", 40, heal_all],
-		["UPGRADE CARD", "Turn one card into its + version.", 60, upgrade_card],
-		["REMOVE CARD", "Thin a deck: burn one card.", 50, remove_card],
-		["REVIVE", "Bring a fallen soldier back at half HP.", 120, revive],
-		["RESTOCK", "New cards and gear on the shelf.", 20, reroll],
+		["HOSPITAL", "Heal the whole squad to full.", 40, heal_all, Color("53d4e2")],
+		["UPGRADE", "Raise one card a rarity tier.", 60, upgrade_card, Color("53d4e2")],
+		["MOD", "Gunsmith: add an upgrade branch to a card (2 per card).", Data.MOD_PRICE, mod_card, Color("53d4e2")],
+		["REMOVE", "Thin a deck: burn one card.", 50, remove_card, Color("53d4e2")],
+		["WORKBENCH", "Fuse three copies of a card into one a tier higher, or evolve an Epic card with its kit.", 0, fuse_cards, Color("b48cff")],
+		["FABRICATOR", "Copy a Common or Uncommon item.", Data.FAB_PRICE, fabricate, Color("b48cff")],
+		["REVIVE", "Bring a fallen soldier back at half HP.", 120, revive, Color("62d26f")],
+		["RESTOCK", "New cards and gear on the shelf.", 20, reroll, Color("9aa2ae")],
 	]
 	for i in services.size():
 		var sv: Array = services[i]
 		var bt := HudScript.PixButton.new()
-		bt.text = "%s  %d$" % [sv[0], sv[2]]
-		bt.color = Color("53d4e2") if i < 3 else (Color("62d26f") if i == 3 else Color("9aa2ae"))
-		bt.size = Vector2(176, 26)
-		bt.position = Vector2(24 + i * 184, 270)
-		bt.disabled = Run.scrip < sv[2]
+		bt.text = sv[0]
+		bt.sub = "FREE" if sv[2] == 0 else "%d$" % price(sv[2])
+		bt.color = sv[4]
+		bt.size = Vector2(108, 34)
+		bt.small = true
+		bt.position = Vector2(24 + i * 114, 264)
+		bt.disabled = Run.scrip < price(sv[2]) or (sv[3] == fuse_cards and not fusable) or (sv[3] == fabricate and Run.fab_options().is_empty())
+		bt.tooltip_text = sv[1]
 		bt.pressed.connect(sv[3])
 		add_child(bt)
 	var go := HudScript.PixButton.new()
@@ -90,8 +117,16 @@ func build() -> void:
 	go.color = Color("ff4d3d")
 	go.size = Vector2(190, 44)
 	go.position = Vector2(746, 482)
-	go.pressed.connect(func(): Sfx.play("start"); done.emit())
+	go.pressed.connect(func(): Sfx.play("start"); Run.discount = 0.0; done.emit())
 	add_child(go)
+	var arm := HudScript.PixButton.new()
+	arm.text = "ARMORY"
+	arm.sub = "GEAR %d  STASH %d" % [Run.soldiers.reduce(func(a, s): return a + s.equip.values().filter(func(x): return x != null).size(), 0), Run.stash.size()]
+	arm.color = Color("53d4e2")
+	arm.size = Vector2(190, 44)
+	arm.position = Vector2(546, 482)
+	arm.pressed.connect(open_armory)
+	add_child(arm)
 
 func _process(_d: float) -> void:
 	t += 1
@@ -131,12 +166,12 @@ func _draw() -> void:
 		Art.text(self, s.def.cls, Vector2(x + 62, y + 36), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		if s.alive:
 			draw_rect(Rect2(x + 62, y + 44, 100, 6), Color(0.05, 0.035, 0.03))
-			draw_rect(Rect2(x + 63, y + 45, 98.0 * s.hp / s.max_hp, 4), Color("62d26f") if s.hp > s.max_hp * 0.3 else Color("ff4d3d"))
-			Art.text(self, "HP %d/%d" % [s.hp, s.max_hp], Vector2(x + 62, y + 64), 8, Color("e8dcc2"))
+			draw_rect(Rect2(x + 63, y + 45, 98.0 * s.hp / Run.eff_max_hp(s), 4), Color("62d26f") if s.hp > Run.eff_max_hp(s) * 0.3 else Color("ff4d3d"))
+			Art.text(self, "HP %d/%d" % [s.hp, Run.eff_max_hp(s)], Vector2(x + 62, y + 64), 8, Color("e8dcc2"))
 		else:
 			Art.text(self, "KIA", Vector2(x + 62, y + 60), 16, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 		Art.text(self, "DECK %d  XP %d" % [s.deck.size(), s.xp], Vector2(x + 8, y + 94), 8, Color("e8dcc2"))
-		var perks: Array = s.perks.map(func(p): return Data.perk(s.key, p).name)
+		var perks: Array = Run.archetypes(s).map(func(a): return "%s %s" % [a[0], ["I", "II", "III"][a[1] - 1]])
 		var yy := y + 112
 		for line in CardView.wrap_text(", ".join(perks) if perks.size() else "No abilities yet", 156, 16):
 			Art.text(self, line, Vector2(x + 8, yy), 16, Color("ffd23a") if perks.size() else Color("6c7480"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
@@ -144,8 +179,11 @@ func _draw() -> void:
 	# owned gear
 	var gx := 24.0
 	Art.text(self, "GEAR:", Vector2(gx, 500), 8, Color("62d26f"))
-	var names: Array = Run.gear.map(func(g): return Data.gear(g).name)
-	Art.text(self, ", ".join(names) if names.size() else "none", Vector2(gx + 50, 501), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+	var names: Array = Run.gear.map(func(g): return "%s (%s)" % [Data.gear(g).name, Data.tier_name(Run.gear_tier.get(g, 0)).capitalize()])
+	var gl := ", ".join(names) if names.size() else "none"
+	while Art.text_width(gl, 16, true) > 460 and gl.length() > 4:
+		gl = gl.substr(0, gl.length() - 4) + "."
+	Art.text(self, gl, Vector2(gx + 50, 501), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 	if msg_t > 0:
 		var w := Art.text_width(msg, 16, true) + 20
 		draw_rect(Rect2(480 - w / 2, 296, w, 20), Color(0.05, 0.035, 0.03, 0.9))
@@ -186,7 +224,7 @@ func choose_soldier(title: String, alive_only := true) -> Dictionary:
 	var cand: Array = Run.soldiers.filter(func(s): return s.alive == alive_only)
 	if cand.is_empty():
 		return {}
-	var opts: Array = cand.map(func(s): return {"kind": "service", "name": s.def.name, "text": "%s  LV%d  HP %d/%d  %d cards" % [s.def.cls, s.lvl, s.hp, s.max_hp, s.deck.size()], "icon": "ic_heart" if s.alive else "ic_skull"})
+	var opts: Array = cand.map(func(s): return {"kind": "service", "name": s.def.name, "text": "%s  LV%d  HP %d/%d  %d cards" % [s.def.cls, s.lvl, s.hp, Run.eff_max_hp(s), s.deck.size()], "icon": "ic_heart" if s.alive else "ic_skull"})
 	var i := await choose(title, opts)
 	return cand[i] if i >= 0 else {}
 
@@ -195,7 +233,7 @@ func choose_card(title: String, s: Dictionary, filter := Callable()) -> Dictiona
 	if cand.is_empty():
 		say("No cards to pick from.")
 		return {}
-	var opts: Array = cand.map(func(c): return {"kind": "card", "key": c.key, "up": c.up})
+	var opts: Array = cand.map(func(c): return {"kind": "card", "key": c.key, "tier": Data.tier_of(c)})
 	var i := await choose(title, opts, Vector2(96, 132))
 	return cand[i] if i >= 0 else {}
 
@@ -216,7 +254,7 @@ func buy_card(i: int) -> void:
 	var s := await choose_soldier("WHO GETS %s?" % Data.card(o).name.to_upper())
 	if s.is_empty() or not pay(o.price):
 		return
-	s.deck.append(Run.new_card(o.key, o.up))
+	s.deck.append(Run.new_card(o.key, o.tier))
 	o["sold"] = true
 	say("%s added to %s's deck." % [Data.card(o).name, s.def.name])
 	build()
@@ -225,39 +263,39 @@ func buy_gear(i: int) -> void:
 	var o: Dictionary = stock_gear[i]
 	if o.get("sold", false) or not pay(o.price):
 		return
-	Run.gear.append(o.id)
+	Run.add_gear(o.id, o.tier)
 	o["sold"] = true
 	say("%s issued to the squad." % o.name)
 	build()
 
 func heal_all() -> void:
-	if not Run.soldiers.any(func(s): return s.alive and s.hp < s.max_hp):
+	if not Run.soldiers.any(func(s): return s.alive and s.hp < Run.eff_max_hp(s)):
 		say("Everyone is already at full health.")
 		return
-	if not pay(40):
+	if not pay(price(40)):
 		return
 	for s in Run.soldiers:
 		if s.alive:
-			s.hp = s.max_hp
+			s.hp = Run.eff_max_hp(s)
 	say("The squad is patched up.")
 	build()
 
 func upgrade_card() -> void:
-	if Run.scrip < 60:
+	if Run.scrip < price(60):
 		Sfx.play("deny")
 		return
 	var s := await choose_soldier("UPGRADE WHOSE CARD?")
 	if s.is_empty():
 		return
-	var c := await choose_card("PICK A CARD TO UPGRADE", s, func(c): return not c.up and Data.CARDS[c.key].has("up"))
-	if c.is_empty() or not pay(60):
+	var c := await choose_card("PICK A CARD TO UPGRADE", s, Run.upgradable)
+	if c.is_empty() or not pay(price(60)):
 		return
-	c.up = true
-	say("%s upgraded to %s." % [Data.CARDS[c.key].name, Data.card(c).name])
+	Run.raise_tier(c)
+	say("%s is now %s." % [Data.CARDS[c.key].name, Data.tier_name(Data.tier_of(c)).capitalize()])
 	build()
 
 func remove_card() -> void:
-	if Run.scrip < 50:
+	if Run.scrip < price(50):
 		Sfx.play("deny")
 		return
 	var s := await choose_soldier("THIN WHOSE DECK?")
@@ -267,21 +305,88 @@ func remove_card() -> void:
 		say("%s needs at least 5 cards." % s.def.name)
 		return
 	var c := await choose_card("PICK A CARD TO BURN", s)
-	if c.is_empty() or not pay(50):
+	if c.is_empty() or not pay(price(50)):
 		return
 	s.deck.erase(c)
 	say("%s removed from %s's deck." % [Data.CARDS[c.key].name, s.def.name])
 	build()
 
+func mod_card() -> void:
+	## P3: pick a card, then one of its upgrade branches. A card holds two mods.
+	if Run.scrip < price(Data.MOD_PRICE):
+		Sfx.play("deny")
+		return
+	var s := await choose_soldier("MOD WHOSE CARD?")
+	if s.is_empty():
+		return
+	var c := await choose_card("PICK A CARD TO MOD", s, func(x): return Data.mod_options(x).size() > 0)
+	if c.is_empty():
+		return
+	var mods := Data.mod_options(c)
+	var opts: Array = mods.map(func(m): return {"kind": "service", "name": m.name, "text": m.text, "icon": "ic_up"})
+	var i := await choose("%s: PICK A MOD" % Data.card(c).name.to_upper(), opts)
+	if i < 0 or not pay(price(Data.MOD_PRICE)):
+		return
+	if not c.has("mods"):
+		c["mods"] = []
+	c.mods.append(mods[i].id)
+	say("%s gets %s." % [Data.CARDS[c.key].name, mods[i].name])
+	build()
+
+func fuse_cards() -> void:
+	## M3: three copies of one card at one rarity fuse into a single card a tier higher.
+	var cand: Array = []
+	for s in Run.soldiers:
+		if s.alive:
+			for g in Run.fusable(s):
+				cand.append({"s": s, "g": g})
+			for ev in Run.evolutions(s):
+				cand.append({"s": s, "ev": ev})
+	if cand.is_empty():
+		say("Nothing to fuse or evolve yet.")
+		return
+	var opts: Array = cand.map(func(o):
+		if o.has("ev"):
+			return {"kind": "card", "key": o.ev.rule.into, "tier": Data.tier_of(o.ev.card), "label": "%s: EVOLVE" % o.s.def.name}
+		return {"kind": "card", "key": o.g[0].key, "tier": Data.tier_of(o.g[0]) + 1, "label": "%s: 3 INTO 1" % o.s.def.name})
+	var i := await choose("WORKBENCH: FUSE OR EVOLVE", opts)
+	if i < 0:
+		return
+	if cand[i].has("ev"):
+		var ev: Dictionary = cand[i].ev
+		var from: String = Data.CARDS[ev.card.key].name
+		Run.evolve(ev.card, ev.rule)
+		Sfx.play("levelup")
+		say("%s evolved into %s!" % [from, Data.CARDS[ev.rule.into].name])
+		build()
+		return
+	var c := Run.fuse(cand[i].s, cand[i].g)
+	Sfx.play("levelup")
+	say("%s fused into %s %s." % [Data.CARDS[c.key].name, Data.tier_name(Data.tier_of(c)).capitalize(), Data.card(c).name])
+	build()
+
+func fabricate() -> void:
+	## M5: duplicate a Common or Uncommon item to finish a triple.
+	var cand := Run.fab_options()
+	if cand.is_empty():
+		say("The Fabricator only copies Common and Uncommon items.")
+		return
+	var i := await choose("COPY WHICH ITEM?", cand.map(func(it): return Run.item_opt(it)))
+	if i < 0 or not pay(price(Data.FAB_PRICE)):
+		return
+	var cp := Run.fabricate(cand[i])
+	say("Fabricated a copy of %s.%s" % [Data.item_name(cp), " A triple is ready at the Armory." if Run.merge_group_of(cp).size() == 3 else ""])
+	build()
+
 func revive() -> void:
-	if Run.scrip < 120:
+	if Run.scrip < price(120):
 		Sfx.play("deny")
 		return
 	var s := await choose_soldier("REVIVE WHO?", false)
 	if s.is_empty():
 		say("Nobody needs reviving.")
 		return
-	if not pay(120):
+	if not pay(price(120)):
 		return
 	s.alive = true
 	s.hp = int(ceil(s.max_hp / 2.0))
@@ -289,7 +394,7 @@ func revive() -> void:
 	build()
 
 func reroll() -> void:
-	if not pay(20):
+	if not pay(price(20)):
 		return
 	restock()
 	build()
