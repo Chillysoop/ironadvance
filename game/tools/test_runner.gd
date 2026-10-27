@@ -2081,7 +2081,7 @@ func soldat5() -> void:
 	s3.carry = "colors"
 	b.kill(s3, null)
 	await until(func(): return b.settled(), 300)
-	check(b.units.any(func(o): return o.kind == "loot" and not o.gone and o.loot.type == "colors"), "a carrier who goes down drops the colors")
+	check(b.units.any(func(o): return o.kind == "loot" and not o.gone and o.loot.type == "colors") or b.squad_alive().any(func(o): return o.carry == "colors"), "a carrier who goes down drops the colors (a teammate next to them may scoop it up)")
 	# --- O2 the Rambo Bow
 	b.detour = {}
 	b.start_detour("elite")
