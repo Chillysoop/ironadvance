@@ -291,7 +291,7 @@ func draw_unit(u: Unit) -> void:
 		var rim: Color = RIM.get(b.theme, RIM.dusk)
 		for o in [Vector2(0, -2), Vector2(-u.face * 2, 0)]:
 			Art.draw_char(self, u.sheet, a[0], a[1], pos + kick + o, u.face, true, rot, u.alpha * rim.a, u.gun_angle, false, 1.0, Color(rim, 1.0))
-	var sc := 1.0 + 0.1 * maxi(0, u.fl.get("swell", 0)) if u.type == "bloater" else 1.0
+	var sc := 1.0 + 0.1 * maxi(0, u.fl.get("swell", 0)) if u.type == "bloater" else (1.9 if u.type == "queen" else 1.0)
 	Art.draw_char(self, u.sheet, a[0], a[1], pos + kick, u.face, white, rot, u.alpha, u.gun_angle, a[2], sc)
 	if not u.dead and (u.elite == "thrall" or u.fl.get("thrall", false)):
 		# parasite veins showing through the Jackal's skin
@@ -994,13 +994,14 @@ func draw_acids() -> void:
 			draw_rect(Rect2(a.x - 4 + (b.t % 40) / 4.0, a.y - 6, 2, 2), C_OOZE)
 
 func draw_mound(u: Unit, pos: Vector2) -> void:
-	## A buried Burrower: a heaving ridge of dirt with a glint of violet through the cracks.
-	var heave := sin(b.t / 9.0 + u.id) * 1.5
-	draw_rect(Rect2(pos.x - 17, pos.y - 7 - heave, 34, 8 + heave), C_DARK)
-	draw_rect(Rect2(pos.x - 16, pos.y - 6 - heave, 32, 6 + heave), Color("8c6a46"))
-	draw_rect(Rect2(pos.x - 9, pos.y - 10 - heave, 18, 4), Color("8c6a46"))
-	draw_rect(Rect2(pos.x - 3, pos.y - 6 - heave, 2, 3), Color("7d3cb0"))
-	draw_rect(Rect2(pos.x + 4, pos.y - 4 - heave, 2, 2), Color("7d3cb0"))
+	## A buried Burrower (or the Queen, scaled up): a heaving ridge of dirt with violet through the cracks.
+	var k := maxf(1.0, u.w / 30.0)
+	var heave := sin(b.t / 9.0 + u.id) * 1.5 * k
+	draw_rect(Rect2(pos.x - 17 * k, pos.y - 7 * k - heave, 34 * k, 8 * k + heave), C_DARK)
+	draw_rect(Rect2(pos.x - 16 * k, pos.y - 6 * k - heave, 32 * k, 6 * k + heave), Color("8c6a46"))
+	draw_rect(Rect2(pos.x - 9 * k, pos.y - 10 * k - heave, 18 * k, 4 * k), Color("8c6a46"))
+	draw_rect(Rect2(pos.x - 3 * k, pos.y - 6 * k - heave, 2 * k, 3 * k), Color("7d3cb0"))
+	draw_rect(Rect2(pos.x + 4 * k, pos.y - 4 * k - heave, 2 * k, 2 * k), Color("7d3cb0"))
 
 func draw_pod(pos: Vector2, white: bool) -> void:
 	## The Squid Trooper's saucer: a steel dish under its tentacles, lights chasing round the rim.

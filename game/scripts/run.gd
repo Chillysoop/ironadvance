@@ -130,6 +130,8 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	var nd := 4 if hq("mess") >= 3 else 3
 	# from level 2 on, one stretch after the mid camp holds a Vharr encounter (E1 Swarm or E2 Nest)
 	var enc: String = "" if tier < 1 else ["swarm", "nest"][randi() % 2]
+	if tier >= 1 and (id == "desert" or id == "mountain"):
+		enc = "queen"  # Q2: the Burrow Queen owns the sand and the scree
 	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "breach": breach, "encounter": enc,
 		"segments": ["start", pool[0], pool[1], "camp", "yard", pool[2], pool[3], "camp", bm.get("arena", "arena")],
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}

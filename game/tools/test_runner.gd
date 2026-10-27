@@ -718,6 +718,8 @@ func run() -> void:
 			await aliens3()
 		"aliens4":
 			await aliens4()
+		"aliens5":
+			await aliens5()
 		"playtest":
 			await playtest()
 		"pinball":
@@ -1437,6 +1439,49 @@ func aliens4() -> void:
 	check(b.units.filter(func(u): return u.type == "skitter" and not u.dead).size() == sk0 + 1, "a Skitter bursts out of a dead Thrall")
 	b.kill(ov, s)
 	check(not b.is_thrall(j2) and j2.has_st("stun"), "killing the Overseer frees and stuns its Thralls")
+
+func aliens5() -> void:
+	## Q2 Burrow Queen: the desert and mountain mini-boss encounter.
+	Run.new_run()
+	check(Run.make_level("desert", 1).encounter == "queen" and Run.make_level("mountain", 2).encounter == "queen", "desert and mountain levels from level 2 hold the Burrow Queen")
+	check(Run.make_level("desert", 0).encounter == "" and Run.make_level("jungle", 1).encounter in ["swarm", "nest"], "level 1 and other biomes don't")
+	Run.level = Run.make_level("desert", 1)
+	var b: Battle = main.start_battle(1, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var qs := b.units.filter(func(u): return u.type == "queen")
+	check(qs.size() == 1 and qs[0].weight == "buried", "one Burrow Queen waits buried in the level")
+	if qs.is_empty():
+		return
+	var q: Unit = qs[0]
+	b.speed = 2.0
+	var x0 := 600.0
+	flat_strip(b, x0 - 160, 640)
+	var s := alien_field(b, x0)
+	q.dead = false; q.gone = false
+	q.x = x0 + 320; q.y = b.T.stand_y(q.x, 0); q.active = true
+	var tr := b.trace_bullet(x0 + 10, q.y - 20, 0.0, 500, 0, s, false)
+	check(not tr.hits.any(func(h): return h.u == q), "bullets pass over her while she's underground")
+	var hp0 := s.hp
+	var g0 = b.T.stand_y(x0 + 160, 0)
+	await b.enemy_act(q)
+	await until(func(): return b.settled(), 900)
+	await shot("alien5_queen_burst")
+	check(q.weight == "" and absf(q.x - x0) < 80 and s.hp < hp0, "she tunnels over and bursts out under the soldier (hp %d -> %d)" % [hp0, s.hp])
+	check(b.T.stand_y(x0 + 160, 0) != g0, "her tunnel tears up the ground on the way")
+	tr = b.trace_bullet(q.x - 200, q.y - q.h * 0.7, 0.0, 300, 0, s, false)
+	check(tr.hits.any(func(h): return h.u == q), "surfaced, she can be shot")
+	var qh := q.hp
+	b.crush(q, 5, s, 0, 0)
+	check(qh - q.hp == 15, "rubble on her head does triple damage (%d)" % (qh - q.hp))
+	var tot := func(): return b.squad_alive().reduce(func(a, u): return a + u.hp, 0)
+	hp0 = tot.call()
+	await b.enemy_act(q)
+	await until(func(): return b.settled(), 900)
+	await shot("alien5_queen_spit")
+	check(q.weight == "buried" and tot.call() < hp0, "next turn she bites or spits, then dives (squad hp %d -> %d)" % [hp0, tot.call()])
+	var loot0 := b.units.filter(func(u): return u.kind == "loot").size()
+	b.kill(q, s)
+	check(b.units.filter(func(u): return u.kind == "loot").size() > loot0, "she drops loot when she dies")
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.

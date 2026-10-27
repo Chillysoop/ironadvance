@@ -1407,6 +1407,9 @@ func kill(tg: Unit, src) -> void:
 			var sw: int = tg.fl.get("swell", 0)
 			booms.append({"t": 6, "x": tg.x, "y": tg.y - tg.h / 2.0, "r": Data.ETYPES.bloater.radius + 10.0 * sw, "dmg": Data.ETYPES.bloater.dmg, "owner": src if src is Unit and src.team == "squad" else null})
 			float_text(tg, "POP!", Color("9df25c"), true)
+		if tg.type == "queen":
+			drop_loot(tg.x, tg.y - 40, {"type": "item", "item": Run.roll_item(2)}, 1.2)
+			banner("QUEEN SLAIN!", Color("9df25c"), "THE SAND GOES QUIET")
 		if tg.type == "warden":
 			for w in wells.filter(func(q): return q.by == tg):
 				booms.append({"t": 4, "x": w.x, "y": w.y, "r": 40.0, "dmg": 6, "owner": src if src is Unit and src.team == "squad" else null})
@@ -1570,6 +1573,9 @@ func crush(u: Unit, d: int, cause, kvx: float, kvy: float) -> void:
 			give_xp(cause, 3)
 	if u.type == "boss":
 		crack_boss(u)
+	if u.type == "queen" and u.weight != "buried":
+		d *= 3
+		float_text(u, "CAVED IN!", Color("ffd23a"), true)
 	var was := kill_how
 	kill_how = "CRUSHED"
 	damage(u, d, cause, {"impact": true})
@@ -3192,6 +3198,10 @@ func activate_enemies() -> void:
 			if e.type == "radio" and radio_t == null:
 				radio_t = 3 + jammer_rounds()
 				log_msg("A radioman is calling for backup. Paratroopers in %d rounds unless you drop him." % radio_t)
+			if e.type == "queen":
+				banner("WARNING!!", Color("c47bff"), "THE BURROW QUEEN STIRS")
+				Sfx.play("alarm")
+				log_msg("Something huge is moving under the sand. Only blasts reach her down there: hit her when she surfaces, and bring the ruins down on her head.")
 			if e.type == "boss" and not boss_active:
 				boss_active = true
 				banner("WARNING!!", Color("ff4d3d"), "IRON BOAR APPROACHING")
@@ -4184,6 +4194,9 @@ func enemy_act(e: Unit) -> void:
 		"prism":
 			await prism_act(e)
 			return
+		"queen":
+			await queen_act(e)
+			return
 		"warden":
 			await warden_act(e)
 			return
@@ -4851,6 +4864,75 @@ func overseer_act(e: Unit) -> void:
 		damage(tg, int(round(E.dmg * (1 + alert * 0.06))), e, {})
 		await wait(10)
 
+func queen_act(e: Unit) -> void:
+	## Q2 Burrow Queen. Buried: tunnel toward the nearest soldier, tearing up the ground, and burst out
+	## under them. Surfaced: bite whoever is close or spit acid at the nearest, then dive again.
+	var E: Dictionary = Data.ETYPES.queen
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	var dmul := 1 + alert * 0.06
+	if e.weight != "buried":
+		e.face = 1 if tg.x >= e.x else -1
+		e.pose = "throw"; e.pose_t = 18
+		if absf(tg.x - e.x) < e.w / 2.0 + 40 and absf(tg.y - e.y) < 60:
+			Sfx.play("slash")
+			await wait(8)
+			damage(tg, int(round(E.bite * dmul)), e, {"melee": true})
+		else:
+			Sfx.play("splash")
+			var c := e.center()
+			tracers.append({"x1": c.x, "y1": c.y - 20, "x2": tg.x, "y2": tg.y - 10, "c": Color("9df25c"), "t": 16})
+			await wait(10)
+			acids.append({"x": tg.x, "y": tg.y, "r": 36.0, "turns": 2})
+			damage(tg, int(round(E.spit * dmul)), e, {})
+			float_text(tg, "ACID!", Color("9df25c"), true)
+		await wait(14)
+		if e.dead:
+			return
+		e.weight = "buried"
+		dust(e.x, e.y - 6, Color("c9b38a"), 16)
+		Sfx.play("thud")
+		shake += 4
+		await wait(10)
+		return
+	var dir := signf(tg.x - e.x)
+	var tx: float = e.x + dir * minf(absf(tg.x - e.x), E.tunnel)
+	var dug := 0.0
+	while absf(tx - e.x) > 4 and not e.dead:
+		var stepx: float = minf(10.0, absf(tx - e.x))
+		e.x += dir * stepx
+		dug += stepx
+		var gy = T.stand_y(e.x, 0)
+		if gy != null and gy < WATER_Y - 4:
+			e.y = gy
+			shake = maxf(shake, 2.0)
+			if dug >= 30:
+				dug = 0.0
+				T.carve(e.x, gy + 6, 12, e)  # she leaves the arena torn up behind her
+				dust(e.x, gy, Color("c9b38a"), 4)
+		await wait(2)
+	if e.dead:
+		return
+	var gy2 = T.stand_y(e.x, 0)
+	if gy2 != null:
+		e.y = gy2
+	e.weight = ""
+	e.face = int(dir) if dir != 0 else e.face
+	e.pose = "throw"; e.pose_t = 24
+	Sfx.play("bigboom")
+	shake += 12
+	T.carve(e.x, e.y - 6, 30, e)
+	float_text(e, "BURROW QUEEN!", Color("c47bff"), true)
+	for o in units:
+		if o == e or o.dead or o.gone or o.sunk or o.is_pickup() or o.kind == "pow" or o.team == "neutral":
+			continue
+		if absf(o.x - e.x) < 50 + o.w / 2.0 and absf(o.y - e.y) < 70:
+			damage(o, int(round(E.burst * dmul)), e, {})
+			if not o.dead and not o.heavy and not o.immovable:
+				o.vx = signf(o.x - e.x if o.x != e.x else 1.0) * 3.5; o.vy = -6; o.air = true; o.walk = null; o.bumped = {e.id: true}; o.last_hit_by = e
+	await until(settled)
+
 func tick_acids() -> void:
 	## End of the enemy phase: anyone but the Vharr standing in Hive acid takes 3.
 	for a in acids:
@@ -4951,6 +5033,9 @@ func place_encounter(id: String) -> void:
 				h.fl["hatch"] = stagger + 1
 				stagger += 1
 		put.call("squid", 0.65)
+	elif id == "queen":
+		put.call("queen", 0.7)
+		put.call("skitter", 0.4)
 	elif id == "swarm":
 		put.call("burrow", 0.45)
 		var b2 = put.call("burrow", 0.8)
