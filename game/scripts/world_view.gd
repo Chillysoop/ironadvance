@@ -183,6 +183,9 @@ func draw_unit(u: Unit) -> void:
 		"strongbox":
 			draw_strongbox(pos, white)
 			return
+		"wreck":
+			draw_wreck(u, pos)
+			return
 		"loot":
 			draw_loot(u, pos)
 			return
@@ -366,9 +369,27 @@ func draw_slug(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 	Art.text(self, "SV-001", pos + Vector2(0, -92), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 
+func draw_wreck(u: Unit, pos: Vector2) -> void:
+	## A burnt-out jeep on its rims. Stripped ones lose the panels and the glint.
+	var d := Color(0.05, 0.035, 0.03)
+	var hull := Color("5a4a3a") if u.stripped else Color("7a5a3a")
+	draw_rect(Rect2(pos.x - 17, pos.y - 14, 34, 10), d)
+	draw_rect(Rect2(pos.x - 16, pos.y - 13, 32, 8), hull)
+	draw_rect(Rect2(pos.x - 8, pos.y - 20, 14, 7), d)
+	draw_rect(Rect2(pos.x - 7, pos.y - 19, 12, 5), hull.darkened(0.2))
+	for wx in [-10, 10]:
+		draw_circle(pos + Vector2(wx, -4), 4.0, d)
+		draw_circle(pos + Vector2(wx, -4), 2.0, Color("3a3a3a"))
+	if not u.stripped:
+		draw_rect(Rect2(pos.x - 14, pos.y - 11, 6, 3), Color("9a6a3a"))
+		draw_rect(Rect2(pos.x + 4, pos.y - 11, 8, 2), Color("a8a8a8"))
+		if (b.t + u.id * 23) % 100 < 8:
+			draw_rect(Rect2(pos.x + 6, pos.y - 17, 2, 2), Color("53d4e2"))
+		Art.text(self, "SALVAGE", pos + Vector2(0, -26), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine"] or u.type == "boss" or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck"] or u.type == "boss" or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -786,6 +807,8 @@ func draw_hover() -> void:
 		lines = ["SAPPER CHARGE", "Blows when the Jackals move next.", "Shoot it to defuse. Blast 48."]
 	elif h.kind == "crate":
 		lines = ["SUPPLY CRATE", "Shoot it or blast it open. The loot pops out:", "careful, it can roll into a pit."]
+	elif h.kind == "wreck":
+		lines = ["WRECK" + (" (STRIPPED)" if h.stripped else ""), "Walk over it to strip it: +%d Salvage for HQ." % Data.WRECK_SALVAGE]
 	elif h.kind == "strongbox":
 		lines = ["JACKAL STRONGBOX", "Pry it open with a MELEE card: quiet.", "Blast it: free, but ALERT +1 and it may damage the loot."]
 	elif h.kind == "loot":

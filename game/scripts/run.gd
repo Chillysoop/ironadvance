@@ -34,7 +34,7 @@ var level := {}            # the generated mission for the level being played (b
 var dial: Array = []       # the two biomes on the gate dial right now
 var burned: Array = []     # biomes skipped or already played this run; they never come back
 var sway_mul := 1.0        # the current biome's sway rule, read by Data.card during a battle
-var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": []}   # kept across runs (W4, W5); memorial = the fallen
+var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "bio": 0}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
 const META_PATH := "user://meta.json"
 
 func _ready() -> void:
@@ -110,8 +110,10 @@ func make_level(id: String, tier: int) -> Dictionary:
 	pool.shuffle()
 	while pool.size() < 4:
 		pool.append(bm.segments[randi() % bm.segments.size()])
-	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules,
-		"segments": ["start", pool[0], pool[1], "camp", pool[2], pool[3], "camp", bm.get("arena", "arena")],
+	var detours: Array = Data.DETOURS.keys()
+	detours.shuffle()
+	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, 3),
+		"segments": ["start", pool[0], pool[1], "camp", "yard", pool[2], pool[3], "camp", bm.get("arena", "arena")],
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
 
 func start_finale() -> void:

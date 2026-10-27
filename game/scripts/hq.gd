@@ -138,6 +138,8 @@ func _draw() -> void:
 	if Run.history.size():
 		line = "Back through the gate. Resupply, then dial the gate for " + ("the finale." if next_mission_n() > Data.LEVELS.size() else "level %d." % next_mission_n())
 	Art.text(self, line, Vector2(24, 56), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+	var cur := "%d SALVAGE   %d BIO-PARTS" % [int(Run.meta.get("salvage", 0)), int(Run.meta.get("bio", 0))]
+	Art.text(self, cur, Vector2(936, 56), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_RIGHT)
 	var sc := "%d SCRIP" % Run.scrip
 	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 16) - 22, 20, 16, 16), false)
 	Art.text(self, sc, Vector2(936, 36), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT, 2)

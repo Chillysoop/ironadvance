@@ -461,7 +461,18 @@ const CAMP_PICKS := [
 	{"id": "cache", "name": "SUPPLY CACHE", "text": "Dig up 60 scrip."},
 	{"id": "quiet", "name": "LIE LOW", "text": "Alert drops to 0 and everyone gets +1 energy right now."},
 ]
-const CAMP_HEAL := 0.25     # share of max HP everyone gets back just for reaching camp
+const CAMP_HEAL := 0.25
+# Detours (run structure step 5): the mid-level camp offers 3, each a short side stretch in the
+# clearing right after camp. Each pays in a different currency, so elites are never the only good pick.
+const DETOURS := {
+	"elite": {"name": "ELITE OUTPOST", "pays": "EPIC GEAR + 2 BIO-PARTS", "icon": "ic_skull", "text": "Four elite Jackals, all with the same modifier, dug into the clearing."},
+	"pow": {"name": "POW RESCUE", "pays": "A FREE RECRUIT OR A DOG TAG", "icon": "ic_cross", "text": "Three prisoners and two guards. Free all three in %d rounds or they are moved out."},
+	"salvage": {"name": "SALVAGE YARD", "pays": "SALVAGE FOR HQ", "icon": "ic_bolt", "text": "Walk over wrecks to strip them, %d salvage each. Scavengers drift in every round. Leave whenever you like."},
+	"cache": {"name": "SUPPLY CACHE", "pays": "SCRIP + A CARD PICK", "icon": "ic_coin", "text": "An easy fight: three Jackals sitting on a supply cache."},
+}
+const POW_RESCUE_ROUNDS := 5
+const WRECK_SALVAGE := 3
+const ELITE_BIO := 2     # share of max HP everyone gets back just for reaching camp
 
 # Briefing intel (W2): each mission rolls one condition.
 const INTEL := {
@@ -621,6 +632,8 @@ const SEGMENTS := {
 			["grunt", 360, {"hold": 1, "up": 148}], ["mine", 520], ["mine", 580], ["brute", 600], ["mine", 650], ["engineer", 700], ["radio", 760]]},
 	# a safe camp inside the level: a fire, two tents and a supply crate, no Jackals
 	"camp": {"w": 560, "sandbags": [60, 500], "pits": [], "camp": true, "structs": [], "spawns": []},
+	# the open clearing after the mid-level camp, where a detour plays out (empty if you press on)
+	"yard": {"w": 760, "sandbags": [], "pits": [], "yard": true, "structs": [], "spawns": []},
 	"arena": {"w": 1200, "sandbags": [120, 360], "pits": [], "flat": true,
 		"structs": [{"t": "tower", "x": 580, "h": 96}, {"t": "tower", "x": 760, "h": 110}, {"t": "boulder", "col": 850, "colH": 236, "bx": 960, "rope": 18, "r": 32}],
 		"spawns": [["grunt", 580, {"hold": 1}], ["grunt", 760, {"hold": 1}], ["boss", 960]]},

@@ -54,6 +54,8 @@ var leak = null
 var leak_by = null
 var primed := false
 var freed := false
+var detour := false    # spawned by the camp detour (its guards, prisoners and wrecks)
+var stripped := false  # a salvage wreck someone already stripped
 var pow_name := ""
 var planted := false
 var built := 0
@@ -97,7 +99,7 @@ func is_prop() -> bool:
 
 func is_pickup() -> bool:
 	## Loot on the ground and buried caches: bullets and blasts pass through them.
-	return kind == "loot" or kind == "cache" or kind == "relay"
+	return kind == "loot" or kind == "cache" or kind == "relay" or kind == "wreck"
 
 func has_st(k: String) -> bool:
 	return st.get(k, 0) > 0
