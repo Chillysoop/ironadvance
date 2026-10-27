@@ -146,7 +146,7 @@ func setup(idx: int, custom := {}) -> void:
 			continue
 		var x := 50.0 + i * 35
 		var u := mk_unit()
-		u.team = "squad"; u.kind = "soldier"; u.def = s.def; u.s = s; u.sheet = "sq_" + s.key
+		u.team = "squad"; u.kind = "soldier"; u.def = s.def; u.s = s; u.sheet = Art.look_sheet(s)
 		u.gb = Run.gear_bonus(s)
 		u.x = x; u.y = T.stand_y(x, 0); u.face = 1; u.max_hp = Run.eff_max_hp(s); u.hp = mini(s.hp, u.max_hp)
 		u.dodge = s.def.dodge + s.bonus.dodge + int(u.g("dodge"))

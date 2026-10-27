@@ -345,7 +345,7 @@ func recruit_offers(n := -1) -> Array:
 	var out: Array = []
 	for i in n:
 		var d: Dictionary = defs[i % defs.size()]
-		out.append({"key": d.key, "name": names[i], "trait": traits[i % traits.size()], "legacy": legacy_perk(d.key)})
+		out.append({"key": d.key, "name": names[i], "trait": traits[i % traits.size()], "legacy": legacy_perk(d.key), "look": Art.random_look()})
 	return out
 
 func hire(slot: int, o: Dictionary) -> Dictionary:
@@ -354,6 +354,7 @@ func hire(slot: int, o: Dictionary) -> Dictionary:
 	d.name = o.name
 	var s := make_soldier(d)
 	s.trait = o.trait.id
+	s["look"] = o.get("look", Art.random_look())  # U3: recruits show up in their own kit
 	match o.trait.id:
 		"quick": s.bonus.move += 25
 		"tough":
