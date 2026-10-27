@@ -552,7 +552,7 @@ class Overlay extends Control:
 		if mom == Data.MOMENTUM - 1 and b.t % 30 < 20:
 			Art.text(self, "+1", Vector2(r.end.x + 7, r.position.y + 50), 8, Color("b48cff"), HORIZONTAL_ALIGNMENT_CENTER)
 		var mv := maxf(0.0, u.move_left)
-		var full_mv: float = maxf(1.0, u.def.spd + u.s.bonus.move + (60 if u.perk("charge") else 0))
+		var full_mv: float = maxf(1.0, b.full_move(u))
 		var my := r.end.y - 26
 		Art.text(self, "MOVE", Vector2(r.get_center().x, my), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 		draw_rect(Rect2(r.position.x + 3, my + 3, 40, 7), ink)

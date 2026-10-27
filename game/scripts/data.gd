@@ -72,6 +72,13 @@ const CARDS := {
 	"medkit": {"name": "Field Dressing", "type": "ALLY", "cost": 1, "heal": 9, "range": 110, "text": "Patch up a squadmate.", "rarity": 0, "up": {"heal": 13}},
 	"stim": {"name": "Stim Shot", "type": "ALLY", "cost": 0, "energy": 1, "range": 110, "text": "+1 energy to a squadmate. Costs them 3 HP.", "rarity": 1, "up": {"range": 200}},
 	"digin": {"name": "Dig In", "type": "SELF", "cost": 1, "armor": 6, "text": "Armor until your next turn.", "rarity": 0, "up": {"armor": 10}},
+	# B1 sidearms: one is always in hand once per turn, outside the deck, like Hop
+	"sa_pistol": {"name": "Holdout Pistol", "type": "AIM", "cost": 0, "dmg": [2, 3], "range": FULL_RANGE, "gun": "pistol", "bounce": 1, "sway": 0.022, "sidearm": true, "pool": false, "text": "SIDEARM: free once a turn. Ricochets once.", "rarity": 0},
+	"sa_knife": {"name": "Combat Knife", "type": "MELEE", "cost": 0, "dmg": [5, 6], "range": 36, "knock": 4, "sidearm": true, "pool": false, "text": "SIDEARM: free once a turn. Never misses.", "rarity": 1},
+	"sa_chainsaw": {"name": "Chainsaw", "type": "MELEE", "cost": 1, "dmg": [11, 13], "range": 40, "knock": 1.5, "sidearm": true, "pool": false, "text": "SIDEARM: once a turn. Chews in deep and barely knocks them back.", "rarity": 2},
+	"sa_law": {"name": "LAW", "type": "LINE", "cost": 0, "radius": 34, "dmg": 14, "speed": 11.0, "sidearm": true, "law": true, "pool": false, "text": "SIDEARM: one free rocket. Comes back at the next camp.", "rarity": 2},
+	# B6: the free card a soldier gets standing at a mounted M2
+	"mounted": {"name": "Mounted M2", "type": "AIM", "cost": 0, "dmg": [3, 4], "shots": 6, "range": FULL_RANGE, "gun": "mg", "bounce": 0, "sway": 0.02, "spread": 0.05, "mounted": true, "pool": false, "text": "Free while you stand at the gun. Six heavy rounds, no kick. Once a turn.", "rarity": 2},
 	"roll": {"name": "Combat Roll", "type": "LINE", "cost": 1, "roll": true, "dist": 150, "text": "Roll up to 150px without using movement. Fits through crawl-height gaps, and the next Jackal shot at you goes over your head.", "rarity": 0, "up": {"dist": 210}},
 	"sprint": {"name": "Sprint", "type": "SELF", "cost": 1, "move": 130, "text": "Extra movement this turn.", "rarity": 0, "up": {"move": 190}},
 	"dash": {"name": "Dash", "type": "SELF", "cost": 0, "move": 80, "text": "A quick burst of movement.", "rarity": 0, "up": {"move": 120}},
@@ -192,15 +199,18 @@ const TIER_MUL := [1.0, 1.25, 1.5, 2.0, 2.5]
 const STASH_MAX := 8
 const BELT_MAX := 3
 const ITEMS := {
-	"carbine": {"name": "M-16 Carbine", "slot": "weapon", "cards": ["carbine", "carbine"], "text": "Adds 2 Carbine Burst cards."},
+	"carbine": {"name": "M-16 Carbine", "slot": "weapon", "cards": ["carbine", "carbine"], "stats": {"light": 10}, "text": "Adds 2 Carbine Burst cards."},
 	"huntrifle": {"name": "Hunting Rifle", "slot": "weapon", "cards": ["huntshot", "huntshot"], "text": "Adds 2 Hunting Round cards."},
 	"marksman": {"name": "Marksman Rifle", "slot": "weapon", "cards": ["snipe", "snipe"], "stats": {"laser_pct": 0.2}, "text": "Adds 2 Long Shot cards."},
 	"riotgun": {"name": "Riot Shotgun", "slot": "weapon", "cards": ["shotgun", "shotgun"], "text": "Adds 2 Shotgun cards."},
-	"service": {"name": "Service Pistol", "slot": "weapon", "cards": ["pistol", "pistol"], "stats": {"move": 10}, "text": "Adds 2 Sidearm cards."},
-	"greasegun": {"name": "Grease Gun", "slot": "weapon", "cards": ["burst", "burst"], "text": "Adds 2 Burst Fire cards."},
-	"tube": {"name": "Bazooka Tube", "slot": "weapon", "cards": ["bazooka", "bazooka"], "set": "boar", "text": "Adds 2 Bazooka cards."},
+	"service": {"name": "Service Pistol", "slot": "weapon", "cards": ["pistol", "pistol"], "stats": {"light": 15}, "text": "Adds 2 Sidearm cards."},
+	"greasegun": {"name": "Grease Gun", "slot": "weapon", "cards": ["burst", "burst"], "stats": {"light": 10}, "text": "Adds 2 Burst Fire cards."},
+	"tube": {"name": "Bazooka Tube", "slot": "weapon", "cards": ["bazooka", "bazooka"], "stats": {"heavy": 15}, "set": "boar", "text": "Adds 2 Bazooka cards."},
+	"combatknife": {"name": "Combat Knife", "slot": "kit", "stats": {"sa": 1}, "text": "Your sidearm becomes a free Combat Knife."},
+	"chainsaw": {"name": "Chainsaw", "slot": "kit", "stats": {"sa": 2}, "text": "Your sidearm becomes a Chainsaw."},
+	"lawtube": {"name": "LAW Tube", "slot": "kit", "stats": {"sa": 3}, "text": "Your sidearm becomes a free one-shot LAW rocket, reloaded at every camp."},
 	"nadebelt": {"name": "Grenade Belt", "slot": "weapon", "cards": ["frag", "frag"], "text": "Adds 2 Frag Grenade cards."},
-	"machete": {"name": "Machete", "slot": "weapon", "cards": ["knife", "knife"], "stats": {"move": 15}, "set": "desert", "text": "Adds 2 Knife cards."},
+	"machete": {"name": "Machete", "slot": "weapon", "cards": ["knife", "knife"], "stats": {"light": 15}, "set": "desert", "text": "Adds 2 Knife cards."},
 	"medbag": {"name": "Medic Bag", "slot": "weapon", "cards": ["medkit", "medkit"], "stats": {"heal": 1}, "text": "Adds 2 Field Dressing cards."},
 	"flak": {"name": "Flak Vest", "slot": "armor", "stats": {"hp": 4}, "text": "Padding where it counts."},
 	"plate": {"name": "Riot Plate", "slot": "armor", "stats": {"armor_turn": 2}, "set": "boar", "text": "Armor at the start of every turn."},
@@ -242,7 +252,7 @@ const ITEMS := {
 	"deflector": {"name": "Deflector Rounds", "slot": "kit", "stats": {"aim_dmg": 2}, "locked": true, "text": "Ricochets keep their bite."},
 	"zippo": {"name": "Zippo", "slot": "kit", "stats": {"blast": 0.06, "kill_adr": 4}, "locked": true, "text": "Never leave home without it."},
 	"medalcase": {"name": "Medal Case", "slot": "kit", "stats": {"luck": 2}, "locked": true, "text": "Polished every night."},
-	"antimat": {"name": "Anti-Materiel Rifle", "slot": "weapon", "cards": ["snipe", "snipe"], "stats": {"laser_step": 1, "aim_dmg": 1}, "locked": true, "text": "Adds 2 Long Shot cards."},
+	"antimat": {"name": "Anti-Materiel Rifle", "slot": "weapon", "cards": ["snipe", "snipe"], "stats": {"laser_step": 1, "aim_dmg": 1, "heavy": 15}, "locked": true, "text": "Adds 2 Long Shot cards."},
 	"b_medkit": {"name": "Medkit", "slot": "belt", "use": "heal", "n": 10, "text": "Heal 10. No card or energy needed."},
 	"b_smoke": {"name": "Smoke Pot", "slot": "belt", "use": "smoke", "text": "Smoke at your feet."},
 	"b_ration": {"name": "Ration", "slot": "belt", "use": "ration", "n": 5, "text": "Heal 5 and find 15 scrip."},
@@ -273,10 +283,14 @@ const STAT_FMT := {
 	"luck": "+%d squad Luck", "laser_step": "+%d laser step", "sway": "-%d%% sway", "regen": "Heal %d each turn",
 	"blast": "+%d%% blast size", "push_draw": "ON PUSH: draw %d", "kill_adr": "ON KILL: +%d adrenaline",
 	"laser_pct": "+%d%% laser length", "heal": "+%d healing", "fall_half": "Half fall damage", "aim_dmg": "+%d AIM damage",
-	"jet": "%d jet fuel",
+	"jet": "%d jet fuel", "light": "LIGHT: +%d move", "heavy": "HEAVY: -%d move, jets burn faster",
+	"sa": "SIDEARM %d",
 }
 const PCT_STATS := ["sway", "blast", "laser_pct"]
-const FLAT_STATS := ["kill_draw", "energy1", "luck", "laser_step", "push_draw", "fall_half"]
+const FLAT_STATS := ["kill_draw", "energy1", "luck", "laser_step", "push_draw", "fall_half", "light", "heavy", "sa"]
+const SIDEARMS := ["sa_pistol", "sa_knife", "sa_chainsaw", "sa_law"]  # by the "sa" gear stat
+# B4: Jackals that drop their gun when they die; walking over it gives one shot of it
+const DROP_GUNS := {"mg": "hmg", "mortarcrew": "mortar", "nade": "frag"}
 
 # Elite Jackals (L4): gold-outlined, one modifier, a guaranteed item drop.
 const ELITES := {
@@ -728,6 +742,9 @@ const SEGMENTS := {
 		"structs": [{"t": "fence", "x": 280, "h": 72}, {"t": "fence", "x": 560, "h": 72}, {"t": "catwalk", "x0": 620, "x1": 740, "dy": 96}],
 		"spawns": [["grunt", 330, {"hold": 1}], ["shield", 380], ["barrel", 420], ["nade", 470, {"hold": 1}], ["grunt", 520], ["brute", 600],
 			["grunt", 680, {"hold": 1, "up": 110}], ["radio", 780]]},
+	# B6: a sandbagged M2 anyone standing at can fire, held by a Jackal gunner
+	"m2nest": {"w": 720, "sandbags": [300, 560], "pits": [], "structs": [],
+		"spawns": [["m2", 330], ["grunt", 352, {"hold": 1}], ["barrel", 420], ["grunt", 470], ["shield", 520], ["m2", 590], ["nade", 640, {"hold": 1}], ["radio", 690]]},
 	# a safe camp inside the level: a fire, two tents and a supply crate, no Jackals
 	"camp": {"w": 560, "sandbags": [60, 500], "pits": [], "camp": true, "structs": [], "spawns": []},
 	# the open clearing after the mid-level camp, where a detour plays out (empty if you press on)
@@ -763,12 +780,12 @@ const BIOMES := {
 	"desert": {"name": "DESERT RUINS", "theme": "dusk", "favor": "long", "rough": "close",
 		"rules": {"sway": 0.6, "sight": 1.2, "amp": 0.4, "wind": 1.5},
 		"look": {"tint": Color(1.08, 0.98, 0.82), "grass": Color("c8a85a"), "sky": Color(1.0, 0.92, 0.78)},
-		"segments": ["trenches", "towers", "boulder", "gully", "overhang", "fenceline"],
+		"segments": ["trenches", "towers", "boulder", "gully", "overhang", "fenceline", "m2nest"],
 		"text": "Flat sand and clear air. Your aimed shots sway 40% less, but Jackals see 20% farther."},
 	"fortress": {"name": "FORTRESS TOWN", "theme": "dusk", "favor": "arc", "rough": "long",
 		"rules": {"sway": 1.3, "fuel": 2},
 		"look": {"tint": Color(0.9, 0.9, 0.94), "grass": Color("7a8a5a"), "sky": Color(0.86, 0.86, 0.92)},
-		"segments": ["fort", "warehouse", "bunker", "gauntlet", "fort", "fenceline"],
+		"segments": ["fort", "warehouse", "bunker", "gauntlet", "fort", "fenceline", "m2nest"],
 		"text": "Forts and warehouses wall to wall. Blow the floors out. Aimed shots sway 30% more."},
 	"jungle": {"name": "JUNGLE CANOPY", "theme": "jungle", "favor": "close", "rough": "long",
 		"rules": {"sway": 1.4, "sight": 0.7, "mines": 3},
@@ -793,7 +810,7 @@ const BIOMES := {
 	"harbor": {"name": "NIGHT HARBOR", "theme": "night", "favor": "long", "rough": "arc", "arena": "pier",
 		"rules": {"sight": 0.8, "wind": 1.6},
 		"look": {},
-		"segments": ["docks", "warehouse", "gauntlet", "mortar", "catwalks"],
+		"segments": ["docks", "warehouse", "gauntlet", "mortar", "catwalks", "m2nest"],
 		"text": "Piers in the dark and a sea wind. Jackals see 20% less far. Wind is 60% stronger."},
 	"palace": {"name": "NINJA PALACE", "theme": "night", "favor": "close", "rough": "long",
 		"rules": {"sway": 1.6, "sight": 0.6, "elite": 0.2},
@@ -831,6 +848,8 @@ const THEMES := {
 
 func recoil(c: Dictionary) -> float:
 	## How hard a card kicks its shooter back (0 for none).
+	if c.get("mounted", false):
+		return 0.0
 	if c.type == "AIM":
 		return RECOIL.get(c.get("gun", ""), 0.0)
 	if c.type == "LINE" and c.has("radius") and c.has("speed"):
@@ -1009,6 +1028,8 @@ func stat_lines(st: Dictionary) -> Array:
 			out.append(fmt % int(round(v * 100)))
 		elif k == "fall_half":
 			out.append(fmt)
+		elif k == "sa":
+			out.append("SIDEARM: " + CARDS[SIDEARMS[clampi(int(v), 0, SIDEARMS.size() - 1)]].name)
 		else:
 			out.append(fmt % v)
 	return out

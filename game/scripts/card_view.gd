@@ -224,8 +224,8 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 		var cd := Data.card(opt)
 		match cd.type:
 			"AIM":
-				var gun := "sq_moss_gun" if cd.get("pierce", false) else ("sq_hex_gun" if cd.key == "pistol" else "sq_rook_gun")
-				if cd.key in ["hmg", "burst"]:
+				var gun := "sq_moss_gun" if cd.get("pierce", false) else ("sq_hex_gun" if cd.key in ["pistol", "sa_pistol"] else "sq_rook_gun")
+				if cd.key in ["hmg", "burst", "mounted"]:
 					gun = "en_mg_gun"
 				var tx: Texture2D = Art.tex[gun]
 				draw_texture_rect(tx, Rect2(c.x - tx.get_width(), c.y - tx.get_height(), tx.get_width() * 2, tx.get_height() * 2), false, mod)
@@ -245,7 +245,7 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 					draw_rect(Rect2(c.x - 15, c.y - 5, 10, 10), INK)
 					draw_rect(Rect2(c.x - 14, c.y - 4, 8, 8), Color("ffb23e").darkened(0.5 if dim else 0.0))
 					return
-				if cd.get("grapple", false) or cd.get("jump", false) or cd.get("rush", false):
+				if cd.get("grapple", false) or cd.get("jump", false) or cd.get("rush", false) or cd.get("roll", false):
 					icon = "ic_boot" if not cd.get("grapple", false) else "ic_up"
 				else:
 					draw_rect(Rect2(c.x - 15, c.y - 4, 26, 8), INK)

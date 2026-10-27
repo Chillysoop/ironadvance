@@ -111,6 +111,8 @@ func setup(idx: int, custom := {}) -> void:
 	mission_idx = idx
 	mission = Data.MISSIONS[idx] if custom.is_empty() else custom
 	rules = mission.get("rules", {})
+	for rs in Run.soldiers:
+		rs.erase("law_spent")
 	breach = mission.get("breach", false)
 	Run.sway_mul = rules.get("sway", 1.0)
 	grav = GRAV * rules.get("grav", 1.0)
@@ -143,7 +145,7 @@ func setup(idx: int, custom := {}) -> void:
 		u.x = x; u.y = T.stand_y(x, 0); u.face = 1; u.max_hp = Run.eff_max_hp(s); u.hp = mini(s.hp, u.max_hp)
 		u.dodge = s.def.dodge + s.bonus.dodge + int(u.g("dodge"))
 		u.second_wind = s.perks.has("secondwind")
-		u.fuel_max = int(u.g("jet"))
+		u.fuel_max = jet_fuel(u)
 		u.fuel = u.fuel_max
 		var deck: Array = s.deck.duplicate()
 		deck.shuffle()
@@ -178,6 +180,10 @@ func setup(idx: int, custom := {}) -> void:
 				continue
 			var u := mk_unit(); u.team = "neutral"; u.kind = type; u.x = x; u.y = fy
 			u.w = 22 if type == "fuel" else 12; u.h = 30 if type == "fuel" else 6
+			units.append(u); continue
+		if type == "m2":
+			var u := mk_unit(); u.team = "neutral"; u.kind = "m2"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.w = 26; u.h = 20
+			u.hp = 30; u.max_hp = 30; u.heavy = true; u.face = -1; u.loot = {"sq": -1, "en": -1}
 			units.append(u); continue
 		if type == "pow":
 			var u := mk_unit(); u.team = "neutral"; u.kind = "pow"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - opt.up) if opt.has("up") else T.stand_y(x, 0); u.face = -1
@@ -229,6 +235,10 @@ func collect(u: Unit, p: Unit) -> void:
 			for i in 3:
 				u.hand.append({"id": -2, "key": key, "tier": maxi(2, Data.base_tier(key)), "temp": true})
 			banner(Data.CARDS[key].name.to_upper() + "!", Color("ffd23a"), "%s GOT 3 SHOTS. THEY LAST THIS MISSION." % u.def.name)
+			Sfx.play("power")
+		"gun":
+			u.hand.append({"id": -2, "key": L.card, "tier": Data.base_tier(L.card), "temp": true})
+			float_text(u, "GOT A " + Data.CARDS[L.card].name.to_upper() + "! ONE SHOT", Color("ffd23a"), true)
 			Sfx.play("power")
 		"trophy":
 			if not Run.trophies.has(L.name):
@@ -286,7 +296,7 @@ func refresh_unit_gear(u: Unit) -> void:
 	u.hp = mini(u.hp, u.max_hp)
 	u.dodge = u.def.dodge + u.s.bonus.dodge + int(u.g("dodge"))
 	var had_jets := u.fuel_max > 0
-	u.fuel_max = int(u.g("jet"))
+	u.fuel_max = jet_fuel(u)
 	u.fuel = u.fuel_max if not had_jets else mini(u.fuel, u.fuel_max)
 	var ids := {}
 	for c in u.s.deck:
@@ -1166,6 +1176,17 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 			Sfx.play("splash")
 			log_msg("A fuel tank is leaking. It blows at the end of the next enemy phase.")
 		return
+	if tg.kind == "m2":
+		tg.hp -= amt
+		tg.flash = 8
+		sparks(tg.x, tg.y - 12, 3)
+		if tg.hp <= 0:
+			tg.dead = true
+			tg.gone = true
+			booms.append({"t": 4, "x": tg.x, "y": tg.y - 10, "r": 30.0, "dmg": 6, "owner": own})
+			float_text(tg, "GUN DOWN", Color("ff7a3d"), true)
+			refresh_mounts()
+		return
 	if tg.kind == "mine":
 		if not tg.primed:
 			prime_mine(tg, own, 4)
@@ -1372,6 +1393,9 @@ func kill(tg: Unit, src) -> void:
 			var sw: int = tg.fl.get("swell", 0)
 			booms.append({"t": 6, "x": tg.x, "y": tg.y - tg.h / 2.0, "r": Data.ETYPES.bloater.radius + 10.0 * sw, "dmg": Data.ETYPES.bloater.dmg, "owner": src if src is Unit and src.team == "squad" else null})
 			float_text(tg, "POP!", Color("9df25c"), true)
+		if Data.DROP_GUNS.has(tg.type) and not tg.gone:
+			# B4: the gun falls where it dies; whoever walks over it gets one shot of it
+			drop_loot(tg.x, tg.y - 12, {"type": "gun", "card": Data.DROP_GUNS[tg.type]}, 0.6)
 		if tg.type == "hive":
 			acids.append({"x": tg.x, "y": tg.y, "r": 40.0, "turns": 2})
 			float_text(tg, "ACID!", Color("9df25c"), true)
@@ -1895,6 +1919,15 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 	u.hand.remove_at(idx)
 	u.energy -= cost
 	u.last_cost = cost
+	if c.get("law", false):
+		u.s["law_spent"] = true
+	if c.get("mounted", false):
+		var m = m2_near(u)
+		if m != null:
+			m.loot.sq = round_n
+		for o in squad_alive():
+			if o != u:
+				o.hand = o.hand.filter(func(h): return h.key != "mounted" or m2_near(o) != m)
 	if u.hang:
 		if Data.is_attack(c):
 			u.fl["hung_shot"] = true
@@ -2130,6 +2163,13 @@ func commit_aim(p: Vector2) -> void:
 		resolve(func(): await _act_rocket(u, idx, c, p, sc))
 
 func _act_aim(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
+	if c.get("gun", "") == "mg" and not c.get("mounted", false):
+		# B5: a heavy MG spins up; its second burst in a turn hits harder
+		if u.fl.get("spun", false):
+			c = c.duplicate()
+			c.dmg = [c.dmg[0] + 1, c.dmg[1] + 1]
+			float_text(u, "SPUN UP +1", Color("ffd23a"))
+		u.fl["spun"] = true
 	var kick := recoil_vel(u, c, aim_angle(u, c, p).a)
 	spend_card(u, idx, c)
 	if u.fl.has("breath"):
@@ -2835,6 +2875,7 @@ func make_camp(c: Dictionary) -> void:
 	await wait(30)
 	var i := 0
 	for s in squad():
+		s.s.erase("law_spent")  # B1: the LAW is reloaded at camp
 		if s.dead and s.downed:
 			# back on their feet at half HP, by the fire
 			s.dead = false
@@ -3227,6 +3268,7 @@ func apply_level_option(u: Unit, o: Dictionary) -> void:
 	ui_dirty = true
 
 func post_action() -> void:
+	refresh_mounts()
 	var front: Array = squad_alive().filter(func(s): return not s.air)
 	front.sort_custom(func(a, b): return a.x > b.x)
 	if front.size() and not boss_dead:
@@ -3419,7 +3461,7 @@ func start_player_turn() -> void:
 			s.energy += s.s.bonus.energy1 + int(s.g("energy1")) + (1 if Run.has_gear("bandolier") else 0)
 		elif round_n == 2 and Run.relic_tier("bandolier") >= 3:
 			s.energy += 1
-		s.move_left = s.def.spd + s.s.bonus.move + int(s.g("move")) + (60 if s.perk("charge") else 0)
+		s.move_left = full_move(s)
 		s.moved = false
 		s.attacked = false
 		s.aim_discount = false
@@ -3445,9 +3487,11 @@ func start_player_turn() -> void:
 		draw_cards(s, hand_size(s))
 		if not s.hand.any(func(c): return c.key == "hop"):
 			s.hand.append({"id": -4, "key": "hop", "tier": Data.base_tier("hop"), "temp": true})
+		give_sidearm(s)
 		if s.adr >= 100 and not s.hand.any(func(c): return c.get("od", false) and not c.has("duo")):
 			grant_overdrive(s)
 	refresh_duos()
+	refresh_mounts()
 	var al0 := squad_alive()
 	if round_n == 1 and (Run.trophies.size() >= 3 or Run.hq("motor") >= 1) and not slug_given and al0.size():
 		# L7: three Boar parts rebuilt the SV-001, or the Motor Pool keeps it running. It answers one call
@@ -3479,6 +3523,48 @@ func start_player_turn() -> void:
 	log_msg("Round %d. Alert %d/10.%s" % [round_n, alert, " The line has stalled: alert is rising." if rounds_since_scroll >= 2 else ""])
 	ui_dirty = true
 	resolve(func(): await wait(1))
+
+func full_move(s: Unit) -> float:
+	## B5: light weapons add movement, heavy ones take some away.
+	return s.def.spd + s.s.bonus.move + int(s.g("move")) + (60 if s.perk("charge") else 0) + int(s.g("light")) - int(s.g("heavy"))
+
+func jet_fuel(u: Unit) -> int:
+	## Jet Boots fuel; a heavy weapon burns through it a third faster (so there is a third less).
+	var f := int(u.g("jet"))
+	return int(round(f * 0.67)) if u.g("heavy") > 0 else f
+
+func sidearm_key(s: Unit) -> String:
+	var i := clampi(int(s.g("sa")), 0, Data.SIDEARMS.size() - 1)
+	if Data.SIDEARMS[i] == "sa_law" and s.s.get("law_spent", false):
+		i = 0  # the LAW is fired: back to the holdout pistol until the next camp
+	return Data.SIDEARMS[i]
+
+func give_sidearm(s: Unit) -> void:
+	## B1: a sidearm is always in hand once a turn, outside the deck, like Hop.
+	var key := sidearm_key(s)
+	s.hand = s.hand.filter(func(c): return not Data.CARDS[c.key].get("sidearm", false) or c.key == key)
+	if not s.hand.any(func(c): return c.key == key):
+		s.hand.append({"id": -5, "key": key, "tier": Data.base_tier(key), "temp": true})
+
+func m2_near(u: Unit):
+	for m in units:
+		if m.kind == "m2" and not m.gone and absf(m.x - u.x) < 34 and absf(m.y - u.y) < 30:
+			return m
+	return null
+
+func refresh_mounts() -> void:
+	## B6: a soldier standing at a mounted M2 gets its free card; walking away takes it back.
+	for s in squad_alive():
+		var m = m2_near(s)
+		var ok: bool = m != null and m.loot.sq != round_n
+		var has: bool = s.hand.any(func(c): return c.key == "mounted")
+		if ok and not has:
+			s.hand.append({"id": -6, "key": "mounted", "tier": Data.base_tier("mounted"), "temp": true})
+			float_text(s, "ON THE GUN", Color("ffd23a"))
+			ui_dirty = true
+		elif not ok and has:
+			s.hand = s.hand.filter(func(c): return c.key != "mounted")
+			ui_dirty = true
 
 func pad_bonus(p: Unit) -> String:
 	return p.loot.seq[p.loot.i % p.loot.seq.size()]
@@ -4219,6 +4305,15 @@ func enemy_act(e: Unit) -> void:
 	if E.get("jet", 0) > 0:
 		await jetter_act(e)
 		return
+	var gun = m2_near(e) if faction(e) == "jackal" and E.has("range") and not E.get("static", false) else null
+	if gun != null and gun.loot.en != round_n:
+		var bm = best_shot(e, foes_of(e), 600)
+		if bm != null:
+			gun.loot.en = round_n
+			float_text(e, "ON THE M2!", Color("ff4d3d"))
+			await wait(6)
+			await enemy_shoot(e, bm.t, {"dmg": [3, 4], "shots": 5, "range": 560})
+			return
 	if E.get("builds", false):
 		if e.built > 0:
 			e.built -= 1
