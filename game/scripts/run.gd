@@ -51,6 +51,20 @@ func load_meta() -> void:
 		for k in j:
 			meta[k] = j[k]
 
+func snapshot() -> Dictionary:
+	## Every bit of run state, deep-copied, for the practice range to put back afterwards (D5).
+	var snap := {}
+	for p in get_property_list():
+		if p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			var v = get(p.name)
+			snap[p.name] = v.duplicate(true) if v is Dictionary or v is Array else v
+	return snap
+
+func restore(snap: Dictionary) -> void:
+	for k in snap:
+		set(k, snap[k])
+	save_meta()  # anything the range wrote to disk is undone too
+
 func save_meta() -> void:
 	var f := FileAccess.open(META_PATH, FileAccess.WRITE)
 	if f != null:

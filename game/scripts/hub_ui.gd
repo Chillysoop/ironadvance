@@ -4,21 +4,38 @@ extends RefCounted
 
 const Services := preload("res://scripts/services.gd")
 const INK := Color(0.05, 0.035, 0.03)
+const ALL_W := 92.0
+
+static func field_dossier(parent: Node, i := 0) -> Control:
+	## S6: the same Dossier from the field (debrief, camp, level-up, the battle deck view),
+	## read-only, so you can check a deck before you pick.
+	var d: Control = load("res://scripts/dossier.gd").new()
+	d.readonly = true
+	d.idx = clampi(i, 0, Run.soldiers.size() - 1)
+	d.done.connect(d.queue_free)
+	parent.add_child(d)
+	return d
 
 class SquadBar extends Control:
 	## Four soldier plates: portrait, hotkey, HP, dog tags and the one thing worth doing for them.
 	## Click one (or press 1-4 where the screen listens) to open that soldier.
 	signal picked(i: int)
-	var current := -1          # the soldier whose screen is open, outlined in gold
+	signal all_decks           # D3: a fifth plate, shown only when the screen listens for it
+	var current := -1         # the soldier whose screen is open, outlined in gold
 	var pickable: Array = []   # when not empty, only these soldier indices light up and take clicks
 	var hover := -1
 	var t := 0
 	func _ready() -> void:
 		size = Vector2(928, 38)
 		mouse_filter = Control.MOUSE_FILTER_STOP
+	func has_all() -> bool:
+		return pickable.is_empty() and get_signal_connection_list("all_decks").size() > 0
 	func plate(i: int) -> Rect2:
-		var w := (size.x - 24) / 4.0
+		var room := size.x - (ALL_W + 8 if has_all() else 0.0)
+		var w := (room - 24) / 4.0
 		return Rect2(i * (w + 8), 0, w, size.y)
+	func all_rect() -> Rect2:
+		return Rect2(size.x - ALL_W, 0, ALL_W, size.y)
 	func _process(_d: float) -> void:
 		t += 1
 		queue_redraw()
@@ -30,6 +47,8 @@ class SquadBar extends Control:
 			for i in Run.soldiers.size():
 				if plate(i).has_point(ev.position):
 					hover = i
+			if has_all() and all_rect().has_point(ev.position):
+				hover = 4
 		elif ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 			accept_event()
 			for i in Run.soldiers.size():
@@ -39,7 +58,22 @@ class SquadBar extends Control:
 						picked.emit(i)
 					else:
 						Sfx.play("deny")
+			if has_all() and all_rect().has_point(ev.position):
+				Sfx.play("select")
+				all_decks.emit()
 	func _draw() -> void:
+		if has_all():
+			var ar := all_rect()
+			draw_rect(ar, INK)
+			draw_rect(ar.grow(-1), Color("3a4048") if hover == 4 else Color("2a2e34"))
+			if current == 4:
+				draw_rect(ar.grow(1), Color("ffd23a"), false, 2.0)
+			for k in 4:  # four little decks fanned out
+				var cr := Rect2(ar.position + Vector2(8 + k * 7, 9 + (k % 2) * 3), Vector2(12, 18))
+				draw_rect(cr, INK)
+				draw_rect(cr.grow(-1), Color("e8dcc2"))
+			Art.text(self, "ALL", Vector2(ar.end.x - 24, ar.position.y + 17), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "DECKS", Vector2(ar.end.x - 24, ar.position.y + 30), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		for i in Run.soldiers.size():
 			var s: Dictionary = Run.soldiers[i]
 			var r := plate(i)

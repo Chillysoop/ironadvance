@@ -753,6 +753,9 @@ const SEGMENTS := {
 	"m2nest": {"w": 720, "sandbags": [300, 560], "pits": [], "structs": [],
 		"spawns": [["m2", 330], ["grunt", 352, {"hold": 1}], ["barrel", 420], ["grunt", 470], ["shield", 520], ["m2", 590], ["nade", 640, {"hold": 1}], ["radio", 690]]},
 	# a safe camp inside the level: a fire, two tents and a supply crate, no Jackals
+	# D5: the HQ practice range. Dummies on the flat, one up the tower, one behind a shield
+	"range": {"w": 820, "sandbags": [], "pits": [], "structs": [{"t": "tower", "x": 440, "h": 96}],
+		"spawns": [["grunt", 200], ["barrel", 290], ["shield", 340], ["grunt", 440, {"hold": 1}], ["grunt", 580], ["mg", 700]]},
 	"camp": {"w": 560, "sandbags": [60, 500], "pits": [], "camp": true, "structs": [], "spawns": []},
 	# the open clearing after the mid-level camp, where a detour plays out (empty if you press on)
 	"yard": {"w": 760, "sandbags": [], "pits": [], "yard": true, "structs": [], "spawns": []},

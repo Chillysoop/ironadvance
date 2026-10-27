@@ -7,6 +7,8 @@ extends Node
 ## --mission=N picks the mission for bot.
 
 const Services := preload("res://scripts/services.gd")
+const HubUI := preload("res://scripts/hub_ui.gd")
+const HudScript := preload("res://scripts/hud.gd")
 
 var out_dir := "user://shots"
 var scenario := ""
@@ -714,6 +716,8 @@ func run() -> void:
 			await dossier()
 		"hub":
 			await hub()
+		"field":
+			await field()
 		"aliens":
 			await aliens()
 		"aliens2":
@@ -920,6 +924,124 @@ func dossier() -> void:
 	await frames_wait(6)
 	check(not ro.get_children().any(func(o): return o.get_script() != null and o.get("why") != null), "a read-only Dossier shows no service buttons")
 	ro.queue_free()
+
+func field() -> void:
+	## PR 3 of the HQ hub: the gate loadout line (H5), all decks at once (D3), the Dossier
+	## from the field (S6) and the practice range that puts everything back (D5).
+	Run.new_run()
+	Run.scrip = 300
+	# --- H5
+	main.dial_gate()
+	await frames_wait(20)
+	await shot("field_dial")
+	var line: String = main.screen.loadout_line(Run.soldiers[0])
+	check(line.contains("cards of %d" % Run.soldiers[0].deck.size()), "the gate dial sums up each deck: " + line)
+	# --- D3
+	main.show_hq(false)
+	await frames_wait(20)
+	var hq: Control = main.screen
+	var bars: Array = hq.get_children().filter(func(c): return c is HubUI.SquadBar)
+	check(bars.size() == 1 and bars[0].has_all(), "the HQ squad bar has an ALL DECKS plate")
+	bars[0].all_decks.emit()
+	await frames_wait(20)
+	await shot("field_all_decks")
+	var d: Control = hq.sub
+	check(d != null and d.tab == "squad", "ALL DECKS opens every deck side by side")
+	check(d.deck_rows(Run.soldiers[0]).size() < Run.soldiers[0].deck.size(), "copies stack into one row (%d rows for %d cards)" % [d.deck_rows(Run.soldiers[0]).size(), Run.soldiers[0].deck.size()])
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = true
+	ev.position = d.squad_col(2).get_center()
+	d._gui_input(ev)
+	await frames_wait(6)
+	check(d.tab == "deck" and d.idx == 2, "clicking a column opens that soldier's deck")
+	d.done.emit()
+	await frames_wait(6)
+	# --- S6: the debrief
+	main.show_debrief({"score": 100, "kills": 3})
+	await frames_wait(10)
+	var db: Control = main.screen
+	var dz: Array = db.get_children().filter(func(c): return c is HudScript.PixButton and c.text == "SQUAD DOSSIER")
+	check(dz.size() == 1, "the debrief has a SQUAD DOSSIER button")
+	dz[0].pressed.emit()
+	await frames_wait(10)
+	var fd: Array = db.get_children().filter(func(c): return c.get_script() == load("res://scripts/dossier.gd"))
+	check(fd.size() == 1 and fd[0].readonly, "it opens the Dossier read-only")
+	fd[0].sel = Run.soldiers[0].deck[0]
+	fd[0].build()
+	await frames_wait(6)
+	await shot("field_debrief_dossier")
+	check(not fd[0].get_children().any(func(c): return c is HubUI.ActionTile), "no card services in the field")
+	check(not fd[0].get_children().any(func(c): return c is HudScript.PixButton and c.text == "PRACTICE RANGE"), "no practice range from the field")
+	fd[0].done.emit()
+	await frames_wait(6)
+	# --- S6: the level-up pick and the battle deck view
+	var lvl := {"name": "FIELD YARD", "theme": "dusk", "segments": ["start", "towers", "camp", "arena"],
+		"boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "", "rules": {"pads": 0}}
+	var b: Battle = main.start_battle(0, lvl)
+	await until(func(): return b.state == "player" and not b.busy)
+	var u: Unit = b.squad()[1]
+	b.hud.pick.call("level", "LEVEL UP!", "Pick one.", Run.level_options(u.s), u)
+	await frames_wait(10)
+	var pb: Array = b.hud.modal.get_children().filter(func(c): return c is HudScript.PixButton and c.text == "DOSSIER")
+	check(pb.size() == 1, "the level-up pick has a DOSSIER button")
+	pb[0].pressed.emit()
+	await frames_wait(10)
+	var hd: Array = b.hud.get_children().filter(func(c): return c.get_script() == load("res://scripts/dossier.gd"))
+	check(hd.size() == 1 and hd[0].readonly and hd[0].idx == Run.soldiers.find(u.s), "it opens on the soldier levelling up")
+	await shot("field_levelup_dossier")
+	var key := InputEventKey.new()
+	key.keycode = KEY_SPACE
+	key.pressed = true
+	hd[0]._input(key)
+	check(get_viewport().is_input_handled(), "keys stop at the Dossier and never reach the battle")
+	hd[0].done.emit()
+	b.hud.picked.emit(-1)
+	await frames_wait(10)
+	b.sel = u
+	b.hud.show_deck()
+	await frames_wait(6)
+	var db2: Array = b.hud.modal.get_children().filter(func(c): return c is HudScript.PixButton and c.text == "DOSSIER")
+	check(db2.size() == 1, "the battle deck view has a DOSSIER button")
+	b.hud.modal.visible = false
+	# --- D5: the practice range
+	main.show_hq(false)
+	await frames_wait(10)
+	var moss: Dictionary = Run.soldiers[0]
+	moss.hp = 9
+	var scrip0: int = Run.scrip
+	var deck0: int = moss.deck.size()
+	var hist0: int = Run.history.size()
+	main.screen.open_dossier(0)
+	await frames_wait(10)
+	var pr: Array = main.screen.sub.get_children().filter(func(c): return c is HudScript.PixButton and c.text == "PRACTICE RANGE")
+	check(pr.size() == 1, "the HQ Dossier has a PRACTICE RANGE button")
+	await shot("field_practice_button")
+	pr[0].pressed.emit()
+	await frames_wait(4)
+	b = main.battle
+	await until(func(): return b.state == "player" and not b.busy)
+	check(b.squad().size() == 1 and b.squad()[0].s.key == moss.key, "only Moss goes to the range")
+	check(b.dummies.size() >= 4, "%d dummies stand on the range" % b.dummies.size())
+	await frames_wait(30)
+	await shot("field_range")
+	var me: Unit = b.squad()[0]
+	for e in b.units.filter(func(o): return o.team == "enemy" and not o.dead):
+		b.damage(e, 999, me)
+	await until(func(): return not b.busy, 600)
+	Run.scrip += 100
+	moss.deck.append(Run.new_card("rifle", 0, "shop"))
+	b.end_turn(true)
+	await until(func(): return b.state == "player" and not b.busy)
+	check(b.units.filter(func(o): return o.team == "enemy" and not o.dead).size() == b.dummies.size(), "the dummies stand back up when they are all down")
+	check(me.xp_gain == 0 and b.lvl_queue.is_empty(), "no XP at the range")
+	check(b.round_n == 2 and me.hp > 0, "no enemy phase: round 2 starts with Moss untouched")
+	await shot("field_range_reset")
+	b.leave_practice()
+	await frames_wait(20)
+	check(main.screen != null and main.screen.has_method("open_dossier") and main.screen.sub != null and main.screen.sub.idx == 0, "leaving the range comes back to Moss's Dossier at HQ")
+	check(Run.scrip == scrip0 and Run.soldiers[0].hp == 9 and Run.soldiers[0].deck.size() == deck0 and Run.history.size() == hist0, "everything the range touched is put back (scrip %d, HP %d, deck %d)" % [Run.scrip, Run.soldiers[0].hp, Run.soldiers[0].deck.size()])
+	await shot("field_back")
 
 func hub() -> void:
 	## The HQ hub: buildings with one job each, a nav strip between them, ready badges, the

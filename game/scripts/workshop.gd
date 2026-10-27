@@ -93,6 +93,7 @@ func build() -> void:
 	bar = HubUI.SquadBar.new()
 	bar.position = BAR
 	bar.picked.connect(on_pick)
+	bar.all_decks.connect(func(): open_dossier(0, "", null, "", "squad"))
 	if picking != "":
 		bar.pickable = []
 		for i in Run.soldiers.size():
@@ -161,10 +162,11 @@ func on_pick(i: int) -> void:
 	picking = ""
 	open_dossier(i, filt)
 
-func open_dossier(i: int, filt := "", sel = null, preview := "") -> void:
+func open_dossier(i: int, filt := "", sel = null, preview := "", tb := "deck") -> void:
 	Sfx.play("click")
 	var d: Control = DossierScript.new()
 	d.idx = i
+	d.tab = tb
 	d.filt = filt
 	d.sel = sel
 	d.done.connect(func(): build())

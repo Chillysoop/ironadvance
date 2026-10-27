@@ -20,7 +20,7 @@ const PER_PAGE := 14
 const SLOTS := ["weapon", "armor", "kit1", "kit2"]
 
 var idx := 0
-var tab := "deck"            # sheet, gear or deck
+var tab := "deck"            # sheet, gear, deck, or squad (all four decks side by side)
 var readonly := false        # opened from the field: look, don't touch
 var sel = null               # the selected card (deck tab)
 var page := 0
@@ -80,15 +80,20 @@ func _input(ev: InputEvent) -> void:
 			cycle(-1)
 		KEY_E, KEY_RIGHT:
 			cycle(1)
+		KEY_T:
+			if readonly or not s().alive or tab == "squad":
+				return
+			practice()
 		KEY_1, KEY_2, KEY_3, KEY_4:
 			var k: int = ev.keycode - KEY_1
 			if k < Run.soldiers.size():
 				switch_to(k)
 		KEY_TAB:
-			var tabs := ["sheet", "gear", "deck"]
-			set_tab(tabs[(tabs.find(tab) + 1) % 3])
+			var tabs := ["sheet", "gear", "deck", "squad"]
+			set_tab(tabs[(tabs.find(tab) + 1) % tabs.size()])
 		_:
-			return
+			if not readonly:  # in the field, keys must not reach the battle underneath
+				return
 	get_viewport().set_input_as_handled()
 
 # ---------------------------------------------------------------- layout
@@ -98,16 +103,21 @@ func build() -> void:
 	modal = null
 	var bar := HubUI.SquadBar.new()
 	bar.position = Vector2(16, 44)
-	bar.current = idx
-	bar.picked.connect(switch_to)
+	bar.current = 4 if tab == "squad" else idx
+	bar.picked.connect(func(i):
+		if tab == "squad":
+			tab = "deck"
+			idx = -1
+		switch_to(i))
+	bar.all_decks.connect(func(): set_tab("squad"))
 	add_child(bar)
-	var tabs := [["SHEET", "sheet"], ["GEAR", "gear"], ["DECK %d" % s().deck.size(), "deck"]]
+	var tabs := [["SHEET", "sheet"], ["GEAR", "gear"], ["DECK %d" % s().deck.size(), "deck"], ["ALL DECKS", "squad"]]
 	for i in tabs.size():
 		var bt := HudScript.PixButton.new()
 		bt.text = tabs[i][0]
 		bt.color = Color("ffd23a") if tab == tabs[i][1] else Color("6c7480")
 		bt.size = Vector2(96, 24)
-		bt.position = Vector2(MID.position.x + i * 102, MID.position.y)
+		bt.position = Vector2((MID.position.x if tab != "squad" else LEFT.position.x) + i * 102, MID.position.y)
 		var tb: String = tabs[i][1]
 		bt.pressed.connect(func(): set_tab(tb))
 		add_child(bt)
@@ -119,11 +129,27 @@ func build() -> void:
 	back.position = Vector2(RIGHT.position.x, RIGHT.end.y - 40)
 	back.pressed.connect(func(): Sfx.play("click"); done.emit())
 	add_child(back)
+	if not readonly and s().alive and tab != "squad":
+		# D5: a free round at the practice range with this soldier's deck as it stands
+		var pr := HudScript.PixButton.new()
+		pr.text = "PRACTICE RANGE"
+		pr.sub = "T"
+		pr.color = Color("62d26f")
+		pr.size = Vector2(RIGHT.size.x, 30)
+		pr.position = Vector2(RIGHT.position.x, RIGHT.end.y - 84)
+		pr.pressed.connect(practice)
+		add_child(pr)
 	match tab:
 		"deck":
 			build_deck()
 		"gear":
 			build_gear()
+
+func practice() -> void:
+	var m := get_tree().current_scene
+	if m != null and m.has_method("start_practice"):
+		Sfx.play("start")
+		m.start_practice(idx)
 
 func small_btn(label: String, x: float, y: float, on: bool, fn: Callable, w := -1.0) -> float:
 	var bt := HudScript.PixButton.new()
@@ -555,6 +581,9 @@ func _draw() -> void:
 	var sc := "%d SCRIP" % Run.scrip
 	draw_texture_rect(Art.tex.ic_coin, Rect2(944 - Art.text_width(sc, 16) - 22, 16, 16, 16), false)
 	Art.text(self, sc, Vector2(944, 32), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
+	if tab == "squad":
+		draw_squad()
+		return
 	draw_left(me)
 	draw_right(me)
 	match tab:
@@ -679,7 +708,7 @@ func draw_right(me: Dictionary) -> void:
 	head("CHAINS", Vector2(x, y))
 	y += 14
 	for ch in chains():
-		if y > RIGHT.end.y - 70:
+		if y > RIGHT.end.y - (110 if not readonly else 70):
 			break
 		var ready: bool = ch.need.is_empty()
 		Art.text(self, ch.name, Vector2(x, y), 8, Color("b48cff") if ready else Color("6c7480"))
@@ -785,3 +814,83 @@ func draw_gear(me: Dictionary) -> void:
 				break
 			Art.text(self, ln[0], Vector2(cx, cy), 16, Color("62d26f") if ln[1] else Color("e8a070"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 			cy += 12
+
+# ---------------------------------------------------------------- all decks (D3)
+const SQUAD := Rect2(16, 122, 928, 362)
+
+func squad_col(i: int) -> Rect2:
+	var w := (SQUAD.size.x - 3 * 8) / 4.0
+	return Rect2(SQUAD.position.x + i * (w + 8), SQUAD.position.y, w, SQUAD.size.y)
+
+func deck_rows(me: Dictionary) -> Array:
+	## The deck as a compact list: one row per card and rarity, copies counted.
+	var rows := {}
+	for c in me.deck:
+		var k := "%s:%d:%s" % [c.key, Data.tier_of(c), ",".join(c.get("mods", []))]
+		if not rows.has(k):
+			rows[k] = {"c": c, "n": 0}
+		rows[k].n += 1
+	var out: Array = rows.values()
+	out.sort_custom(func(a, b):
+		var ca := Data.card(a.c)
+		var cb := Data.card(b.c)
+		if int(ca.cost) != int(cb.cost):
+			return int(ca.cost) < int(cb.cost)
+		return ca.name < cb.name)
+	return out
+
+func _gui_input(ev: InputEvent) -> void:
+	if tab == "squad" and ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+		for i in Run.soldiers.size():
+			if squad_col(i).has_point(ev.position):
+				accept_event()
+				tab = "deck"
+				idx = -1
+				switch_to(i)
+				return
+
+func draw_squad() -> void:
+	Art.text(self, "Every deck at once. Click a soldier to open their deck.", Vector2(SQUAD.position.x + 420, MID.position.y + 16), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+	for i in Run.soldiers.size():
+		var me: Dictionary = Run.soldiers[i]
+		var r := squad_col(i)
+		panel(r)
+		var x := r.position.x + 8
+		var y := r.position.y + 16
+		Art.text(self, me.def.name, Vector2(x, y), 8, Color.WHITE if me.alive else Color("8a7a7a"))
+		Art.text(self, "%d CARDS" % me.deck.size(), Vector2(r.end.x - 8, y), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
+		if not me.alive:
+			Art.text(self, "KILLED IN ACTION", Vector2(x, y + 16), 8, Color("ff4d3d"))
+			continue
+		var cost := 0.0
+		for c in me.deck:
+			cost += int(Data.card(c).cost)
+		Art.text(self, "%s   AVG COST %.1f" % [me.def.cls.to_upper(), cost / maxf(1.0, me.deck.size())], Vector2(x, y + 12), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		y += 30
+		var rows := deck_rows(me)
+		var max_rows := 19
+		for k in mini(rows.size(), max_rows):
+			var row: Dictionary = rows[k]
+			var cd := Data.card(row.c)
+			var tc := Data.tier_color(Data.tier_of(row.c))
+			draw_rect(Rect2(x, y - 8, 4, 9), tc)
+			Art.text(self, str(int(cd.cost)), Vector2(x + 8, y), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			var nm: String = ("%dx " % row.n if row.n > 1 else "") + cd.name + (" +" if row.c.get("mods", []).size() else "")
+			Art.text(self, nm, Vector2(x + 20, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			Art.text(self, cd.type, Vector2(r.end.x - 8, y), 16, Data.TYPES[cd.type].c, HORIZONTAL_ALIGNMENT_RIGHT, 0, true)
+			y += 12
+		if rows.size() > max_rows:
+			Art.text(self, "+%d more" % (rows.size() - max_rows), Vector2(x + 20, y), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		# what the deck is building toward: its Overdrive and duo partners
+		var fy := r.end.y - 50
+		draw_line(Vector2(x, fy - 12), Vector2(r.end.x - 8, fy - 12), Color("4a505a"), 1.0)
+		Art.text(self, "OVERDRIVE", Vector2(x, fy), 8, Color("ffb23e"))
+		Art.text(self, Data.CARDS[Run.od_key(me)].name, Vector2(x, fy + 12), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		var duos: Array = []
+		for d in Data.DUOS:
+			if d.pair.has(me.key):
+				var other: String = d.pair[0] if d.pair[1] == me.key else d.pair[1]
+				if Run.soldier(other).get("alive", false):
+					duos.append(Run.soldier(other).def.name)
+		Art.text(self, "DUOS", Vector2(x, fy + 28), 8, Color("b48cff"))
+		Art.text(self, ", ".join(duos) if duos.size() else "none in the squad", Vector2(x + 40, fy + 28), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
