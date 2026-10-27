@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
+## Scenarios: title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -628,6 +628,38 @@ func run() -> void:
 				print("[levels] mission ", m, " width ", b.world_w, " structs ", b.T.structs.map(func(s): return s.t), " ladders ", b.T.ladders.size(), " mines ", b.units.filter(func(u): return u.kind == "mine").size())
 		"hazards":
 			await hazards()
+		"ghost":
+			# an armed card ghosts the hand; a Jackal lying behind the cards can still be clicked
+			Run.new_run()
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			var u: Unit = b.sel
+			var e := nearest_enemy(b, u)
+			e.x = b.cam_x + 480; e.y = 500.0; e.air = false; e.vy = 0
+			var hp0 := e.hp
+			b.select_card(force_card(u, "rifle"))
+			var sp := Vector2(480, e.y - 6)
+			var vp := get_viewport()
+			var k: float = vp.get_visible_rect().size.x / 960.0
+			vp.warp_mouse(sp * k)
+			var mv := InputEventMouseMotion.new(); mv.position = sp * k; mv.global_position = sp * k
+			Input.parse_input_event(mv)
+			await frames_wait(20)
+			Input.parse_input_event(mv)
+			await frames_wait(2)
+			await shot("ghost_aim")
+			check(main.hud.hand_box.modulate.a < 0.6, "the hand fades while a card is armed (alpha %.2f)" % main.hud.hand_box.modulate.a)
+			check(main.hud.cards.all(func(cv): return cv.mouse_filter == Control.MOUSE_FILTER_IGNORE), "over a unit the hand lets clicks through")
+			var cl := InputEventMouseButton.new(); cl.button_index = MOUSE_BUTTON_LEFT; cl.pressed = true; cl.position = sp * k; cl.global_position = sp * k
+			Input.parse_input_event(cl)
+			var up := cl.duplicate(); up.pressed = false
+			Input.parse_input_event(up)
+			await frames_wait(4)
+			check(b.card_idx == -1 and b.busy or e.hp < hp0, "clicking the Jackal behind the hand fires at it (card %d busy %s hp %d->%d)" % [b.card_idx, b.busy, hp0, e.hp])
+			await until(func(): return not b.busy)
+			await frames_wait(10)
+			check(main.hud.hand_box.modulate.a > 0.9, "the hand comes back after the shot (alpha %.2f)" % main.hud.hand_box.modulate.a)
+			await shot("ghost_after")
 		"tags":
 			await tags()
 		"gate":
@@ -1271,6 +1303,13 @@ func soldat() -> void:
 	var mid: float = (cw.x0 + cw.x1) / 2.0
 	cam_on(b, mid)
 	check(b.T.mat(mid, top + 1) == Terrain.GRATE, "the catwalk deck is steel grating")
+	for L in b.T.ladders:
+		if absf(L.x - cw.x0) < 20:
+			var lx: float = L.x - 80
+			var ly: float = (L.top + L.bot) / 2.0
+			var lt := b.trace_bullet(lx, ly, 0.0, 160, 0, null, false)
+			check(lt.end == null or lt.end.x > L.x + 24, "a bullet passes through the catwalk ladder (stopped at dx %s)" % ("none" if lt.end == null else str(int(lt.end.x - L.x))))
+			check(b.sim_arc(L.x - 60, L.top - 30, 3.0, 0.0, 0, 30).x > L.x + 20, "a grenade flies through the catwalk ladder")
 	var up := b.mk_enemy("grunt", cw.x0 + 150, top)
 	b.units.append(up)
 	ground_unit(b, s, cw.x0 + 120, top + 8)

@@ -15,6 +15,7 @@ var label_top := ""          # small caption above the card (e.g. "TO MOSS'S DEC
 var price := -1
 var hotkey := ""
 var hover := false
+var ghost := false           # hand only: a card is armed, so the hand sinks out of the way of the aim
 var lift := 0.0
 var base_y := 0.0
 var chain := ""              # signature chain this card would complete right now (hand only)
@@ -42,6 +43,8 @@ func _process(_d: float) -> void:
 		var target := -60.0 if (hover or selected) and not disabled else (-10.0 if hover else (14.0 if disabled else 0.0))
 		if selected:
 			target = -64.0
+		if ghost:
+			target = 0.0 if selected else 30.0
 		lift = lerpf(lift, target, 0.3)
 		position.y = base_y + roundf(lift)
 	queue_redraw()
