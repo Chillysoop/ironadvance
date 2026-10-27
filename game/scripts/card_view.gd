@@ -234,6 +234,14 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 				draw_rect(Rect2(c.x - 4, c.y - 4, 3, 3), Color(1, 1, 1, 0.5))
 				return
 			"LINE":
+				if cd.get("drill", false):
+					draw_colored_polygon(PackedVector2Array([Vector2(c.x - 6, c.y - 8), Vector2(c.x + 14, c.y), Vector2(c.x - 6, c.y + 8)]), INK)
+					draw_colored_polygon(PackedVector2Array([Vector2(c.x - 5, c.y - 6), Vector2(c.x + 11, c.y), Vector2(c.x - 5, c.y + 6)]), Color("a9b0b6").darkened(0.5 if dim else 0.0))
+					for k in 3:
+						draw_line(Vector2(c.x - 2 + k * 5, c.y - 5 + k * 1.6), Vector2(c.x + 1 + k * 5, c.y + 5 - k * 1.6), INK, 1.0)
+					draw_rect(Rect2(c.x - 15, c.y - 5, 10, 10), INK)
+					draw_rect(Rect2(c.x - 14, c.y - 4, 8, 8), Color("ffb23e").darkened(0.5 if dim else 0.0))
+					return
 				if cd.get("grapple", false) or cd.get("jump", false) or cd.get("rush", false):
 					icon = "ic_boot" if not cd.get("grapple", false) else "ic_up"
 				else:

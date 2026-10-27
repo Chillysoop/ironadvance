@@ -65,6 +65,8 @@ const CARDS := {
 	"grapple": {"name": "Grapple Hook", "type": "LINE", "cost": 1, "grapple": true, "range": 280, "text": "Zip onto a ledge or roof in reach.", "rarity": 1, "up": {"range": 400}},
 	# every soldier carries Hop: it is handed out each turn and never sits in a deck
 	"hop": {"name": "Hop", "type": "LINE", "cost": 1, "jump": true, "jpow": 0.62, "hop": true, "pool": false, "text": "Everyone has one. Jump a short gap or up a wall about head high. Uses the rest of your movement.", "rarity": 0},
+	# every soldier starts with one Drill in the deck; once it's spent it waits for the next draw
+	"drill": {"name": "Drill", "type": "LINE", "cost": 0, "drill": true, "reach": 0, "pool": false, "text": "Bore through any terrain toward the cursor. Uses movement as you go. Click to stop early.", "rarity": 0, "up": {"reach": 60}},
 	"jumppack": {"name": "Jump Pack", "type": "LINE", "cost": 1, "jump": true, "jpow": 1.0, "text": "Launch yourself in an arc. Lands soft. Counts as a push.", "rarity": 1, "up": {"jpow": 1.3}},
 	"knife": {"name": "Knife", "type": "MELEE", "cost": 1, "dmg": [8, 10], "range": 38, "knock": 6, "text": "Never misses. Kicks them away.", "rarity": 0, "up": {"dmg": [11, 13]}},
 	"medkit": {"name": "Field Dressing", "type": "ALLY", "cost": 1, "heal": 9, "range": 110, "text": "Patch up a squadmate.", "rarity": 0, "up": {"heal": 13}},
@@ -307,19 +309,19 @@ const RECRUIT_TRAITS := [
 
 const SQUAD_DEFS := [
 	{"key": "moss", "name": "MOSS", "cls": "Marksman", "hp": 22, "dodge": 10, "spd": 180,
-	 "deck": ["snipe", "snipe", "rifle", "rifle", "pistol", "overwatch", "digin", "dash"],
+	 "deck": ["snipe", "snipe", "rifle", "rifle", "pistol", "overwatch", "digin", "dash", "drill"],
 	 "pool": ["snipe", "rifle", "pistol", "burst", "overwatch", "digin", "dash", "grapple", "hmg", "adrenal", "tagshot", "bankshot", "holdbreath", "fanhammer", "quickdraw"],
 	 "trait": ["Eagle Eye", "Headshots deal 2x damage instead of 1.5x."], "bio": "Former game warden. Counts every round twice."},
 	{"key": "hex", "name": "HEX", "cls": "Field Medic", "hp": 24, "dodge": 14, "spd": 210,
-	 "deck": ["medkit", "medkit", "stim", "pistol", "pistol", "smoke", "sprint", "frag"],
+	 "deck": ["medkit", "medkit", "stim", "pistol", "pistol", "smoke", "sprint", "frag", "drill"],
 	 "pool": ["medkit", "stim", "smoke", "pistol", "sprint", "rally", "frag", "adrenal", "digin", "shotgun", "gasnade", "hotshot", "flashbang", "dartpistol", "defib"],
 	 "trait": ["Bedside Manner", "Heals restore +3 HP."], "bio": "Patched up three wars. Still hates the sight of blood."},
 	{"key": "vee", "name": "VEE", "cls": "Demolitions", "hp": 27, "dodge": 6, "spd": 185,
-	 "deck": ["frag", "frag", "bazooka", "bazooka", "mortar", "pistol", "jumppack", "sprint"],
+	 "deck": ["frag", "frag", "bazooka", "bazooka", "mortar", "pistol", "jumppack", "sprint", "drill"],
 	 "pool": ["frag", "mortar", "bazooka", "rocket", "clusterfrag", "beacon", "jumppack", "shotgun", "smoke", "gasnade", "rocketjump", "molotov", "shapedcharge"],
 	 "trait": ["Pyromaniac", "Explosions deal +3 damage. Her own blasts hurt her for 40%."], "bio": "Measures distance in fuse-seconds."},
 	{"key": "rook", "name": "ROOK", "cls": "Vanguard", "hp": 32, "dodge": 8, "spd": 200,
-	 "deck": ["rifle", "rifle", "rifle", "burst", "sprint", "knife", "frag", "grapple"],
+	 "deck": ["rifle", "rifle", "rifle", "burst", "sprint", "knife", "frag", "grapple", "drill"],
 	 "pool": ["rifle", "burst", "shotgun", "hmg", "knife", "digin", "grapple", "sprint", "rally", "adrenal", "tagshot", "haymaker", "taunt", "suppress"],
 	 "trait": ["Thick Skull", "Takes half damage from falls, slams and crushing debris."], "bio": "First through every door. Usually the wrong one."},
 ]
@@ -842,7 +844,7 @@ func card(inst) -> Dictionary:
 				base.dmg = [base.dmg[0] + 2, base.dmg[1] + 2]
 			else:
 				base.dmg += 3
-		for k in [["heal", 3], ["armor", 3], ["move", 40], ["rally", 30], ["adrenal", 10]]:
+		for k in [["heal", 3], ["armor", 3], ["move", 40], ["reach", 40], ["rally", 30], ["adrenal", 10]]:
 			if base.has(k[0]):
 				base[k[0]] += k[1]
 		if base.has("radius"):

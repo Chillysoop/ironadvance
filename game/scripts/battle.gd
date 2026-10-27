@@ -496,7 +496,7 @@ func settled() -> bool:
 	for u in units:
 		if u.sunk or u.gone:
 			continue
-		if u.walk != null or u.zip != null or (u.air and not u.para):
+		if u.walk != null or u.zip != null or u.drill != null or (u.air and not u.para):
 			return false
 	return true
 
@@ -1963,6 +1963,13 @@ func commit_aim(p: Vector2) -> void:
 				return
 			resolve(func(): await _act_grapple(u, idx, gs))
 			return
+		if c.get("drill", false):
+			if u.move_left + c.get("reach", 0) < 4:
+				float_text(u, "NO MOVE LEFT", Color("ff7a3d"))
+				Sfx.play("deny")
+				return
+			resolve(func(): await _act_drill(u, idx, c, p))
+			return
 		if c.get("jump", false):
 			if c.get("hop", false) and u.move_left < 1:
 				float_text(u, "NO MOVE LEFT", Color("ff7a3d"))
@@ -2105,6 +2112,132 @@ func _act_jump(u: Unit, idx: int, p: Vector2) -> void:
 		Sfx.play("toss")
 	await until(func(): return not u.air or u.dead)
 	u.moved = true
+
+const DRILL_SPEED := 2.0
+const DRILL_R := 11.0
+
+func drill_dir(u: Unit, p: Vector2) -> Vector2:
+	## Toward the cursor, from straight across down to straight down; never steeper up than 45 degrees.
+	var dx := p.x - u.x
+	var face := 1.0 if dx >= 0 else -1.0
+	var a := clampf(atan2(p.y - (u.y - u.h / 2.0), absf(dx)), -PI / 4.0, PI / 2.0)
+	return Vector2(cos(a) * face, sin(a))
+
+func drill_len(u: Unit, c: Dictionary, p: Vector2) -> float:
+	## How far this drill goes: out to the cursor along the bore line, as far as movement allows.
+	var d := drill_dir(u, p)
+	var want := maxf(8.0, (p - Vector2(u.x, u.y - u.h / 2.0)).dot(d))
+	return minf(want, u.move_left + c.get("reach", 0))
+
+func drill_face(u: Unit, x: float, y: float, d: Vector2) -> bool:
+	## Is there terrain right in front of the drill bit at a body standing at (x, y)?
+	for k in [4.0, 12.0, 20.0, 28.0]:
+		if T.solid(x + d.x * DRILL_R, y - k + d.y * DRILL_R):
+			return true
+	return false
+
+func drill_step(u: Unit, D: Dictionary):
+	## The next spot on the drill's line, or null where it has to stop: out of movement, the edge of
+	## the screen, the waterline, an enemy in the way, or open air with nothing under the boots.
+	## Squadmates are passed by, the way walking passes them.
+	if D.stop or D.left < 0.5:
+		return null
+	var sp := minf(DRILL_SPEED, D.left)
+	var nx: float = u.x + D.dx * sp
+	var ny: float = u.y + D.dy * sp
+	if nx < cam_x + 8 or nx > cam_x + W - 8 or ny < u.h + 6 or ny > WATER_Y - 4:
+		return null
+	for o in units:
+		if o != u and not o.dead and not o.gone and o.team == "enemy" and absf(o.x - nx) < (o.w + u.w) / 2.0 - 2 and ny > o.y - o.h and ny - u.h < o.y:
+			return null
+	var d := Vector2(D.dx, D.dy)
+	if not drill_face(u, nx, ny, d) and not T.solid(nx, ny + 2):
+		# nothing to bore and nothing underfoot: step down a slope like walking would
+		var sy = T.stand_y(nx, ny)
+		if sy != null and sy - ny <= 12:
+			return Vector2(nx, sy)
+		D.air += 1
+		if D.air > 3:
+			return null
+	else:
+		D.air = 0
+	return Vector2(nx, ny)
+
+func sim_drill(u: Unit, d: Vector2, budget: float) -> Dictionary:
+	## The aim preview: where the drill stops on untouched terrain.
+	var D := {"dx": d.x, "dy": d.y, "left": budget, "stop": false, "air": 0}
+	var save := Vector2(u.x, u.y)
+	var pts: Array = []
+	while true:
+		var nxt = drill_step(u, D)
+		if nxt == null:
+			break
+		D.left -= DRILL_SPEED
+		u.x = nxt.x; u.y = nxt.y
+		pts.append(Vector2(u.x, u.y))
+	var end := Vector2(u.x, u.y)
+	u.x = save.x; u.y = save.y
+	return {"x": end.x, "y": end.y, "pts": pts, "water": false, "fall": 0}
+
+func drill_tick(u: Unit) -> void:
+	var D: Dictionary = u.drill
+	var nxt = drill_step(u, D)
+	if nxt == null or u.dead:
+		u.drill = null
+		T.check_floating(u.x, u.y - u.h / 2.0, u.h + 8, u)
+		T.check_bridges(u)
+		return
+	D.left -= DRILL_SPEED
+	D.n += 1
+	u.x = nxt.x; u.y = nxt.y
+	u.face = 1 if D.dx >= 0 else -1
+	u.anim += 1
+	var oy: float = maxf(0.0, D.dy) * 3.0
+	if T.bore(u.x + D.dx * 3, u.y + oy - DRILL_R + 1, u.y + oy - u.h + DRILL_R - 2, DRILL_R):
+		var tip := Vector2(u.x + D.dx * (DRILL_R + 4), u.y - u.h / 2.0 + D.dy * DRILL_R)
+		if t % 3 == 0:
+			sparks(tip.x, tip.y, 2)
+		if t % 4 == 0:
+			dust(tip.x, tip.y, Color("c9b38a"), 2)
+		if D.n % 6 == 0:
+			T.check_floating(u.x, u.y - u.h / 2.0, u.h + 8, u)
+			T.check_bridges(u)
+	if D.n % 9 == 0:
+		Sfx.play("mg", -14)
+	shake = maxf(shake, 1.2)
+
+func _act_drill(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
+	## Worms' drill: bore toward the cursor through dirt, wood, stone and steel alike until the
+	## movement runs out or the player clicks to stop. Spent once; it comes back on a later draw.
+	spend_card(u, idx, c)
+	var reach: float = c.get("reach", 0)
+	var budget := drill_len(u, c, p)
+	var d := drill_dir(u, p)
+	u.walk = null
+	u.vx = 0; u.vy = 0; u.air = false
+	u.face = 1 if d.x >= 0 else -1
+	u.drill = {"dx": d.x, "dy": d.y, "left": budget, "stop": false, "air": 0, "n": 0}
+	var D: Dictionary = u.drill
+	Sfx.play("power", -6)
+	float_text(u, "DRILLING  CLICK TO STOP", Color("ffd23a"))
+	await until(func(): return u.drill == null or u.dead)
+	u.drill = null
+	var used: float = budget - maxf(0.0, D.left)
+	u.move_left = maxf(0.0, u.move_left - maxf(0.0, used - reach))
+	u.moved = true
+	stats["drilled"] = stats.get("drilled", 0) + int(used)
+	if not u.dead and not T.solid(u.x, u.y + 1):
+		u.air = true
+	await until(func(): return not u.air or u.dead)
+	await check_push(u)
+
+func stop_drill() -> bool:
+	## Click (or SPACE/ESC) while drilling: stop where you are.
+	for u in units:
+		if u.drill != null:
+			u.drill.stop = true
+			return true
+	return false
 
 func jet_accel(from: Vector2, to: Vector2) -> Vector2:
 	var d := to - from
@@ -4320,6 +4453,9 @@ func step() -> void:
 				Sfx.play("coin")
 				drop_loot(u.x, u.y - 4, {"type": "item", "item": Run.roll_item(1)})
 			continue
+		if u.drill != null:
+			drill_tick(u)
+			continue
 		if u.zip != null:
 			var z: Dictionary = u.zip
 			z.t += 1.0 / 20.0
@@ -4802,6 +4938,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 		jet_hold = false
 	elif ev is InputEventMouseButton and ev.pressed:
 		mouse = get_global_mouse_position()
+		if busy and stop_drill():
+			return
 		if ev.button_index == MOUSE_BUTTON_LEFT:
 			if jet_armed and state == "player" and not busy and sel != null and not sel.dead:
 				start_jet(sel)
@@ -4817,6 +4955,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 			inspect = ev.pressed
 			return
 		if not ev.pressed or ev.echo:
+			return
+		if busy and ev.keycode in [KEY_SPACE, KEY_ESCAPE, KEY_ENTER] and stop_drill():
 			return
 		if ev.keycode == KEY_ESCAPE:
 			cancel_card()
