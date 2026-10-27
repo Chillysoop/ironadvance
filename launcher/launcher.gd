@@ -8,7 +8,7 @@ extends Control
 ## The launcher is the Godot runtime plus this small boot pack, so it only needs
 ## replacing when the engine version changes (the manifest's "engine" field says so).
 
-const DEFAULT_MANIFEST := "https://github.com/chillysoopgood/ironadvance/releases/latest/download/latest.json"
+const DEFAULT_MANIFEST := "https://github.com/Chillysoop/ironadvance/releases/latest/download/latest.json"
 const PACK_PREFIX := "IronAdvance-"
 
 var manifest_url := DEFAULT_MANIFEST
