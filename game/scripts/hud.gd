@@ -590,10 +590,10 @@ class Overlay extends Control:
 			var key := "ui_bulb_off"
 			if on:
 				key = "ui_bulb_g" if i < 3 else ("ui_bulb_y" if i < 6 else "ui_bulb_r")
-			var flick := on and i == b.alert - 1 and b.rounds_since_scroll >= 2 and b.t % 20 < 10
+			var flick := on and i == b.alert - 1 and b.stalled() and b.t % 20 < 10
 			draw_texture_rect(Art.tex[key], Rect2(ax + i * 20, 6 if not flick else 5, 20, 24), false)
 		var info_x := ax + 206
-		if b.rounds_since_scroll >= 2 and b.state != "title":
+		if b.stalled() and b.state != "title":
 			Art.text(self, "STALLED!", Vector2(info_x, 15), 8, Color("ff4d3d") if b.t % 40 < 20 else Color("ff7a3d"))
 		if b.radio_t != null and b.state != "title":
 			draw_texture_rect(Art.tex.ic_radio, Rect2(info_x, 18, 10, 10), false)

@@ -2,7 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad),
+## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -728,6 +728,8 @@ func run() -> void:
 			await playtest()
 		"pinball":
 			await pinball()
+		"tuning":
+			await tuning()
 		"trailer":
 			await preload("res://tools/trailer.gd").new().run(self, clip_arg)
 		"campaign":
@@ -2525,7 +2527,7 @@ func hq_upgrades() -> void:
 func detours() -> void:
 	## Step 5: the mid-level camp offers 3 detours, each paying in its own currency.
 	var lv := Run.make_level("jungle", 0)
-	check(lv.detours.size() == 3 and lv.segments[4] == "yard" and lv.segments[3] == "camp", "a level has a yard after the mid camp and 3 detour offers")
+	check(lv.detours.size() == 3 and lv.segments[3] == "yard" and lv.segments[2] == "camp", "a level has a yard after the mid camp and 3 detour offers")
 	Run.new_run()
 	Run.meta.salvage = 0
 	Run.meta.bio = 0
@@ -2627,7 +2629,7 @@ func biomes() -> void:
 	## biome's rules are real: sway, sight, wind, hills, wet ground, fuel, mines, elites.
 	for id in Data.BIOMES:
 		var lv := Run.make_level(id, 0)
-		check(lv.segments.size() == 9 and lv.segments.count("camp") == 2 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)), "%s builds a full level" % id)
+		check(lv.segments.size() == 7 and lv.segments.count("camp") == 2 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)), "%s builds a full level" % id)
 	for i in Data.LEVELS.size():
 		check(Data.LEVELS[i].pool.size() >= 6 and Data.LEVELS[i].pool.all(func(k): return Data.BIOMES.has(k)), "level %d has a pool of 6+ biomes" % (i + 1))
 	# a whole run of dials: never a repeat, never a burned biome
@@ -3166,3 +3168,66 @@ func pinball() -> void:
 		print("[pinball] gap ", gap, " squad hp lost ", hp0 - hp1, " per soldier ", sq.map(func(x): return x.hp))
 		main.clear()
 		await frames_wait(5)
+
+func tuning() -> void:
+	## The playtest tuning: one bonk per pair of squadmates per blast, a slower stall clock, shorter levels, one Shield per drop.
+	# a blast beside a bunched squad no longer chains into a pile of bonks
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	var sq := b.squad()
+	for i in sq.size():
+		ground_unit(b, sq[i], 200 + i * 16.0)
+	await frames_wait(5)
+	var hp0: int = sq.reduce(func(a, x): return a + x.hp, 0)
+	b.explode(180, sq[0].y - 6, 40, 10, null)
+	await frames_wait(200)
+	var lost: int = hp0 - sq.reduce(func(a, x): return a + x.hp, 0)
+	check(lost <= 22, "a 10-damage blast beside a bunched squad costs %d HP (was 29)" % lost)
+	main.clear()
+	await frames_wait(5)
+	# alert holds for two quiet rounds and climbs on the third
+	Run.new_run()
+	b = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	var alerts: Array = []
+	for r in 3:
+		b.end_turn(true)
+		await until(func(): return b.state == "player" and not b.busy)
+		alerts.append(b.alert)
+	check(alerts[0] == 0 and alerts[1] == 0 and alerts[2] == 1, "alert starts climbing on the third round without a scroll %s" % [alerts])
+	main.clear()
+	await frames_wait(5)
+	# levels are seven segments: start, stretch, camp, yard, stretch, camp, boss
+	var lv := Run.make_level("desert", 1)
+	check(lv.segments.size() == 7 and lv.segments[2] == "camp" and lv.segments[3] == "yard" and lv.segments[5] == "camp", "a level is seven segments %s" % [lv.segments])
+	# paradrops bring at most one Shield
+	Run.new_run()
+	Run.level = Run.make_level("fortress", 2)
+	b = main.start_battle(2, Run.current_mission())
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 16.0
+	var worst := 0
+	for r in 8:
+		for o in b.units:
+			if o.team == "enemy" and o.para:
+				o.dead = true; o.gone = true
+		for s in b.squad_alive():
+			s.hp = s.max_hp
+		b.alert = 9
+		b.rounds_since_scroll = 9
+		b.strikes = []
+		var before := b.units.size()
+		b.end_turn(true)
+		await until(func(): return (b.state == "player" and not b.busy) or b.state == "over")
+		if b.state == "over":
+			break
+		var drop: Array = b.units.slice(before).filter(func(o): return o.para)
+		worst = maxi(worst, drop.filter(func(o): return o.type == "shield").size())
+	check(worst <= 1, "a paradrop brings at most one Shield (most seen %d)" % worst)

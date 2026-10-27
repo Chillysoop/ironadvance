@@ -118,12 +118,12 @@ func pick_biome(id: String) -> void:
 	dial_rerolled = false
 
 func make_level(id: String, tier: int, breach := false) -> Dictionary:
-	## One continuous level: a start, two stretches, a camp, two more stretches, a camp, the boss.
+	## One continuous level: a start, a stretch, a camp, the detour yard, a stretch, a camp, the boss.
 	var bm: Dictionary = Data.BIOMES[id]
 	var lv: Dictionary = Data.LEVELS[mini(tier, Data.LEVELS.size() - 1)]
 	var pool: Array = bm.segments.duplicate()
 	pool.shuffle()
-	while pool.size() < 4:
+	while pool.size() < 2:
 		pool.append(bm.segments[randi() % bm.segments.size()])
 	var detours: Array = Data.DETOURS.keys()
 	detours.shuffle()
@@ -133,7 +133,7 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	if tier >= 1 and (id == "desert" or id == "mountain"):
 		enc = "queen"  # Q2: the Burrow Queen owns the sand and the scree
 	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "breach": breach, "encounter": enc,
-		"segments": ["start", pool[0], pool[1], "camp", "yard", pool[2], pool[3], "camp", bm.get("arena", "arena")],
+		"segments": ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")],
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
 
 func start_finale() -> void:
