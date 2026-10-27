@@ -16,6 +16,7 @@ var arrived := false        # true when the squad just stepped out of the gate
 var t := 0
 var sub: Control = null     # the building screen that is open, if any
 var memorial_open := false
+var upgrades_open := false
 var held := {}              # textures must stay referenced until the frame renders
 
 func _ready() -> void:
@@ -52,6 +53,52 @@ func build() -> void:
 	go.position = Vector2(370, 486)
 	go.pressed.connect(func(): Sfx.play("start"); dial.emit())
 	add_child(go)
+	var up := HudScript.PixButton.new()
+	up.text = "UPGRADE HQ"
+	up.sub = "%d SALVAGE" % int(Run.meta.get("salvage", 0))
+	up.color = Color("53d4e2")
+	up.small = true
+	up.size = Vector2(170, 44)
+	up.position = Vector2(40, 486)
+	up.pressed.connect(open_upgrades)
+	add_child(up)
+
+func open_upgrades() -> void:
+	## The HQ upgrade board: each building's next rank, bought with Salvage.
+	Sfx.play("click")
+	upgrades_open = true
+	for c in get_children():
+		c.queue_free()
+	sub = null
+	for i in Data.HQ_BUILDINGS.size():
+		var B: Dictionary = Data.HQ_BUILDINGS[i]
+		var r := Run.hq(B.id)
+		var bt := HudScript.PixButton.new()
+		bt.small = true
+		bt.size = Vector2(170, 30)
+		bt.position = Vector2(750, 112 + i * 62)
+		if r >= Data.HQ_COST.size():
+			bt.text = "FULLY BUILT"
+			bt.disabled = true
+		else:
+			bt.text = "BUILD  %d SALVAGE" % Data.HQ_COST[r]
+			bt.color = Color("53d4e2")
+			bt.disabled = int(Run.meta.get("salvage", 0)) < Data.HQ_COST[r]
+		var id: String = B.id
+		bt.pressed.connect(func():
+			if Run.hq_upgrade(id):
+				Sfx.play("power")
+				open_upgrades()
+			else:
+				Sfx.play("deny"))
+		add_child(bt)
+	var close := HudScript.PixButton.new()
+	close.text = "BACK TO HQ"
+	close.color = Color("9aa2ae")
+	close.size = Vector2(150, 30)
+	close.position = Vector2(405, 494)
+	close.pressed.connect(func(): upgrades_open = false; build())
+	add_child(close)
 
 func next_mission_n() -> int:
 	return Run.history.size() + 1
@@ -115,10 +162,21 @@ func _draw() -> void:
 	draw_rect(Rect2(0, GROUND, 960, 110), Color("4a3a2c"))
 	draw_rect(Rect2(0, GROUND, 960, 4), Color("7cb042"))
 	draw_rect(Rect2(0, GROUND + 4, 960, 2), Color("3a5a24"))
+	if Run.hq("mess") >= 1:
+		draw_mess_hall()
+	if Run.hq("motor") >= 1:
+		draw_motor_pool()
 	draw_quartermaster()
 	draw_barracks()
 	draw_armory()
 	draw_memorial()
+	draw_rank_pips(230, "barracks")
+	draw_rank_pips(600, "armory")
+	if not memorial_open and not upgrades_open:
+		for k in Run.hq("gate"):
+			# Gate Control: a lit beacon on the ring for every rank
+			var a := -PI / 2 + (k - 1) * 0.5
+			draw_circle(GATE + Vector2(cos(a), sin(a)) * (GATE_R + 8), 4, Color("53d4e2"))
 	Art.draw_gate(self, GATE, GATE_R, t, 9 if gate_open() > 0 else 0, gate_open(), 1.0, t * 0.004)
 	# the squad, stepping out of the gate when they just came home
 	var al: Array = Run.soldiers.filter(func(s): return s.alive)
@@ -145,6 +203,8 @@ func _draw() -> void:
 	Art.text(self, sc, Vector2(936, 36), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
 	if memorial_open:
 		draw_memorial_panel()
+	elif upgrades_open:
+		draw_upgrades_panel()
 
 func draw_quartermaster() -> void:
 	## A supply tent with crates stacked beside it.
@@ -206,6 +266,60 @@ func draw_memorial() -> void:
 	for i in 6:
 		var wave := sin(t / 12.0 + i * 0.7) * 2
 		draw_rect(Rect2(923 + i * 5, 320 + wave, 5, 16), Color("ff4d3d") if i % 2 == 0 else Color("e8dcc2"))
+
+func draw_upgrades_panel() -> void:
+	draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.97))
+	Art.text(self, "UPGRADE HQ", Vector2(40, 58), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 3)
+	Art.text(self, "%d SALVAGE" % int(Run.meta.get("salvage", 0)), Vector2(920, 58), 16, Color("53d4e2"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
+	Art.text(self, "Salvage comes from beaten Boars and Salvage yards, and is kept when a run ends.", Vector2(40, 86), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+	for i in Data.HQ_BUILDINGS.size():
+		var B: Dictionary = Data.HQ_BUILDINGS[i]
+		var r := Run.hq(B.id)
+		var y := 104.0 + i * 62
+		draw_rect(Rect2(32, y, 896, 54), Color(0.08, 0.07, 0.06, 0.9))
+		draw_rect(Rect2(32, y, 896, 54), Color("53d4e2") if r > 0 else Color("4a505a"), false, 1)
+		Art.text(self, B.name, Vector2(44, y + 18), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+		for k in 3:
+			draw_rect(Rect2(44 + k * 16, y + 28, 12, 12), Color(0.05, 0.035, 0.03))
+			draw_rect(Rect2(45 + k * 16, y + 29, 10, 10), Color("ffd23a") if k < r else Color("3a3f45"))
+		for k in 3:
+			var col := Color("62d26f") if k < r else (Color("e8dcc2") if k == r else Color("6c7480"))
+			var mark := "OK " if k < r else ("NEXT " if k == r else "")
+			Art.text(self, "%d  %s%s" % [k + 1, mark, B.ranks[k]], Vector2(262, y + 14 + k * 15), 8, col)
+	Art.text(self, "DOC'S LAB opens with the Doc's surgeries.   MEMORIAL is free: the fallen hang their tags there.", Vector2(480, 430), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+
+func draw_rank_pips(x: float, id: String) -> void:
+	## Three little lamps over a building's button: one lit per rank bought.
+	var r := Run.hq(id)
+	for k in 3:
+		draw_rect(Rect2(x + 51 + k * 16, 428, 10, 6), Color(0.05, 0.035, 0.03))
+		draw_rect(Rect2(x + 52 + k * 16, 429, 8, 4), Color("ffd23a") if k < r else Color("3a3f45"))
+
+func draw_mess_hall() -> void:
+	## Mess Hall: a back-row hut peeking over the Barracks roof, smoke from the stove pipe.
+	var r := Run.hq("mess")
+	var d := Color(0.05, 0.035, 0.03)
+	draw_rect(Rect2(250, 318, 110, 60), d)
+	draw_rect(Rect2(252, 320, 106, 58), Color("5a4a36"))
+	draw_rect(Rect2(330, 296, 8, 24), d)
+	for i in 4:
+		var k := float((t + i * 30) % 120) / 120.0
+		draw_circle(Vector2(334 + sin(t / 20.0 + i) * 4 + k * 10, 292 - k * 50), 4 + k * 6, Color(0.6, 0.6, 0.62, 0.35 * (1 - k)))
+	for i in r:
+		draw_rect(Rect2(262 + i * 22, 330, 12, 8), Color("ffd96a"))
+
+func draw_motor_pool() -> void:
+	## Motor Pool: a back-row garage behind the Armory with the Slug's barrel poking out.
+	var r := Run.hq("motor")
+	var d := Color(0.05, 0.035, 0.03)
+	draw_rect(Rect2(620, 322, 130, 52), d)
+	draw_rect(Rect2(622, 324, 126, 50), Color("6a6e72"))
+	draw_rect(Rect2(640, 334, 70, 40), Color("2a2c30"))
+	for i in 5:
+		draw_rect(Rect2(640, 338 + i * 7, 70, 2), Color("3a3d42"))
+	draw_rect(Rect2(700, 342, 40, 5), Color("4c5c3a"))
+	for i in r:
+		draw_rect(Rect2(728 - i * 10, 328, 6, 4), Color("ff7a3d"))
 
 func draw_memorial_panel() -> void:
 	draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.86))

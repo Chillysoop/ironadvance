@@ -52,7 +52,10 @@ func restock() -> void:
 	Run.qm_cache = {"mission": Run.mission, "cards": stock_cards, "gear": stock_gear, "shelf": shelf}
 
 func price(n: int) -> int:
-	return int(ceil(n * (1.0 - Run.discount)))
+	return int(ceil(n * (1.0 - Run.discount - (0.1 if Run.hq("armory") >= 2 else 0.0))))
+
+func recruit_price() -> int:
+	return Data.RECRUIT_PRICE / (2 if Run.hq("barracks") >= 3 else 1)
 
 func open_armory() -> void:
 	Sfx.play("click")
@@ -144,7 +147,7 @@ func back_button() -> Control:
 
 func build_barracks() -> void:
 	var services := [
-		["RECRUIT", "Hire a replacement for a soldier killed in action.", Data.RECRUIT_PRICE, recruit, Run.fallen_slots().is_empty()],
+		["RECRUIT", "Hire a replacement for a soldier killed in action.", recruit_price(), recruit, Run.fallen_slots().is_empty()],
 		["DOG TAG", "Give a soldier back one spent dog tag.", Data.TAG_PRICE, restore_tag, not Run.soldiers.any(func(s): return s.alive and s.tags < Data.DOG_TAGS)],
 	]
 	for i in services.size():
@@ -424,7 +427,7 @@ func recruit() -> void:
 	if slots.is_empty():
 		say("Nobody to replace. The squad is at full strength.")
 		return
-	if Run.scrip < price(Data.RECRUIT_PRICE):
+	if Run.scrip < price(recruit_price()):
 		Sfx.play("deny")
 		return
 	var fallen: Dictionary = Run.soldiers[slots[0]]
@@ -436,7 +439,7 @@ func recruit() -> void:
 			txt += " Legacy from %s: %s." % [o.legacy.from, Data.perk(o.key, o.legacy.id).name]
 		return {"kind": "service", "name": o.name, "text": txt, "icon": "ic_heart"})
 	var i := await choose("REPLACE %s WITH..." % fallen.def.name, opts)
-	if i < 0 or not pay(price(Data.RECRUIT_PRICE)):
+	if i < 0 or not pay(price(recruit_price())):
 		return
 	var s := Run.hire(slots[0], offers[i])
 	say("%s joins the squad as a %s." % [s.def.name, s.def.cls])

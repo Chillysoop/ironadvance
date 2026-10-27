@@ -498,6 +498,18 @@ const DETOURS := {
 	"cache": {"name": "SUPPLY CACHE", "pays": "SCRIP + A CARD PICK", "icon": "ic_coin", "text": "An easy fight: three Jackals sitting on a supply cache."},
 }
 const POW_RESCUE_ROUNDS := 5
+
+# HQ upgrades (run structure step 6): paid in Salvage, kept across runs. Ranks are bought in order.
+# The Doc's Lab opens with the Doc's surgeries; the Memorial is free and fills itself.
+const HQ_BUILDINGS := [
+	{"id": "gate", "name": "GATE CONTROL", "ranks": ["The dial shows 3 biomes instead of 2.", "Reroll the dial once per HQ visit.", "Biome cards list their stretches and the boss's armor."]},
+	{"id": "barracks", "name": "BARRACKS", "ranks": ["Choose from 3 recruits instead of 2.", "Recruits arrive at level 2.", "Recruits cost half."]},
+	{"id": "armory", "name": "ARMORY", "ranks": ["+1 Luck at the start of every run.", "Quartermaster prices are 10% lower.", "Elite outposts pay Legendary gear."]},
+	{"id": "mess", "name": "MESS HALL", "ranks": ["Camps heal 5 more HP.", "Start each run with 40 more scrip.", "Camps offer all 4 detours."]},
+	{"id": "motor", "name": "MOTOR POOL", "ranks": ["The SV-001 Slug is on call once per level.", "The Slug stays for 2 rounds.", "The Slug is on call twice per level."]},
+]
+const HQ_COST := [10, 20, 30]   # Salvage for rank 1, 2, 3
+const BOSS_SALVAGE := 5         # every Boar you beat pays this much Salvage
 const WRECK_SALVAGE := 3
 const ELITE_BIO := 2     # share of max HP everyone gets back just for reaching camp
 

@@ -83,6 +83,8 @@ func dial_gate() -> void:
 		var id: String = b
 		s.buttons.append([Data.BIOMES[id].name, func(): Sfx.play("start"); Run.pick_biome(id); show_brief()])
 	s.buttons.append(["<< BACK TO HQ", func(): show_hq(false)])
+	if Run.hq("gate") >= 2 and not Run.dial_rerolled:
+		s.buttons.append(["REROLL THE DIAL", func(): Sfx.play("click"); Run.reroll_dial(); dial_gate()])
 	open(s)
 
 func show_brief() -> void:
@@ -198,14 +200,19 @@ class Screen extends Control:
 		for i in n:
 			var bt = load("res://scripts/hud.gd").PixButton.new()
 			bt.text = buttons[i][0]
-			bt.color = Color("ff4d3d") if i == 0 or (mode == "dial" and i < 2) else Color("9aa2ae")
+			var nd := Run.dial.size()
+			bt.color = Color("ff4d3d") if i == 0 or (mode == "dial" and i < nd) else Color("9aa2ae")
 			bt.size = Vector2(widths[i], 40)
 			bt.position = Vector2(x, 470)
-			if mode == "dial":  # one button under each biome card, and a small way back
-				bt.position = [Vector2(145, 470), Vector2(565, 470), Vector2(20, 18)][i]
-				if i == 2:
+			if mode == "dial":  # one button under each biome card, then a small way back and the reroll
+				if i < nd:
+					var cr := dial_card(i)
+					bt.size = Vector2(minf(250, cr.size.x - 30), 40)
+					bt.position = Vector2(cr.position.x + (cr.size.x - bt.size.x) / 2, 470)
+				else:
 					bt.small = true
-					bt.size = Vector2(150, 28)
+					bt.size = Vector2(170, 28)
+					bt.position = Vector2(20, 18) if i == nd else Vector2(770, 18)
 			x += widths[i] + 10
 			bt.pressed.connect(buttons[i][1])
 			add_child(bt)
@@ -344,32 +351,48 @@ class Screen extends Control:
 		draw_texture_rect(Art.tex.ic_coin, Rect2(410, y + 30, 10, 10), false)
 		Art.text(self, "%d SCRIP" % Run.scrip, Vector2(426, y + 40), 8, Color("ffd23a"))
 		squad_line(370, "idle")
+	func dial_card(i: int) -> Rect2:
+		## Where biome card i sits: two wide cards, or three narrower ones with Gate Control.
+		var n := Run.dial.size()
+		var cw := 380.0 if n <= 2 else 296.0
+		var gap := 40.0 if n <= 2 else 14.0
+		var x0 := (960.0 - n * cw - (n - 1) * gap) / 2.0
+		return Rect2(x0 + i * (cw + gap), 108, cw, 352)
 	func draw_dial() -> void:
 		Art.text(self, "DIAL THE GATE", Vector2(480, 58), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
-		Art.text(self, "Level %d of %d. Pick one biome. The other is burned for this run." % [Run.mission + 1, Data.LEVELS.size()], Vector2(480, 90), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		Art.text(self, "Level %d of %d. Pick one biome. The others are burned for this run." % [Run.mission + 1, Data.LEVELS.size()], Vector2(480, 90), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 		var al: Array = Run.soldiers.filter(func(so): return so.alive)
 		for i in Run.dial.size():
 			var id: String = Run.dial[i]
 			var bm: Dictionary = Data.BIOMES[id]
-			var x := 80.0 + i * 420
-			draw_rect(Rect2(x, 108, 380, 352), Color(0.06, 0.05, 0.04, 0.88))
-			draw_rect(Rect2(x, 108, 380, 352), Color("ffb23e"), false, 2)
+			var cr := dial_card(i)
+			var x := cr.position.x
+			var cw := cr.size.x
+			var cx := x + cw / 2
+			draw_rect(cr, Color(0.06, 0.05, 0.04, 0.88))
+			draw_rect(cr, Color("ffb23e"), false, 2)
 			# a window onto the biome: its sky and far hills, tinted by its look
 			var sky_mod: Color = bm.look.get("sky", Color.WHITE)
-			draw_texture_rect_region(bg("%s_sky" % bm.theme), Rect2(x + 8, 116, 364, 74), Rect2(300, 120, 364, 74), sky_mod)
+			draw_texture_rect_region(bg("%s_sky" % bm.theme), Rect2(x + 8, 116, cw - 16, 74), Rect2(300, 120, cw - 16, 74), sky_mod)
 			var far: Texture2D = bg("%s_far" % bm.theme)
-			draw_texture_rect_region(far, Rect2(x + 8, 150, 364, 40), Rect2(0, far.get_height() - 20, 182, 20), sky_mod)
-			draw_rect(Rect2(x + 8, 186, 364, 4), bm.look.get("grass", Data.THEMES[bm.theme].grass))
-			Art.text(self, bm.name, Vector2(x + 190, 150), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+			draw_texture_rect_region(far, Rect2(x + 8, 150, cw - 16, 40), Rect2(0, far.get_height() - 20, (cw - 16) / 2, 20), sky_mod)
+			draw_rect(Rect2(x + 8, 186, cw - 16, 4), bm.look.get("grass", Data.THEMES[bm.theme].grass))
+			Art.text(self, bm.name, Vector2(cx, 150), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 			if Run.dial_breach.get(id, false):
-				Art.text(self, "BREACH: VHARR AND JACKALS AT WAR", Vector2(x + 190, 178), 8, Color("9df25c"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+				Art.text(self, "BREACH: VHARR AND JACKALS AT WAR", Vector2(cx, 178), 8, Color("9df25c"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 			var y := 210.0
-			for line in CardView.wrap_text(bm.text, 352, 16):
-				Art.text(self, line, Vector2(x + 190, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+			for line in CardView.wrap_text(bm.text, cw - 28, 16):
+				Art.text(self, line, Vector2(cx, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 				y += 16
 			y = maxf(y + 6, 272)
-			Art.text(self, "GOOD FOR " + Data.STYLES[bm.favor], Vector2(x + 190, y), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
-			Art.text(self, "ROUGH ON " + Data.STYLES[bm.rough], Vector2(x + 190, y + 14), 8, Color("ff7a5a"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "GOOD FOR " + Data.STYLES[bm.favor], Vector2(cx, y), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "ROUGH ON " + Data.STYLES[bm.rough], Vector2(cx, y + 14), 8, Color("ff7a5a"), HORIZONTAL_ALIGNMENT_CENTER)
+			if Run.hq("gate") >= 3 and Run.dial_levels.has(id):
+				# Gate Control 3: the address shows what is on the other side
+				var lv: Dictionary = Run.dial_levels[id]
+				var segs: Array = lv.segments.filter(func(sg): return not sg in ["start", "camp", "yard", "arena", "pier"])
+				Art.text(self, " ".join(segs.map(func(sg): return sg.to_upper())), Vector2(cx, 438), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+				Art.text(self, "BOSS HP %d   ARMOR %d" % [lv.boss_hp, lv.plate], Vector2(cx, 452), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 			# how each soldier's deck fits this biome
 			y += 38
 			for j in al.size():
@@ -379,14 +402,16 @@ class Screen extends Control:
 				var row := y + j * 30
 				Art.draw_char(self, "sq_" + so.key, "idle", (t / 12 + j) % 4, Vector2(x + 40, row + 14), 1, false, 0, 1.0, 0, true, 0.8)
 				Art.text(self, so.def.name, Vector2(x + 60, row + 8), 8, Color.WHITE)
-				Art.text(self, f.to_upper(), Vector2(x + 360, row + 8), 8, fc, HORIZONTAL_ALIGNMENT_RIGHT)
+				Art.text(self, f.to_upper(), Vector2(x + cw - 20, row + 8), 8, fc, HORIZONTAL_ALIGNMENT_RIGHT)
 				var sh := Run.styles(so)
+				var bw := cw - 260 if cw > 300 else cw - 196
+				var bx := x + 150 if cw > 300 else x + 116
 				var k := 0
 				for st in ["long", "close", "arc"]:
-					var w := int(round(sh[st] * 120))
-					draw_rect(Rect2(x + 150 + k, row + 1, w, 7), {"long": Color("53d4e2"), "close": Color("ffb23e"), "arc": Color("ff4d3d")}[st])
+					var w := int(round(sh[st] * bw))
+					draw_rect(Rect2(bx + k, row + 1, w, 7), {"long": Color("53d4e2"), "close": Color("ffb23e"), "arc": Color("ff4d3d")}[st])
 					k += w
-				draw_rect(Rect2(x + 150, row + 1, 120, 7), Color("6c7480"), false, 1)
+				draw_rect(Rect2(bx, row + 1, bw, 7), Color("6c7480"), false, 1)
 		var lx := 330.0
 		for lg in [["DECK BAR:", Color("9aa2ae")], ["LONG GUNS", Color("53d4e2")], ["CLOSE", Color("ffb23e")], ["EXPLOSIVES", Color("ff4d3d")]]:
 			Art.text(self, lg[0], Vector2(lx, 528), 8, lg[1])
@@ -404,6 +429,8 @@ class Screen extends Control:
 		elif mode == "lost":
 			Art.text(self, "THE JACKALS HOLD THE LINE. REGROUP AND GO AGAIN.", Vector2(480, 124), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 		var rows := [["SCORE", str(stats.get("score", 0))], ["KILLS", str(stats.get("kills", 0))], ["CRUSHES", str(stats.get("crushes", 0))], ["POWS FREED", str(stats.get("pows", 0))], ["PUSHES", str(stats.get("pushes", 0))], ["ROUNDS", str(stats.get("rounds", 0))], ["SCRIP EARNED", str(stats.get("scrip", 0))]]
+		if int(stats.get("salvage", 0)) > 0:
+			rows.append(["SALVAGE FOR HQ", str(stats.salvage)])
 		if stats.get("fallen", []).size():
 			rows.append(["KILLED IN ACTION", ", ".join(stats.fallen)])
 		if mode == "final" or mode == "lost":

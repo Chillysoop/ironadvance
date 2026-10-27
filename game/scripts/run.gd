@@ -34,8 +34,10 @@ var level := {}            # the generated mission for the level being played (b
 var dial: Array = []       # the two biomes on the gate dial right now
 var dial_breach := {}      # biome id -> true when the dial shows it as a BREACH (Vharr and Jackals at war)
 var burned: Array = []     # biomes skipped or already played this run; they never come back
+var dial_levels := {}      # biome id -> the level it would build, rolled with the dial (Gate Control 3 shows it)
+var dial_rerolled := false # Gate Control 2: one reroll per HQ visit
 var sway_mul := 1.0        # the current biome's sway rule, read by Data.card during a battle
-var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "bio": 0}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
+var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "bio": 0, "hq": {}}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
 const META_PATH := "user://meta.json"
 
 func _ready() -> void:
@@ -92,19 +94,28 @@ func roll_dial() -> Array:
 	## Two biomes from this level's pool, never one already played or burned.
 	var pool: Array = Data.LEVELS[mini(mission, Data.LEVELS.size() - 1)].pool.filter(func(b): return not burned.has(b))
 	pool.shuffle()
-	dial = pool.slice(0, 2)
+	dial = pool.slice(0, 3 if hq("gate") >= 1 else 2)
 	dial_breach = {}
+	dial_levels = {}
 	for b in dial:
 		dial_breach[b] = mission >= 1 and randf() < 0.5
+		dial_levels[b] = make_level(b, mission, dial_breach[b])
 	return dial
+
+func reroll_dial() -> void:
+	## Gate Control 2: spin the dial once more. The first draw is not burned.
+	dial_rerolled = true
+	roll_dial()
 
 func pick_biome(id: String) -> void:
 	## Dial in a biome. Both dial options are burned: the one you skip and the one you play.
 	for b in dial:
 		if not burned.has(b):
 			burned.append(b)
-	level = make_level(id, mission, dial_breach.get(id, false))
+	level = dial_levels[id] if dial_levels.has(id) else make_level(id, mission, dial_breach.get(id, false))
 	dial = []
+	dial_levels = {}
+	dial_rerolled = false
 
 func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	## One continuous level: a start, two stretches, a camp, two more stretches, a camp, the boss.
@@ -116,9 +127,10 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 		pool.append(bm.segments[randi() % bm.segments.size()])
 	var detours: Array = Data.DETOURS.keys()
 	detours.shuffle()
+	var nd := 4 if hq("mess") >= 3 else 3
 	# from level 2 on, one stretch after the mid camp holds a Vharr encounter (E1 Swarm or E2 Nest)
 	var enc: String = "" if tier < 1 else ["swarm", "nest"][randi() % 2]
-	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, 3), "breach": breach, "encounter": enc,
+	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "breach": breach, "encounter": enc,
 		"segments": ["start", pool[0], pool[1], "camp", "yard", pool[2], pool[3], "camp", bm.get("arena", "arena")],
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
 
@@ -184,9 +196,9 @@ func new_run() -> void:
 	soldiers.clear()
 	gear.clear()
 	history.clear()
-	scrip = 60
+	scrip = 60 + (40 if hq("mess") >= 2 else 0)
 	mission = 0
-	luck = 0
+	luck = 1 if hq("armory") >= 1 else 0
 	pity_rare = 0
 	pity_epic = 0
 	stash.clear()
@@ -207,6 +219,8 @@ func new_run() -> void:
 	qm_cache = {}
 	level = {}
 	dial = []
+	dial_levels = {}
+	dial_rerolled = false
 	burned = []
 	sway_mul = 1.0
 	total_score = 0
@@ -243,7 +257,26 @@ func legacy_perk(key: String) -> Dictionary:
 			return {"id": m.perks[0], "from": m.name}
 	return {}
 
-func recruit_offers(n := 2) -> Array:
+# ---------------------------------------------------------------- HQ upgrades
+func hq(id: String) -> int:
+	## Rank 0-3 of an HQ building.
+	return int(meta.get("hq", {}).get(id, 0))
+
+func hq_upgrade(id: String) -> bool:
+	## Buy the next rank of a building with Salvage.
+	var r := hq(id)
+	if r >= Data.HQ_COST.size() or int(meta.get("salvage", 0)) < Data.HQ_COST[r]:
+		return false
+	meta.salvage = int(meta.salvage) - Data.HQ_COST[r]
+	if not meta.has("hq"):
+		meta.hq = {}
+	meta.hq[id] = r + 1
+	save_meta()
+	return true
+
+func recruit_offers(n := -1) -> Array:
+	if n < 0:
+		n = 3 if hq("barracks") >= 1 else 2
 	var used: Array = soldiers.filter(func(s): return s.alive).map(func(s): return s.def.name)
 	var names: Array = Data.CALLSIGNS.filter(func(c): return not used.has(c))
 	names.shuffle()
@@ -275,6 +308,13 @@ func hire(slot: int, o: Dictionary) -> Dictionary:
 				raise_tier(cands[0])
 	if not o.legacy.is_empty():
 		s.perks.append(o.legacy.id)
+	if hq("barracks") >= 2:
+		# Barracks 2: a recruit shows up with one level of training already applied
+		s.xp = xp_for_next(s)
+		s.lvl = 2
+		var lo := level_options(s)
+		if lo.size():
+			apply_option(s, lo[0])
 	soldiers[slot] = s
 	return s
 

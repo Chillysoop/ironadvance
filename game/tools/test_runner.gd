@@ -623,6 +623,8 @@ func run() -> void:
 			await soldat()
 		"detours":
 			await detours()
+		"hq":
+			await hq_upgrades()
 		"aliens":
 			await aliens()
 		"aliens2":
@@ -1335,6 +1337,75 @@ func detour_battle(id: String) -> Battle:
 	await shot("detour_" + id)
 	check(b.detour.get("id") == id, "the mid camp starts the %s detour" % id)
 	return b
+
+func hq_upgrades() -> void:
+	## Step 6: HQ buildings bought with Salvage, each rank doing what its line says.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.meta.hq = {}
+	Run.meta.salvage = 15
+	Run.new_run()
+	main.show_hq(false)
+	await frames_wait(20)
+	await shot("hq_bare")
+	main.screen.open_upgrades()
+	await frames_wait(20)
+	await shot("hq_board")
+	check(Run.hq_upgrade("gate") and Run.hq("gate") == 1 and int(Run.meta.salvage) == 5, "rank 1 costs 10 Salvage")
+	check(not Run.hq_upgrade("gate"), "rank 2 needs 20 Salvage")
+	Run.meta.salvage = 500
+	for id in ["gate", "barracks", "armory", "mess", "motor"]:
+		while Run.hq_upgrade(id):
+			pass
+		check(Run.hq(id) == 3, "%s builds to rank 3" % id)
+	check(not Run.hq_upgrade("gate"), "nothing past rank 3")
+	main.screen.open_upgrades()
+	await frames_wait(20)
+	await shot("hq_board_full")
+	# a new run with everything built
+	Run.new_run()
+	check(Run.scrip == 100 and Run.luck == 1, "Mess Hall 2 and Armory 1 start the run with 100 scrip and +1 Luck")
+	main.show_hq(false)
+	await frames_wait(30)
+	await shot("hq_grown")
+	main.dial_gate()
+	await frames_wait(30)
+	await shot("hq_dial3")
+	check(Run.dial.size() == 3 and main.screen.get("mode") == "dial", "Gate Control 1: the dial shows 3 biomes")
+	var first: Array = Run.dial.duplicate()
+	Run.reroll_dial()
+	check(Run.dial_rerolled and Run.burned.is_empty(), "Gate Control 2: a reroll burns nothing")
+	main.dial_gate()
+	await frames_wait(20)
+	check(not main.screen.get_children().any(func(c): return c.get("text") == "REROLL THE DIAL"), "only one reroll per visit")
+	var id: String = Run.dial[0]
+	var lv: Dictionary = Run.dial_levels[id]
+	Run.pick_biome(id)
+	check(Run.level == lv, "Gate Control 3: the level you play is the one the card listed")
+	check(Run.level.detours.size() == 4, "Mess Hall 3: camps offer all 4 detours")
+	check(Run.recruit_offers().size() == 3, "Barracks 1: 3 recruits to choose from")
+	Run.soldiers[2].alive = false
+	var r := Run.hire(2, Run.recruit_offers()[0])
+	check(r.lvl == 2, "Barracks 2: recruits arrive at level 2")
+	var sh: Control = load("res://scripts/shop.gd").new()
+	check(sh.recruit_price() == Data.RECRUIT_PRICE / 2 and sh.price(100) == 90, "Barracks 3 halves recruits, Armory 2 takes 10% off")
+	sh.free()
+	# Motor Pool: two Slug calls on round 1, and the Slug stays 2 rounds
+	var b: Battle = main.start_battle(0, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var calls: int = b.squad().filter(func(u): return u.hand.any(func(h): return h.key == "slugcall")).size()
+	check(calls == 2, "Motor Pool 3: the Slug is on call twice (%d cards)" % calls)
+	b.call_slug(b.squad()[0])
+	check(b.units.any(func(u): return u.kind == "slug" and u.loot.turns == 2), "Motor Pool 2: the Slug stays 2 rounds")
+	# a beaten Boar pays Salvage
+	var sv: int = int(Run.meta.salvage)
+	b.boss_dead = true
+	b.victory()
+	check(int(Run.meta.salvage) == sv + Data.BOSS_SALVAGE, "beating the Boar pays %d Salvage" % Data.BOSS_SALVAGE)
+	await until(func(): return main.battle == null, 4000)
+	await frames_wait(20)
+	await shot("hq_result")
+	Run.meta = keep
+	Run.save_meta()
 
 func detours() -> void:
 	## Step 5: the mid-level camp offers 3 detours, each paying in its own currency.
