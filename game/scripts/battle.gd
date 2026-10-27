@@ -51,6 +51,7 @@ var mouse := Vector2(200, 300)
 var log_lines: Array = []
 var pow_queue: Array = []
 var lvl_queue: Array = []
+var dummies: Array = []       # practice range: [type, x] of each dummy, to stand them back up
 var boss_active := false
 var boss_dead := false
 var gate = null          # the gate home to HQ, opened after the boss falls
@@ -140,7 +141,7 @@ func setup(idx: int, custom := {}) -> void:
 	terrain_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var i := 0
 	for s in Run.soldiers:
-		if not s.alive:
+		if not s.alive or (mission.has("only") and s.key != mission.only):
 			continue
 		var x := 50.0 + i * 35
 		var u := mk_unit()
@@ -506,7 +507,12 @@ func _ready() -> void:
 
 func begin() -> void:
 	Sfx.play("start")
-	banner("MISSION %d START!" % (mission_idx + 1), Color("ffb23e"), mission.name)
+	if practice():
+		dummies = units.filter(func(e): return e.team == "enemy").map(func(e): return [e.type, e.x])
+		banner("PRACTICE RANGE", Color("62d26f"), "FREE. NOTHING HERE CARRIES OVER")
+		log_msg("The dummies never shoot back and come back when they are all down. LEAVE RANGE when you are done.")
+	else:
+		banner("MISSION %d START!" % (mission_idx + 1), Color("ffb23e"), mission.name)
 	if breach:
 		log_msg("BREACH: the Vharr and the Jackals are fighting each other. Each shoots whoever is nearest, so let them.")
 	activate_enemies()
@@ -515,6 +521,31 @@ func begin() -> void:
 		start_player_turn()
 
 # ---------------------------------------------------------------- helpers
+func practice() -> bool:
+	return mission.get("practice", false)
+
+func practice_round() -> void:
+	## D5: no enemy phase at the range. When every dummy is down, a fresh set stands up.
+	state = "enemy"
+	busy = true
+	ui_dirty = true
+	await wait(20)
+	if not units.any(func(e): return e.team == "enemy" and not e.dead):
+		for d in dummies:
+			var e := mk_enemy(d[0], d[1], T.stand_y(d[1], 0))
+			e.active = true
+			units.append(e)
+		banner("RANGE RESET", Color("62d26f"))
+		await wait(30)
+	start_player_turn()
+
+func leave_practice() -> void:
+	if state == "over":
+		return
+	state = "over"
+	busy = true
+	mission_over.emit(true)
+
 func squad() -> Array:
 	return units.filter(func(u): return u.team == "squad")
 
@@ -1127,7 +1158,7 @@ func walk_along(u: Unit, pts: Array) -> void:
 
 # ---------------------------------------------------------------- damage, adrenaline, xp, death
 func give_xp(u, n: int) -> void:
-	if u == null or not (u is Unit) or u.team != "squad" or u.dead or n <= 0:
+	if u == null or not (u is Unit) or u.team != "squad" or u.dead or n <= 0 or practice():
 		return
 	u.xp_gain += n
 	var gained := Run.add_xp(u.s, n)
@@ -3750,6 +3781,9 @@ func end_turn(force := false) -> void:
 	enemy_phase()
 
 func enemy_phase() -> void:
+	if practice():
+		await practice_round()
+		return
 	state = "enemy"
 	busy = true
 	ui_dirty = true

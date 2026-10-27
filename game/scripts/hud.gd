@@ -22,6 +22,7 @@ var hand_x0 := 270.0      # left edge of the hand, so the action meter can sit b
 var targeting := false    # a card is armed: the hand ghosts out so it doesn't hide what you aim at
 
 const INK := Color(0.05, 0.035, 0.03)
+const HubUI := preload("res://scripts/hub_ui.gd")
 
 func setup(battle: Battle) -> void:
 	b = battle
@@ -93,6 +94,14 @@ func setup(battle: Battle) -> void:
 		bs.position = Vector2(830 + (i - (Run.belt_max() - 3)) * 41, 424)
 		bs.size = Vector2(38, 30)
 		root.add_child(bs)
+	if b.practice():
+		var lv := PixButton.new()
+		lv.text = "LEAVE RANGE"
+		lv.color = Color("62d26f")
+		lv.position = Vector2(830, 394)
+		lv.size = Vector2(122, 26)
+		lv.pressed.connect(func(): Sfx.play("click"); b.leave_practice())
+		root.add_child(lv)
 	modal = Control.new()
 	modal.set_anchors_preset(Control.PRESET_FULL_RECT)
 	modal.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -289,6 +298,15 @@ func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> 
 			bg.banish = not bg.banish
 			bn.text = "PICK ONE TO BANISH" if bg.banish else "BANISH (%d)" % Run.banishes)
 		modal.add_child(bn)
+	# S6: check any deck before picking
+	var who_i := 0
+	if who != null and who is Unit:
+		who_i = Run.soldiers.find(who.s)
+	elif n and opts[0].has("u"):
+		who_i = Run.soldiers.find(opts[0].u.s)
+	elif b.sel != null:
+		who_i = Run.soldiers.find(b.sel.s)
+	modal.add_child(dossier_button(Vector2(700, 392), maxi(0, who_i)))
 	modal.visible = true
 	Sfx.play("levelup" if kind == "level" else "select")
 	var r: int = await picked
@@ -334,7 +352,23 @@ func show_deck() -> void:
 	close.position = Vector2(430, 506)
 	close.pressed.connect(func(): modal.visible = false)
 	modal.add_child(close)
+	var dz := dossier_button(Vector2(540, 506), maxi(0, Run.soldiers.find(u.s)))
+	dz.pressed.connect(func(): modal.visible = false)
+	modal.add_child(dz)
 	modal.visible = true
+
+func dossier_button(pos: Vector2, i: int) -> PixButton:
+	var bt := PixButton.new()
+	bt.text = "DOSSIER"
+	bt.color = Color("53d4e2")
+	bt.size = Vector2(110, 26)
+	bt.position = pos
+	bt.pressed.connect(func(): Sfx.play("click"); open_dossier(i))
+	return bt
+
+func open_dossier(i: int) -> Control:
+	## S6: the HQ Dossier over the battle, read-only.
+	return HubUI.field_dossier(self, i)
 
 # ================================================================ widgets
 class PixButton extends Control:

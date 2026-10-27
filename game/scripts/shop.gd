@@ -97,6 +97,7 @@ func build() -> void:
 	bar = HubUI.SquadBar.new()
 	bar.position = BAR
 	bar.picked.connect(open_dossier)
+	bar.all_decks.connect(func(): open_dossier(0, "squad"))
 	add_child(bar)
 	if mode == "barracks":
 		build_barracks()
@@ -178,10 +179,11 @@ func build() -> void:
 		b.shop = self
 		add_child(b)
 
-func open_dossier(i: int) -> void:
+func open_dossier(i: int, tb := "deck") -> void:
 	## The squad bar here opens the soldier's Dossier over the shop.
 	var d: Control = load("res://scripts/dossier.gd").new()
 	d.idx = i
+	d.tab = tb
 	d.done.connect(func(): d.queue_free(); build())
 	add_child(d)
 

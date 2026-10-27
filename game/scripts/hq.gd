@@ -40,6 +40,7 @@ func build() -> void:
 	var bar := HubUI.SquadBar.new()
 	bar.position = Vector2(16, 76)
 	bar.picked.connect(open_dossier)
+	bar.all_decks.connect(func(): open_dossier(0, "squad"))
 	add_child(bar)
 	var spots := [
 		["QUARTERMASTER", "BUY CARDS  GEAR", 40, "qm", Color("ffb23e")],
@@ -192,11 +193,12 @@ func open_upgrades() -> void:
 	add_child(close)
 	add_nav("upgrades")
 
-func open_dossier(i: int) -> void:
+func open_dossier(i: int, tb := "deck") -> void:
 	## S1: a soldier's sheet, gear and deck, from the squad bar, a click on them, or 1-4.
 	Sfx.play("click")
 	var d: Control = DossierScript.new()
 	d.idx = i
+	d.tab = tb
 	d.done.connect(func(): build())
 	add_child(d)
 	sub = d
