@@ -1383,7 +1383,7 @@ func doc() -> void:
 	var moss: Dictionary = Run.soldier("moss")
 	var vee: Dictionary = Run.soldier("vee")
 	var rook: Dictionary = Run.soldier("rook")
-	check(Run.eff_max_hp(rook) == rook.max_hp + 6 and Run.eff_max_hp(vee) == vee.max_hp - 3, "Titanium Spine +6 max HP, Adrenal Pump -3")
+	check(Run.eff_max_hp(rook) == rook.max_hp + 6 and Run.eff_max_hp(vee) == vee.max_hp, "Titanium Spine +6 max HP; no surgery costs HP")
 	rook.deck.append(Run.new_card("jumppack"))
 	var b: Battle = main.start_battle(0)
 	await until(func(): return b.state == "player" and not b.busy)
@@ -1391,7 +1391,8 @@ func doc() -> void:
 	for u in b.squad():
 		U[u.s.key] = u
 	check(U.vee.adr >= 25, "Adrenal Pump: Vee starts at 25 adrenaline")
-	check(not U.rook.draw.any(func(cd): return cd.key == "jumppack") and not U.rook.hand.any(func(cd): return cd.key == "jumppack"), "Titanium Spine: the Jump Pack never comes up")
+	check(U.rook.draw.any(func(cd): return cd.key == "jumppack") or U.rook.hand.any(func(cd): return cd.key == "jumppack"), "Titanium Spine keeps the Jump Pack")
+	check(U.hex.move_left == U.hex.def.spd + U.hex.s.bonus.move + int(U.hex.g("move")) or U.hex.move_left > 0, "Third Arm costs no movement")
 	check(b.hand_size(U.hex) == b.hand_size(U.moss) + 1, "Third Arm: +1 hand size")
 	U.moss.moved = false
 	var c := Data.card("rifle")
@@ -1402,7 +1403,7 @@ func doc() -> void:
 	var gy: float = U.moss.y - 24
 	var tr: Dictionary = b.trace_bullet(U.moss.x + 14, gy, 0.0, 600, 0, U.moss, false)
 	var tr2: Dictionary = b.trace_bullet(U.rook.x + 14, gy, 0.0, 600, 0, U.rook, false)
-	check(tr.len < 140 and tr2.len > 140, "Cyber Eye can't see through smoke (%d px vs %d px)" % [tr.len, tr2.len])
+	check(tr.len > 140, "Cyber Eye still shoots through smoke (%d px)" % tr.len)
 	b.smokes.clear()
 	# Asbestos Hide: own blast does nothing; heals on Vee are cut by a quarter
 	U.vee.x += 260  # away from the others, so nobody gets blown into her

@@ -361,8 +361,7 @@ func draw_doc_panel() -> void:
 		draw_rect(Rect2(32, y, 896, 48), Color("4a5a4a"), false, 1)
 		Art.text(self, S.name, Vector2(44, y + 20), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 		Art.text(self, ("ANY CLASS" if S.cls == "" else Data.squad_def(S.cls).cls.to_upper()), Vector2(44, y + 38), 8, Color("9aa2ae"))
-		Art.text(self, "+ " + S.up, Vector2(260, y + 18), 8, Color("62d26f"))
-		Art.text(self, "- " + S.side, Vector2(260, y + 34), 8, Color("ff7a5a"))
+		Art.text(self, "+ " + S.up, Vector2(260, y + 28), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	# what each class carries now
 	var x := 40.0
 	for d in Data.SQUAD_DEFS:

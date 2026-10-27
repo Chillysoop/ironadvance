@@ -139,9 +139,6 @@ func setup(idx: int, custom := {}) -> void:
 		u.fuel_max = int(u.g("jet"))
 		u.fuel = u.fuel_max
 		var deck: Array = s.deck.duplicate()
-		if Run.implanted(s, "spine"):
-			# Titanium Spine: too heavy for the Jump Pack
-			deck = deck.filter(func(cd): return not (cd if cd is String else cd.key) in ["jumppack", "rocketjump"])
 		deck.shuffle()
 		u.draw = deck
 		if Run.implanted(s, "adrenal"):
@@ -820,10 +817,6 @@ func trace_bullet(x: float, y: float, ang: float, max_len: float, bounces: int, 
 		var ny := py + dy * 2
 		trav += 2
 		if ny > H or ny < -80 or nx < 0 or nx > world_w:
-			segs.append([sx, sy, nx, ny])
-			return {"segs": segs, "hits": hits, "pings": pings, "ping_d": ping_d, "len": trav, "end": null}
-		if shooter is Unit and shooter.team == "squad" and Run.implanted(shooter.s, "cybereye") and smoke_at(nx, ny):
-			# Cyber Eye: the optics see nothing through smoke, so the shot goes nowhere
 			segs.append([sx, sy, nx, ny])
 			return {"segs": segs, "hits": hits, "pings": pings, "ping_d": ping_d, "len": trav, "end": null}
 		var u = unit_at_point(nx, ny, shooter, trav, skip)
@@ -1623,11 +1616,6 @@ func update_proj(p: Dictionary) -> void:
 			p.vy = sin(cur) * sp
 	p.vx += wind * 0.006 * p.wind
 	p.vy += GRAV * p.grav
-	if p.grav > 0 and p.owner is Unit and p.owner.team == "enemy":
-		# Magnet Hand: Jackal grenades bend toward the soldier wearing it
-		for m in units:
-			if m.team == "squad" and not m.dead and absf(m.x - p.x) < 160 and Run.implanted(m.s, "magnet"):
-				p.vx += signf(m.x - p.x) * 0.06
 	var n := maxi(1, int(ceil(Vector2(p.vx, p.vy).length() / 2.0)))
 	for i in n:
 		var px: float = p.x
@@ -2275,8 +2263,6 @@ func _act_ally(u: Unit, idx: int, c: Dictionary, tg: Unit) -> void:
 		Sfx.play("power")
 	if c.has("heal"):
 		var h := heal_amount(u, c)
-		if Run.implanted(tg.s, "asbestos"):
-			h = int(ceil(h * 0.75))  # Asbestos Hide: the skin fights the medicine
 		var before := tg.hp
 		var over := maxi(0, tg.hp + h - tg.max_hp)
 		tg.hp = mini(tg.max_hp, tg.hp + h)
@@ -3059,7 +3045,7 @@ func start_player_turn() -> void:
 			s.energy += s.s.bonus.energy1 + int(s.g("energy1")) + (1 if Run.has_gear("bandolier") else 0)
 		elif round_n == 2 and Run.relic_tier("bandolier") >= 3:
 			s.energy += 1
-		s.move_left = s.def.spd + s.s.bonus.move + int(s.g("move")) + (60 if s.perk("charge") else 0) - (15 if Run.implanted(s.s, "thirdarm") else 0)
+		s.move_left = s.def.spd + s.s.bonus.move + int(s.g("move")) + (60 if s.perk("charge") else 0)
 		s.moved = false
 		s.attacked = false
 		s.aim_discount = false
