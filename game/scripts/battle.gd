@@ -2740,6 +2740,8 @@ func drag_stragglers() -> void:
 		var k := 0
 		while k < 60 and ny == null:
 			ny = T.stand_y(nx, maxf(0, s.y - 60))
+			if ny != null and mine_under(s, nx, ny, 6) != null:
+				ny = null  # never drop a straggler onto an armed mine
 			if ny == null:
 				nx += 4
 			k += 1
@@ -4559,6 +4561,31 @@ func prime_mine(m: Unit, owner, delay: int) -> void:
 	Sfx.play("tick")
 	booms.append({"t": delay, "x": m.x, "y": m.y - 3, "r": 38.0, "dmg": 15, "owner": owner, "barrel": m})
 
+func mine_under(u: Unit, x: float, y: float, pad: float = 0.0):
+	## The armed mine a soldier standing at (x, y) would set off, with pad px of margin, or null.
+	for m in units:
+		if m.kind == "mine" and not m.primed and not m.gone and absf(x - m.x) < u.w / 2.0 + 5 + pad and absf(y - m.y) < 8:
+			return m
+	return null
+
+func stop_before_mines(u: Unit, sim: Dictionary) -> Dictionary:
+	## Automatic walks (MOVE) stop short of the first armed mine on the path; stepping on one is
+	## always the player's own call.
+	var pts: Array = sim.pts
+	var cut := pts.size()
+	for i in pts.size():
+		if mine_under(u, pts[i][0], pts[i][1], 4) != null:
+			cut = i
+			break
+	if cut == pts.size():
+		return sim
+	pts = pts.slice(0, cut)
+	while pts.size() and pts[-1][2]:
+		pts.pop_back()
+	if pts.is_empty():
+		return {"pts": pts, "x": u.x, "y": u.y, "used": 0.0}
+	return {"pts": pts, "x": pts[-1][0], "y": pts[-1][1], "used": absf(pts[-1][0] - u.x)}
+
 func update_mines() -> void:
 	## Jackal mines: your soldiers set them off by stepping on them. Jackals know where they
 	## are buried and only set them off when they land on one, so knock them onto the field.
@@ -4744,7 +4771,7 @@ func _act_advance() -> void:
 	for u in sq:
 		if u.dead or u.move_left <= 1:
 			continue
-		var sim := sim_walk(u, u.x + u.move_left, u.move_left)
+		var sim := stop_before_mines(u, sim_walk(u, u.x + u.move_left, u.move_left))
 		if sim.pts.is_empty():
 			continue
 		sel = u
