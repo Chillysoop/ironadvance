@@ -701,7 +701,7 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 	return out
 
 func eff_max_hp(s: Dictionary) -> int:
-	return s.max_hp + int(gear_bonus(s).get("hp", 0)) + (6 if implanted(s, "spine") else 0) - (3 if implanted(s, "adrenal") else 0)
+	return s.max_hp + int(gear_bonus(s).get("hp", 0)) + (6 if implanted(s, "spine") else 0)
 
 func slot_for(s: Dictionary, it: Dictionary) -> String:
 	## Where an item would go on this soldier: its slot, or the free kit slot (kit1 when both are full).

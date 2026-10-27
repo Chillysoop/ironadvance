@@ -514,15 +514,15 @@ const BOSS_SALVAGE := 5         # every Boar you beat pays this much Salvage
 const BOSS_BIO := 1             # ...and a Bio-part for the Doc
 
 # The Doc's surgeries (step 7): installed on a CLASS, so every future soldier of that class has it
-# and permadeath never erases it. Upside and side effect are both fixed and shown up front.
+# and permadeath never erases it. Pure upgrades, no side effects: the only choice is what fills the slots.
 # cls "" = any class. Slots per class = the Doc's Lab rank; a new surgery past the cap replaces the oldest.
 const SURGERIES := {
-	"cybereye": {"name": "CYBER EYE", "cls": "moss", "up": "Aimed shots sway 25% less.", "side": "Cannot aim through smoke at all, even your own."},
-	"thirdarm": {"name": "THIRD ARM", "cls": "hex", "up": "+1 hand size.", "side": "15 less movement."},
-	"asbestos": {"name": "ASBESTOS HIDE", "cls": "vee", "up": "Immune to your own explosions.", "side": "Heals on this soldier restore 25% less."},
-	"spine": {"name": "TITANIUM SPINE", "cls": "rook", "up": "+6 max HP and no fall damage.", "side": "Cannot use the Jump Pack."},
-	"adrenal": {"name": "ADRENAL PUMP", "cls": "", "up": "Start every fight at 25 adrenaline.", "side": "3 less max HP."},
-	"magnet": {"name": "MAGNET HAND", "cls": "", "up": "Grab loot from 3x as far.", "side": "Grenades thrown at this soldier curve toward them."},
+	"cybereye": {"name": "CYBER EYE", "cls": "moss", "up": "Aimed shots sway 25% less."},
+	"thirdarm": {"name": "THIRD ARM", "cls": "hex", "up": "+1 hand size."},
+	"asbestos": {"name": "ASBESTOS HIDE", "cls": "vee", "up": "Immune to your own explosions."},
+	"spine": {"name": "TITANIUM SPINE", "cls": "rook", "up": "+6 max HP and no fall damage."},
+	"adrenal": {"name": "ADRENAL PUMP", "cls": "", "up": "Start every fight at 25 adrenaline."},
+	"magnet": {"name": "MAGNET HAND", "cls": "", "up": "Grab loot from 3x as far."},
 }
 const SURGERY_BIO := 2
 const SURGERY_SALVAGE := 5
