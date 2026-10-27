@@ -183,6 +183,91 @@ func run() -> void:
 			print("[loot] hand ", u.hand.map(func(c): return c.key), " stash ", Run.stash.map(func(i): return i.id), " equip ", u.s.equip)
 			await shot("loot_after")
 			b.sweep_loot(INF)
+		"combos":
+			Run.new_run()
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			var sq: Array = b.squad_alive()
+			var u: Unit = b.sel
+			var es: Array = b.units.filter(func(x): return x.team == "enemy" and not x.dead)
+			var e: Unit = es[0]
+			e.hp = 60; e.max_hp = 60
+			# mark: next hit crits
+			b.add_status(e, "mark", 2, u)
+			var h0 := e.hp
+			b.damage(e, 10, u, {})
+			print("[combos] mark 10 -> ", h0 - e.hp, " mark left ", e.has_st("mark"))
+			# burn ticks
+			b.add_status(e, "burn", 2, u)
+			h0 = e.hp
+			b.tick_statuses("enemy")
+			print("[combos] burn tick ", h0 - e.hp, " burn left ", e.st.get("burn", 0))
+			# crossfire: hits from both sides
+			var lft: Unit = sq[0]
+			var rgt: Unit = sq[1]
+			var ox := rgt.x
+			rgt.x = e.x + 80
+			b.damage(e, 1, lft, {})
+			b.damage(e, 1, rgt, {})
+			rgt.x = ox
+			print("[combos] crossfire supp ", e.has_st("supp"))
+			# momentum: third card refunds
+			u.energy = 5
+			while u.hand.size() < 3:
+				u.hand.append(Run.new_card("dash"))
+			for i in 3:
+				b.spend_card(u, 0)
+			print("[combos] momentum energy after 3 cards ", u.energy, " played ", u.played)
+			# fuel-air: blast inside gas
+			b.gases.append({"x": e.x, "y": e.y - 20, "r": 60.0, "turns": 3, "seed": 0.0, "owner": u})
+			await frames_wait(30)
+			await shot("combos_gas")
+			b.explode(e.x, e.y - 20, 30, 1, u)
+			print("[combos] gas left ", b.gases.size(), " burn ", e.has_st("burn"), " tags ", b.stats.tags)
+			# pile-up: throw one Jackal into another
+			if es.size() >= 2:
+				var e2: Unit = es[1]
+				e.x = e2.x - 30; e.y = e2.y - 4; e.vx = 7; e.vy = -1; e.air = true; e.last_hit_by = u; e.bumped = null
+				await frames_wait(60)
+				print("[combos] pileup stun ", e.has_st("stun"), e2.has_st("stun"))
+			b.combo = 4
+			b.add_status(es[-1], "toxic", 2, u)
+			b.gases.append({"x": u.x + 120, "y": u.y - 20, "r": 56.0, "turns": 3, "seed": 1.0, "owner": u})
+			await frames_wait(20)
+			await shot("combos_status")
+			# card fusion: Rook starts with three Rifle Shots
+			var rook: Dictionary = Run.soldiers[3]
+			var fg := Run.fusable(rook)
+			print("[combos] rook fusable ", fg.size())
+			var fc := Run.fuse(rook, fg[0])
+			print("[combos] fused ", fc, " deck ", rook.deck.size())
+			# gear triple merge
+			for i in 3:
+				Run.stash.append(Run.new_item("flak", 1))
+			var g := Run.merge_group_of(Run.stash[0])
+			print("[combos] merge group ", g.size(), " keep ", Run.merge_keep_options(g), " new ", Run.merge_new_options([]))
+			var mi := Run.merge_items(g, [Run.merge_keep_options(g)[0], "move"])
+			print("[combos] merged ", mi, " stash ", Run.stash.size())
+			for i in 3:
+				Run.stash.append(Run.new_item("scope", 3))
+			var lg := Run.merge_items(Run.merge_group_of(Run.stash[-1]), ["regen"])
+			print("[combos] legend ", Data.item_name(lg), " ", Data.item_stats(lg))
+			Run.stash.append(Run.new_item("ghillie", 0))
+			Run.stash.append(Run.new_item("ghillie", 0))
+			Run.fabricate(Run.stash[-1])
+			print("[combos] fab triple ", Run.merge_group_of(Run.stash[-1]).size())
+			Run.scrip = 300
+			main.show_shop()
+			await frames_wait(10)
+			await shot("combos_shop")
+			main.screen.open_armory()
+			await frames_wait(10)
+			var arm = main.screen.get_children()[-1]
+			arm.select({"where": "stash", "i": Run.stash.size() - 1})
+			await frames_wait(5)
+			arm.start_merge(Run.merge_group_of(Run.stash[-1]))
+			await frames_wait(10)
+			await shot("combos_merge")
 		"armory":
 			Run.new_run()
 			for i in 6:

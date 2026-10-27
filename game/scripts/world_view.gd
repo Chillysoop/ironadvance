@@ -277,6 +277,7 @@ func draw_plate(u: Unit) -> void:
 	if u.elite != "":
 		draw_rect(Rect2(x - w / 2 - 2, y - 2, w + 4, 7), Color("ffd23a"), false, 1.0)
 		Art.text(self, Data.ELITES[u.elite].name, Vector2(x, y - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+	draw_statuses(u, x, y - (14 if u.elite != "" else 4))
 	if b.inspect and b.state == "player":
 		var it := b.intent_of(u)
 		var tw := Art.text_width(it, 8) + 6
@@ -312,6 +313,7 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 		Art.text(self, str(u.armor), Vector2(x - w / 2 - 14, y + 7), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_RIGHT)
 	if u.overwatch > 0:
 		Art.text(self, "OW", Vector2(x, y + 18), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+	draw_statuses(u, x, y + (28 if u.overwatch > 0 else 18))
 	if b.state == "player":
 		for i in u.energy:
 			draw_texture_rect(Art.tex.ic_bolt, Rect2(x - u.energy * 4.5 + i * 9, y - 12 - u.h - 8, 8, 8), false)
@@ -328,8 +330,33 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 		draw_colored_polygon(pts, Color("ffb23e"))
 		Art.text(self, "%s LV%d" % [u.def.name, u.s.lvl], Vector2(x, by - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 
+func draw_statuses(u: Unit, x: float, y: float) -> void:
+	## Short colored tags for C5 statuses, plus AIR for a body a squadmate launched (SKEET bait).
+	var tags: Array = []
+	if u.team == "enemy" and u.air and not u.para and u.last_hit_by is Unit and u.last_hit_by.team == "squad":
+		tags.append(["AIR", Color("9fe3f0")])
+	for k in u.st:
+		if u.st[k] > 0:
+			tags.append([Data.STATUS[k].short, Data.STATUS[k].c])
+	if tags.is_empty():
+		return
+	var tw := 0.0
+	for tg in tags:
+		tw += Art.text_width(tg[0], 8) + 4
+	var cx := x - tw / 2
+	draw_rect(Rect2(cx - 2, y - 9, tw + 2, 11), Color(C_DARK, 0.8))
+	for tg in tags:
+		Art.text(self, tg[0], Vector2(cx, y), 8, tg[1])
+		cx += Art.text_width(tg[0], 8) + 4
+
 # ---------------------------------------------------------------- effects
 func draw_smokes() -> void:
+	for g in b.gases:
+		for i in 8:
+			var a: float = i / 8.0 * TAU + b.t / 160.0 + g.seed
+			var r: float = g.r * 0.45
+			var pulse := 0.05 * sin(b.t / 20.0 + i)
+			draw_circle(Vector2(g.x + cos(a) * r * 0.9, g.y + sin(a) * r * 0.5), g.r * 0.45, Color(0.55 + pulse, 0.85, 0.3, 0.28))
 	for s in b.smokes:
 		for i in 9:
 			var a: float = i / 9.0 * TAU + b.t / 200.0 + s.seed
@@ -643,6 +670,8 @@ func draw_hover() -> void:
 			lines.append("ARMOR PLATE %d" % h.plate if h.plate > 0 else "ARMOR CRACKED: TAKES +30%")
 		if h.elite != "":
 			lines.append("ELITE %s: %s Drops an item." % [Data.ELITES[h.elite].name, Data.ELITES[h.elite].text])
+		for k in h.st:
+			lines.append("%s %d: %s" % [Data.STATUS[k].name, h.st[k], Data.STATUS[k].text])
 	elif h.kind == "fuel":
 		lines = ["FUEL TANK", ("Leaking: blows after %d more enemy phase(s)." % h.leak) if h.leak != null else "Shoot it: it leaks and blows in 2 turns.", "Blast it: it goes up now. Blast 84."]
 	elif h.kind == "charge":

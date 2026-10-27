@@ -377,3 +377,103 @@ func add_loot(it: Dictionary) -> String:
 
 func alive_count() -> int:
 	return soldiers.filter(func(s): return s.alive).size()
+
+# ---------------------------------------------------------------- merging (M1-M3, M5)
+func all_items() -> Array:
+	## Every gear item the squad owns: the stash plus what each soldier wears.
+	var out: Array = stash.duplicate()
+	for s in soldiers:
+		for sl in s.equip:
+			if s.equip[sl] != null:
+				out.append(s.equip[sl])
+	return out
+
+func merge_group_of(it) -> Array:
+	## Three items with the same name and rarity merge into one a tier higher (M1).
+	if it == null or Data.ITEMS[it.id].slot == "belt" or it.tier >= Data.TIER_MAX:
+		return []
+	var g: Array = all_items().filter(func(o): return o.id == it.id and o.tier == it.tier)
+	if g.size() < 3:
+		return []
+	# the selected item always takes part; prefer stash copies for the other two
+	g.erase(it)
+	g.sort_custom(func(a, b): return stash.has(a) and not stash.has(b))
+	return [it, g[0], g[1]]
+
+func any_merge() -> bool:
+	return all_items().any(func(o): return merge_group_of(o).size() == 3)
+
+func merge_keep_options(g: Array) -> Array:
+	var out: Array = []
+	for it in g:
+		for a in it.affixes:
+			if not out.has(a):
+				out.append(a)
+	return out
+
+func merge_new_options(exclude: Array) -> Array:
+	var pool: Array = Data.AFFIXES.keys().filter(func(a): return not exclude.has(a))
+	pool.shuffle()
+	return pool.slice(0, 2)
+
+func merge_items(g: Array, chosen: Array) -> Dictionary:
+	## M2: the player kept one affix from the three and picked one of two new ones;
+	## any slots still open are rolled. A Legendary result gets a name and a unique line.
+	var holder = null
+	var slot := ""
+	for s in soldiers:
+		for sl in s.equip:
+			if s.equip[sl] != null and g.has(s.equip[sl]):
+				if holder == null:
+					holder = s
+					slot = sl
+				unequip(s, sl)
+	for it in g:
+		stash.erase(it)
+	uid += 1
+	var t: int = g[0].tier + 1
+	var out := {"uid": uid, "id": g[0].id, "tier": t, "affixes": []}
+	var aff: Array = chosen.duplicate()
+	var pool: Array = Data.AFFIXES.keys().filter(func(a): return not aff.has(a))
+	pool.shuffle()
+	while aff.size() < Data.AFFIX_COUNT[t] and pool.size():
+		aff.append(pool.pop_back())
+	out.affixes = aff.slice(0, Data.AFFIX_COUNT[t])
+	if t >= Data.TIER_MAX:
+		var names: Array = Data.LEGEND_NAMES[Data.slot_group(Data.ITEMS[g[0].id].slot)]
+		out["named"] = names[randi() % names.size()]
+	stash.append(out)
+	if holder != null:
+		equip(holder, out, slot)
+	return out
+
+func fusable(s: Dictionary) -> Array:
+	## M3: three copies of one card at one rarity in a deck. Weapon cards and temps don't count.
+	var groups := {}
+	for c in s.deck:
+		if c.has("src") or c.get("temp", false) or Data.tier_of(c) >= Data.TIER_MAX:
+			continue
+		var k := "%s:%d" % [c.key, Data.tier_of(c)]
+		if not groups.has(k):
+			groups[k] = []
+		groups[k].append(c)
+	return groups.values().filter(func(g): return g.size() >= 3).map(func(g): return g.slice(0, 3))
+
+func fuse(s: Dictionary, g: Array) -> Dictionary:
+	for c in g:
+		s.deck.erase(c)
+	var c := new_card(g[0].key, Data.tier_of(g[0]) + 1)
+	if Data.tier_of(c) >= Data.TIER_MAX:
+		c["nick"] = Data.CARD_NICKS[randi() % Data.CARD_NICKS.size()]
+	s.deck.append(c)
+	return c
+
+func fab_options() -> Array:
+	## M5: the Fabricator copies one Common or Uncommon item.
+	return all_items().filter(func(o): return Data.ITEMS[o.id].slot != "belt" and o.tier <= 1)
+
+func fabricate(it: Dictionary) -> Dictionary:
+	uid += 1
+	var cp := {"uid": uid, "id": it.id, "tier": it.tier, "affixes": it.affixes.duplicate()}
+	stash.append(cp)
+	return cp

@@ -458,6 +458,15 @@ class Overlay extends Control:
 				draw_texture_rect(Art.tex.ic_bolt, Rect2(bx + 3, by + 1, 12, 12), false, Color(1, 1, 1, a))
 			else:
 				draw_rect(Rect2(bx + 1, by + 1, 16, 12), Color("2b2f35"))
+		# C1 momentum: three purple pips, the third card played this turn refunds an energy
+		var mom := u.played % Data.MOMENTUM
+		for i in Data.MOMENTUM:
+			var px := r.end.x + 3
+			var py := r.position.y + 14 + i * 10
+			draw_rect(Rect2(px, py, 7, 8), ink)
+			draw_rect(Rect2(px + 1, py + 1, 5, 6), Color("b48cff") if i < mom else Color("2b2f35"))
+		if mom == Data.MOMENTUM - 1 and b.t % 30 < 20:
+			Art.text(self, "+1", Vector2(r.end.x + 7, r.position.y + 50), 8, Color("b48cff"), HORIZONTAL_ALIGNMENT_CENTER)
 		var mv := maxf(0.0, u.move_left)
 		var full_mv: float = maxf(1.0, u.def.spd + u.s.bonus.move + (60 if u.perk("charge") else 0))
 		var my := r.end.y - 26
@@ -541,6 +550,13 @@ class Overlay extends Control:
 			var a := 0.55 + 0.45 * float(i + 1) / b.log_lines.size()
 			Art.text(self, b.log_lines[i], Vector2(10, ly + i * 14), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		draw_action_panel(b)
+		# C6 kill combo meter, top right under the bar
+		if b.combo >= 2 and b.state == "player":
+			var cx := 940.0
+			var pulse := 1.0 + 0.1 * sin(b.t / 4.0)
+			Art.text(self, "COMBO x%d" % b.combo, Vector2(cx, 100 + pulse), 16, Color("ff7a3d") if b.combo < 5 else Color("b48cff"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
+			var nxt := "x3: SQUAD +10 ADRENALINE" if b.combo < 3 else ("x5: NEXT CRATE +1 RARITY" if b.combo < 5 else "CRATE BONUS READY")
+			Art.text(self, nxt, Vector2(cx, 116), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT)
 		# hint strip above the hand
 		var h: String = hud.hint_text()
 		if h != "":

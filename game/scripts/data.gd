@@ -70,6 +70,8 @@ const CARDS := {
 	"overwatch": {"name": "Overwatch", "type": "SELF", "cost": 1, "overwatch": true, "ow": 1, "text": "Fire at the first enemies that move into view.", "rarity": 1, "up": {"ow": 2}},
 	"adrenal": {"name": "Adrenaline Spike", "type": "SELF", "cost": 0, "adrenal": 50, "selfdmg": 4, "text": "Hurt yourself to get angry.", "rarity": 1, "up": {"selfdmg": 2}},
 	"rally": {"name": "Rally Cry", "type": "SELF", "cost": 1, "rally": 70, "range": 220, "text": "Squad in range: extra movement and 10 adrenaline.", "rarity": 1, "up": {"rally": 110}},
+	"tagshot": {"name": "Tag Round", "type": "AIM", "cost": 0, "dmg": [1, 2], "range": FULL_RANGE, "gun": "rifle", "bounce": 1, "sway": 0.02, "mark": true, "text": "Marks what it hits. The next hit on a marked target crits.", "rarity": 1, "up": {"dmg": [3, 4], "bounce": 2}},
+	"gasnade": {"name": "Gas Canister", "type": "ARC", "cost": 1, "gas": true, "srad": 56.0, "sturns": 3, "wind": 1.0, "text": "A toxic cloud that drifts with the wind. Fire or a blast inside it explodes.", "rarity": 1, "up": {"srad": 76.0, "sturns": 4}},
 	# weapon cards: only come from equipped weapons (G1)
 	"carbine": {"name": "Carbine Burst", "type": "AIM", "cost": 1, "dmg": [4, 5], "shots": 2, "range": FULL_RANGE, "gun": "smg", "bounce": 1, "sway": 0.04, "spread": 0.05, "text": "Two quick rounds.", "rarity": 0, "pool": false, "up": {"shots": 3}},
 	"huntshot": {"name": "Hunting Round", "type": "AIM", "cost": 1, "dmg": [8, 10], "range": FULL_RANGE, "gun": "rifle", "bounce": 1, "sway": 0.03, "text": "Heavy round. Ricochets once.", "rarity": 0, "pool": false, "up": {"dmg": [10, 13]}},
@@ -83,6 +85,30 @@ const CARDS := {
 	"cluster": {"name": "Cluster Bomb", "type": "ARC", "cost": 0, "od": true, "radius": 40, "dmg": 12, "fuse": 110, "bounce": true, "wind": 1.0, "cluster": 5, "text": "Bursts into five bouncing bomblets.", "rarity": 5},
 	"rush": {"name": "Bull Rush", "type": "LINE", "cost": 0, "od": true, "rush": true, "text": "Launch yourself. Everyone you hit goes flying.", "rarity": 5},
 }
+# ---------------------------------------------------------------- combos (C1, C3, C5, C6)
+const MOMENTUM := 3          # every 3rd card a soldier plays in a turn refunds 1 energy
+const STATUS := {
+	"burn": {"name": "BURNING", "short": "BURN", "c": Color("ff7a3d"), "text": "3 damage a turn. Spreads to bodies on wood and chars the wood."},
+	"toxic": {"name": "TOXIC", "short": "TOX", "c": Color("9be34a"), "text": "2 damage a turn, armor does not help."},
+	"supp": {"name": "SUPPRESSED", "short": "SUPP", "c": Color("c9d1da"), "text": "Half movement on its next turn."},
+	"mark": {"name": "MARKED", "short": "MARK", "c": Color("ff4d3d"), "text": "The next hit on it is a critical (x1.5)."},
+	"stun": {"name": "STUNNED", "short": "STUN", "c": Color("ffd23a"), "text": "Skips its next turn."},
+}
+const TAGS := {
+	"skeet": {"name": "SKEET!", "text": "Shot a Jackal another soldier launched: double damage, +1 energy."},
+	"pileup": {"name": "PILE-UP", "text": "A launched body hit another Jackal: both stunned."},
+	"pinball": {"name": "PINBALL", "text": "One bullet hit 2+ Jackals: draw a card."},
+	"fuelair": {"name": "FUEL-AIR", "text": "Blast inside smoke or gas: radius +50%."},
+	"domino": {"name": "DOMINO", "text": "Debris crushed 2+ Jackals: +1 energy to everyone and a loot drop."},
+	"skydiver": {"name": "SKY DIVER", "text": "Kill while airborne: the card is refunded."},
+	"crossfire": {"name": "CROSSFIRE", "text": "Hit from both sides in one turn: suppressed."},
+}
+# Legendary items made by a triple merge get a name and a unique line (M1).
+const LEGEND_NAMES := {"weapon": ["Old Faithful", "Widowmaker", "Last Word"], "armor": ["Old Iron", "Second Skin", "Hard Luck"], "kit": ["Lucky Break", "Sixth Sense", "Hot Hands"]}
+const LEGEND_BONUS := {"weapon": {"aim_dmg": 2}, "armor": {"armor_turn": 2}, "kit": {"luck": 1}}
+const CARD_NICKS := ["Old Faithful", "The Closer", "Sweet Talker", "Big Iron", "Last Call", "House Rules"]
+const FAB_PRICE := 70
+
 const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush"}
 # Metal Slug letter drops: 3 temporary cards in the collector's hand for the rest of the mission.
 const LETTERS := {"H": "hmg", "R": "bazooka", "F": "flameshot", "S": "shotgun", "L": "lasergun", "C": "chaser"}
@@ -174,19 +200,19 @@ const SHOP_PRICE := [45, 70, 100]
 const SQUAD_DEFS := [
 	{"key": "moss", "name": "MOSS", "cls": "Marksman", "hp": 22, "dodge": 10, "spd": 180,
 	 "deck": ["snipe", "snipe", "rifle", "rifle", "pistol", "overwatch", "digin", "dash"],
-	 "pool": ["snipe", "rifle", "pistol", "burst", "overwatch", "digin", "dash", "grapple", "hmg", "adrenal"],
+	 "pool": ["snipe", "rifle", "pistol", "burst", "overwatch", "digin", "dash", "grapple", "hmg", "adrenal", "tagshot"],
 	 "trait": ["Eagle Eye", "Headshots deal 2x damage instead of 1.5x."], "bio": "Former game warden. Counts every round twice."},
 	{"key": "hex", "name": "HEX", "cls": "Field Medic", "hp": 24, "dodge": 14, "spd": 210,
 	 "deck": ["medkit", "medkit", "stim", "pistol", "pistol", "smoke", "sprint", "frag"],
-	 "pool": ["medkit", "stim", "smoke", "pistol", "sprint", "rally", "frag", "adrenal", "digin", "shotgun"],
+	 "pool": ["medkit", "stim", "smoke", "pistol", "sprint", "rally", "frag", "adrenal", "digin", "shotgun", "gasnade"],
 	 "trait": ["Bedside Manner", "Heals restore +3 HP."], "bio": "Patched up three wars. Still hates the sight of blood."},
 	{"key": "vee", "name": "VEE", "cls": "Demolitions", "hp": 27, "dodge": 6, "spd": 185,
 	 "deck": ["frag", "frag", "bazooka", "bazooka", "mortar", "pistol", "jumppack", "sprint"],
-	 "pool": ["frag", "mortar", "bazooka", "rocket", "clusterfrag", "beacon", "jumppack", "shotgun", "smoke"],
+	 "pool": ["frag", "mortar", "bazooka", "rocket", "clusterfrag", "beacon", "jumppack", "shotgun", "smoke", "gasnade"],
 	 "trait": ["Pyromaniac", "Explosions deal +3 damage. Her own blasts hurt her for 40%."], "bio": "Measures distance in fuse-seconds."},
 	{"key": "rook", "name": "ROOK", "cls": "Vanguard", "hp": 32, "dodge": 8, "spd": 200,
 	 "deck": ["rifle", "rifle", "rifle", "burst", "sprint", "knife", "frag", "grapple"],
-	 "pool": ["rifle", "burst", "shotgun", "hmg", "knife", "digin", "grapple", "sprint", "rally", "adrenal"],
+	 "pool": ["rifle", "burst", "shotgun", "hmg", "knife", "digin", "grapple", "sprint", "rally", "adrenal", "tagshot"],
 	 "trait": ["Thick Skull", "Takes half damage from falls, slams and crushing debris."], "bio": "First through every door. Usually the wrong one."},
 ]
 
@@ -356,6 +382,9 @@ func card(inst) -> Dictionary:
 			base.bounce = base.get("bounce", 0) + 1
 	base["key"] = key
 	base["tier"] = tier
+	if inst is Dictionary and inst.get("nick", "") != "":
+		base["base_name"] = base.name
+		base.name = inst.nick
 	return base
 
 func tier_color(t: int) -> Color:
@@ -382,7 +411,7 @@ func stat_line(c: Dictionary) -> String:
 		return "HEAL %d  RNG %d" % [c.heal, c.range]
 	if c.get("grapple", false):
 		return "RNG %d" % c.range
-	if c.get("smoke", false):
+	if c.get("smoke", false) or c.get("gas", false):
 		return "RADIUS %d  %d RNDS" % [int(c.srad), c.sturns]
 	if c.get("beacon", false):
 		return "%d BOMBS  DMG 15" % c.bombs
@@ -443,6 +472,9 @@ func item_stats(it: Dictionary) -> Dictionary:
 			out[k] = v * TIER_MUL[t]
 		else:
 			out[k] = int(round(v * TIER_MUL[t]))
+	if it.get("named", "") != "":
+		for k in LEGEND_BONUS[slot_group(d.slot)]:
+			out[k] = out.get(k, 0) + LEGEND_BONUS[slot_group(d.slot)][k]
 	for a in it.get("affixes", []):
 		var A: Dictionary = AFFIXES[a]
 		var v = A.v * AFFIX_MUL[t]
@@ -465,7 +497,17 @@ func stat_lines(st: Dictionary) -> Array:
 	return out
 
 func item_name(it: Dictionary) -> String:
+	if it.get("named", "") != "":
+		return "%s \"%s\"" % [ITEMS[it.id].name, it.named]
 	return ITEMS[it.id].name
+
+func slot_group(slot: String) -> String:
+	return "kit" if slot.begins_with("kit") else slot
+
+func affix_text(a: String, t: int) -> String:
+	var A: Dictionary = AFFIXES[a]
+	var v = A.v * AFFIX_MUL[t]
+	return A.fmt % (int(round(v * 100)) if A.get("pct", false) else int(round(v)))
 
 func squad_def(key: String) -> Dictionary:
 	for d in SQUAD_DEFS:

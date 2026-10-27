@@ -15,6 +15,7 @@ var msg := ""
 var msg_t := 0
 var t := 0
 var detail: CardView = null
+var merging := {}            # triple merge in progress: {group, chosen, step, opts}
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -128,6 +129,9 @@ func action(label: String, col: Color, fn: Callable, x: float, disabled := false
 
 func build_actions(it) -> void:
 	var x := 24.0
+	if not merging.is_empty():
+		build_merge_row()
+		return
 	var where: String = pick.get("where", "")
 	if where == "shelf":
 		var o: Dictionary = shelf[pick.i]
@@ -154,8 +158,53 @@ func build_actions(it) -> void:
 		var cost := 0 if Run.reroll_tokens > 0 else gunsmith_price()
 		x = action("REROLL AFFIX %s" % ("FREE" if cost == 0 else "%d$" % cost), Color("b48cff"), reroll_sel, x, Run.scrip < cost)
 
-func merge_actions(_it, x: float) -> float:
+func merge_actions(it, x: float) -> float:
+	var g := Run.merge_group_of(it)
+	if g.size() == 3:
+		x = action("MERGE 3 > %s" % Data.tier_name(it.tier + 1), Data.tier_color(it.tier + 1), func(): start_merge(g), x)
 	return x
+
+func start_merge(g: Array) -> void:
+	## M1/M2: keep one affix from the three, then pick one of two new ones.
+	Sfx.play("click")
+	merging = {"group": g, "chosen": [], "t": g[0].tier + 1}
+	next_merge_step()
+
+func next_merge_step() -> void:
+	var t: int = merging.t
+	var chosen: Array = merging.chosen
+	if not merging.has("kept"):
+		merging.kept = true
+		var keep := Run.merge_keep_options(merging.group)
+		if keep.size() > 1 and Data.AFFIX_COUNT[t] > 0:
+			merging.step = "KEEP ONE AFFIX"
+			merging.opts = keep
+			build()
+			return
+		if keep.size() == 1:
+			chosen.append(keep[0])
+	if not merging.has("picked") and chosen.size() < Data.AFFIX_COUNT[t]:
+		merging.picked = true
+		merging.step = "ADD ONE NEW AFFIX"
+		merging.opts = Run.merge_new_options(chosen)
+		build()
+		return
+	var out := Run.merge_items(merging.group, chosen)
+	merging = {}
+	Sfx.play("levelup")
+	say("Merged into %s %s." % [Data.tier_name(out.tier).capitalize(), Data.item_name(out)])
+	pick = {"where": "stash", "i": Run.stash.find(out)} if Run.stash.has(out) else {}
+	build()
+
+func build_merge_row() -> void:
+	var x := 24.0
+	var t: int = merging.t
+	for a in merging.opts:
+		var aa: String = a
+		x = action(Data.affix_text(aa, t).to_upper(), Color("b48cff"), func():
+			merging.chosen.append(aa)
+			next_merge_step(), x)
+	x = action("CANCEL", Color("9aa2ae"), func(): merging = {}; build(), x)
 
 func gunsmith_price() -> int:
 	return price(40 + 20 * Run.gunsmith_uses)
@@ -284,6 +333,10 @@ func _draw() -> void:
 		Art.text(self, "FREE REROLLS: %d" % Run.reroll_tokens, Vector2(808, 410), 8, Color("b48cff"))
 	if Run.trophies.size():
 		Art.text(self, "TROPHIES: " + ", ".join(Run.trophies), Vector2(24, 400), 8, Color("ffb21e"))
+	if not merging.is_empty():
+		Art.text(self, "MERGING 3x %s INTO %s: %s" % [Data.item_name(merging.group[0]).to_upper(), Data.tier_name(merging.t), merging.get("step", "")], Vector2(24, 432), 8, Data.tier_color(merging.t))
+	elif Run.any_merge():
+		Art.text(self, "TRIPLE READY: select one of three matching items and press MERGE", Vector2(24, 432), 8, Color("b48cff") if t % 60 < 40 else Color("7a5fb0"))
 	if msg_t > 0:
 		var w := Art.text_width(msg, 16, true) + 20
 		draw_rect(Rect2(480 - w / 2, 470, w, 20), Color(0.05, 0.035, 0.03, 0.9))
@@ -364,7 +417,7 @@ class ItemTile extends Control:
 			line = ItemTile.fit(line, w - 31)
 			Art.text(self, line, Vector2(27, 32), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		if black:
-			Art.text(self, "BLACK MKT", Vector2(w - 3, -3), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
+			Art.text(self, "BLACK MKT", Vector2(27, h - 3), 8, Color("ff4d3d"))
 		if sold:
 			draw_rect(Rect2(1, 1, w - 2, h - 2), Color(0, 0, 0, 0.6))
 			Art.text(self, "SOLD", Vector2(w / 2, h / 2 + 4), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)

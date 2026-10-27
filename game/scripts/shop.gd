@@ -87,21 +87,25 @@ func build() -> void:
 		var idx := i
 		cv.pressed.connect(func(): buy_gear(idx))
 		add_child(cv)
+	var fusable := Run.soldiers.any(func(s): return s.alive and Run.fusable(s).size() > 0)
 	var services := [
-		["FIELD HOSPITAL", "Heal the whole squad to full.", 40, heal_all],
-		["UPGRADE CARD", "Raise one card a rarity tier.", 60, upgrade_card],
-		["REMOVE CARD", "Thin a deck: burn one card.", 50, remove_card],
-		["REVIVE", "Bring a fallen soldier back at half HP.", 120, revive],
-		["RESTOCK", "New cards and gear on the shelf.", 20, reroll],
+		["HOSPITAL", "Heal the whole squad to full.", 40, heal_all, Color("53d4e2")],
+		["UPGRADE", "Raise one card a rarity tier.", 60, upgrade_card, Color("53d4e2")],
+		["REMOVE", "Thin a deck: burn one card.", 50, remove_card, Color("53d4e2")],
+		["FUSE 3", "Three copies of a card become one, a tier higher.", 0, fuse_cards, Color("b48cff")],
+		["FABRICATE", "Copy a Common or Uncommon item.", Data.FAB_PRICE, fabricate, Color("b48cff")],
+		["REVIVE", "Bring a fallen soldier back at half HP.", 120, revive, Color("62d26f")],
+		["RESTOCK", "New cards and gear on the shelf.", 20, reroll, Color("9aa2ae")],
 	]
 	for i in services.size():
 		var sv: Array = services[i]
 		var bt := HudScript.PixButton.new()
-		bt.text = "%s  %d$" % [sv[0], sv[2]]
-		bt.color = Color("53d4e2") if i < 3 else (Color("62d26f") if i == 3 else Color("9aa2ae"))
-		bt.size = Vector2(176, 26)
-		bt.position = Vector2(24 + i * 184, 270)
-		bt.disabled = Run.scrip < sv[2]
+		bt.text = "%s  %s" % [sv[0], "FREE" if sv[2] == 0 else "%d$" % price(sv[2])]
+		bt.color = sv[4]
+		bt.size = Vector2(124, 26)
+		bt.position = Vector2(24 + i * 131, 270)
+		bt.disabled = Run.scrip < price(sv[2]) or (sv[3] == fuse_cards and not fusable) or (sv[3] == fabricate and Run.fab_options().is_empty())
+		bt.tooltip_text = sv[1]
 		bt.pressed.connect(sv[3])
 		add_child(bt)
 	var go := HudScript.PixButton.new()
@@ -274,21 +278,21 @@ func heal_all() -> void:
 	build()
 
 func upgrade_card() -> void:
-	if Run.scrip < 60:
+	if Run.scrip < price(60):
 		Sfx.play("deny")
 		return
 	var s := await choose_soldier("UPGRADE WHOSE CARD?")
 	if s.is_empty():
 		return
 	var c := await choose_card("PICK A CARD TO UPGRADE", s, Run.upgradable)
-	if c.is_empty() or not pay(60):
+	if c.is_empty() or not pay(price(60)):
 		return
 	Run.raise_tier(c)
 	say("%s is now %s." % [Data.CARDS[c.key].name, Data.tier_name(Data.tier_of(c)).capitalize()])
 	build()
 
 func remove_card() -> void:
-	if Run.scrip < 50:
+	if Run.scrip < price(50):
 		Sfx.play("deny")
 		return
 	var s := await choose_soldier("THIN WHOSE DECK?")
@@ -298,21 +302,53 @@ func remove_card() -> void:
 		say("%s needs at least 5 cards." % s.def.name)
 		return
 	var c := await choose_card("PICK A CARD TO BURN", s)
-	if c.is_empty() or not pay(50):
+	if c.is_empty() or not pay(price(50)):
 		return
 	s.deck.erase(c)
 	say("%s removed from %s's deck." % [Data.CARDS[c.key].name, s.def.name])
 	build()
 
+func fuse_cards() -> void:
+	## M3: three copies of one card at one rarity fuse into a single card a tier higher.
+	var cand: Array = []
+	for s in Run.soldiers:
+		if s.alive:
+			for g in Run.fusable(s):
+				cand.append({"s": s, "g": g})
+	if cand.is_empty():
+		say("Nobody has three copies of a card at the same rarity.")
+		return
+	var opts: Array = cand.map(func(o): return {"kind": "card", "key": o.g[0].key, "tier": Data.tier_of(o.g[0]) + 1, "label": "%s: 3 INTO 1" % o.s.def.name})
+	var i := await choose("FUSE WHICH CARDS?", opts)
+	if i < 0:
+		return
+	var c := Run.fuse(cand[i].s, cand[i].g)
+	Sfx.play("levelup")
+	say("%s fused into %s %s." % [Data.CARDS[c.key].name, Data.tier_name(Data.tier_of(c)).capitalize(), Data.card(c).name])
+	build()
+
+func fabricate() -> void:
+	## M5: duplicate a Common or Uncommon item to finish a triple.
+	var cand := Run.fab_options()
+	if cand.is_empty():
+		say("The Fabricator only copies Common and Uncommon items.")
+		return
+	var i := await choose("COPY WHICH ITEM?", cand.map(func(it): return Run.item_opt(it)))
+	if i < 0 or not pay(price(Data.FAB_PRICE)):
+		return
+	var cp := Run.fabricate(cand[i])
+	say("Fabricated a copy of %s.%s" % [Data.item_name(cp), " A triple is ready at the Armory." if Run.merge_group_of(cp).size() == 3 else ""])
+	build()
+
 func revive() -> void:
-	if Run.scrip < 120:
+	if Run.scrip < price(120):
 		Sfx.play("deny")
 		return
 	var s := await choose_soldier("REVIVE WHO?", false)
 	if s.is_empty():
 		say("Nobody needs reviving.")
 		return
-	if not pay(120):
+	if not pay(price(120)):
 		return
 	s.alive = true
 	s.hp = int(ceil(s.max_hp / 2.0))
@@ -320,7 +356,7 @@ func revive() -> void:
 	build()
 
 func reroll() -> void:
-	if not pay(20):
+	if not pay(price(20)):
 		return
 	restock()
 	build()
