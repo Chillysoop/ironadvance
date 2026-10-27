@@ -184,6 +184,15 @@ static func burn(s: Dictionary, c: Dictionary) -> bool:
 	s.deck.erase(c)
 	return true
 
+static func patch_up() -> bool:
+	## Heal every living soldier to full (the Doc's Lab).
+	if not Run.soldiers.any(func(s): return s.alive and s.hp < Run.eff_max_hp(s)) or not pay(price(PATCH)):
+		return false
+	for s in Run.soldiers:
+		if s.alive:
+			s.hp = Run.eff_max_hp(s)
+	return true
+
 # ---------------------------------------------------------------- reading a soldier
 static func source(s: Dictionary, c: Dictionary) -> String:
 	## Where a card came from, in a few words.

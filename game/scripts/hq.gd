@@ -8,6 +8,7 @@ const HudScript := preload("res://scripts/hud.gd")
 const ShopScript := preload("res://scripts/shop.gd")
 const ArmoryScript := preload("res://scripts/armory.gd")
 const DossierScript := preload("res://scripts/dossier.gd")
+const WorkshopScript := preload("res://scripts/workshop.gd")
 const HubUI := preload("res://scripts/hub_ui.gd")
 const Services := preload("res://scripts/services.gd")
 
@@ -23,6 +24,8 @@ var upgrades_open := false
 var doc_open := false
 var held := {}              # textures must stay referenced until the frame renders
 var hover_troop := -1       # the soldier in the scene under the mouse
+var walk := {}              # H4: the squad trotting over to a building: {id, x, t}
+var dial_btn: Control = null
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -39,10 +42,10 @@ func build() -> void:
 	bar.picked.connect(open_dossier)
 	add_child(bar)
 	var spots := [
-		["QUARTERMASTER", "CARDS  GEAR  UPGRADES", 40, open_shop.bind("shop"), Color("ffb23e")],
-		["BARRACKS", "RECRUITS  DOG TAGS", 230, open_shop.bind("barracks"), Color("62d26f")],
-		["ARMORY", "GEAR %d  STASH %d" % [Run.soldiers.reduce(func(a, s): return a + s.equip.values().filter(func(x): return x != null).size(), 0), Run.stash.size()], 600, open_armory, Color("53d4e2")],
-		["MEMORIAL", "%d NAMES" % Run.meta.memorial.size(), 780, open_memorial, Color("9aa2ae")],
+		["QUARTERMASTER", "BUY CARDS  GEAR", 40, "qm", Color("ffb23e")],
+		["BARRACKS", "RECRUITS  DOG TAGS", 230, "barracks", Color("62d26f")],
+		["ARMORY", "EQUIP  MERGE  COPY", 600, "armory", Color("53d4e2")],
+		["MEMORIAL", "%d NAMES" % Run.meta.memorial.size(), 780, "memorial", Color("9aa2ae")],
 	]
 	for sp in spots:
 		var bt := HudScript.PixButton.new()
@@ -52,11 +55,24 @@ func build() -> void:
 		bt.small = true
 		bt.size = Vector2(150, 36)
 		bt.position = Vector2(sp[2], 438)
-		bt.pressed.connect(sp[3])
+		var id: String = sp[3]
+		bt.pressed.connect(func(): walk_to(id))
 		add_child(bt)
+	var ws := HudScript.PixButton.new()
+	ws.text = "WORKSHOP"
+	ws.sub = "CHANGE CARDS"
+	ws.color = Color("b48cff")
+	ws.small = true
+	ws.size = Vector2(140, 44)
+	ws.position = Vector2(220, 486)
+	ws.pressed.connect(func(): walk_to("workshop"))
+	add_child(ws)
 	var go := HudScript.PixButton.new()
 	go.text = "DIAL THE GATE"
 	go.sub = "FINALE" if next_mission_n() > Data.LEVELS.size() else "LEVEL %d OF %d" % [next_mission_n(), Data.LEVELS.size()]
+	if Run.scrip >= Services.price(Services.PATCH):
+		go.sub = "%d SCRIP UNSPENT" % Run.scrip
+	dial_btn = go
 	go.color = Color("ff4d3d")
 	go.size = Vector2(220, 44)
 	go.position = Vector2(370, 486)
@@ -69,16 +85,16 @@ func build() -> void:
 	up.small = true
 	up.size = Vector2(170, 44)
 	up.position = Vector2(40, 486)
-	up.pressed.connect(open_upgrades)
+	up.pressed.connect(func(): walk_to("upgrades"))
 	add_child(up)
 	var doc := HudScript.PixButton.new()
 	doc.text = "DOC'S LAB"
-	doc.sub = "%d BIO-PARTS" % int(Run.meta.get("bio", 0)) if Run.hq("doc") >= 1 else "NOT BUILT YET"
+	doc.sub = "PATCH UP  SURGERY" if Run.hq("doc") >= 1 else "PATCH UP"
 	doc.color = Color("9df25c")
 	doc.small = true
 	doc.size = Vector2(170, 44)
 	doc.position = Vector2(750, 486)
-	doc.pressed.connect(open_doc)
+	doc.pressed.connect(func(): walk_to("doc"))
 	add_child(doc)
 
 func doc_cell(i: int) -> Rect2:
@@ -113,6 +129,22 @@ func open_doc() -> void:
 				else:
 					Sfx.play("deny"))
 			add_child(bt)
+	var hurt: Array = Run.soldiers.filter(func(s): return s.alive and s.hp < Run.eff_max_hp(s))
+	var pp := Services.price(Services.PATCH)
+	var patch := HubUI.ActionTile.new()
+	patch.title = "PATCH UP"
+	patch.cost = pp
+	patch.color = Color("62d26f")
+	patch.line = "Heal every soldier to full. Hurt: %s." % ", ".join(hurt.map(func(s): return "%s %d/%d" % [s.def.name, s.hp, Run.eff_max_hp(s)]))
+	patch.why = "Everyone is at full health." if hurt.is_empty() else Services.short(pp)
+	patch.ok = hurt.size() > 0 and Run.scrip >= pp
+	patch.size = Vector2(360, 44)
+	patch.position = Vector2(32, 492)
+	patch.pressed.connect(func():
+		if Services.patch_up():
+			Sfx.play("power")
+		open_doc())
+	add_child(patch)
 	var close := HudScript.PixButton.new()
 	close.text = "BACK TO HQ"
 	close.color = Color("9aa2ae")
@@ -120,6 +152,7 @@ func open_doc() -> void:
 	close.position = Vector2(405, 500)
 	close.pressed.connect(func(): doc_open = false; build())
 	add_child(close)
+	add_nav("doc")
 
 func open_upgrades() -> void:
 	## The HQ upgrade board: each building's next rank, bought with Salvage.
@@ -157,6 +190,7 @@ func open_upgrades() -> void:
 	close.position = Vector2(405, 494)
 	close.pressed.connect(func(): upgrades_open = false; build())
 	add_child(close)
+	add_nav("upgrades")
 
 func open_dossier(i: int) -> void:
 	## S1: a soldier's sheet, gear and deck, from the squad bar, a click on them, or 1-4.
@@ -184,7 +218,7 @@ func troop_at(p: Vector2) -> int:
 	return -1
 
 func _gui_input(ev: InputEvent) -> void:
-	if not idle():
+	if not idle() or not walk.is_empty():
 		return
 	if ev is InputEventMouseMotion:
 		hover_troop = troop_at(ev.position)
@@ -196,12 +230,110 @@ func _gui_input(ev: InputEvent) -> void:
 			hover_troop = -1
 			open_dossier(k)
 
+const KEYS := {KEY_H: "hq", KEY_Q: "qm", KEY_W: "workshop", KEY_A: "armory", KEY_D: "doc", KEY_B: "barracks", KEY_M: "memorial", KEY_U: "upgrades"}
+
 func _unhandled_input(ev: InputEvent) -> void:
-	if not idle() or not (ev is InputEventKey and ev.pressed and not ev.echo):
+	## H4: a key per building skips the walk; 1-4 open a soldier from the HQ scene; ESC goes home.
+	if not (ev is InputEventKey and ev.pressed and not ev.echo) or sub_busy():
 		return
-	if ev.keycode >= KEY_1 and ev.keycode <= KEY_4 and ev.keycode - KEY_1 < Run.soldiers.size():
+	var at_hq := idle()
+	if at_hq and ev.keycode >= KEY_1 and ev.keycode <= KEY_4 and ev.keycode - KEY_1 < Run.soldiers.size():
 		get_viewport().set_input_as_handled()
 		open_dossier(ev.keycode - KEY_1)
+	elif KEYS.has(ev.keycode) and not (at_hq and KEYS[ev.keycode] == "hq"):
+		get_viewport().set_input_as_handled()
+		go(KEYS[ev.keycode])
+	elif at_hq and ev.keycode == KEY_G:
+		get_viewport().set_input_as_handled()
+		Sfx.play("start")
+		dial.emit()
+	elif not at_hq and ev.keycode == KEY_ESCAPE:
+		get_viewport().set_input_as_handled()
+		go("hq")
+
+func sub_busy() -> bool:
+	## A Dossier, picker or preview is open: keys belong to it, and the nav strip steps aside.
+	if sub == null or not is_instance_valid(sub):
+		return false
+	if sub.get_script() == DossierScript or sub.get("chooser") != null or str(sub.get("picking") if sub.get("picking") != null else "") != "":
+		return true
+	for c in sub.get_children():
+		if c.get_script() == DossierScript or c.get_script() == ArmoryScript:
+			return true
+	return false
+
+func go(id: String) -> void:
+	## B2: jump straight from any building to another (or home), no walk.
+	walk = {}
+	memorial_open = false
+	upgrades_open = false
+	doc_open = false
+	build()
+	match id:
+		"qm": open_shop("shop")
+		"barracks": open_shop("barracks")
+		"workshop": open_workshop()
+		"armory": open_armory()
+		"doc": open_doc()
+		"memorial": open_memorial()
+		"upgrades": open_upgrades()
+
+func walk_to(id: String) -> void:
+	## H4: the squad trots over to the building, then it opens.
+	if not walk.is_empty():
+		return
+	Sfx.play("click")
+	var xs := {"qm": 120.0, "workshop": 170.0, "barracks": 305.0, "armory": 672.0, "memorial": 850.0, "doc": 850.0, "upgrades": 480.0}
+	walk = {"id": id, "x": xs.get(id, 480.0), "t": 0}
+	hover_troop = -1
+
+func add_nav(cur: String) -> void:
+	var old := get_node_or_null("Nav")
+	if old != null:
+		old.name = "NavGone"
+		old.queue_free()
+	var nav := HubUI.NavStrip.new()
+	nav.current = cur
+	nav.badges = badges()
+	nav.go.connect(go)
+	nav.name = "Nav"
+	add_child(nav)
+
+func badges() -> Dictionary:
+	## H2: what's waiting at each building, only counting things the squad can do right now.
+	var out := {}
+	var al: Array = Run.soldiers.filter(func(s): return s.alive)
+	if Run.qm_cache.get("mission", -1) != Run.mission or not Run.qm_cache.get("seen", false):
+		out["qm"] = "NEW STOCK"
+	var ready: int = al.reduce(func(a, s): return a + Run.fusable(s).size() + Run.evolutions(s).size(), 0)
+	if ready > 0:
+		out["workshop"] = "%d READY" % ready
+	if Run.any_merge():
+		out["armory"] = "TRIPLE READY"
+	if al.any(func(s): return s.hp < Run.eff_max_hp(s)) and Run.scrip >= Services.price(Services.PATCH):
+		out["doc"] = "HURT"
+	elif Run.hq("doc") >= 1 and Data.SURGERIES.keys().any(func(id): return Data.SQUAD_DEFS.any(func(d): return Run.surgery_block(id, d.key) == "")):
+		out["doc"] = "CAN OPERATE"
+	if not Run.fallen_slots().is_empty() and Run.scrip >= Services.price(Data.RECRUIT_PRICE / (2 if Run.hq("barracks") >= 3 else 1)):
+		out["barracks"] = "RECRUIT"
+	elif al.any(func(s): return s.tags < Data.DOG_TAGS) and Run.scrip >= Services.price(Data.TAG_PRICE):
+		out["barracks"] = "DOG TAG"
+	return out
+
+func reminders() -> Array:
+	## H3: what the gate button mentions before you leave. Only a reminder: one click still dials.
+	var out: Array = []
+	if Run.scrip >= Services.price(Services.PATCH):
+		out.append("%d scrip unspent." % Run.scrip)
+	for s in Run.soldiers:
+		if s.alive and s.hp < Run.eff_max_hp(s):
+			out.append("%s is at %d/%d HP." % [s.def.name, s.hp, Run.eff_max_hp(s)])
+	var b := badges()
+	if b.has("workshop"):
+		out.append("%s at the Workshop." % b.workshop.capitalize())
+	if b.has("armory"):
+		out.append("A triple is ready to merge at the Armory.")
+	return out
 
 func next_mission_n() -> int:
 	return Run.history.size() + 1
@@ -213,13 +345,24 @@ func open_shop(mode: String) -> void:
 	s.done.connect(func(): build())
 	add_child(s)
 	sub = s
+	add_nav("qm" if mode == "shop" else "barracks")
+
+func open_workshop() -> void:
+	Sfx.play("click")
+	var w: Control = WorkshopScript.new()
+	w.done.connect(func(): build())
+	add_child(w)
+	sub = w
+	add_nav("workshop")
 
 func open_armory() -> void:
 	Sfx.play("click")
 	var a: Control = ArmoryScript.new()
+	a.shop_mode = true
 	a.done.connect(func(): build())
 	add_child(a)
 	sub = a
+	add_nav("armory")
 
 func open_memorial() -> void:
 	Sfx.play("click")
@@ -234,6 +377,7 @@ func open_memorial() -> void:
 		c.queue_free()
 	add_child(close)
 	sub = null
+	add_nav("memorial")
 
 func bg(n: String) -> Texture2D:
 	if not held.has(n):
@@ -242,6 +386,13 @@ func bg(n: String) -> Texture2D:
 
 func _process(_d: float) -> void:
 	t += 1
+	if not walk.is_empty():
+		walk.t += 1
+		if walk.t >= 34:
+			go(walk.id)
+	var nav := get_node_or_null("Nav")
+	if nav != null:
+		nav.visible = not sub_busy()
 	queue_redraw()
 
 func gate_open() -> float:
@@ -271,6 +422,7 @@ func _draw() -> void:
 		draw_motor_pool()
 	if Run.hq("doc") >= 1:
 		draw_doc_lab()
+	draw_workshop()
 	draw_quartermaster()
 	draw_barracks()
 	draw_armory()
@@ -291,10 +443,25 @@ func _draw() -> void:
 		var a := 1.0
 		if arrived and t < 70:
 			a = clampf((t - 10 - i * 10) / 20.0, 0, 1)
-		Art.draw_char(self, "sq_" + s.key, "idle", (t / 12 + i) % 4, Vector2(x, GROUND), 1 if x < 480 else -1, false, 0, a, 0, true, 1.4)
+		var face := 1 if x < 480 else -1
+		var anim := "idle"
+		var frame := (t / 12 + i) % 4
+		if not walk.is_empty():
+			var tx: float = walk.x + (i - (al.size() - 1) / 2.0) * 18
+			var k := clampf((walk.t - i * 2) / 26.0, 0, 1)
+			face = 1 if tx > x else -1
+			if k < 1.0:
+				anim = "run"
+				frame = (walk.t / 3 + i) % 8
+			x = lerpf(x, tx, k)
+		Art.draw_char(self, "sq_" + s.key, anim, frame, Vector2(x, GROUND), face, false, 0, a, 0, true, 1.4)
 		if a >= 1.0:
 			var on := Run.soldiers.find(s) == hover_troop
 			Art.text(self, s.def.name, Vector2(x, GROUND + 16), 8, Color("ffd23a") if on else Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	if idle() and walk.is_empty():
+		draw_badges()
+		if dial_btn != null and is_instance_valid(dial_btn) and dial_btn.hover:
+			draw_reminders()
 	if hover_troop >= 0 and idle():
 		draw_troop_card(Run.soldiers[hover_troop], troop_x(al.find(Run.soldiers[hover_troop])))
 	# header
@@ -315,6 +482,46 @@ func _draw() -> void:
 		draw_upgrades_panel()
 	elif doc_open:
 		draw_doc_panel()
+
+func draw_badges() -> void:
+	## H2: a bobbing tag over each building with something ready.
+	var at := {"qm": Vector2(120, 336), "workshop": Vector2(176, 296), "barracks": Vector2(305, 334), "armory": Vector2(674, 356)}
+	at["doc"] = Vector2(854, 314) if Run.hq("doc") >= 1 else Vector2(835, 474)
+	var b := badges()
+	for id in b:
+		if not at.has(id):
+			continue
+		var txt: String = b[id]
+		var w := Art.text_width(txt, 8) + 10
+		var p: Vector2 = at[id] + Vector2(-w / 2, -(2 if (t / 20) % 2 == 0 else 0))
+		draw_rect(Rect2(p, Vector2(w, 14)), Color(0.05, 0.035, 0.03))
+		draw_rect(Rect2(p + Vector2(1, 1), Vector2(w - 2, 12)), Color("ff4d3d") if txt == "HURT" else Color("ffd23a"))
+		Art.text(self, txt, p + Vector2(w / 2, 11), 8, Color(0.05, 0.035, 0.03), HORIZONTAL_ALIGNMENT_CENTER, 0)
+
+func draw_reminders() -> void:
+	## H3: hovering DIAL THE GATE lists what's still worth doing. It never blocks the dial.
+	var lines := reminders()
+	if lines.is_empty():
+		lines = ["All set. Good hunting."]
+	var w := 300.0
+	var r := Rect2(330, 300 - lines.size() * 14, w, 22 + lines.size() * 14)
+	draw_rect(r, Color(0.05, 0.035, 0.03, 0.95))
+	draw_rect(r, Color("ff4d3d"), false, 2.0)
+	Art.text(self, "BEFORE YOU GO", r.position + Vector2(10, 14), 8, Color("ffd23a"))
+	for i in lines.size():
+		Art.text(self, lines[i], r.position + Vector2(10, 30 + i * 14), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+
+func draw_workshop() -> void:
+	## The Workshop: a tall shed behind the QM tent, chimney and sparks from the grinder.
+	var d := Color(0.05, 0.035, 0.03)
+	draw_rect(Rect2(128, 318, 80, GROUND - 318), d)
+	draw_rect(Rect2(130, 320, 76, GROUND - 320), Color("5a4e6a"))
+	draw_colored_polygon(PackedVector2Array([Vector2(122, 322), Vector2(168, 300), Vector2(214, 322)]), Color("3a2c44"))
+	draw_rect(Rect2(190, 288, 8, 24), d)
+	draw_rect(Rect2(146, 326, 20, 12), Color("ffb23e") if (t / 6) % 7 != 0 else Color("6a4e2a"))
+	for i in 3:
+		var k := float((t * 3 + i * 37) % 60) / 60.0
+		draw_rect(Rect2(156 + k * 14 * (1 if i % 2 == 0 else -1), 332 - k * 10 + k * k * 18, 2, 2), Color(1, 0.8, 0.3, 1.0 - k))
 
 func draw_troop_card(s: Dictionary, x: float) -> void:
 	## H1: hovering a soldier in the scene shows who they are and what's waiting for them.
@@ -392,7 +599,7 @@ func draw_memorial() -> void:
 
 func draw_upgrades_panel() -> void:
 	draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.97))
-	Art.text(self, "UPGRADE HQ", Vector2(40, 58), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 3)
+	Art.text(self, "UPGRADE HQ", Vector2(40, 60), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 	Art.text(self, "%d SALVAGE" % int(Run.meta.get("salvage", 0)), Vector2(920, 58), 16, Color("53d4e2"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
 	Art.text(self, "Salvage comes from beaten Boars and Salvage yards, and is kept when a run ends.", Vector2(40, 86), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	for i in Data.HQ_BUILDINGS.size():
@@ -413,9 +620,9 @@ func draw_upgrades_panel() -> void:
 
 func draw_doc_panel() -> void:
 	draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.03, 0.02, 0.97))
-	Art.text(self, "THE DOC'S LAB", Vector2(40, 52), 32, Color("9df25c"), HORIZONTAL_ALIGNMENT_LEFT, 3)
+	Art.text(self, "THE DOC'S LAB", Vector2(40, 58), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 	Art.text(self, "\"Hold still. Or don't, it's more fun.\"", Vector2(40, 76), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
-	Art.text(self, "%d BIO-PARTS   %d SALVAGE" % [int(Run.meta.get("bio", 0)), int(Run.meta.get("salvage", 0))], Vector2(920, 52), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
+	Art.text(self, "%d BIO-PARTS   %d SALVAGE" % [int(Run.meta.get("bio", 0)), int(Run.meta.get("salvage", 0))], Vector2(920, 58), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
 	var r := Run.hq("doc")
 	var line := "%d BIO + %d SALVAGE EACH. %d SLOT%s PER CLASS, OLDEST COMES OUT WHEN FULL." % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE, r, "" if r == 1 else "S"] if r >= 1 else "BUILD THE DOC'S LAB ON THE UPGRADE BOARD FIRST."
 	Art.text(self, line, Vector2(920, 76), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT)
