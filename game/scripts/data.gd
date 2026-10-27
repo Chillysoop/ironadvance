@@ -262,6 +262,20 @@ const POW_SPECIAL := {
 const TROPHIES := ["BOAR TREAD", "BOAR CANNON", "BOAR ENGINE"]
 const SHOP_PRICE := [45, 70, 100]
 
+# ---------------------------------------------------------------- dog tags and recruits
+const DOG_TAGS := 2        # going down spends a tag; going down with none left is KIA for good
+const RECRUIT_PRICE := 80
+const TAG_PRICE := 70
+const CALLSIGNS := ["BISHOP", "DUKE", "FLINT", "GUNNER", "HAWK", "JINX", "KNOX", "LUCKY", "MAVERICK", "NOVA",
+	"ONYX", "PATCH", "RAZOR", "SARGE", "SPUD", "TANK", "VIPER", "WREN", "YANK", "ZERO", "BLUE", "CROW", "DIESEL", "ROACH"]
+# Recruit traits: shown before you hire, never rolled after.
+const RECRUIT_TRAITS := [
+	{"id": "quick", "name": "Quick", "text": "+25 movement."},
+	{"id": "tough", "name": "Tough", "text": "+5 max HP."},
+	{"id": "slippery", "name": "Slippery", "text": "+6 dodge."},
+	{"id": "drilled", "name": "Drilled", "text": "Starts with one card upgraded."},
+]
+
 const SQUAD_DEFS := [
 	{"key": "moss", "name": "MOSS", "cls": "Marksman", "hp": 22, "dodge": 10, "spd": 180,
 	 "deck": ["snipe", "snipe", "rifle", "rifle", "pistol", "overwatch", "digin", "dash"],
@@ -434,7 +448,7 @@ const STOPS := {
 	"depot": {"name": "SUPPLY DEPOT", "text": "The Quartermaster: cards, gear, services and the Armory."},
 	"outpost": {"name": "ELITE OUTPOST", "text": "A short, hard fight against elite Jackals. Pays an Epic crate and a Boar part."},
 	"powcamp": {"name": "POW CAMP", "text": "Free a camp: a free crate, 2 level-up rerolls and a gunsmith token."},
-	"hospital": {"name": "FIELD HOSPITAL", "text": "Heal everyone to full and revive the fallen at half HP."},
+	"hospital": {"name": "FIELD HOSPITAL", "text": "Heal everyone to full and give back one dog tag each."},
 }
 
 # Briefing intel (W2): each mission rolls one condition.
@@ -501,7 +515,7 @@ const GEAR := [
 	{"id": "laser", "icon": "ic_up", "name": "Laser Sights", "text": "Every gun's aim laser reaches one step further. Sway -30%.", "price": 100},
 	{"id": "charm", "icon": "ic_star", "name": "Lucky Charm", "text": "The first soldier to die each mission lives at 1 HP.", "price": 140},
 	{"id": "bandolier", "icon": "ic_bolt", "name": "Bandolier", "text": "+1 energy for everyone on round 1.", "price": 100},
-	{"id": "dogtags", "icon": "ic_skull", "name": "Spare Dog Tags", "text": "Kills give 50% more XP.", "price": 80},
+	{"id": "dogtags", "icon": "ic_skull", "name": "Service Medal", "text": "Kills give 50% more XP.", "price": 80},
 	{"id": "stimpack", "icon": "ic_flame", "name": "Adrenal Pump", "text": "Adrenaline builds 50% faster.", "price": 90},
 ]
 

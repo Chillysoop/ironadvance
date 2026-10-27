@@ -29,7 +29,7 @@ var intel := ""            # this mission's briefing condition (W2)
 var side := ""             # "outpost" while an Elite Outpost side fight is running (W1)
 var threat := 0            # threat level chosen for this run (W5)
 var temp_luck := 0         # Luck that only lasts for the current mission
-var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0}   # kept across runs (W4, W5)
+var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": []}   # kept across runs (W4, W5); memorial = the fallen
 const META_PATH := "user://meta.json"
 
 func _ready() -> void:
@@ -131,15 +131,77 @@ func new_run() -> void:
 	uid = 1
 	seed_val = randi()
 	for d in Data.SQUAD_DEFS:
-		var deck: Array = []
-		for k in d.deck:
-			deck.append(new_card(k))
-		soldiers.append({
-			"key": d.key, "def": d, "hp": d.hp, "max_hp": d.hp, "alive": true,
-			"lvl": 1, "xp": 0, "deck": deck, "perks": [],
-			"bonus": {"move": 0, "dodge": 0, "hand": 0, "energy1": 0},
-			"equip": {"weapon": null, "armor": null, "kit1": null, "kit2": null},
-		})
+		soldiers.append(make_soldier(d))
+
+func make_soldier(d: Dictionary) -> Dictionary:
+	var deck: Array = []
+	for k in d.deck:
+		deck.append(new_card(k))
+	return {
+		"key": d.key, "def": d, "hp": d.hp, "max_hp": d.hp, "alive": true,
+		"lvl": 1, "xp": 0, "deck": deck, "perks": [], "tags": Data.DOG_TAGS, "trait": "",
+		"bonus": {"move": 0, "dodge": 0, "hand": 0, "energy1": 0},
+		"equip": {"weapon": null, "armor": null, "kit1": null, "kit2": null},
+	}
+
+# ---------------------------------------------------------------- dog tags, the fallen and recruits
+func memorialize(s: Dictionary) -> void:
+	## A soldier went down with no dog tags left. Their gear goes to the stash and their tag to the wall.
+	for slot in s.equip.keys():
+		unequip(s, slot)
+	meta.memorial.append({"name": s.def.name, "key": s.key, "cls": s.def.cls, "lvl": s.lvl,
+		"perks": s.perks.duplicate(), "mission": mission + 1})
+	save_meta()
+
+func legacy_perk(key: String) -> Dictionary:
+	## Recruits of a class with a tag on the Memorial can start with the most recent fallen's first perk.
+	for i in range(meta.memorial.size() - 1, -1, -1):
+		var m: Dictionary = meta.memorial[i]
+		if m.key == key and m.perks.size():
+			return {"id": m.perks[0], "from": m.name}
+	return {}
+
+func recruit_offers(n := 2) -> Array:
+	var used: Array = soldiers.filter(func(s): return s.alive).map(func(s): return s.def.name)
+	var names: Array = Data.CALLSIGNS.filter(func(c): return not used.has(c))
+	names.shuffle()
+	var traits: Array = Data.RECRUIT_TRAITS.duplicate()
+	traits.shuffle()
+	var defs: Array = Data.SQUAD_DEFS.duplicate()
+	defs.shuffle()
+	var out: Array = []
+	for i in n:
+		var d: Dictionary = defs[i % defs.size()]
+		out.append({"key": d.key, "name": names[i], "trait": traits[i % traits.size()], "legacy": legacy_perk(d.key)})
+	return out
+
+func hire(slot: int, o: Dictionary) -> Dictionary:
+	## Puts a recruit into a fallen soldier's slot.
+	var d: Dictionary = Data.SQUAD_DEFS.filter(func(x): return x.key == o.key)[0].duplicate()
+	d.name = o.name
+	var s := make_soldier(d)
+	s.trait = o.trait.id
+	match o.trait.id:
+		"quick": s.bonus.move += 25
+		"tough":
+			s.max_hp += 5
+			s.hp += 5
+		"slippery": s.bonus.dodge += 6
+		"drilled":
+			var cands: Array = s.deck.filter(func(c): return upgradable(c))
+			if cands.size():
+				raise_tier(cands[0])
+	if not o.legacy.is_empty():
+		s.perks.append(o.legacy.id)
+	soldiers[slot] = s
+	return s
+
+func fallen_slots() -> Array:
+	var out: Array = []
+	for i in soldiers.size():
+		if not soldiers[i].alive:
+			out.append(i)
+	return out
 
 func new_card(key: String, tier := -1) -> Dictionary:
 	uid += 1

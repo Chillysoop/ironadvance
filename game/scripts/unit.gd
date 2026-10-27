@@ -17,6 +17,7 @@ var vy := 0.0
 var air := false
 var face := 1
 var dead := false
+var downed := false   # went down but spent a dog tag, so they come back next mission
 var gone := false
 var sunk := false
 var flash := 0

@@ -1,6 +1,6 @@
 extends Control
 ## The quartermaster between missions: buy cards and squad gear, upgrade or
-## remove cards, heal and revive. Prices are paid in scrip earned in the field.
+## remove cards, heal, recruit replacements and restore dog tags. Prices are paid in scrip earned in the field.
 
 signal done
 signal chosen(i: int)
@@ -95,7 +95,8 @@ func build() -> void:
 		["REMOVE", "Thin a deck: burn one card.", 50, remove_card, Color("53d4e2")],
 		["WORKBENCH", "Fuse three copies of a card into one a tier higher, or evolve an Epic card with its kit.", 0, fuse_cards, Color("b48cff")],
 		["FABRICATOR", "Copy a Common or Uncommon item.", Data.FAB_PRICE, fabricate, Color("b48cff")],
-		["REVIVE", "Bring a fallen soldier back at half HP.", 120, revive, Color("62d26f")],
+		["RECRUIT", "Hire a replacement for a soldier killed in action.", Data.RECRUIT_PRICE, recruit, Color("62d26f")],
+		["DOG TAG", "Give a soldier back one spent dog tag.", Data.TAG_PRICE, restore_tag, Color("62d26f")],
 		["RESTOCK", "New cards and gear on the shelf.", 20, reroll, Color("9aa2ae")],
 	]
 	for i in services.size():
@@ -104,10 +105,11 @@ func build() -> void:
 		bt.text = sv[0]
 		bt.sub = "FREE" if sv[2] == 0 else "%d$" % price(sv[2])
 		bt.color = sv[4]
-		bt.size = Vector2(108, 34)
+		bt.size = Vector2(96, 34)
 		bt.small = true
-		bt.position = Vector2(24 + i * 114, 264)
-		bt.disabled = Run.scrip < price(sv[2]) or (sv[3] == fuse_cards and not fusable) or (sv[3] == fabricate and Run.fab_options().is_empty())
+		bt.position = Vector2(24 + i * 102, 264)
+		bt.disabled = Run.scrip < price(sv[2]) or (sv[3] == fuse_cards and not fusable) or (sv[3] == fabricate and Run.fab_options().is_empty()) \
+			or (sv[3] == recruit and Run.fallen_slots().is_empty()) or (sv[3] == restore_tag and not Run.soldiers.any(func(s): return s.alive and s.tags < Data.DOG_TAGS))
 		bt.tooltip_text = sv[1]
 		bt.pressed.connect(sv[3])
 		add_child(bt)
@@ -163,6 +165,8 @@ func _draw() -> void:
 		Art.draw_char(self, "sq_" + s.key, anim, (t / 12 + i) % 4 if s.alive else 4, Vector2(x + 30, y + 80), 1, false, 0, 1.0, 0, false, 1.1)
 		Art.text(self, s.def.name, Vector2(x + 62, y + 20), 8, Color.WHITE)
 		Art.text(self, "LV%d" % s.lvl, Vector2(x + 164, y + 20), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
+		if s.alive:
+			Art.draw_tags(self, Vector2(x + 8, y + 8), s.tags)
 		Art.text(self, s.def.cls, Vector2(x + 62, y + 36), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		if s.alive:
 			draw_rect(Rect2(x + 62, y + 44, 100, 6), Color(0.05, 0.035, 0.03))
@@ -378,19 +382,43 @@ func fabricate() -> void:
 	say("Fabricated a copy of %s.%s" % [Data.item_name(cp), " A triple is ready at the Armory." if Run.merge_group_of(cp).size() == 3 else ""])
 	build()
 
-func revive() -> void:
-	if Run.scrip < price(120):
+func recruit() -> void:
+	var slots := Run.fallen_slots()
+	if slots.is_empty():
+		say("Nobody to replace. The squad is at full strength.")
+		return
+	if Run.scrip < price(Data.RECRUIT_PRICE):
 		Sfx.play("deny")
 		return
-	var s := await choose_soldier("REVIVE WHO?", false)
-	if s.is_empty():
-		say("Nobody needs reviving.")
+	var fallen: Dictionary = Run.soldiers[slots[0]]
+	var offers := Run.recruit_offers()
+	var opts: Array = offers.map(func(o):
+		var d: Dictionary = Data.SQUAD_DEFS.filter(func(x): return x.key == o.key)[0]
+		var txt := "%s. %s: %s" % [d.cls, o.trait.name, o.trait.text]
+		if not o.legacy.is_empty():
+			txt += " Legacy from %s: %s." % [o.legacy.from, Data.perk(o.key, o.legacy.id).name]
+		return {"kind": "service", "name": o.name, "text": txt, "icon": "ic_heart"})
+	var i := await choose("REPLACE %s WITH..." % fallen.def.name, opts)
+	if i < 0 or not pay(price(Data.RECRUIT_PRICE)):
 		return
-	if not pay(price(120)):
+	var s := Run.hire(slots[0], offers[i])
+	say("%s joins the squad as a %s." % [s.def.name, s.def.cls])
+	build()
+
+func restore_tag() -> void:
+	if Run.scrip < price(Data.TAG_PRICE):
+		Sfx.play("deny")
 		return
-	s.alive = true
-	s.hp = int(ceil(s.max_hp / 2.0))
-	say("%s is back on their feet." % s.def.name)
+	var cand: Array = Run.soldiers.filter(func(s): return s.alive and s.tags < Data.DOG_TAGS)
+	if cand.is_empty():
+		say("Everyone still has all their dog tags.")
+		return
+	var opts: Array = cand.map(func(s): return {"kind": "service", "name": s.def.name, "text": "%s  %d of %d dog tags left" % [s.def.cls, s.tags, Data.DOG_TAGS], "icon": "ic_heart"})
+	var i := await choose("WHO GETS A NEW DOG TAG?", opts)
+	if i < 0 or not pay(price(Data.TAG_PRICE)):
+		return
+	cand[i].tags += 1
+	say("%s has %d dog tags again." % [cand[i].def.name, cand[i].tags])
 	build()
 
 func reroll() -> void:
