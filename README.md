@@ -31,8 +31,12 @@ The launcher is unsigned: on Windows choose More info → Run anyway; on macOS r
 - `game/` the Godot project. `scripts/battle.gd` is the simulation, `terrain.gd` the destructible grid,
   `world_view.gd` the world and in-world plates, `hud.gd` the HUD, `shop.gd` the Quartermaster,
   `run.gd` campaign state (decks, XP, perks, gear, scrip), `data.gd` all cards, perks, gear, enemies and missions.
+  Missions are strings of level segments in `data.gd` (`SEGMENTS`): ridges, trenches and cliffs, multi-floor forts,
+  collapsing bridges, piers, cranes and minefields. `terrain.gd` builds them.
 - `game/tools/gen_art.py`, `gen_sfx.py` regenerate every sprite and sound (Python 3 + Pillow).
 - `game/tools/test_runner.gd` scripted tests and an autoplayer:
   `godot --path game -- --iatest --scenario=flow --out=/tmp/shots` (title, start, aim, arc, topple, level, shop, flow, bot, campaign).
+  `--scenario=levels` photographs every screen of each mission and walks a soldier through to list blocked spots;
+  `--scenario=hazards` sets off each set piece and prints PASS/FAIL; `--scenario=bot --mission=N` autoplays mission N.
 - `launcher/` the updater. Point it at another host with `--manifest=URL` or a `launcher.cfg` next to the executable
   (`[update]` / `manifest="..."`); `--offline` skips the check.

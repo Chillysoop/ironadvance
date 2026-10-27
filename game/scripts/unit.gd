@@ -5,7 +5,7 @@ extends RefCounted
 
 var id := 0
 var team := ""        # squad, enemy, neutral
-var kind := ""        # soldier, enemy, pow, barrel, fuel, charge
+var kind := ""        # soldier, enemy, pow, barrel, fuel, charge, mine
 var type := ""        # enemy type key
 var sheet := ""       # sprite sheet key
 var x := 0.0
@@ -78,7 +78,7 @@ func center() -> Vector2:
 	return Vector2(x, y - h / 2.0)
 
 func is_prop() -> bool:
-	return kind == "barrel" or kind == "fuel" or kind == "charge"
+	return kind == "barrel" or kind == "fuel" or kind == "charge" or kind == "mine"
 
 func perk(id_: String) -> bool:
 	return s.has("perks") and s.perks.has(id_)
