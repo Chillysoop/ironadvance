@@ -1365,6 +1365,67 @@ def backgrounds():
         near_layer(name, th)
         fore_layer(name, th)
 
+# ---------------------------------------------------------------- title key art
+def title_stage():
+    """The title screen's stage: a rubble mound the squad stands on, framed by a wrecked tank
+    and a broken tower, all black against a sunset that rims every edge facing the heroes."""
+    W, H = 480, 270
+    body, lit = '#150b13', '#f08a4a'
+    def piece(draw_fn, side):
+        img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+        draw_fn(ImageDraw.Draw(img))
+        img = shade(img, body, lit, side=side, rim=1, dark=0.8)
+        return haze(img, '#060306', 150, 0.75, levels=4)
+    rnd = random.Random(41)
+    def mound(d):
+        tops = [(132, 214), (142, 204), (180, 204), (182, 194), (220, 194), (222, 186), (260, 186), (262, 194), (304, 194), (306, 204)]
+        pts = [(96, 270), (104, 250), (112, 240), (122, 226)] + tops + [(318, 208), (330, 216), (338, 230), (352, 240), (366, 256), (378, 270)]
+        d.polygon(pts, fill=rgb(body))
+        # slabs and rubble jutting out of the slopes
+        d.polygon([(110, 236), (98, 226), (126, 216), (132, 226)], fill=rgb(body))
+        d.polygon([(318, 212), (346, 200), (352, 206), (330, 220)], fill=rgb(body))
+        for k in range(14):
+            x = rnd.choice([rnd.randint(100, 140), rnd.randint(310, 370)])
+            y = 270 - int((abs(x - 240) - 60) * 0.6) - rnd.randint(-4, 6)
+            r = rnd.randint(3, 7)
+            d.polygon([(x - r, y), (x - r + 2, y - r), (x + r - 1, y - r + 2), (x + r, y + 1)], fill=rgb(body))
+        for (x0, y0, x1, y1) in ((126, 222, 118, 208), (128, 222, 124, 206), (334, 214, 344, 196), (336, 216, 350, 204)):
+            d.line([(x0, y0), (x1, y1)], fill=rgb(body))  # rebar
+    def wreck(d):
+        d.polygon([(0, 270), (0, 226), (16, 216), (88, 214), (108, 230), (112, 270)], fill=rgb(body))
+        d.rectangle([22, 200, 66, 216], fill=rgb(body))
+        d.polygon([(26, 200), (34, 192), (58, 192), (66, 200)], fill=rgb(body))
+        d.line([(60, 202), (122, 170)], fill=rgb(body), width=4)
+        d.rectangle([118, 166, 126, 174], fill=rgb(body))
+        for k in range(6):
+            d.ellipse([6 + k * 15, 244, 20 + k * 15, 258], fill=rgb(body))
+        # broken wall behind it at the far edge
+        pts = [(0, 270), (0, 108)]
+        for x in range(4, 34, 5):
+            pts.append((x, 108 + rnd.randint(0, 26)))
+        pts += [(34, 150), (30, 270)]
+        d.polygon(pts, fill=rgb(body))
+        for (x0, y0) in ((6, 150), (18, 150), (6, 176), (18, 176)):
+            d.rectangle([x0, y0, x0 + 6, y0 + 10], fill=(0, 0, 0, 0))
+    def tower(d):
+        pts = [(480, 270), (480, 62), (468, 58), (458, 70), (452, 64), (444, 80), (440, 110), (402, 116), (398, 124), (438, 126),
+               (436, 168), (388, 172), (384, 180), (434, 182), (432, 226), (420, 270)]
+        d.polygon(pts, fill=rgb(body))
+        for x in range(400, 440, 7):
+            d.line([(x, 116), (x - 2, 108)], fill=rgb(body))
+        for (x0, y0) in ((450, 90), (464, 90), (450, 134), (464, 134), (450, 190), (464, 190)):
+            d.rectangle([x0, y0, x0 + 7, y0 + 14], fill=(0, 0, 0, 0))
+        palm(d, 470, 64, 0, rgb(body))
+        for k in range(6):  # palm fronds spilling over the tower top
+            a = -3.0 + k * 0.5
+            for st in range(22):
+                d.point((462 + int(math.cos(a) * st), 60 + int(math.sin(a) * st * 0.6 + st * st / 26)), fill=rgb(body))
+                d.point((462 + int(math.cos(a) * st), 61 + int(math.sin(a) * st * 0.6 + st * st / 26)), fill=rgb(body))
+    img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    for fn, side in ((wreck, 1), (tower, -1), (mound, 1)):
+        over(img, piece(fn, side))
+    img.save(os.path.join(OUT, 'bg', 'title_stage.png'))
+
 # ---------------------------------------------------------------- ambient life: critters and set dressing
 def critters():
     """10x8 art-px frames, facing right. Rows: crow, gull, parrot (stand, peck, flap up, flap down),
@@ -1593,6 +1654,7 @@ def main():
     explosion_sheet()
     small_fx()
     backgrounds()
+    title_stage()
     critters()
     decor()
     ui()
