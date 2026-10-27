@@ -15,6 +15,7 @@ var modal: Control
 var cards: Array = []
 var tags: Array = []
 var deck_view: Control = null
+var hand_x0 := 270.0      # left edge of the hand, so the action meter can sit beside it
 
 const INK := Color(0.05, 0.035, 0.03)
 
@@ -100,6 +101,7 @@ func refresh() -> void:
 		var gap := 6.0
 		var total := n * cw + maxf(0, n - 1) * gap
 		var x0 := 480 - total / 2.0
+		hand_x0 = x0
 		for i in n:
 			var cv := CardView.new()
 			cv.opt = want[i]
@@ -122,6 +124,30 @@ func refresh() -> void:
 		cv.supercharged = u.adr >= 50 and not inst.get("od", false) and Data.is_attack(c)
 	overlay.queue_redraw()
 
+func _process(_d: float) -> void:
+	if b == null:
+		return
+	# the END TURN plunger says how many soldiers can still act, and asks twice if any can
+	var n := b.ready_count() if b.state == "player" else 0
+	if b.end_confirm_t > 0:
+		end_btn.sub = "PRESS AGAIN"
+		end_btn.color = Color("ffd23a") if b.t % 16 < 8 else Color("ff4d3d")
+	elif n > 0 and b.state == "player":
+		end_btn.sub = "%d CAN ACT" % n
+		end_btn.color = Color("ff4d3d")
+	else:
+		end_btn.sub = "SPACE"
+		end_btn.color = Color("ff4d3d") if b.t % 40 < 20 or b.state != "player" else Color("ff7a3d")
+
+func preview_cost() -> int:
+	## Energy the hovered (or armed) card would spend, for the blinking bolts.
+	for cv in cards:
+		if cv.hover and not cv.disabled:
+			return cv.cost
+	if b.card_idx >= 0 and b.card_idx < cards.size():
+		return cards[b.card_idx].cost
+	return 0
+
 func hint_text() -> String:
 	if b.state == "enemy":
 		return "The Jackals are moving. Overwatch triggers automatically."
@@ -138,7 +164,7 @@ func hint_text() -> String:
 			return "BEACON: lob it onto the Jackals. Three bombs land there when their phase starts."
 		return Data.TYPES[c.type].hint
 	if u.move_left > 1:
-		return "Click ground to move %s. Click a ladder top to climb. Ending in the push zone scrolls early and cuts the alert." % u.def.name
+		return "Click ground to move %s. Hold ALT for intel. Click a ladder top to climb. Ending in the push zone scrolls early and cuts the alert." % u.def.name
 	return "%s is out of movement. Play cards, switch soldier (TAB) or end the turn." % u.def.name
 
 # ---------------------------------------------------------------- modal: pick one
@@ -297,6 +323,17 @@ class Tag extends Control:
 			draw_texture_rect(Art.tex.ic_skull, Rect2(x0 + 16, 6, 12, 12), false)
 		Art.text(self, u.def.name, Vector2(x0 + 36, 11), 8, Color.WHITE if not u.dead else Color("8a7a7a"))
 		Art.text(self, "LV%d" % u.s.lvl, Vector2(x0 + w - 4, 11), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
+		var b: Battle = hud.b
+		if not u.dead and b.state == "player":
+			# energy pips after the name, then a DONE stamp once they have nothing left
+			var nb := maxi(3, u.energy)
+			for i in nb:
+				var bx := x0 + 74 + i * 7
+				draw_rect(Rect2(bx, 4, 5, 7), Color(0.05, 0.035, 0.03))
+				draw_rect(Rect2(bx + 1, 5, 3, 5), Color("ffd23a") if i < u.energy else Color("3b3f45"))
+			if not b.can_act(u):
+				draw_rect(Rect2(x0 + 1, 1, w - 2, h - 2), Color(0.05, 0.035, 0.03, 0.55))
+				Art.text(self, "DONE", Vector2(x0 + w - 6, 20), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT, 1)
 		if not u.dead:
 			var bw := w - 40
 			draw_rect(Rect2(x0 + 36, 14, bw, 4), Color(0.05, 0.035, 0.03))
@@ -346,10 +383,47 @@ class ModalBG extends Control:
 			Art.draw_char(self, who.sheet, "idle", (Time.get_ticks_msec() / 200) % 4, Vector2(100, 200), 1, false, 0, 1.0, 0, true, 2.0)
 
 class Overlay extends Control:
-	## Top bar, boss bar, log, hint and banners.
+	## Top bar, boss bar, log, hint, the selected soldier's action panel and banners.
 	var hud
 	func _process(_d: float) -> void:
 		queue_redraw()
+	func draw_action_panel(b: Battle) -> void:
+		## Big energy bolts and a movement gauge for the selected soldier, docked left of the hand.
+		var u: Unit = b.sel
+		if b.state != "player" or u == null or u.dead:
+			return
+		var ink := Color(0.05, 0.035, 0.03)
+		var r := Rect2(maxf(160.0, hud.hand_x0 - 52), 440, 46, 98)
+		draw_rect(r.grow(1), ink)
+		draw_rect(r, Color(0.16, 0.18, 0.2, 0.94))
+		draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 1), Color("6c7480"))
+		Art.text(self, "ENERGY", Vector2(r.get_center().x, r.position.y + 10), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+		var cost: int = hud.preview_cost()
+		var slots := clampi(maxi(3, u.energy), 3, 8)
+		for i in slots:
+			var bx := r.position.x + 4 + (i % 2) * 20
+			var by := r.position.y + 14 + (i / 2) * 15
+			var full := i < u.energy
+			var spend := full and i >= u.energy - cost
+			draw_rect(Rect2(bx, by, 18, 14), ink)
+			if full:
+				var a := 1.0
+				if spend:
+					a = 0.3 + 0.7 * float(b.t % 20 < 10)
+				draw_rect(Rect2(bx + 1, by + 1, 16, 12), Color(0.4, 0.33, 0.08, a))
+				draw_texture_rect(Art.tex.ic_bolt, Rect2(bx + 3, by + 1, 12, 12), false, Color(1, 1, 1, a))
+			else:
+				draw_rect(Rect2(bx + 1, by + 1, 16, 12), Color("2b2f35"))
+		var mv := maxf(0.0, u.move_left)
+		var full_mv: float = maxf(1.0, u.def.spd + u.s.bonus.move + (60 if u.perk("charge") else 0))
+		var my := r.end.y - 26
+		Art.text(self, "MOVE", Vector2(r.get_center().x, my), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+		draw_rect(Rect2(r.position.x + 3, my + 3, 40, 7), ink)
+		draw_rect(Rect2(r.position.x + 4, my + 4, 38.0 * clampf(mv / full_mv, 0, 1), 5), Color("62d26f") if mv > 1 else Color("4a505a"))
+		if mv > full_mv:
+			draw_rect(Rect2(r.position.x + 4, my + 4, 38, 1), Color("b48cff"))
+		Art.text(self, "%d" % int(mv), Vector2(r.get_center().x, my + 21), 8, Color("62d26f") if mv > 1 else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+
 	func _draw() -> void:
 		var b: Battle = hud.b
 		if b == null:
@@ -422,6 +496,7 @@ class Overlay extends Control:
 		for i in b.log_lines.size():
 			var a := 0.55 + 0.45 * float(i + 1) / b.log_lines.size()
 			Art.text(self, b.log_lines[i], Vector2(10, ly + i * 14), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		draw_action_panel(b)
 		# hint strip above the hand
 		var h: String = hud.hint_text()
 		if h != "":

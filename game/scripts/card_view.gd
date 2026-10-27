@@ -37,7 +37,8 @@ func _gui_input(ev: InputEvent) -> void:
 
 func _process(_d: float) -> void:
 	if hand_mode:
-		var target := -60.0 if (hover or selected) and not disabled else (-10.0 if hover else 0.0)
+		# cards you can't pay for sink and grey out so the playable ones stand up
+		var target := -60.0 if (hover or selected) and not disabled else (-10.0 if hover else (14.0 if disabled else 0.0))
 		if selected:
 			target = -64.0
 		lift = lerpf(lift, target, 0.3)
@@ -58,6 +59,46 @@ func type_color() -> Color:
 		"gear":
 			return Color("62d26f")
 	return Color("b48cff")
+
+func tier() -> int:
+	match opt.get("kind", "card"):
+		"card":
+			return Data.tier_of(opt)
+		"stat", "perk", "gear", "item":
+			return opt.get("tier", -1)
+	return -1
+
+func draw_rarity(w: float, h: float, t: int, dim: bool) -> void:
+	## Rarity frame: colored border and gem, a shine sweep on Epic+, sparks on Legendary.
+	var rc := Data.tier_color(t)
+	if dim:
+		rc = rc.darkened(0.5)
+	if t >= 1:
+		draw_rect(Rect2(-2, -2, w + 4, h + 2), rc, false, 2.0)
+	draw_rect(Rect2(1, h - 6, w - 2, 3), rc)
+	var g := Vector2(w - 9, 8)
+	draw_colored_polygon(PackedVector2Array([g + Vector2(0, -5), g + Vector2(5, 0), g + Vector2(0, 5), g + Vector2(-5, 0)]), INK)
+	draw_colored_polygon(PackedVector2Array([g + Vector2(0, -4), g + Vector2(4, 0), g + Vector2(0, 4), g + Vector2(-4, 0)]), rc)
+	draw_rect(Rect2(g.x - 1, g.y - 2, 1, 1), Color(1, 1, 1, 0.8))
+	if dim:
+		return
+	var ms := Time.get_ticks_msec()
+	if t >= 3 and t != Data.OD_TIER:
+		var k := fmod(ms / 1400.0, 1.6) - 0.3
+		var x := k * (w + 40) - 20
+		var pts := PackedVector2Array()
+		for p in [Vector2(x, 2), Vector2(x + 10, 2), Vector2(x - 10, h - 4), Vector2(x - 20, h - 4)]:
+			pts.append(Vector2(clampf(p.x, 1, w - 1), p.y))
+		if pts[1].x - pts[0].x > 0.5 or pts[2].x - pts[3].x > 0.5:
+			draw_colored_polygon(pts, Color(1, 1, 1, 0.22))
+	if t == Data.TIER_MAX:
+		for i in 5:
+			var ph := fmod(ms / 700.0 + i * 0.37, 1.0)
+			var a := sin(ph * PI)
+			var px := Terrain.hash2(i, int(ms / 700.0 + i * 0.37)) * w
+			var py := Terrain.hash2(i + 7, int(ms / 700.0 + i * 0.37)) * (h - 4)
+			draw_rect(Rect2(px - 1, py, 3, 1), Color(1, 0.9, 0.5, a))
+			draw_rect(Rect2(px, py - 1, 1, 3), Color(1, 0.9, 0.5, a))
 
 func _draw() -> void:
 	var w := size.x
@@ -135,8 +176,14 @@ func _draw() -> void:
 		draw_rect(Rect2(-2, -2, w + 4, h + 2), Color("ffd23a"), false, 2.0)
 	elif hover and not dim:
 		draw_rect(Rect2(-1, -1, w + 2, h), Color(1, 1, 1, 0.8), false, 1.0)
-	if opt.get("up", false):
-		Art.text(self, "+", Vector2(w - 6, 12), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_RIGHT, 1)
+	var t := tier()
+	if t >= 0:
+		draw_rarity(w, h, t, dim)
+		if not hand_mode and t != Data.OD_TIER:
+			Art.text(self, Data.tier_name(t), Vector2(w / 2.0, h + 10), 8, Data.tier_color(t), HORIZONTAL_ALIGNMENT_CENTER, 1)
+	if hand_mode and not dim and cost == 0 and kind == "card" and not selected:
+		var pulse := 0.35 + 0.25 * sin(Time.get_ticks_msec() / 220.0)
+		draw_rect(Rect2(0, 0, w, h - 2), Color(0.38, 0.82, 0.44, pulse), false, 1.0)
 	if price >= 0:
 		draw_rect(Rect2(w / 2.0 - 26, h - 16, 52, 16), INK)
 		draw_texture_rect(Art.tex.ic_coin, Rect2(w / 2.0 - 22, h - 12, 8, 8), false)

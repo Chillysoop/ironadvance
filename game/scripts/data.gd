@@ -18,38 +18,63 @@ const TYPES := {
 	"SELF": {"c": Color("b48cff"), "hint": "SELF: plays instantly."},
 }
 
-# rarity: 0 common, 1 uncommon, 2 rare, 3 overdrive (never offered)
-# "up" holds the changes an upgraded (+) copy gets.
+# Rarity tiers shared by cards, gear, level-up picks and crates. Rarity never sets a card's
+# energy cost: a higher tier only improves what the card does.
+const RARITY := [
+	{"name": "COMMON", "c": Color("c9ccd1"), "w": 55.0},
+	{"name": "UNCOMMON", "c": Color("62d26f"), "w": 27.0},
+	{"name": "RARE", "c": Color("4f9dff"), "w": 12.0},
+	{"name": "EPIC", "c": Color("b46cff"), "w": 5.0},
+	{"name": "LEGENDARY", "c": Color("ffb21e"), "w": 1.0},
+	{"name": "OVERDRIVE", "c": Color("ff4d3d"), "w": 0.0},
+]
+const TIER_MAX := 4
+const OD_TIER := 5
+# Bullets always fly the full distance. The aim laser only shows the first stretch of the
+# path, and how far depends on the gun. Index into LASER_LEN; gear can push a gun up a step.
+const FULL_RANGE := 2400
+const LASER_LEN := [140.0, 220.0, 420.0, 99999.0]
+const GUNS := {
+	"pistol": {"name": "PISTOL", "laser": 0},
+	"shotgun": {"name": "SHOTGUN", "laser": 0},
+	"smg": {"name": "SMG", "laser": 1},
+	"rifle": {"name": "RIFLE", "laser": 2},
+	"mg": {"name": "MACHINE GUN", "laser": 2},
+	"sniper": {"name": "SNIPER", "laser": 3},
+}
+
+# rarity: base tier of the card (0 common, 1 uncommon, 2 rare, 5 overdrive, never offered)
+# "up" holds the changes the first tier-up of a card gets; later tiers scale it further.
 const CARDS := {
-	"rifle": {"name": "Rifle Shot", "type": "AIM", "cost": 1, "dmg": [6, 8], "range": 720, "bounce": 1, "sway": 0.035, "text": "Ricochets once.", "rarity": 0, "up": {"dmg": [8, 10]}},
-	"burst": {"name": "Burst Fire", "type": "AIM", "cost": 2, "dmg": [4, 5], "shots": 3, "range": 620, "bounce": 1, "sway": 0.05, "spread": 0.06, "text": "Three rounds. Recoil spreads them.", "rarity": 1, "up": {"shots": 4}},
-	"pistol": {"name": "Sidearm", "type": "AIM", "cost": 1, "dmg": [4, 5], "range": 520, "bounce": 2, "sway": 0.022, "text": "Steady. Ricochets twice.", "rarity": 0, "up": {"dmg": [5, 7], "bounce": 3}},
-	"snipe": {"name": "Long Shot", "type": "AIM", "cost": 2, "dmg": [14, 18], "range": 1200, "bounce": 1, "sway": 0.007, "pierce": true, "still": true, "chip": 5, "text": "Pierces bodies. Sways 4x if you moved.", "rarity": 2, "up": {"dmg": [17, 22]}},
-	"shotgun": {"name": "Shotgun", "type": "AIM", "cost": 1, "dmg": [3, 4], "pellets": 6, "range": 170, "bounce": 0, "sway": 0.02, "spread": 0.16, "knock": 5, "text": "Six pellets. Launches targets up close.", "rarity": 1, "up": {"pellets": 8}},
-	"hmg": {"name": "Heavy MG", "type": "AIM", "cost": 1, "dmg": [3, 3], "shots": 5, "range": 660, "bounce": 0, "sway": 0.06, "spread": 0.07, "text": "Five rounds of spray. Shreds wood.", "rarity": 2, "up": {"shots": 7}},
+	"rifle": {"name": "Rifle Shot", "type": "AIM", "cost": 1, "dmg": [6, 8], "range": FULL_RANGE, "gun": "rifle", "bounce": 1, "sway": 0.035, "text": "Ricochets once.", "rarity": 0, "up": {"dmg": [8, 10]}},
+	"burst": {"name": "Burst Fire", "type": "AIM", "cost": 2, "dmg": [4, 5], "shots": 3, "range": FULL_RANGE, "gun": "smg", "bounce": 1, "sway": 0.05, "spread": 0.06, "text": "Three rounds. Recoil spreads them.", "rarity": 1, "up": {"shots": 4}},
+	"pistol": {"name": "Sidearm", "type": "AIM", "cost": 1, "dmg": [4, 5], "range": FULL_RANGE, "gun": "pistol", "bounce": 2, "sway": 0.022, "text": "Steady. Ricochets twice.", "rarity": 0, "up": {"dmg": [5, 7], "bounce": 3}},
+	"snipe": {"name": "Long Shot", "type": "AIM", "cost": 2, "dmg": [14, 18], "range": FULL_RANGE, "gun": "sniper", "bounce": 1, "sway": 0.007, "pierce": true, "still": true, "chip": 5, "text": "Pierces bodies. Sways 4x if you moved.", "rarity": 2, "up": {"dmg": [17, 22]}},
+	"shotgun": {"name": "Shotgun", "type": "AIM", "cost": 1, "dmg": [3, 4], "pellets": 6, "range": FULL_RANGE, "gun": "shotgun", "bounce": 0, "sway": 0.02, "spread": 0.16, "knock": 5, "text": "Six pellets that fan out. Launches targets.", "rarity": 1, "up": {"pellets": 8}},
+	"hmg": {"name": "Heavy MG", "type": "AIM", "cost": 1, "dmg": [3, 3], "shots": 5, "range": FULL_RANGE, "gun": "mg", "bounce": 0, "sway": 0.06, "spread": 0.07, "text": "Five rounds of spray. Shreds wood.", "rarity": 2, "up": {"shots": 7}},
 	"frag": {"name": "Frag Grenade", "type": "ARC", "cost": 1, "radius": 36, "dmg": 11, "fuse": 150, "bounce": true, "wind": 1.0, "text": "Bounces. 2.5s fuse.", "rarity": 0, "up": {"dmg": 14, "radius": 42}},
 	"clusterfrag": {"name": "Cluster Frag", "type": "ARC", "cost": 2, "radius": 30, "dmg": 9, "fuse": 120, "bounce": true, "wind": 1.0, "cluster": 3, "text": "Bursts into three bouncing bomblets.", "rarity": 2, "up": {"cluster": 5}},
 	"mortar": {"name": "Mortar Shell", "type": "ARC", "cost": 2, "radius": 50, "dmg": 15, "wind": 1.6, "text": "Explodes on impact. Heavy wind drift.", "rarity": 1, "up": {"dmg": 19, "radius": 58}},
-	"smoke": {"name": "Smoke Can", "type": "ARC", "cost": 1, "smoke": true, "wind": 1.0, "text": "Enemies cannot see through it for 2 rounds.", "rarity": 1, "up": {"cost": 0}},
-	"beacon": {"name": "Airstrike Beacon", "type": "ARC", "cost": 3, "beacon": true, "wind": 0.6, "text": "Three bombs hit around it at the start of the enemy phase.", "rarity": 2, "up": {"cost": 2}},
+	"smoke": {"name": "Smoke Can", "type": "ARC", "cost": 1, "smoke": true, "srad": 64.0, "sturns": 2, "wind": 1.0, "text": "Enemies cannot see through it.", "rarity": 1, "up": {"srad": 92.0, "sturns": 3}},
+	"beacon": {"name": "Airstrike Beacon", "type": "ARC", "cost": 3, "beacon": true, "wind": 0.6, "text": "Bombs hit around it at the start of the enemy phase.", "bombs": 3, "rarity": 2, "up": {"bombs": 5}},
 	"bazooka": {"name": "Bazooka", "type": "LINE", "cost": 2, "radius": 34, "dmg": 13, "speed": 10.0, "text": "Straight rocket. Big knockback.", "rarity": 1, "up": {"dmg": 17, "radius": 40}},
 	"rocket": {"name": "Rocket Pod", "type": "LINE", "cost": 2, "radius": 24, "dmg": 8, "speed": 11.0, "count": 3, "text": "Three rockets in a spread.", "rarity": 2, "up": {"count": 4}},
-	"grapple": {"name": "Grapple Hook", "type": "LINE", "cost": 1, "grapple": true, "range": 280, "text": "Zip onto a ledge or roof up to 280px away.", "rarity": 1, "up": {"cost": 0}},
-	"jumppack": {"name": "Jump Pack", "type": "LINE", "cost": 1, "jump": true, "text": "Launch yourself in an arc. Lands soft. Counts as a push.", "rarity": 1, "up": {"cost": 0}},
+	"grapple": {"name": "Grapple Hook", "type": "LINE", "cost": 1, "grapple": true, "range": 280, "text": "Zip onto a ledge or roof in reach.", "rarity": 1, "up": {"range": 400}},
+	"jumppack": {"name": "Jump Pack", "type": "LINE", "cost": 1, "jump": true, "jpow": 1.0, "text": "Launch yourself in an arc. Lands soft. Counts as a push.", "rarity": 1, "up": {"jpow": 1.3}},
 	"knife": {"name": "Knife", "type": "MELEE", "cost": 1, "dmg": [8, 10], "range": 38, "knock": 6, "text": "Never misses. Kicks them away.", "rarity": 0, "up": {"dmg": [11, 13]}},
-	"medkit": {"name": "Field Dressing", "type": "ALLY", "cost": 1, "heal": 9, "range": 110, "text": "Heal 9 HP.", "rarity": 0, "up": {"heal": 13}},
+	"medkit": {"name": "Field Dressing", "type": "ALLY", "cost": 1, "heal": 9, "range": 110, "text": "Patch up a squadmate.", "rarity": 0, "up": {"heal": 13}},
 	"stim": {"name": "Stim Shot", "type": "ALLY", "cost": 0, "energy": 1, "range": 110, "text": "+1 energy to a squadmate. Costs them 3 HP.", "rarity": 1, "up": {"range": 200}},
-	"digin": {"name": "Dig In", "type": "SELF", "cost": 1, "armor": 6, "text": "Gain 6 armor until your next turn.", "rarity": 0, "up": {"armor": 10}},
-	"sprint": {"name": "Sprint", "type": "SELF", "cost": 1, "move": 130, "text": "+130px of movement this turn.", "rarity": 0, "up": {"move": 190}},
-	"dash": {"name": "Dash", "type": "SELF", "cost": 0, "move": 80, "text": "+80px of movement. Free.", "rarity": 0, "up": {"move": 120}},
-	"overwatch": {"name": "Overwatch", "type": "SELF", "cost": 1, "overwatch": true, "text": "Fire at the first enemy that moves into view.", "rarity": 1, "up": {"cost": 0}},
-	"adrenal": {"name": "Adrenaline Spike", "type": "SELF", "cost": 0, "adrenal": 50, "selfdmg": 4, "text": "Lose 4 HP, gain 50 adrenaline.", "rarity": 1, "up": {"selfdmg": 2}},
-	"rally": {"name": "Rally Cry", "type": "SELF", "cost": 1, "rally": 70, "range": 220, "text": "Squad within 220px: +70 move and 10 adrenaline.", "rarity": 1, "up": {"rally": 110}},
+	"digin": {"name": "Dig In", "type": "SELF", "cost": 1, "armor": 6, "text": "Armor until your next turn.", "rarity": 0, "up": {"armor": 10}},
+	"sprint": {"name": "Sprint", "type": "SELF", "cost": 1, "move": 130, "text": "Extra movement this turn.", "rarity": 0, "up": {"move": 190}},
+	"dash": {"name": "Dash", "type": "SELF", "cost": 0, "move": 80, "text": "A quick burst of movement.", "rarity": 0, "up": {"move": 120}},
+	"overwatch": {"name": "Overwatch", "type": "SELF", "cost": 1, "overwatch": true, "ow": 1, "text": "Fire at the first enemies that move into view.", "rarity": 1, "up": {"ow": 2}},
+	"adrenal": {"name": "Adrenaline Spike", "type": "SELF", "cost": 0, "adrenal": 50, "selfdmg": 4, "text": "Hurt yourself to get angry.", "rarity": 1, "up": {"selfdmg": 2}},
+	"rally": {"name": "Rally Cry", "type": "SELF", "cost": 1, "rally": 70, "range": 220, "text": "Squad in range: extra movement and 10 adrenaline.", "rarity": 1, "up": {"rally": 110}},
 	# overdrives: unlocked by full adrenaline, free, single use
-	"ricochet": {"name": "Ricochet Round", "type": "AIM", "cost": 0, "od": true, "dmg": [16, 20], "range": 1800, "bounce": 5, "sway": 0.0, "pierce": true, "chip": 5, "text": "Five bounces. Pierces every body it meets.", "rarity": 3},
-	"surge": {"name": "Adrenal Surge", "type": "SELF", "cost": 0, "od": true, "surge": true, "range": 240, "text": "Squad within 240px: heal 10, +1 energy, +80 move.", "rarity": 3},
-	"cluster": {"name": "Cluster Bomb", "type": "ARC", "cost": 0, "od": true, "radius": 40, "dmg": 12, "fuse": 110, "bounce": true, "wind": 1.0, "cluster": 5, "text": "Bursts into five bouncing bomblets.", "rarity": 3},
-	"rush": {"name": "Bull Rush", "type": "LINE", "cost": 0, "od": true, "rush": true, "text": "Launch yourself. Everyone you hit goes flying.", "rarity": 3},
+	"ricochet": {"name": "Ricochet Round", "type": "AIM", "cost": 0, "od": true, "dmg": [16, 20], "range": FULL_RANGE, "gun": "sniper", "bounce": 5, "sway": 0.0, "pierce": true, "chip": 5, "text": "Five bounces. Pierces every body it meets.", "rarity": 5},
+	"surge": {"name": "Adrenal Surge", "type": "SELF", "cost": 0, "od": true, "surge": true, "range": 240, "text": "Squad within 240px: heal 10, +1 energy, +80 move.", "rarity": 5},
+	"cluster": {"name": "Cluster Bomb", "type": "ARC", "cost": 0, "od": true, "radius": 40, "dmg": 12, "fuse": 110, "bounce": true, "wind": 1.0, "cluster": 5, "text": "Bursts into five bouncing bomblets.", "rarity": 5},
+	"rush": {"name": "Bull Rush", "type": "LINE", "cost": 0, "od": true, "rush": true, "text": "Launch yourself. Everyone you hit goes flying.", "rarity": 5},
 }
 const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush"}
 const SHOP_PRICE := [45, 70, 100]
@@ -114,7 +139,7 @@ const GEAR := [
 	{"id": "boots", "icon": "ic_boot", "name": "Steel-Toe Boots", "text": "Squad takes half fall and slam damage.", "price": 90},
 	{"id": "jammer", "icon": "ic_radio", "name": "Radio Jammer", "text": "Radiomen need 4 rounds to call backup, not 3.", "price": 110},
 	{"id": "rations", "icon": "ic_heart", "name": "Combat Rations", "text": "Every wave clear heals the squad 4 HP.", "price": 90},
-	{"id": "laser", "icon": "ic_up", "name": "Laser Sights", "text": "All AIM cards sway 30% less.", "price": 100},
+	{"id": "laser", "icon": "ic_up", "name": "Laser Sights", "text": "Every gun's aim laser reaches one step further. Sway -30%.", "price": 100},
 	{"id": "charm", "icon": "ic_star", "name": "Lucky Charm", "text": "The first soldier to die each mission lives at 1 HP.", "price": 140},
 	{"id": "bandolier", "icon": "ic_bolt", "name": "Bandolier", "text": "+1 energy for everyone on round 1.", "price": 100},
 	{"id": "dogtags", "icon": "ic_skull", "name": "Spare Dog Tags", "text": "Kills give 50% more XP.", "price": 80},
@@ -187,16 +212,72 @@ const THEMES := {
 	"night": {"water": [Color("0a1830"), Color("24508a")], "tint": Color(0.62, 0.66, 0.86), "grass": Color("4a7a52")},
 }
 
+func base_tier(key: String) -> int:
+	return int(CARDS[key].rarity)
+
+func tier_of(inst) -> int:
+	## A card instance's rarity tier. Old saves used a bool "up" for one tier-up.
+	if inst is String:
+		return base_tier(inst)
+	if inst.get("od", false) or CARDS[inst.key].get("od", false):
+		return OD_TIER
+	if inst.has("tier"):
+		return int(inst.tier)
+	return base_tier(inst.key) + (1 if inst.get("up", false) else 0)
+
 func card(inst) -> Dictionary:
-	## Resolved stats for a card instance {key, up}.
+	## Resolved stats for a card instance {key, tier}. Each tier above the card's base
+	## rarity improves its effect; the energy cost never changes with rarity.
 	var key: String = inst if inst is String else inst.key
 	var base: Dictionary = CARDS[key].duplicate(true)
-	if not (inst is String) and inst.get("up", false) and base.has("up"):
+	var tier := tier_of(inst)
+	var steps := tier - int(base.rarity) if tier != OD_TIER else 0
+	if steps >= 1 and base.has("up"):
 		for k in base.up:
-			base[k] = base.up[k]
-		base.name = base.name + "+"
+			if k != "cost":
+				base[k] = base.up[k]
+	var extra := steps - (1 if base.has("up") else 0)
+	for i in maxi(0, extra):
+		if base.has("dmg"):
+			if base.dmg is Array:
+				base.dmg = [base.dmg[0] + 2, base.dmg[1] + 2]
+			else:
+				base.dmg += 3
+		for k in [["heal", 3], ["armor", 3], ["move", 40], ["rally", 30], ["adrenal", 10]]:
+			if base.has(k[0]):
+				base[k[0]] += k[1]
+		if base.has("radius"):
+			base.radius += 4
+		if base.has("srad"):
+			base.srad += 14.0
+		if base.get("grapple", false):
+			base.range += 60
+		if base.has("jpow"):
+			base.jpow += 0.1
+		if base.has("energy") and key == "stim":
+			base.range += 40
+	if tier >= TIER_MAX:
+		for k in ["shots", "pellets", "count", "cluster", "bombs", "ow"]:
+			if base.has(k):
+				base[k] += 1
+		if base.type == "AIM":
+			base.bounce = base.get("bounce", 0) + 1
 	base["key"] = key
+	base["tier"] = tier
 	return base
+
+func tier_color(t: int) -> Color:
+	return RARITY[clampi(t, 0, RARITY.size() - 1)].c
+
+func tier_name(t: int) -> String:
+	return RARITY[clampi(t, 0, RARITY.size() - 1)].name
+
+func laser_len(c: Dictionary, step_bonus := 0, pct := 0.0) -> float:
+	## How much of the bullet path the aim laser reveals for this card.
+	var g: Dictionary = GUNS.get(c.get("gun", "rifle"), GUNS.rifle)
+	var i: int = clampi(int(g.laser) + step_bonus, 0, LASER_LEN.size() - 1)
+	var L: float = LASER_LEN[i]
+	return L if L > 9999.0 else L * (1.0 + pct)
 
 func stat_line(c: Dictionary) -> String:
 	if c.type == "AIM":
@@ -210,9 +291,11 @@ func stat_line(c: Dictionary) -> String:
 	if c.get("grapple", false):
 		return "RNG %d" % c.range
 	if c.get("smoke", false):
-		return "RADIUS 64  2 RNDS"
+		return "RADIUS %d  %d RNDS" % [int(c.srad), c.sturns]
 	if c.get("beacon", false):
-		return "3 BOMBS  DMG 15"
+		return "%d BOMBS  DMG 15" % c.bombs
+	if c.get("overwatch", false):
+		return "%d SHOT%s" % [c.ow, "S" if c.ow > 1 else ""]
 	if c.has("armor"):
 		return "ARMOR +%d" % c.armor
 	if c.has("move"):
@@ -226,7 +309,7 @@ func stat_line(c: Dictionary) -> String:
 	if c.get("rush", false):
 		return "LAUNCH  SLAM 14"
 	if c.get("jump", false):
-		return "LAUNCH  SAFE LANDING"
+		return "LAUNCH x%.1f  SOFT" % c.jpow
 	if c.get("surge", false):
 		return "SQUAD BOOST"
 	return ""
@@ -252,6 +335,6 @@ func gear(id: String) -> Dictionary:
 			return g
 	return {}
 
-func card_price(key: String, up := false) -> int:
-	var r: int = clampi(CARDS[key].rarity, 0, 2)
-	return SHOP_PRICE[r] + (40 if up else 0)
+func card_price(key: String, tier := -1) -> int:
+	var t: int = base_tier(key) if tier < 0 else tier
+	return SHOP_PRICE[clampi(base_tier(key), 0, 2)] + maxi(0, t - base_tier(key)) * 40

@@ -123,6 +123,39 @@ func run() -> void:
 			main.hud.show_deck()
 			await frames_wait(10)
 			await shot("deck")
+		"intel":
+			Run.new_run()
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			await frames_wait(120)
+			b.inspect = true
+			b.mouse = Vector2(300, 300)
+			main.hud.cards[1].hover = true
+			await frames_wait(10)
+			await shot("intel")
+			b.inspect = false
+			b.sel.energy = 0
+			b.sel.move_left = 0
+			b.ui_dirty = true
+			b.end_turn()
+			await frames_wait(10)
+			await shot("done_confirm")
+		"rarity":
+			Run.new_run()
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			var opts: Array = []
+			for t in 5:
+				opts.append({"kind": "card", "key": ["rifle", "frag", "medkit", "snipe", "knife"][t], "tier": t})
+			b.resolve(func(): await b.ask("supply", "RARITY CHECK", "Common to Legendary.", opts))
+			await frames_wait(60)
+			await shot("rarity")
+			main.hud.picked.emit(-1)
+			print("[rarity] weights m0 ", Run.tier_weights())
+			var counts := [0, 0, 0, 0, 0]
+			for i in 2000:
+				counts[Run.roll_tier()] += 1
+			print("[rarity] 2000 rolls ", counts)
 		"shop":
 			Run.new_run()
 			Run.scrip = 400
@@ -292,7 +325,7 @@ func bot(mission: int, max_rounds: int, fresh := true) -> bool:
 		if b.round_n - last_shot >= 3 or b.round_n == 1:
 			last_shot = b.round_n
 			await shot("bot_m%d_r%02d" % [mission, b.round_n])
-		b.end_turn()
+		b.end_turn(true)
 		await until(func(): return res.done or (b.state == "player" and not b.busy) or b.state == "over", 30000)
 	if not res.done:
 		res.line = "rounds %d score %d kills %d cam %d/%d alive %d" % [b.round_n, b.score, b.stats.kills, int(b.cam_x), b.world_w, b.squad_alive().size()]

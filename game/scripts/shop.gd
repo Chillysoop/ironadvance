@@ -22,13 +22,13 @@ func _ready() -> void:
 func restock() -> void:
 	var keys: Array = []
 	for k in Data.CARDS:
-		if Data.CARDS[k].rarity < 3:
+		if not Data.CARDS[k].get("od", false):
 			keys.append(k)
 	keys.shuffle()
 	stock_cards.clear()
 	for i in 5:
-		var up := randf() < 0.2 + Run.mission * 0.1
-		stock_cards.append({"kind": "card", "key": keys[i], "up": up, "price": Data.card_price(keys[i], up)})
+		var t := Run.roll_card_tier(keys[i])
+		stock_cards.append({"kind": "card", "key": keys[i], "tier": t, "price": Data.card_price(keys[i], t)})
 	var gear: Array = Data.GEAR.filter(func(g): return not Run.has_gear(g.id))
 	gear.shuffle()
 	stock_gear = gear.slice(0, 3).map(func(g): return {"kind": "gear", "id": g.id, "icon": g.icon, "name": g.name, "text": g.text, "price": g.price})
@@ -69,7 +69,7 @@ func build() -> void:
 		add_child(cv)
 	var services := [
 		["FIELD HOSPITAL", "Heal the whole squad to full.", 40, heal_all],
-		["UPGRADE CARD", "Turn one card into its + version.", 60, upgrade_card],
+		["UPGRADE CARD", "Raise one card a rarity tier.", 60, upgrade_card],
 		["REMOVE CARD", "Thin a deck: burn one card.", 50, remove_card],
 		["REVIVE", "Bring a fallen soldier back at half HP.", 120, revive],
 		["RESTOCK", "New cards and gear on the shelf.", 20, reroll],
@@ -195,7 +195,7 @@ func choose_card(title: String, s: Dictionary, filter := Callable()) -> Dictiona
 	if cand.is_empty():
 		say("No cards to pick from.")
 		return {}
-	var opts: Array = cand.map(func(c): return {"kind": "card", "key": c.key, "up": c.up})
+	var opts: Array = cand.map(func(c): return {"kind": "card", "key": c.key, "tier": Data.tier_of(c)})
 	var i := await choose(title, opts, Vector2(96, 132))
 	return cand[i] if i >= 0 else {}
 
@@ -216,7 +216,7 @@ func buy_card(i: int) -> void:
 	var s := await choose_soldier("WHO GETS %s?" % Data.card(o).name.to_upper())
 	if s.is_empty() or not pay(o.price):
 		return
-	s.deck.append(Run.new_card(o.key, o.up))
+	s.deck.append(Run.new_card(o.key, o.tier))
 	o["sold"] = true
 	say("%s added to %s's deck." % [Data.card(o).name, s.def.name])
 	build()
@@ -249,11 +249,11 @@ func upgrade_card() -> void:
 	var s := await choose_soldier("UPGRADE WHOSE CARD?")
 	if s.is_empty():
 		return
-	var c := await choose_card("PICK A CARD TO UPGRADE", s, func(c): return not c.up and Data.CARDS[c.key].has("up"))
+	var c := await choose_card("PICK A CARD TO UPGRADE", s, Run.upgradable)
 	if c.is_empty() or not pay(60):
 		return
-	c.up = true
-	say("%s upgraded to %s." % [Data.CARDS[c.key].name, Data.card(c).name])
+	Run.raise_tier(c)
+	say("%s is now %s." % [Data.CARDS[c.key].name, Data.tier_name(Data.tier_of(c)).capitalize()])
 	build()
 
 func remove_card() -> void:

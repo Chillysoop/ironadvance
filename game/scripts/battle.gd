@@ -52,6 +52,8 @@ var sway_t := 0
 var won := false
 var lost := false
 var ui_dirty := true
+var end_confirm_t := 0   # frames left to confirm END TURN while soldiers can still act
+var inspect := false     # ALT held: show every soldier's actions and enemy intents
 var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0}
 var mission: Dictionary = {}
 var mission_idx := 0
@@ -341,6 +343,7 @@ func trace_bullet(x: float, y: float, ang: float, max_len: float, bounces: int, 
 	var segs: Array = []
 	var hits: Array = []
 	var pings: Array = []
+	var ping_d: Array = []
 	var dx := cos(ang)
 	var dy := sin(ang)
 	var sx := x
@@ -355,14 +358,14 @@ func trace_bullet(x: float, y: float, ang: float, max_len: float, bounces: int, 
 		trav += 2
 		if ny > H or ny < -80 or nx < 0 or nx > world_w:
 			segs.append([sx, sy, nx, ny])
-			return {"segs": segs, "hits": hits, "pings": pings, "end": null}
+			return {"segs": segs, "hits": hits, "pings": pings, "ping_d": ping_d, "len": trav, "end": null}
 		var u = unit_at_point(nx, ny, shooter, trav, skip)
 		if u != null:
-			hits.append({"u": u, "x": nx, "y": ny, "dx": dx, "head": not u.heavy and not u.is_prop() and ny < u.y - u.h * 0.72})
+			hits.append({"u": u, "x": nx, "y": ny, "dx": dx, "d": trav, "head": not u.heavy and not u.is_prop() and ny < u.y - u.h * 0.72})
 			skip[u.id] = true
 			if not pierce:
 				segs.append([sx, sy, nx, ny])
-				return {"segs": segs, "hits": hits, "pings": pings, "end": null}
+				return {"segs": segs, "hits": hits, "pings": pings, "ping_d": ping_d, "len": trav, "end": null}
 		if T.solid(nx, ny):
 			var m := T.mat(nx, ny)
 			if bounces > 0 and (m == 2 or m == 4):
@@ -377,16 +380,26 @@ func trace_bullet(x: float, y: float, ang: float, max_len: float, bounces: int, 
 					dy = -dy
 				segs.append([sx, sy, px, py])
 				pings.append(Vector2(px, py))
+				ping_d.append(trav)
 				sx = px
 				sy = py
 				bounces -= 1
 				continue
 			segs.append([sx, sy, nx, ny])
-			return {"segs": segs, "hits": hits, "pings": pings, "end": {"x": nx, "y": ny, "m": m}}
+			return {"segs": segs, "hits": hits, "pings": pings, "ping_d": ping_d, "len": trav, "end": {"x": nx, "y": ny, "m": m}}
 		px = nx
 		py = ny
 	segs.append([sx, sy, px, py])
-	return {"segs": segs, "hits": hits, "pings": pings, "end": null}
+	return {"segs": segs, "hits": hits, "pings": pings, "ping_d": ping_d, "len": trav, "end": null}
+
+func laser_of(u: Unit, c: Dictionary) -> float:
+	## How far this soldier's aim laser reaches with this card. Bullets always go further.
+	var step := 1 if Run.has_gear("laser") else 0
+	var pct := 0.0
+	if u != null and u.team == "squad":
+		step += Run.laser_steps(u.s)
+		pct += Run.laser_pct(u.s)
+	return Data.laser_len(c, step, pct)
 
 func bounce_bonus(a: Unit, sc: bool) -> int:
 	var n := 1 if sc else 0
@@ -664,7 +677,7 @@ func grant_overdrive(u: Unit) -> void:
 	if u.dead or u.hand.any(func(c): return c.get("od", false)):
 		return
 	var key: String = Data.OD[u.def.key]
-	u.hand.append({"id": -1, "key": key, "up": false, "od": true})
+	u.hand.append({"id": -1, "key": key, "tier": Data.OD_TIER, "od": true})
 	banner("%s: OVERDRIVE" % u.def.name, Color("ffb23e"), Data.CARDS[key].name.to_upper())
 	bark(u, pick(Data.BARKS.od))
 	Sfx.play("power")
@@ -784,7 +797,7 @@ func explode(x: float, y: float, r: float, dmg: int, owner) -> void:
 
 # ---------------------------------------------------------------- projectiles
 func mk_proj(o: Dictionary) -> Dictionary:
-	var p := {"age": 0, "vx": 0.0, "vy": 0.0, "wind": 0.0, "grav": 1.0, "r": 30.0, "dmg": 10, "bounce": false, "fuse": null, "dead": false, "smoke": false, "cluster": 0, "beacon": false, "trail": false, "mini": false, "owner": null}
+	var p := {"age": 0, "vx": 0.0, "vy": 0.0, "wind": 0.0, "grav": 1.0, "r": 30.0, "dmg": 10, "bounce": false, "fuse": null, "dead": false, "smoke": false, "srad": 64.0, "sturns": 2, "bombs": 3, "cluster": 0, "beacon": false, "trail": false, "mini": false, "owner": null}
 	p.merge(o, true)
 	return p
 
@@ -803,13 +816,13 @@ func unit_hit(p: Dictionary):
 func detonate(p: Dictionary) -> void:
 	p.dead = true
 	if p.smoke:
-		smokes.append({"x": p.x, "y": p.y - 24, "r": 64.0, "turns": 2, "seed": randf() * 10})
+		smokes.append({"x": p.x, "y": p.y - 24, "r": p.srad, "turns": p.sturns, "seed": randf() * 10})
 		Sfx.play("splash")
 		for i in 6:
 			puff(p.x + randf_range(-30, 30), p.y - randf_range(0, 40), 3.0)
 		return
 	if p.beacon:
-		strikes.append({"x": p.x, "owner": p.owner, "friendly": true})
+		strikes.append({"x": p.x, "owner": p.owner, "friendly": true, "n": p.bombs})
 		float_at(p.x, p.y - 20, "BEACON SET", Color("62d26f"), true)
 		Sfx.play("tick")
 		return
@@ -962,12 +975,13 @@ func aim_angle(u: Unit, c: Dictionary, p: Vector2) -> Dictionary:
 	var a := atan2(p.y - my, p.x - mx) + sin(sway_t * 0.055) * sw + sin(sway_t * 0.137 + 1) * sw * 0.5
 	return {"a": a, "mx": mx, "my": my, "f": f}
 
-func jump_vel(u: Unit, p: Vector2) -> Dictionary:
+func jump_vel(u: Unit, p: Vector2, mul := 1.0) -> Dictionary:
 	var hp_ := hand_pos(u)
 	var dx := p.x - hp_.x
 	var dy := p.y - hp_.y
 	var d := maxf(0.001, sqrt(dx * dx + dy * dy))
-	var pw := clampf(minf(d, 240) / 240.0 * 10.5, 3, 10.5)
+	var reach := 240.0 * mul
+	var pw := clampf(minf(d, reach) / reach * 10.5 * mul, 3, 10.5 * mul)
 	return {"vx": dx / d * pw, "vy": minf(-2.5, dy / d * pw), "hx": hp_.x, "hy": hp_.y}
 
 func rush_vel(u: Unit, p: Vector2) -> Dictionary:
@@ -1084,7 +1098,8 @@ func _act_arc(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
 	projs.append(mk_proj({"kind": "smoke" if c.get("smoke", false) else ("beacon" if c.get("beacon", false) else ("frag" if fuse != null else "shell")),
 		"x": v.hx, "y": v.hy, "vx": v.vx, "vy": v.vy, "wind": c.get("wind", 1.0), "r": r,
 		"dmg": int(round((c.get("dmg", 0) + dmg_bonus) * (1.25 if sc else 1.0))), "bounce": c.get("bounce", false), "fuse": fuse,
-		"smoke": c.get("smoke", false), "beacon": c.get("beacon", false), "cluster": c.get("cluster", 0), "owner": u, "trail": fuse == null}))
+		"smoke": c.get("smoke", false), "srad": c.get("srad", 64.0), "sturns": c.get("sturns", 2), "bombs": c.get("bombs", 3),
+		"beacon": c.get("beacon", false), "cluster": c.get("cluster", 0), "owner": u, "trail": fuse == null}))
 	await wait(4)
 
 func _act_grapple(u: Unit, idx: int, gs: Dictionary) -> void:
@@ -1098,8 +1113,8 @@ func _act_grapple(u: Unit, idx: int, gs: Dictionary) -> void:
 	await check_push(u)
 
 func _act_jump(u: Unit, idx: int, p: Vector2) -> void:
-	spend_card(u, idx)
-	var v := jump_vel(u, p)
+	var c := spend_card(u, idx)
+	var v := jump_vel(u, p, c.get("jpow", 1.0))
 	u.face = 1 if v.vx >= 0 else -1
 	u.vx = v.vx; u.vy = v.vy; u.air = true; u.jumping = true; u.walk = null
 	Sfx.play("rocket")
@@ -1218,7 +1233,7 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 		float_text(u, "+%d MOVE" % c.move, Color("b48cff"))
 		Sfx.play("select")
 	if c.get("overwatch", false):
-		u.overwatch = 2 if u.perk("sentinel") else 1
+		u.overwatch = c.get("ow", 1) * (2 if u.perk("sentinel") else 1)
 		float_text(u, "OVERWATCH", Color("53d4e2"))
 		Sfx.play("select")
 	if c.has("adrenal"):
@@ -1380,18 +1395,18 @@ func supply_drop(title: String, for_unit) -> void:
 		return
 	var pool: Array = []
 	for k in Data.CARDS:
-		if Data.CARDS[k].rarity < 3:
+		if not Data.CARDS[k].get("od", false):
 			pool.append(k)
 	pool.shuffle()
 	var opts: Array = []
 	for i in 3:
 		var u: Unit = for_unit if for_unit != null else pick(alive)
-		opts.append({"kind": "card", "key": pool[i], "up": false, "u": u})
+		opts.append({"kind": "card", "key": pool[i], "tier": Run.roll_card_tier(pool[i]), "u": u})
 	var sub := ("%s freed them. Pick one card for %s's deck." % [for_unit.def.name, for_unit.def.name]) if for_unit != null else "Pick one card. It goes into that soldier's draw pile."
 	var ch := await ask("supply", title, sub, opts)
 	if ch >= 0:
 		var o: Dictionary = opts[ch]
-		var inst := Run.new_card(o.key)
+		var inst := Run.new_card(o.key, o.tier)
 		o.u.s.deck.append(inst)
 		o.u.draw.insert(ri(0, o.u.draw.size()), inst)
 		log_msg("%s added to %s's deck." % [Data.CARDS[o.key].name, o.u.def.name])
@@ -1415,9 +1430,9 @@ func level_up(u: Unit) -> void:
 		match o.id:
 			"hp":
 				u.max_hp = u.s.max_hp
-				u.hp = mini(u.max_hp, u.hp + 5)
+				u.hp = mini(u.max_hp, u.hp + Run.STAT_TIERS.hp[o.tier])
 			"move":
-				u.move_left += 25
+				u.move_left += Run.STAT_TIERS.move[o.tier]
 			"dodge":
 				u.dodge = u.def.dodge + u.s.bonus.dodge
 	elif o.kind == "perk":
@@ -1524,9 +1539,48 @@ func start_player_turn() -> void:
 	ui_dirty = true
 	resolve(func(): await wait(1))
 
-func end_turn() -> void:
+func can_act(u: Unit) -> bool:
+	## True while a soldier still has something to do: movement left or a card they can pay for.
+	if u == null or u.dead or u.team != "squad":
+		return false
+	if u.move_left > 1:
+		return true
+	return u.hand.any(func(c): return card_cost(u, c) <= u.energy)
+
+func intent_of(e: Unit) -> String:
+	## What an enemy will try next phase, for the ALT intel overlay. Damage includes alert scaling.
+	var d: Dictionary = Data.ETYPES[e.type]
+	if not e.active:
+		return "IDLE"
+	var m := 1.0 + alert * 0.06
+	var rng := func(a): return "%d-%d" % [int(round(a[0] * m)), int(round(a[1] * m))]
+	if d.get("sapper", false):
+		return "PLANT CHARGE"
+	if d.get("builds", false):
+		return "BUILD WALL / SHOOT %s" % rng.call(d.dmg)
+	if d.get("radio", false) and radio_t != null:
+		return "BACKUP IN %d" % radio_t
+	if d.get("melee", false):
+		return "CHARGE %dpx  HIT %s" % [d.speed, rng.call(d.dmg)]
+	if d.get("arc", false):
+		return ("SHELL %d" if d.get("heavyArc", false) else "GRENADE %d") % int(round(d.dmg * m))
+	if d.has("shots"):
+		return "FIRE %dx %s" % [d.shots, rng.call(d.dmg)]
+	return "SHOOT %s" % rng.call(d.dmg)
+
+func ready_count() -> int:
+	return squad_alive().filter(can_act).size()
+
+func end_turn(force := false) -> void:
 	if state != "player" or busy:
 		return
+	# first press warns when someone can still act; a second press within ~2.5s ends the turn
+	if not force and ready_count() > 0 and end_confirm_t <= 0:
+		end_confirm_t = 150
+		Sfx.play("tick")
+		ui_dirty = true
+		return
+	end_confirm_t = 0
 	for s in squad_alive():
 		stow_hand(s)
 	card_idx = -1
@@ -1543,9 +1597,9 @@ func enemy_phase() -> void:
 		banner("AIRSTRIKE!", Color("62d26f") if friendly.size() == strikes.size() else Color("ff4d3d"))
 		Sfx.play("alarm")
 		for s in strikes:
-			var n := 3 if s.get("friendly", false) else 1
+			var n: int = s.get("n", 3) if s.get("friendly", false) else 1
 			for k in n:
-				var ox: float = 0.0 if n == 1 else (k - 1) * 34.0
+				var ox: float = 0.0 if n == 1 else (k - (n - 1) / 2.0) * 34.0
 				projs.append(mk_proj({"kind": "bomb", "x": s.x + ox, "y": -20.0 - k * 30, "vx": 0.0, "vy": 5.0, "r": 48.0, "dmg": 15, "owner": s.get("owner", null)}))
 			await wait(14)
 		strikes = []
@@ -2068,6 +2122,8 @@ func _process(delta: float) -> void:
 
 func step() -> void:
 	t += 1
+	if end_confirm_t > 0:
+		end_confirm_t -= 1
 	if not aim_hold:
 		sway_t += 1
 	tick.emit()
@@ -2418,10 +2474,16 @@ func world_click(p: Vector2) -> void:
 			do_move(u, p.x)
 
 func cycle_unit(d: int) -> void:
+	## TAB skips soldiers who have nothing left to do, unless nobody can act.
 	var a := squad_alive()
 	if a.is_empty():
 		return
 	var i := a.find(sel)
+	for k in range(1, a.size() + 1):
+		var cand: Unit = a[(i + d * k + a.size() * k) % a.size()]
+		if can_act(cand):
+			select_unit(cand)
+			return
 	select_unit(a[(i + d + a.size()) % a.size()])
 
 func _unhandled_input(ev: InputEvent) -> void:
@@ -2436,6 +2498,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 	elif ev is InputEventKey:
 		if ev.keycode == KEY_SHIFT:
 			aim_hold = ev.pressed
+			return
+		if ev.keycode == KEY_ALT or ev.keycode == KEY_V:
+			inspect = ev.pressed
 			return
 		if not ev.pressed or ev.echo:
 			return

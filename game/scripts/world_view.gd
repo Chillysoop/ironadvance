@@ -219,6 +219,11 @@ func draw_plate(u: Unit) -> void:
 	draw_rect(Rect2(x - w / 2, y, roundf(w * u.hp / u.max_hp), 3), Color("ff4d3d"))
 	for k in range(1, 4):
 		draw_rect(Rect2(x - w / 2 + k * w / 4, y, 1, 3), C_DARK)
+	if b.inspect and b.state == "player":
+		var it := b.intent_of(u)
+		var tw := Art.text_width(it, 8) + 6
+		draw_rect(Rect2(x - tw / 2, y - 24, tw, 12), Color(C_DARK, 0.85))
+		Art.text(self, it, Vector2(x, y - 14), 8, Color("ff8a80"), HORIZONTAL_ALIGNMENT_CENTER)
 	if u.type == "radio" and b.radio_t != null and u.active:
 		var col := Color("ff4d3d") if b.radio_t <= 1 else Color("ffd23a")
 		draw_texture_rect(Art.tex.ic_radio, Rect2(clampf(x, b.cam_x + 44, b.cam_x + 916) - 34, y - 16, 16, 16), false)
@@ -252,6 +257,12 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 	if b.state == "player":
 		for i in u.energy:
 			draw_texture_rect(Art.tex.ic_bolt, Rect2(x - u.energy * 4.5 + i * 9, y - 12 - u.h - 8, 8, 8), false)
+	if b.inspect and b.state == "player":
+		var info := "%dE  %dpx  ADR %d%s" % [u.energy, int(maxf(0, u.move_left)), u.adr, "  OW" if u.overwatch > 0 else ""]
+		var tw := Art.text_width(info, 8) + 6
+		var iy := u.y - u.h - 58 - b.squad().find(u) * 13
+		draw_rect(Rect2(x - tw / 2, iy, tw, 12), Color(C_DARK, 0.85))
+		Art.text(self, info, Vector2(x, iy + 10), 8, Color("62d26f") if b.can_act(u) else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 	if sel and b.state == "player":
 		var by := u.y - u.h - 36 + sin(b.t / 8.0) * 2
 		var pts := PackedVector2Array([Vector2(x - 6, by), Vector2(x + 6, by), Vector2(x, by + 7)])
@@ -374,8 +385,8 @@ func draw_targeting() -> void:
 			for s in [L, R]:
 				var i := 0
 				while i < s.pts.size():
-					draw_rect(Rect2(s.pts[i][0] - 1, s.pts[i][1] - 2, 2, 2), Color(0.38, 0.82, 0.44, 0.55))
-					i += 3
+					draw_rect(Rect2(s.pts[i][0] - 1, s.pts[i][1] - 2, 3, 2), Color(0.38, 0.82, 0.44, 0.7))
+					i += 2
 				if s.pts.size():
 					draw_rect(Rect2(s.x - 1, s.y - 12, 2, 12), Color("62d26f"))
 			var hov = b.unit_at_p(m)
@@ -410,18 +421,37 @@ func draw_targeting() -> void:
 		"AIM":
 			var aa := b.aim_angle(u, c, m)
 			var tr := b.trace_bullet(aa.mx, aa.my, aa.a, c.range, c.get("bounce", 0) + b.bounce_bonus(u, sc), u, c.get("pierce", false))
+			# the laser only reveals the first stretch of the path; the bullet keeps going
+			var L := b.laser_of(u, c)
+			var acc := 0.0
+			var tip := Vector2(aa.mx, aa.my)
 			for i in tr.segs.size():
 				var s: Array = tr.segs[i]
+				var a0 := Vector2(s[0], s[1])
+				var a1 := Vector2(s[2], s[3])
+				var sl := a0.distance_to(a1)
+				var cut := a1 if acc + sl <= L else a0.lerp(a1, clampf((L - acc) / maxf(sl, 0.001), 0, 1))
 				if i == 0:
-					draw_line(Vector2(s[0], s[1]), Vector2(s[2], s[3]), Color(1, 0.24, 0.24, 0.95), 2.0)
+					draw_line(a0, cut, Color(1, 0.24, 0.24, 0.95), 2.0)
 				else:
-					draw_dashed_line(Vector2(s[0], s[1]), Vector2(s[2], s[3]), Color(1, 0.35, 0.35, 0.6), 1.0, 5.0)
-			for p in tr.pings:
-				draw_rect(Rect2(p.x - 2, p.y - 2, 4, 4), Color.WHITE)
+					draw_dashed_line(a0, cut, Color(1, 0.35, 0.35, 0.6), 1.0, 5.0)
+				tip = cut
+				acc += sl
+				if acc >= L:
+					break
+			var cut_short: bool = tr.len > L
+			if cut_short:
+				draw_circle(tip, 2.0, Color(1, 0.35, 0.35, 0.5 + 0.3 * sin(b.t / 6.0)))
+			for i in tr.pings.size():
+				if tr.ping_d[i] <= L:
+					var p: Vector2 = tr.pings[i]
+					draw_rect(Rect2(p.x - 2, p.y - 2, 4, 4), Color.WHITE)
 			if c.has("spread") and c.has("pellets"):
+				var sp := minf(L, 400.0)
 				for d in [-c.spread, c.spread]:
-					draw_line(Vector2(aa.mx, aa.my), Vector2(aa.mx + cos(aa.a + d) * c.range, aa.my + sin(aa.a + d) * c.range), Color(1, 0.35, 0.35, 0.35), 1.0)
-			for hh in tr.hits:
+					draw_line(Vector2(aa.mx, aa.my), Vector2(aa.mx + cos(aa.a + d) * sp, aa.my + sin(aa.a + d) * sp), Color(1, 0.35, 0.35, 0.35), 1.0)
+			var seen: Array = tr.hits.filter(func(hh): return hh.d <= L)
+			for hh in seen:
 				var tg: Unit = hh.u
 				var col := Color("ffb23e") if hh.head else Color("ff4d3d")
 				draw_brackets(Rect2(tg.x - tg.w / 2 - 4, tg.y - tg.h - 4, tg.w + 8, tg.h + 8), col)
@@ -433,7 +463,7 @@ func draw_targeting() -> void:
 				elif tg.shield and hh.dx > 0: lab = "SHIELD"
 				elif tg.type == "boss" and tg.plate > 0: lab = "ARMOR"
 				Art.text(self, lab, Vector2(tg.x, tg.y - tg.h - 22), 16 if hh.head else 8, col, HORIZONTAL_ALIGNMENT_CENTER)
-			if tr.hits.is_empty():
+			if seen.is_empty() and not cut_short:
 				var ls: Array = tr.segs[-1]
 				var em: int = tr.end.m if tr.end != null else 0
 				var lab := "MISS"
@@ -441,6 +471,8 @@ func draw_targeting() -> void:
 				elif em == 1: lab = "DIGS DIRT"
 				elif em: lab = "BLOCKED"
 				Art.text(self, lab, Vector2(ls[2], ls[3] - 10), 8, Color("ffd23a") if em == 3 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+			var gun: Dictionary = Data.GUNS.get(c.get("gun", "rifle"), Data.GUNS.rifle)
+			Art.text(self, "%s SIGHT %s" % [gun.name, ("FULL" if L > 9999.0 else "%dpx" % int(L))], Vector2(m.x + 12, m.y + 22), 8, Color("ff8a80"))
 			var sw := b.sway_of(u, c)
 			Art.text(self, "STEADY" if sw < 0.01 else ("WILD SWAY" if sw > 0.06 else ("SWAY  [SHIFT] HOLD" if not b.aim_hold else "HOLDING")), Vector2(aa.mx, u.y + 30), 8, Color("ff7a3d") if sw > 0.06 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 			draw_reticle(m, Color(1, 0.3, 0.3))
@@ -466,7 +498,7 @@ func draw_targeting() -> void:
 				else:
 					Art.text(self, "NO GRIP", Vector2(gs.ax, gs.ay - 10), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.get("jump", false) or c.get("rush", false):
-				var v := b.jump_vel(u, m) if c.get("jump", false) else b.rush_vel(u, m)
+				var v := b.jump_vel(u, m, c.get("jpow", 1.0)) if c.get("jump", false) else b.rush_vel(u, m)
 				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50)
 				for i in sim.pts.size():
 					if i % 2 == 0:
