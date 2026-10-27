@@ -77,6 +77,8 @@ const CARDS := {
 	"sa_knife": {"name": "Combat Knife", "type": "MELEE", "cost": 0, "dmg": [5, 6], "range": 36, "knock": 4, "sidearm": true, "pool": false, "text": "SIDEARM: free once a turn. Never misses.", "rarity": 1},
 	"sa_chainsaw": {"name": "Chainsaw", "type": "MELEE", "cost": 1, "dmg": [11, 13], "range": 40, "knock": 1.5, "sidearm": true, "pool": false, "text": "SIDEARM: once a turn. Chews in deep and barely knocks them back.", "rarity": 2},
 	"sa_law": {"name": "LAW", "type": "LINE", "cost": 0, "radius": 34, "dmg": 14, "speed": 11.0, "sidearm": true, "law": true, "pool": false, "text": "SIDEARM: one free rocket. Comes back at the next camp.", "rarity": 2},
+	# O2: the Rambo Bow, a fresh arrow every turn for whoever took it off the elite bowman
+	"rambobow": {"name": "Rambo Bow", "type": "ARC", "cost": 1, "radius": 46, "dmg": 14, "wind": 0.4, "bow": true, "pool": false, "text": "An explosive arrow that bursts on impact. A fresh one every turn this level. Every Jackal hunts the archer.", "rarity": 3},
 	# B6: the free card a soldier gets standing at a mounted M2
 	"mounted": {"name": "Mounted M2", "type": "AIM", "cost": 0, "dmg": [3, 4], "shots": 6, "range": FULL_RANGE, "gun": "mg", "bounce": 0, "sway": 0.02, "spread": 0.05, "mounted": true, "pool": false, "text": "Free while you stand at the gun. Six heavy rounds, no kick. Once a turn.", "rarity": 2},
 	"roll": {"name": "Combat Roll", "type": "LINE", "cost": 1, "roll": true, "dist": 150, "text": "Roll up to 150px without using movement. Fits through crawl-height gaps, and the next Jackal shot at you goes over your head.", "rarity": 0, "up": {"dist": 210}},
@@ -518,11 +520,13 @@ const CAMP_HEAL := 0.25
 # Detours (run structure step 5): the mid-level camp offers 3, each a short side stretch in the
 # clearing right after camp. Each pays in a different currency, so elites are never the only good pick.
 const DETOURS := {
-	"elite": {"name": "ELITE OUTPOST", "pays": "EPIC GEAR + 2 BIO-PARTS", "icon": "ic_skull", "text": "Four elite Jackals, all with the same modifier, dug into the clearing."},
+	"elite": {"name": "ELITE OUTPOST", "pays": "EPIC GEAR + 2 BIO-PARTS", "icon": "ic_skull", "text": "Four elite Jackals, all with the same modifier, dug into the clearing. One of them carries the Rambo Bow."},
 	"pow": {"name": "POW RESCUE", "pays": "A FREE RECRUIT OR A DOG TAG", "icon": "ic_cross", "text": "Three prisoners and two guards. Free all three in %d rounds or they are moved out."},
 	"salvage": {"name": "SALVAGE YARD", "pays": "SALVAGE FOR HQ", "icon": "ic_bolt", "text": "Walk over wrecks to strip them, %d salvage each. Scavengers drift in every round. Leave whenever you like."},
 	"cache": {"name": "SUPPLY CACHE", "pays": "SCRIP + A CARD PICK", "icon": "ic_coin", "text": "An easy fight: three Jackals sitting on a supply cache."},
+	"colors": {"name": "STEAL THE COLORS", "pays": "%d SALVAGE FOR HQ", "icon": "ic_star", "text": "Their battle flag flies at the far end of the clearing. Grab it and carry it back to the green post. The carrier is slow, can't jet, and every Jackal goes for them."},
 }
+const COLORS_SALVAGE := 15
 const POW_RESCUE_ROUNDS := 5
 
 # HQ upgrades (run structure step 6): paid in Salvage, kept across runs. Ranks are bought in order.
@@ -579,6 +583,7 @@ const RELAY_BUFFS := {
 	"luck": {"name": "INTERCEPT", "text": "+2 Luck this mission."},
 	"intel": {"name": "SIGINT", "text": "Enemy intents always shown this mission."},
 }
+const RELAY_HOLD := 3  # O4: end this many turns on a relay to lock it; waves come in while you hold
 
 # Armory unlock feats (W4), kept across runs.
 const FEATS := [
@@ -785,6 +790,7 @@ const MISSIONS := [
 #   sway: your aimed shots' sway   sight: how far Jackals see   wind: wind strength
 #   amp: how hilly the ground is   wet: fire does 1 damage and won't spread
 #   fuel / mines: extra fuel barrels / mines on the map   elite: extra chance a Jackal is elite
+#   ice / tarps / wires: sheets of ice, rubber tarps and live wires on the map
 # "look" tints the level: tint and grass go to the terrain, sky modulates the backdrop.
 const STYLES := {"long": "LONG GUNS", "close": "CLOSE QUARTERS", "arc": "EXPLOSIVES"}
 const BIOMES := {
@@ -794,35 +800,35 @@ const BIOMES := {
 		"segments": ["trenches", "towers", "boulder", "gully", "overhang", "fenceline", "m2nest"],
 		"text": "Flat sand and clear air. Your aimed shots sway 40% less, but Jackals see 20% farther."},
 	"fortress": {"name": "FORTRESS TOWN", "theme": "dusk", "favor": "arc", "rough": "long",
-		"rules": {"sway": 1.3, "fuel": 2},
+		"rules": {"sway": 1.3, "fuel": 2, "wires": 1},
 		"look": {"tint": Color(0.9, 0.9, 0.94), "grass": Color("7a8a5a"), "sky": Color(0.86, 0.86, 0.92)},
 		"segments": ["fort", "warehouse", "bunker", "gauntlet", "fort", "fenceline", "m2nest"],
-		"text": "Forts and warehouses wall to wall. Blow the floors out. Aimed shots sway 30% more."},
+		"text": "Forts and warehouses wall to wall. Blow the floors out. Aimed shots sway 30% more. A live wire hums on the ground: shoot its junction box to cut it."},
 	"jungle": {"name": "JUNGLE CANOPY", "theme": "jungle", "favor": "close", "rough": "long",
 		"rules": {"sway": 1.4, "sight": 0.7, "mines": 3},
 		"look": {},
 		"segments": ["ridge", "overhang", "gully", "boulder"],
 		"text": "Thick cover and buried mines. Jackals see 30% less far. Aimed shots sway 40% more."},
 	"delta": {"name": "FLOODED DELTA", "theme": "jungle", "favor": "close", "rough": "arc",
-		"rules": {"wet": true, "wind": 0.3, "mines": 2},
+		"rules": {"wet": true, "wind": 0.3, "mines": 2, "tarps": 2},
 		"look": {"tint": Color(0.86, 0.98, 1.04), "grass": Color("3a9a6a"), "sky": Color(0.84, 0.94, 1.0)},
 		"segments": ["river", "gully", "ridge", "docks", "catwalks"],
-		"text": "Everything is soaked: fire does 1 damage and won't spread. Barely any wind."},
+		"text": "Everything is soaked: fire does 1 damage and won't spread. Barely any wind. Rubber tarps bounce soldiers and grenades."},
 	"refinery": {"name": "OIL REFINERY", "theme": "dusk", "favor": "arc", "rough": "close",
-		"rules": {"fuel": 5, "sight": 1.1},
+		"rules": {"fuel": 5, "sight": 1.1, "wires": 2},
 		"look": {"tint": Color(1.06, 0.9, 0.8), "grass": Color("8a7a3a"), "sky": Color(1.0, 0.8, 0.66)},
 		"segments": ["bunker", "mortar", "warehouse", "towers", "catwalks"],
-		"text": "Fuel drums everywhere. Light them up, and don't stand next to one. Jackals see 10% farther."},
+		"text": "Fuel drums everywhere. Light them up, and don't stand next to one. Jackals see 10% farther. Live wires hum on the ground: shoot the junction box to cut one."},
 	"mountain": {"name": "MOUNTAIN PASS", "theme": "dusk", "favor": "long", "rough": "arc",
-		"rules": {"amp": 2.0, "wind": 2.0, "sway": 0.8, "grav": 0.75},
+		"rules": {"amp": 2.0, "wind": 2.0, "sway": 0.8, "grav": 0.75, "ice": 2},
 		"look": {"tint": Color(0.92, 0.96, 1.06), "grass": Color("6a9a5a"), "sky": Color(0.84, 0.9, 1.04)},
 		"segments": ["ridge", "boulder", "overhang", "towers", "trenches"],
-		"text": "Steep hills, a gale and thin air. Double wind. Gravity is 25% lower: jumps, jets, grenades and knockback all carry further. Aimed shots sway 20% less."},
+		"text": "Steep hills, a gale and thin air. Double wind. Gravity is 25% lower: jumps, jets, grenades and knockback all carry further. Aimed shots sway 20% less. Sheets of ice: whatever lands on them keeps sliding."},
 	"harbor": {"name": "NIGHT HARBOR", "theme": "night", "favor": "long", "rough": "arc", "arena": "pier",
-		"rules": {"sight": 0.8, "wind": 1.6},
+		"rules": {"sight": 0.8, "wind": 1.6, "tarps": 1},
 		"look": {},
 		"segments": ["docks", "warehouse", "gauntlet", "mortar", "catwalks", "m2nest"],
-		"text": "Piers in the dark and a sea wind. Jackals see 20% less far. Wind is 60% stronger."},
+		"text": "Piers in the dark and a sea wind. Jackals see 20% less far. Wind is 60% stronger. A rubber tarp bounces soldiers and grenades."},
 	"palace": {"name": "NINJA PALACE", "theme": "night", "favor": "close", "rough": "long",
 		"rules": {"sway": 1.6, "sight": 0.6, "elite": 0.2},
 		"look": {"tint": Color(0.86, 0.62, 0.7), "grass": Color("5a4a6a"), "sky": Color(1.0, 0.7, 0.8)},

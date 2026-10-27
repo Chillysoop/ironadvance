@@ -20,6 +20,13 @@ func _draw() -> void:
 	for c in b.T.camps:
 		if on_screen(c.fire, 320):
 			draw_camp(c)
+	if b.detour.get("id", "") == "colors" and not b.detour.done:
+		# O1: the green post the stolen colors go back to
+		var px: float = b.colors_post()
+		var gy: float = b.T.stand_y(px, 0) if b.T.stand_y(px, 0) != null else b.T.ground_at(px)
+		draw_rect(Rect2(px - 1, gy - 40, 3, 40), C_DARK)
+		draw_colored_polygon(PackedVector2Array([Vector2(px + 2, gy - 40), Vector2(px + 16, gy - 36), Vector2(px + 2, gy - 32)]), Color("62d26f"))
+		Art.text(self, "BRING THE COLORS HERE", Vector2(px + 4, gy - 50), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 	if b.gate != null:
 		Art.draw_gate(self, Vector2(b.gate.x, b.gate.y), b.gate.r, b.t, b.gate.chev, b.gate.open, b.gate.alpha, b.gate.spin, b.gate.burst)
 	for r in b.ropes:
@@ -215,6 +222,33 @@ func draw_unit(u: Unit) -> void:
 		"pad":
 			draw_pad(u, pos)
 			return
+		"jbox":
+			# T2: a grey junction box on a post, its cable snaking along the ground to the right
+			var on: bool = u.loot.on
+			var cab := Color("2a2a2e")
+			var pts := PackedVector2Array()
+			for i in u.loot.ys.size():
+				var wy: float = u.loot.ys[i]
+				if wy >= b.WATER_Y:
+					break
+				pts.append(Vector2(u.loot.x0 + i * 4.0, wy - 1))
+			if pts.size() > 1:
+				draw_polyline(pts, cab, 2.0)
+				if on:
+					# a pulse of current running down the line
+					var k: int = int((b.t / 2) % pts.size())
+					for d in 3:
+						var q := pts[(k + d * 9) % pts.size()]
+						draw_rect(Rect2(q.x - 1, q.y - 1, 2, 2), Color("bff6ff"))
+			draw_rect(Rect2(pos.x - 2, pos.y - 10, 4, 10), C_DARK)
+			draw_rect(Rect2(pos.x - 7, pos.y - 21, 14, 12), C_DARK)
+			draw_rect(Rect2(pos.x - 6, pos.y - 20, 12, 10), Color.WHITE if white else Color("7d858c"))
+			draw_rect(Rect2(pos.x - 3, pos.y - 18, 6, 4), Color("ffd23a") if on else Color("4a4f57"))
+			draw_rect(Rect2(pos.x - 1, pos.y - 17, 2, 2), C_DARK)
+			if on and (b.t / 6) % 2 == 0:
+				draw_rect(Rect2(pos.x + 3, pos.y - 13, 2, 2), Color("ff4d3d"))
+			draw_line(pos + Vector2(6, -12), pts[0] if pts.size() else pos, cab, 2.0)
+			return
 		"m2":
 			# B6: a sandbagged M2 on a tripod, barrel toward the squad
 			var mc := Color.WHITE if white else Color("4a4f57")
@@ -291,6 +325,11 @@ func draw_unit(u: Unit) -> void:
 		# J3: tumble around the middle of the body
 		rot = u.rot
 		pos += Vector2(0, -9) + Vector2(0, 9).rotated(rot)
+	if u.carry == "colors" or u.carry == "yellow":
+		if not u.dead:
+			draw_flag(pos, u.carry, true, u.face)
+	if (u.bow or u.carry == "bow") and not u.dead:
+		draw_bow(pos + Vector2(-u.face * 7, -22), -u.face * 0.6)
 	if u.para:
 		draw_set_transform(pos + Vector2(0, -50), 0, Vector2(Art.PX, Art.PX))
 		var pt: Texture2D = Art.tex.parachute
@@ -424,6 +463,13 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			draw_rect(Rect2(p.x - 8, p.y - 6, 16, 3), Color("6c7078"))
 			draw_rect(Rect2(p.x - 4, p.y - 3, 3, 4), C_DARK)
 			Art.text(self, Data.CARDS[L.card].name.to_upper(), p + Vector2(0, -14), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		"colors", "yellow":
+			draw_flag(pos, L.type, false)
+			Art.text(self, "THEIR COLORS" if L.type == "colors" else "MARKED MAN", pos + Vector2(0, -40), 8, Color("ff7a3d") if L.type == "colors" else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		"bow":
+			draw_circle(p + Vector2(0, -4), 11, Color(1, 0.48, 0.24, 0.3 + 0.2 * sin(b.t / 5.0)))
+			draw_bow(p + Vector2(0, -4), 0.0)
+			Art.text(self, "RAMBO BOW", p + Vector2(0, -20), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
 		"trophy":
 			draw_circle(p + Vector2(0, -4), 11, Color(1, 0.7, 0.12, 0.3 + 0.2 * sin(b.t / 5.0)))
 			draw_texture_rect(Art.tex.ic_star, Rect2(p.x - 8, p.y - 12, 16, 16), false)
@@ -437,6 +483,31 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			draw_rect(Rect2(p.x - 1, p.y - 9, 2, 8), C_DARK)
 			if t >= 3 and b.t % 30 < 4:
 				draw_rect(Rect2(p.x + 5, p.y - 14, 2, 2), Color.WHITE)
+
+func draw_flag(pos: Vector2, kind: String, carried: bool, face := 1) -> void:
+	## O1/O3: a battle flag on a pole, the Jackal colors (red, skull white) or the Marked Man yellow.
+	var top := pos + Vector2(-face * (6 if carried else 0), -36 if carried else -30)
+	var foot := pos + Vector2(-face * (2 if carried else 0), -10 if carried else 0)
+	draw_line(foot, top, C_DARK, 2.0)
+	var wave := sin((b.t + pos.x) / 7.0) * 2
+	var c := Color("c8322a") if kind == "colors" else Color("ffd23a")
+	var dir := -face if carried else 1
+	var pts := PackedVector2Array([top, top + Vector2(dir * 16, 3 + wave), top + Vector2(0, 10)])
+	draw_colored_polygon(pts, c)
+	draw_polyline(PackedVector2Array([top, top + Vector2(dir * 16, 3 + wave), top + Vector2(0, 10)]), C_DARK, 1.0)
+	if kind == "colors":
+		draw_rect(Rect2(top.x + dir * 5 - 1, top.y + 3, 3, 3), Color("f2ead8"))
+
+func draw_bow(p: Vector2, ang: float) -> void:
+	## O2: a recurve bow with an arrow nocked.
+	var pts := PackedVector2Array()
+	for i in 9:
+		var a := -1.1 + i * 0.275
+		pts.append(p + Vector2(cos(a) * 5 - 3, sin(a) * 9).rotated(ang))
+	draw_polyline(pts, Color("5a3a1a"), 2.0)
+	draw_line(pts[0], pts[8], Color("e8dcc2"), 1.0)
+	draw_line(p + Vector2(-6, 0).rotated(ang), p + Vector2(9, 0).rotated(ang), Color("2a2a2e"), 1.0)
+	draw_rect(Rect2(p + Vector2(8, -1).rotated(ang), Vector2(3, 3)), Color("ff4d3d"))
 
 func draw_sprite(key: String, pos: Vector2, anchor: Vector2, alpha := 1.0, flip := false) -> void:
 	var tx: Texture2D = Art.tex[key]
@@ -485,6 +556,9 @@ func draw_relay(u: Unit, pos: Vector2) -> void:
 	draw_rect(Rect2(pos.x - 1, pos.y - 38, 3, 3), lit)
 	if taken:
 		draw_colored_polygon(PackedVector2Array([pos + Vector2(2, -34), pos + Vector2(14, -31), pos + Vector2(2, -28)]), Color("62d26f"))
+		var hold: int = u.loot.get("hold", 99)
+		if hold < Data.RELAY_HOLD:
+			Art.text(self, "HOLD %d/%d" % [hold, Data.RELAY_HOLD], pos + Vector2(0, -44), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 	else:
 		var bf: Dictionary = Data.RELAY_BUFFS[u.loot.buff]
 		Art.text(self, "RELAY: " + bf.name, pos + Vector2(0, -44), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -522,7 +596,7 @@ func draw_wreck(u: Unit, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad"] or u.type == "boss" or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox"] or u.type == "boss" or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -1110,6 +1184,8 @@ func draw_hover() -> void:
 	elif h.kind == "pad":
 		var B: Dictionary = Data.BONUSES[b.pad_bonus(h)]
 		lines = ["BONUS PAD: " + B.name, "READY: whoever stands on it takes it." if h.loot.ready else "Ready in %d round%s." % [h.loot.t, "" if h.loot.t == 1 else "s"], B.text, "Jackals race for it too."]
+	elif h.kind == "jbox":
+		lines = ["JUNCTION BOX: " + ("LIVE" if h.loot.on else "DEAD"), "Anyone standing on its cable: 4 damage, and Jackals are stunned.", "Once a round each. Knock Jackals onto it.", "Shoot or blast the box to cut the power."] if h.loot.on else ["JUNCTION BOX: DEAD", "The cable is safe to cross."]
 	elif h.kind == "mine":
 		lines = ["JACKAL MINE", "Your soldiers set it off by stepping on it.", "Jackals only trip it when they land on it: knock them onto it.", "Shoot or blast it to clear it. Blast 38."]
 	elif h.is_prop():
