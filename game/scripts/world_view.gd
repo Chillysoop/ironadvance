@@ -6,6 +6,7 @@ extends Node2D
 @onready var b: Battle = get_parent()
 
 const C_DARK := Color(0.05, 0.035, 0.03)
+const RIM := {"dusk": Color(1.0, 0.72, 0.42, 0.85), "jungle": Color(1.0, 0.95, 0.65, 0.75), "night": Color(0.6, 0.75, 1.0, 0.8)}
 const C_ALIEN := Color("c47bff")  # Vharr markers and labels
 const C_OOZE := Color("9df25c")
 
@@ -140,7 +141,7 @@ func draw_strikes(_cx: float) -> void:
 func pick_anim(u: Unit) -> Array:
 	## [anim, frame, show_gun]
 	if u.dead:
-		return ["die", mini(4, u.dead_t / 5), false]
+		return ["die", mini(Art.anim_info(u.sheet, "die").n - 1, u.dead_t / 5) if u.sheet != "" else 0, false]
 	if u.pose == "hurt":
 		return ["hurt", (u.pose_t / 4) % 2, false]
 	if u.pose == "throw":
@@ -157,7 +158,7 @@ func pick_anim(u: Unit) -> Array:
 		if i >= 0 and u.walk[i].size() > 3:
 			return ["climb", (b.t / 8) % 2, false]
 		return ["run", (u.anim / 3) % 8, true]
-	return ["idle", (b.t / 14 + u.id) % 4, true]
+	return ["idle", b.t / 10 + u.id * 5, true]
 
 func draw_unit(u: Unit) -> void:
 	if u.gone or u.sunk or not on_screen(u.x):
@@ -280,6 +281,11 @@ func draw_unit(u: Unit) -> void:
 	if u.weight == "hover" and not u.dead:
 		draw_pod(pos, white)
 	var kick := Vector2(-u.face * 2, 0) if u.pose == "recoil" else Vector2.ZERO
+	if u.team == "squad" and not u.dead and not white:
+		# hero rim light: the flash silhouette in the theme's key light, peeking out above and behind
+		var rim: Color = RIM.get(b.theme, RIM.dusk)
+		for o in [Vector2(0, -2), Vector2(-u.face * 2, 0)]:
+			Art.draw_char(self, u.sheet, a[0], a[1], pos + kick + o, u.face, true, rot, u.alpha * rim.a, u.gun_angle, false, 1.0, Color(rim, 1.0))
 	var sc := 1.0 + 0.1 * maxi(0, u.fl.get("swell", 0)) if u.type == "bloater" else 1.0
 	Art.draw_char(self, u.sheet, a[0], a[1], pos + kick, u.face, white, rot, u.alpha, u.gun_angle, a[2], sc)
 	if u.dome > 0 and not u.dead:
@@ -403,8 +409,9 @@ func draw_sprite(key: String, pos: Vector2, anchor: Vector2, alpha := 1.0, flip 
 func draw_muzzle(p: Vector2, face: int, ang: float) -> void:
 	var tx: Texture2D = Art.tex.muzzle
 	var fr := (b.t / 2) % 3
+	draw_circle(p + Vector2(face * 6, 0), 14, Color(1, 0.75, 0.35, 0.22))
 	draw_set_transform(p, ang * face, Vector2(Art.PX * face, Art.PX))
-	draw_texture_rect_region(tx, Rect2(0, -4, 12, 8), Rect2(fr * 12, 0, 12, 8))
+	draw_texture_rect_region(tx, Rect2(0, -6, 16, 12), Rect2(fr * 16, 0, 16, 12))
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 
 func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
@@ -637,6 +644,12 @@ func draw_parts() -> void:
 		else:
 			c.a = minf(1, a * 1.5)
 		var s: float = roundf(p.s)
+		if p.get("helmet", false):
+			# R2: the popped helmet, a dome with a brim
+			draw_rect(Rect2(roundf(p.x) - 4, roundf(p.y) - 4, 8, 5), Color(C_DARK, c.a))
+			draw_rect(Rect2(roundf(p.x) - 3, roundf(p.y) - 3, 6, 3), c)
+			draw_rect(Rect2(roundf(p.x) - 5, roundf(p.y), 10, 2), c.darkened(0.3))
+			continue
 		if p.get("plus", false):
 			draw_rect(Rect2(roundf(p.x) - 1, roundf(p.y) - 3, 2, 6), c)
 			draw_rect(Rect2(roundf(p.x) - 3, roundf(p.y) - 1, 6, 2), c)
@@ -657,9 +670,9 @@ func draw_fx() -> void:
 				draw_set_transform_matrix(Transform2D.IDENTITY)
 			"puff":
 				var fr := clampi(int(f.t * 6 / f.dur), 0, 5)
-				var s: float = Art.PX * f.sc * 0.5
+				var s: float = Art.PX * f.sc * 0.4
 				draw_set_transform(pos, 0, Vector2(s, s))
-				draw_texture_rect_region(Art.tex.puff, Rect2(-6, -6, 12, 12), Rect2(fr * 12, 0, 12, 12), Color(1, 1, 1, 0.8))
+				draw_texture_rect_region(Art.tex.puff, Rect2(-8, -8, 16, 16), Rect2(fr * 16, 0, 16, 16), Color(1, 1, 1, 0.85))
 				draw_set_transform_matrix(Transform2D.IDENTITY)
 			"slash":
 				var fr := clampi(int(f.t * 3 / f.dur), 0, 2)
@@ -795,8 +808,23 @@ func draw_targeting() -> void:
 			draw_recoil(u, c, aa.a)
 		"ARC":
 			var v := b.aim_vel(u, m)
+			var fz = b.armed_fuse()
+			if fz != null:
+				# K1: the whole bouncing flight up to the fuse, and where it bursts
+				var eff: int = int(fz / 2) if u.perk("shortfuse") else fz
+				var gs := b.sim_grenade(v.hx, v.hy, v.vx, v.vy, c.get("wind", 1.0), eff)
+				for i in gs.pts.size():
+					if i % 3 == 0:
+						var p: Vector2 = gs.pts[i]
+						draw_rect(Rect2(p.x - 1, p.y - 1, 3, 3), Color(1, 1, 1, maxf(0.25, 1 - i / float(eff + 20))))
+				var bp := Vector2(gs.x, gs.y)
+				if not gs.lost:
+					var rr: float = c.get("radius", 30) * b.blast_scale(u)
+					draw_arc(bp, rr, 0, TAU, 32, Color(1, 0.45, 0.2, 0.7), 1.0)
+					draw_rect(Rect2(bp.x - 3, bp.y - 3, 6, 6), Color("ff7a3d"))
+				Art.text(self, "FUSE %.1fs  [WHEEL]" % (eff / 60.0), Vector2(m.x + 12, m.y + 22), 8, Color("ffd23a"))
 			var sim := b.sim_arc(v.hx, v.hy, v.vx, v.vy, c.get("wind", 1.0), 40)
-			for i in sim.pts.size():
+			for i in (sim.pts.size() if fz == null else 0):
 				if i % 2 == 0:
 					var p: Vector2 = sim.pts[i]
 					draw_rect(Rect2(p.x - 1, p.y - 1, 3, 3), Color(1, 1, 1, 1 - i / 44.0))

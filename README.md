@@ -38,6 +38,6 @@ The launcher is unsigned: on Windows choose More info → Run anyway; on macOS r
 - `game/tools/test_runner.gd` scripted tests and an autoplayer:
   `godot --path game -- --iatest --scenario=flow --out=/tmp/shots` (title, start, aim, arc, topple, level, shop, picker, flow, bot, campaign, alive).
   `--scenario=levels` photographs every screen of each mission and walks a soldier through to list blocked spots;
-  `--scenario=hazards` sets off each set piece and prints PASS/FAIL; `--scenario=soldat` checks the Soldat borrowings (grating, fences, bodies, recoil, bonus pads, Jet Boots); `--scenario=bot --mission=N` autoplays mission N.
+  `--scenario=hazards` sets off each set piece and prints PASS/FAIL; `--scenario=soldat` checks the Soldat borrowings (grating, fences, bodies, recoil, bonus pads, Jet Boots); `--scenario=soldat2` checks the second round (overkill pops, kill feed, fuse choice, grenade kits, thin air, roll, mid-air shots, Jet Jackals and on); `--scenario=bot --mission=N` autoplays mission N.
 - `launcher/` the updater. Point it at another host with `--manifest=URL` or a `launcher.cfg` next to the executable
   (`[update]` / `manifest="..."`); `--offline` skips the check.

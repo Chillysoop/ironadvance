@@ -12,7 +12,8 @@ var theme := "dusk"
 const FAR := 0.12
 const MID := 0.3
 const NEAR := 0.5
-const SUN := Vector2(700, 240)  # where the sky texture puts the sun / moon on screen
+const SUN := Vector2(700, 240)
+const GRADE := {"dusk": Color(0.10, 0.04, 0.12, 0.40), "jungle": Color(0.02, 0.07, 0.05, 0.40), "night": Color(0.01, 0.02, 0.06, 0.35)}  # where the sky texture puts the sun / moon on screen
 
 func setup(th: String) -> void:
 	theme = th
@@ -60,6 +61,8 @@ func _draw() -> void:
 		draw_mist(cx)
 	draw_flock(cx, 0.4)
 	tile(layers[2][0], NEAR, layers[2][2])
+	# grade the whole backdrop down so the ground and the squad carry the contrast
+	draw_rect(Rect2(cx - 8, -8, Battle.W + 16, Battle.H + 16), GRADE.get(theme, GRADE.dusk))
 	if theme != "night":
 		draw_shafts(cx)
 	draw_water(cx)

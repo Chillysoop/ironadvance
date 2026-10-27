@@ -145,6 +145,8 @@ const STATUS := {
 	"cloak": {"name": "PREDATOR", "short": "PRED", "c": Color("b48cff"), "text": "Can't be targeted, and bullets pass through, until it attacks."},
 	"flamegod": {"name": "FLAMEGOD", "short": "FLAME", "c": Color("ff9a3d"), "text": "Takes no damage. Its bullets set what they hit on fire."},
 	"vest": {"name": "VEST", "short": "VEST", "c": Color("9fb4c9"), "text": "Takes half damage."},
+	"cluster": {"name": "CLUSTER", "short": "CLUS", "c": Color("ffd23a"), "text": "Its next grenades burst into bomblets (counts grenades, not turns)."},
+	"nades": {"name": "GRENADE KIT", "short": "NADE", "c": Color("8fbf4a"), "text": "Throws a grenade on its next attack."},
 }
 # Bonus pads (Soldat): a marked pad shows which bonus it will give and in how many rounds.
 # Whoever stands on it when it is ready takes it, soldier or Jackal. Then it starts over.
@@ -154,6 +156,8 @@ const BONUSES := {
 	"flamegod": {"name": "FLAMEGOD", "glyph": "F", "c": Color("ff9a3d"), "text": "No damage taken, and your bullets set targets on fire. This turn and the next."},
 	"vest": {"name": "VEST", "glyph": "V", "c": Color("9fb4c9"), "text": "Half damage taken for this turn and the next."},
 	"medkit": {"name": "MEDKIT", "glyph": "+", "c": Color("62d26f"), "text": "Heals 15 at once."},
+	"cluster": {"name": "CLUSTER", "glyph": "C", "c": Color("ffd23a"), "text": "Your next 2 grenades burst into bouncing bomblets."},
+	"nadekit": {"name": "GRENADE KIT", "glyph": "G", "c": Color("8fbf4a"), "text": "Two Frag Grenades that stay in hand until thrown. A Jackal throws one on its next move."},
 }
 const BONUS_TURNS := 2
 const PAD_FIRST := [1, 2]   # rounds until each pad's first bonus (pads take turns)
@@ -778,10 +782,10 @@ const BIOMES := {
 		"segments": ["bunker", "mortar", "warehouse", "towers", "catwalks"],
 		"text": "Fuel drums everywhere. Light them up, and don't stand next to one. Jackals see 10% farther."},
 	"mountain": {"name": "MOUNTAIN PASS", "theme": "dusk", "favor": "long", "rough": "arc",
-		"rules": {"amp": 2.0, "wind": 2.0, "sway": 0.8},
+		"rules": {"amp": 2.0, "wind": 2.0, "sway": 0.8, "grav": 0.75},
 		"look": {"tint": Color(0.92, 0.96, 1.06), "grass": Color("6a9a5a"), "sky": Color(0.84, 0.9, 1.04)},
 		"segments": ["ridge", "boulder", "overhang", "towers", "trenches"],
-		"text": "Steep hills and a gale. Double wind. Aimed shots sway 20% less."},
+		"text": "Steep hills, a gale and thin air. Double wind. Gravity is 25% lower: jumps, jets, grenades and knockback all carry further. Aimed shots sway 20% less."},
 	"harbor": {"name": "NIGHT HARBOR", "theme": "night", "favor": "long", "rough": "arc", "arena": "pier",
 		"rules": {"sight": 0.8, "wind": 1.6},
 		"look": {},

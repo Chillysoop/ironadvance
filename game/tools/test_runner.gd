@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
+## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -584,6 +584,32 @@ func run() -> void:
 			b.next_unit()
 			await frames_wait(10)
 			print("[qol] state after NEXT with nobody ready ", b.state)
+		"fx":
+			# effects pass: brass and impacts on a shot, a helmet off a kill, a blast's flash and chunks
+			Run.new_run()
+			var b: Battle = main.start_battle(0)
+			await until(func(): return b.state == "player" and not b.busy)
+			var u: Unit = b.sel
+			var e := nearest_enemy(b, u)
+			b.select_card(force_card(u, "rifle"))
+			b.mouse = Vector2(e.x, e.y - e.h * 0.6)
+			await frames_wait(8)
+			b.commit_aim(b.mouse)
+			await frames_wait(5)
+			await shot("fx_shot")
+			await until(func(): return not b.busy)
+			b.damage(e, 999, u)
+			await frames_wait(14)
+			await shot("fx_kill")
+			b.explode(u.x + 150, b.T.ground_at(u.x + 150) - 4, 30, 0, null)
+			await frames_wait(5)
+			await shot("fx_blast")
+			await frames_wait(40)
+			await shot("fx_after")
+			u.jetting = true  # just the thruster art, no flight
+			await frames_wait(12)
+			await shot("fx_jet")
+			u.jetting = false
 		"bot":
 			await bot(mission_arg, 70)
 		"levels":
@@ -670,6 +696,8 @@ func run() -> void:
 			await biomes()
 		"soldat":
 			await soldat()
+		"soldat2":
+			await soldat2()
 		"drill":
 			await drill()
 		"detours":
@@ -926,9 +954,10 @@ func hazards() -> void:
 func alien_field(b: Battle, x: float) -> Unit:
 	## Clear the field and stand one soldier at x for an alien test.
 	for e in b.units:
-		if e.team == "enemy" or e.is_prop() or e.kind == "pow":
+		if e.team == "enemy" or e.is_prop() or e.is_pickup() or e.kind == "pow":
 			e.dead = true; e.gone = true
 	var s: Unit = b.squad()[0]
+	s.st.clear()
 	for o in b.squad():
 		if o != s:
 			o.x = x - 200; o.y = b.T.stand_y(o.x, 0); o.air = false
@@ -1353,6 +1382,111 @@ func drill() -> void:
 	await shot("drill_cliff_after")
 	check(dr.x > cx0 + 100, "a soldier drills into the ridge cliff (x %d -> %d)" % [cx0, dr.x])
 
+func soldat2() -> void:
+	## The second round of Soldat borrowings: overkill pops, the kill feed, fuse choice,
+	## the Cluster and Grenade Kit bonuses, thin air.
+	Run.new_run()
+	var lvl := {"name": "SOLDAT YARD II", "theme": "dusk", "segments": ["start", "ridge", "camp", "arena"],
+		"boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "", "rules": {"pads": 2}}
+	var b: Battle = main.start_battle(0, lvl)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	b.autopick = 0
+	b.wind = 0
+	for o in b.units:
+		if o.team == "neutral" and o.kind != "pad" or o.team == "enemy":
+			o.gone = true; o.dead = true
+	var sq: Array = b.squad()
+	var s: Unit = sq[0]
+	ground_unit(b, s, 300)
+	cam_on(b, 300)
+	# --- R2 overkill pops and U1 kill feed
+	var e := b.mk_enemy("grunt", 420, b.T.stand_y(420, 0)); e.active = true
+	b.units.append(e)
+	b.damage(e, 99, s)
+	check(e.dead and e.gone and not e.is_body(), "a big overkill pops the Jackal: no body left")
+	check(b.feed.size() > 0 and b.feed[-1].stamp.contains("OVERKILL"), "the kill feed stamps it OVERKILL (%s)" % (b.feed[-1].stamp if b.feed.size() else "empty"))
+	check(b.feed[-1].killer == s.def.name.to_upper() and b.feed[-1].victim == "JACKAL GRUNT".to_upper() or b.feed[-1].victim == Data.ETYPES.grunt.name.to_upper(), "the feed names killer and victim (%s / %s)" % [b.feed[-1].killer, b.feed[-1].victim])
+	check(b.parts.any(func(p): return p.get("helmet", false)), "the helmet pops off")
+	await frames_wait(20)
+	await shot("soldat2_overkill")
+	var e2 := b.mk_enemy("grunt", 460, b.T.stand_y(460, 0)); e2.active = true
+	b.units.append(e2)
+	b.damage(e2, e2.hp, s)
+	check(e2.is_body(), "an exact kill still leaves a body")
+	var e3 := b.mk_enemy("grunt", 500, b.T.stand_y(500, 0)); e3.active = true; e3.hp = 2
+	b.units.append(e3)
+	b.collision_dmg(e3, 5, "FALL")
+	check(e3.dead and b.feed[-1].how == "FALL", "a fall kill shows FALL in the feed (%s)" % b.feed[-1].how)
+	await shot("soldat2_feed")
+	# --- K1 fuse choice
+	b.sel = s
+	s.energy = 5
+	var fi := force_card(s, "frag")
+	b.select_card(fi)
+	check(b.armed_fuse() == 150, "a frag starts on its own 2.5s fuse (%s)" % str(b.armed_fuse()))
+	b.dial_fuse(1)
+	check(b.armed_fuse() == 180, "the wheel adds half a second (%s)" % str(b.armed_fuse()))
+	for i in 10:
+		b.dial_fuse(-1)
+	check(b.armed_fuse() == 60, "the fuse bottoms out at 1s (%s)" % str(b.armed_fuse()))
+	for i in 10:
+		b.dial_fuse(1)
+	check(b.armed_fuse() == 240, "and tops out at 4s (%s)" % str(b.armed_fuse()))
+	b.dial_fuse(-1); b.dial_fuse(-1)
+	var aimp := Vector2(s.x + 160, s.y - 120)
+	b.mouse = aimp
+	await frames_wait(4)
+	await shot("soldat2_fuse")
+	var v := b.aim_vel(s, aimp)
+	var gs := b.sim_grenade(v.hx, v.hy, v.vx, v.vy, 1.0, 180)
+	var pr: Dictionary = b.mk_proj({"kind": "frag", "x": v.hx, "y": v.hy, "vx": v.vx, "vy": v.vy, "wind": 1.0, "bounce": true, "fuse": 99999, "owner": s})
+	for i in 180:
+		b.update_proj(pr)
+	check(Vector2(pr.x, pr.y).distance_to(Vector2(gs.x, gs.y)) < 3, "the fuse preview ends where the grenade really is when it blows (%d,%d vs %d,%d)" % [pr.x, pr.y, gs.x, gs.y])
+	var ci := b.card_idx
+	b.projs.clear()
+	await b._act_arc(s, ci, Data.card(s.hand[ci]), aimp, false)
+	check(b.projs.size() > 0 and b.projs[0].fuse <= 180 and b.projs[0].fuse > 160, "the thrown frag takes the dialed 3s fuse (%s)" % (str(b.projs[0].fuse) if b.projs.size() else "none"))
+	await until(func(): return b.settled(), 600)
+	b.fuse_pick = 0
+	# --- P2 Cluster and K2 Grenade Kit bonuses
+	s.energy = 5
+	s.st["cluster"] = 2
+	var fj := force_card(s, "frag")
+	var cc := Data.card(s.hand[fj])
+	b.projs.clear()
+	await b._act_arc(s, fj, cc, aimp, false)
+	check(b.projs.size() == 1 and b.projs[0].cluster >= 3 and s.st.get("cluster", 0) == 1, "Cluster splits the next grenade and counts down (%s, left %d)" % [str(b.projs[0].cluster) if b.projs.size() else "none", s.st.get("cluster", 0)])
+	await until(func(): return b.settled(), 600)
+	var pad: Unit = b.pads[0]
+	pad.loot.seq = ["nadekit"]; pad.loot.i = 0; pad.loot.ready = true
+	var h0 := s.hand.filter(func(c): return c.key == "frag" and c.get("temp", false)).size()
+	b.grant_bonus(pad, s)
+	var h1 := s.hand.filter(func(c): return c.key == "frag" and c.get("temp", false)).size()
+	check(h1 == h0 + 2, "a Grenade Kit puts two Frag Grenades in hand (%d -> %d)" % [h0, h1])
+	var j := b.mk_enemy("grunt", s.x + 220, b.T.stand_y(s.x + 220, 0)); j.active = true
+	b.units.append(j)
+	pad.loot.ready = true
+	b.grant_bonus(pad, j)
+	check(j.st.has("nades"), "a Jackal that grabs a Grenade Kit holds a grenade")
+	b.projs.clear()
+	var threw: bool = await b.jackal_nade(j)
+	check(threw and b.projs.any(func(p): return p.kind == "egren") and not j.st.has("nades"), "and lobs it at the nearest soldier on its next move")
+	await until(func(): return b.settled(), 600)
+	check(Data.BONUSES.has("cluster") and Data.BONUSES.has("nadekit"), "Cluster and Grenade Kit are in the pad rotation")
+	# --- T3 thin air
+	ground_unit(b, s, 300)
+	b.grav = Battle.GRAV
+	var low := b.sim_body(s, 3.0, -5.0)
+	b.grav = Battle.GRAV * Data.BIOMES.mountain.rules.grav
+	var high := b.sim_body(s, 3.0, -5.0)
+	check(high.x > low.x + 20, "thin air: the same jump carries further on the mountain (%d vs %d)" % [high.x - s.x, low.x - s.x])
+	var a1 := b.sim_arc(s.x, s.y - 30, 4.0, -4.0, 0, 300)
+	b.grav = Battle.GRAV
+	var a0 := b.sim_arc(s.x, s.y - 30, 4.0, -4.0, 0, 300)
+	check(a1.x > a0.x, "and so does a throw (%d vs %d)" % [a1.x - s.x, a0.x - s.x])
+
 func ground_unit(b: Battle, u: Unit, x: float, from_y := 0.0) -> void:
 	u.x = x; u.y = b.T.stand_y(x, from_y); u.air = false; u.vx = 0; u.vy = 0; u.walk = null
 
@@ -1435,7 +1569,7 @@ func soldat() -> void:
 	var body := b.mk_enemy("grunt", c0.fire - 60, b.T.stand_y(c0.fire - 60, 0)); body.active = true
 	var behind := b.mk_enemy("grunt", c0.fire - 20, b.T.stand_y(c0.fire - 20, 0)); behind.active = true
 	b.units.append(body); b.units.append(behind)
-	b.damage(body, 999, s)
+	b.damage(body, body.hp, s)  # an exact kill: an overkill pops the body (R2)
 	await frames_wait(240)
 	check(body.is_body() and body.alpha > 0.9, "a dead Jackal's body stays on the field")
 	var hp_b := behind.hp
@@ -1452,7 +1586,7 @@ func soldat() -> void:
 	for o in b.units:
 		if o.team == "neutral" and o.x > c0.fire and o.x < c0.fire + 140:
 			o.gone = true
-	b.damage(body2, 999, s)
+	b.damage(body2, body2.hp, s)
 	await frames_wait(10)
 	var hp_v := victim.hp
 	b.explode(body2.x - 16, body2.y - 2, 26, 1, s)

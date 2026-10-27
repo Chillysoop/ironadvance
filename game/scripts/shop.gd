@@ -202,7 +202,7 @@ func _draw() -> void:
 		draw_rect(Rect2(x + 1, y + 1, 170, 146), Color("2a2e34"))
 		draw_rect(Rect2(x + 1, y + 1, 170, 2), Color("6c7480"))
 		var anim := "idle" if s.alive else "die"
-		Art.draw_char(self, "sq_" + s.key, anim, (t / 12 + i) % 4 if s.alive else 4, Vector2(x + 30, y + 80), 1, false, 0, 1.0, 0, false, 1.1)
+		Art.draw_char(self, "sq_" + s.key, anim, (t / 12 + i) % 4 if s.alive else 5, Vector2(x + 30, y + 80), 1, false, 0, 1.0, 0, false, 1.1)
 		Art.text(self, s.def.name, Vector2(x + 62, y + 20), 8, Color.WHITE)
 		Art.text(self, "LV%d" % s.lvl, Vector2(x + 164, y + 20), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
 		if s.alive:
