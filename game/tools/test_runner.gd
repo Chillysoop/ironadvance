@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens.
+## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2.
 ## --mission=N picks the mission for bot.
 
 var out_dir := "user://shots"
@@ -623,6 +623,8 @@ func run() -> void:
 			await detours()
 		"aliens":
 			await aliens()
+		"aliens2":
+			await aliens2()
 		"campaign":
 			Run.new_run()
 			for m in 3:
@@ -832,23 +834,14 @@ func aliens() -> void:
 	var x0 := 300.0
 	while not flat_open(b, x0 - 120, 420):
 		x0 += 20
-	# --- Skitter: marks a pounce, lands on the mark, bites whoever is still there
+	# --- Skitter: closes in and pounces in one enemy phase
 	var s := alien_field(b, x0)
-	var sk := spawn_alien(b, "skitter", x0 + 160)
-	await b.enemy_act(sk)
-	check(sk.pounce != null and absf(sk.pounce.x - s.x) < 2, "a Skitter marks a pounce on the nearest soldier")
-	await frames_wait(10)
-	await shot("alien_skitter_mark")
-	s.x -= 90; s.y = b.T.stand_y(s.x, 0)
+	var sk := spawn_alien(b, "skitter", x0 + 200)
 	var hp0 := s.hp
 	await b.enemy_act(sk)
 	await until(func(): return b.settled(), 600)
-	check(s.hp == hp0 and absf(sk.x - (x0)) < 12, "stepping off the mark dodges the pounce (skitter at %d, mark %d)" % [sk.x, x0])
-	print("[skitter] at ", sk.x, ",", sk.y, " air ", sk.air, " mark ", sk.pounce, " soldier ", s.x, ",", s.y)
-	await b.enemy_act(sk)  # landed and re-marked; this phase pounces again
-	print("[skitter] after at ", sk.x, ",", sk.y, " soldier ", s.x, ",", s.y, " dead ", sk.dead)
-	await until(func(): return b.settled(), 600)
-	check(s.hp < hp0, "standing on the mark gets you bitten (hp %d -> %d)" % [hp0, s.hp])
+	await shot("alien_skitter")
+	check(s.hp < hp0 and absf(sk.x - s.x) < 30, "a Skitter pounces and bites in the same phase (hp %d -> %d)" % [hp0, s.hp])
 	# light: the same blast throws a Skitter twice as far as a Rifleman
 	var gr := spawn_alien(b, "grunt", x0 + 60)
 	var sk2 := spawn_alien(b, "skitter", x0 + 60)
@@ -856,49 +849,134 @@ func aliens() -> void:
 	b.explode(x0 + 40, b.T.stand_y(x0 + 40, 0) - 10, 40, 1, s)
 	check(absf(sk2.vx) > absf(gr.vx) * 1.8, "light Skitter flies twice as far (vx %.1f vs %.1f)" % [sk2.vx, gr.vx])
 	await until(func(): return b.settled(), 900)
-	# --- Squid Trooper: hovers, locks a ray, fires it along the line
+	# --- Squid Trooper: hovers, glides and fires its ray in one phase
 	s = alien_field(b, x0)
 	var sq := spawn_alien(b, "squid", x0 + 260)
 	var gy: float = b.T.stand_y(sq.x, 0)
 	check(sq.y < gy - 80, "a Squid Trooper hovers (%d above the floor)" % (gy - sq.y))
 	sq.hold = true
-	await b.enemy_act(sq)
-	check(sq.beam != null, "the Squid locks its ray on a soldier")
-	await frames_wait(10)
-	await shot("alien_squid_mark")
 	hp0 = s.hp
 	await b.enemy_act(sq)
 	await until(func(): return b.settled(), 600)
-	print("[squid] at ", sq.x, ",", sq.y, " soldier ", s.x, ",", s.y, " beam ", sq.beam, " ", b.beam_path(sq, 0.0 if sq.beam == null else sq.beam))
-	check(s.hp < hp0, "the ray hits the soldier on the line (hp %d -> %d)" % [hp0, s.hp])
+	await shot("alien_squid")
+	check(s.hp < hp0, "the Squid fires its ray the same phase (hp %d -> %d)" % [hp0, s.hp])
 	var hp1 := sq.hp
 	b.damage(sq, sq.pod, s)
 	check(sq.weight == "" and sq.hp == hp1, "the pod soaks damage first, then breaks")
 	await until(func(): return b.settled(), 600)
 	check(not sq.air and sq.hp < hp1, "the squid drops and takes crash damage (hp %d -> %d)" % [hp1, sq.hp])
-	# --- Blinker: marks a rune behind you; anything on the rune telefrags it
+	# --- Blinker: teleports behind the soldier and claws
 	s = alien_field(b, x0 + 60)
 	var bl := spawn_alien(b, "blinker", x0 + 240)
-	await b.enemy_act(bl)
-	check(bl.rune != null and bl.rune.x < s.x, "a Blinker marks a rune behind the soldier")
-	await frames_wait(10)
-	await shot("alien_blinker_mark")
 	hp0 = s.hp
 	await b.enemy_act(bl)
+	await shot("alien_blinker")
 	await until(func(): return b.settled(), 600)
-	check(s.hp < hp0 and absf(bl.x - (s.x)) < 120, "it blinks onto the rune and claws (hp %d -> %d)" % [hp0, s.hp])
+	check(s.hp < hp0, "a Blinker teleports in and claws the same phase (hp %d -> %d)" % [hp0, s.hp])
 	s = alien_field(b, x0 + 60)
-	var bl2 := spawn_alien(b, "blinker", x0 + 240)
-	await b.enemy_act(bl2)
-	var r: Vector2 = bl2.rune
-	var crate := b.mk_unit()
-	crate.team = "neutral"; crate.kind = "crate"; crate.x = r.x; crate.y = r.y; crate.w = 14; crate.h = 14
-	b.units.append(crate)
-	s.x += 70; s.y = b.T.stand_y(s.x, 0)
-	await b.enemy_act(bl2)
+	var far := spawn_alien(b, "blinker", x0 + 500)
+	await b.enemy_act(far)
+	check(far.x > x0 + 300 and far.x < x0 + 500, "a Blinker farther than 360px walks closer instead (x %d)" % far.x)
+
+func aliens2() -> void:
+	## Step 3 of the alien plan: BREACH dial tags, the Swarm and Nest encounters, alien elites.
+	Run.new_run()
+	Run.mission = 1
+	Run.roll_dial()
+	check(Run.dial.all(func(id): return Run.dial_breach.has(id)), "the level 2 dial rolls a BREACH flag per biome")
+	Run.mission = 0
+	Run.roll_dial()
+	check(Run.dial.all(func(id): return not Run.dial_breach[id]), "level 1 never rolls a BREACH")
+	var lv := Run.make_level("fortress", 1, true)
+	check(lv.breach and lv.encounter in ["swarm", "nest"], "a level 2 level carries its breach flag and an encounter (%s)" % lv.encounter)
+	# the nest: three Hive Pods with staggered timers
+	lv.encounter = "nest"
+	Run.level = lv
+	var b: Battle = main.start_battle(1, lv)
+	await until(func(): return b.state == "player" and not b.busy)
+	var hives := b.units.filter(func(u): return u.type == "hive")
+	check(hives.size() == 3 and hives.map(func(h): return h.fl.hatch) == [2, 3, 4], "the Nest has 3 Hive Pods on staggered timers (%s)" % str(hives.map(func(h): return h.fl.get("hatch"))))
+	cam_on(b, hives[1].x)
+	await frames_wait(20)
+	await shot("alien2_nest")
+	b.speed = 2.0
+	var x0 := 300.0
+	while not flat_open(b, x0 - 120, 420):
+		x0 += 20
+	# hatching, then acid
+	var s := alien_field(b, x0)
+	var hv := spawn_alien(b, "hive", x0 + 200)
+	var count := func(): return b.units.filter(func(u): return u.type == "skitter" and not u.dead).size()
+	await b.enemy_act(hv)
+	check(count.call() == 0 and hv.fl.hatch == 1, "a Hive Pod counts down first")
+	await b.enemy_act(hv)
+	check(count.call() == 2, "then hatches two Skitters (%d)" % count.call())
+	s.x = hv.x + 10; s.y = b.T.stand_y(s.x, 0)
+	b.damage(hv, 99, s)
+	check(b.acids.size() == 1, "a dead Hive Pod leaves acid")
+	var hp0 := s.hp
+	b.tick_acids()
+	check(s.hp == hp0 - 3, "a soldier standing in acid takes 3 (hp %d -> %d)" % [hp0, s.hp])
+	# the swarm tunnel: waves 3, 4, 3, then it caves in
+	s = alien_field(b, x0)
+	var bu := spawn_alien(b, "burrow", x0 + 220)
+	var waves: Array = []
+	for i in 3:
+		var c0: int = count.call()
+		await b.enemy_act(bu)
+		waves.append(count.call() - c0)
+	await b.enemy_act(bu)
+	check(waves == [3, 4, 3] and bu.dead, "a tunnel sends waves %s and then caves in" % str(waves))
 	await until(func(): return b.settled(), 600)
-	await shot("alien_blinker_telefrag")
-	check(bl2.dead, "a crate on the rune telefrags the Blinker (hp %d)" % bl2.hp)
+	await shot("alien2_swarm")
+	# elites
+	s = alien_field(b, x0)
+	var br := spawn_alien(b, "skitter", x0 + 200)
+	b.make_elite(br, "brood")
+	b.damage(br, 99, s)
+	check(count.call() == 2, "a BROOD Skitter splits into two (%d)" % count.call())
+	s = alien_field(b, x0)
+	var an := spawn_alien(b, "blinker", x0 + 120)
+	b.make_elite(an, "anchored")
+	an.hp = 99
+	b.explode(an.x - 30, an.y - 10, 40, 1, s)
+	check(absf(an.vx) < 0.01, "an ANCHORED alien is not knocked back")
+	var body := spawn_alien(b, "grunt", an.x + 30)
+	b.kill(body, s)
+	b.make_elite(an, "hungry")
+	an.max_hp = 99; an.hp = 50
+	await b.enemy_act(an)
+	check(an.hp >= 58 and body.gone, "a HUNGRY alien eats a body to heal (hp %d)" % an.hp)
+	s = alien_field(b, x0)
+	var al := spawn_alien(b, "squid", x0 + 200)
+	var mate := spawn_alien(b, "squid", x0 + 300)
+	b.make_elite(al, "alpha")
+	check(b.alpha_near(mate) and not b.alpha_near(al), "an ALPHA makes others of its kind nearby act twice")
+	check(Data.ELITES[b.pick_elite(true)].get("vharr", false) and not Data.ELITES[b.pick_elite(false)].get("vharr", false), "aliens and Jackals roll their own elites")
+	# breach: a Jackal goes for the nearest alien instead of a far soldier
+	s = alien_field(b, x0 - 100)
+	var j := spawn_alien(b, "grunt", x0 + 260)
+	var sk := spawn_alien(b, "skitter", x0 + 200)
+	b.breach = false
+	check(b.nearest_squad(j) == s, "outside a BREACH the Jackal targets your soldier")
+	b.breach = true
+	check(b.nearest_squad(j) == sk and b.nearest_squad(sk) == j, "in a BREACH the Jackal and the Skitter target each other")
+	sk.dead = true; sk.gone = true
+	var bk := spawn_alien(b, "blinker", x0 + 200)
+	bk.hp = 99; bk.max_hp = 99
+	for i in 3:
+		await b.enemy_act(j)
+		await until(func(): return b.settled(), 600)
+	check(bk.hp < 99, "the Jackal shoots the alien instead (hp 99 -> %d)" % bk.hp)
+	# Worms style: a Jackal with a shot already still moves before it fires
+	b.breach = false
+	s = alien_field(b, x0)
+	var mover := spawn_alien(b, "grunt", x0 + 200)
+	var mx := mover.x
+	hp0 = s.hp
+	await b.enemy_act(mover)
+	await until(func(): return b.settled(), 600)
+	check(absf(mover.x - mx) >= 30, "a Jackal with a clear shot still moves first (moved %d px)" % absf(mover.x - mx))
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.

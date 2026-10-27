@@ -55,7 +55,7 @@ var won := false
 var lost := false
 var ui_dirty := true
 var end_confirm_t := 0   # frames left to confirm END TURN while soldiers can still act
-var inspect := false     # ALT held: show every soldier's actions and enemy intents
+var inspect := false     # ALT held: show every soldier's actions
 var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0, "kia": 0, "max_alert": 0, "pows_total": 0, "loot": 0, "tags": 0, "best_combo": 0, "fallen": []}
 var act_once := {}        # tag-team combos that pay out once per action
 var act_crushed := 0      # Jackals crushed by debris during the current action (DOMINO)
@@ -80,6 +80,8 @@ var acc := 0.0
 var charm_used := 0
 var autopick := -1        # tests: pick this option index in every modal instead of waiting
 var theme := "dusk"
+var breach := false       # BREACH biome: the Vharr and the Jackals are at war with each other too
+var acids: Array = []     # acid pools from burst Hive Pods: {x, y, r, turns}
 var detour := {}          # the camp detour being played: {id, x0, x1, done, left, scav, mod}
 var th := {}              # the theme colors, with the biome's look laid over them
 var rules := {}           # the biome's rules: sway, sight, wind, amp, wet, fuel, mines, elite
@@ -95,6 +97,7 @@ func setup(idx: int, custom := {}) -> void:
 	mission_idx = idx
 	mission = Data.MISSIONS[idx] if custom.is_empty() else custom
 	rules = mission.get("rules", {})
+	breach = mission.get("breach", false)
 	Run.sway_mul = rules.get("sway", 1.0)
 	Run.temp_luck = 2 if Run.intel == "veterans" else 0
 	theme = mission.theme
@@ -164,7 +167,7 @@ func setup(idx: int, custom := {}) -> void:
 			var bm := 1.4 if Run.threat_on(5) else 1.0
 			u.hp = int(mission.boss_hp * bm); u.max_hp = u.hp; u.plate = int(mission.plate * bm)
 		elif randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
-			make_elite(u, Data.ELITES.keys()[randi() % Data.ELITES.size()])
+			make_elite(u, pick_elite(faction(u) == "vharr"))
 		units.append(u)
 		place_alien(u)
 		for k in range(1, E.get("pack", 1)):
@@ -172,6 +175,7 @@ func setup(idx: int, custom := {}) -> void:
 			var mate := mk_enemy(type, px, T.stand_y(px, (y if y != null else 0.0) - 40))
 			mate.hold = u.hold
 			units.append(mate)
+	place_encounter(mission.get("encounter", ""))
 	spawn_map_loot()
 	sel = null
 	for u in units:
@@ -300,6 +304,13 @@ func make_elite(u: Unit, mod: String) -> void:
 	u.hp = int(round(u.hp * 1.5)); u.max_hp = u.hp
 	if mod == "shielded":
 		u.shield = true
+	if mod == "anchored":
+		u.heavy = true
+
+func pick_elite(alien: bool) -> String:
+	## Jackals roll the Jackal elites, the Vharr roll their own.
+	var keys := Data.ELITES.keys().filter(func(k): return Data.ELITES[k].get("vharr", false) == alien)
+	return keys[randi() % keys.size()]
 
 func spawn_map_loot() -> void:
 	## Crates on roofs and in the open, the odd strongbox, and one buried cache per mission (L1, L3, L6).
@@ -423,6 +434,8 @@ func _ready() -> void:
 func begin() -> void:
 	Sfx.play("start")
 	banner("MISSION %d START!" % (mission_idx + 1), Color("ffb23e"), mission.name)
+	if breach:
+		log_msg("BREACH: the Vharr and the Jackals are fighting each other. Each shoots whoever is nearest, so let them.")
 	activate_enemies()
 	await wait(60)
 	if state == "title":
@@ -740,8 +753,8 @@ func unit_at_point(x: float, y: float, shooter, travelled: float, skip: Dictiona
 			continue
 		if u == shooter and travelled < 40:
 			continue
-		if shooter != null and u != shooter and u.team != "" and u.team == shooter.team:
-			continue  # bullets slip past teammates, explosions don't
+		if shooter != null and u != shooter and u.team != "" and u.team == shooter.team and not (breach and faction(u) != faction(shooter)):
+			continue  # bullets slip past teammates, explosions don't (in a BREACH the two factions aren't teammates)
 		if u.kind == "slug":
 			continue
 		if x >= u.x - u.w / 2.0 and x <= u.x + u.w / 2.0 and y >= u.y - u.h and y <= u.y:
@@ -1262,6 +1275,20 @@ func kill(tg: Unit, src) -> void:
 				src.kill_drawn = true
 				draw_cards(src, int(src.g("kill_draw")))
 				float_text(src, "SPARE MAG: DRAW", Color("53d4e2"))
+		if tg.type == "hive":
+			acids.append({"x": tg.x, "y": tg.y, "r": 40.0, "turns": 2})
+			float_text(tg, "ACID!", Color("9df25c"), true)
+			Sfx.play("splash")
+		if tg.elite == "brood":
+			for k in [-1, 1]:
+				var bx: float = tg.x + k * 14
+				var by = T.stand_y(bx, tg.y - 30)
+				var c := mk_enemy(tg.type, bx, by if by != null else tg.y)
+				c.hp = maxi(1, tg.max_hp / 3); c.max_hp = c.hp
+				c.active = true
+				units.append(c)
+				place_alien(c)
+			float_text(tg, "BROOD SPLITS!", Color("9df25c"), true)
 		if tg.elite != "":
 			drop_loot(tg.x, tg.y - tg.h / 2.0, {"type": "item", "item": Run.roll_item(1)})
 			if tg.elite == "volatile":
@@ -2321,7 +2348,7 @@ func start_detour(id: String) -> void:
 	detour = {"id": id, "x0": x0, "x1": x1, "done": false, "left": Data.POW_RESCUE_ROUNDS, "scav": 0, "mod": ""}
 	match id:
 		"elite":
-			detour.mod = Data.ELITES.keys()[randi() % Data.ELITES.size()]
+			detour.mod = pick_elite(false)
 			for sp in [["grunt", 300], ["shield", 400], ["nade", 560], ["brute", 650]]:
 				detour_enemy(sp[0], x0 + sp[1], detour.mod)
 		"pow":
@@ -2893,34 +2920,6 @@ func can_act(u: Unit) -> bool:
 		return true
 	return u.hand.any(func(c): return card_cost(u, c) <= u.energy)
 
-func intent_of(e: Unit) -> String:
-	## What an enemy will try next phase, for the ALT intel overlay. Damage includes alert scaling.
-	var d: Dictionary = Data.ETYPES[e.type]
-	if not e.active:
-		return "IDLE"
-	var m := 1.0 + alert * 0.06
-	match e.type:
-		"skitter":
-			return ("POUNCE %d" % d.dmg) if e.pounce != null else "SCRAMBLE"
-		"squid":
-			return ("RAY %d" % int(round(d.dmg * m))) if e.beam != null else "GLIDE AND AIM"
-		"blinker":
-			return ("BLINK, CLAW %d" % int(round(d.dmg * m))) if e.rune != null else "MARK A RUNE"
-	var rng := func(a): return "%d-%d" % [int(round(a[0] * m)), int(round(a[1] * m))]
-	if d.get("sapper", false):
-		return "PLANT CHARGE"
-	if d.get("builds", false):
-		return "BUILD WALL / SHOOT %s" % rng.call(d.dmg)
-	if d.get("radio", false) and radio_t != null:
-		return "BACKUP IN %d" % radio_t
-	if d.get("melee", false):
-		return "CHARGE %dpx  HIT %s" % [d.speed, rng.call(d.dmg)]
-	if d.get("arc", false):
-		return ("SHELL %d" if d.get("heavyArc", false) else "GRENADE %d") % int(round(d.dmg * m))
-	if d.has("shots"):
-		return "FIRE %dx %s" % [d.shots, rng.call(d.dmg)]
-	return "SHOOT %s" % rng.call(d.dmg)
-
 func ready_count() -> int:
 	return squad_alive().filter(can_act).size()
 
@@ -3004,6 +3003,11 @@ func enemy_phase() -> void:
 			if e.dead:
 				continue
 		await enemy_act(e)
+		if not e.dead and alpha_near(e):
+			await until(settled)
+			float_text(e, "ALPHA!", Color("ffd23a"), true)
+			await wait(10)
+			await enemy_act(e)
 		e.st.erase("supp")
 		await until(settled)
 		await wait(10)
@@ -3029,6 +3033,7 @@ func enemy_phase() -> void:
 				u.hp = mini(u.max_hp, u.hp + 3)
 				float_text(u, "+3 HP", Color("62d26f"))
 	smokes = smokes.filter(func(s): return s.turns > 0)
+	tick_acids()
 	for g in gases:
 		g.turns -= 1
 		if ks(g.owner, "weathervane"):
@@ -3284,12 +3289,26 @@ func nearest_squad(e: Unit):
 	if taunter != null and not taunter.dead and absf(taunter.x - e.x) < 520:
 		return taunter
 	var best = null
-	for s in squad_alive():
-		if not targetable(e, s):
+	for s in foes_of(e):
+		if s.team == "squad" and not targetable(e, s):
 			continue
 		if best == null or absf(s.x - e.x) < absf(best.x - e.x):
 			best = s
 	return best
+
+func faction(u: Unit) -> String:
+	return Data.ETYPES[u.type].get("faction", "jackal") if u.team == "enemy" else ""
+
+func foes_of(e: Unit) -> Array:
+	## Who an enemy fights: your squad, and in a BREACH biome the other faction's active units too.
+	## Spawners (Hive Pods, tunnels) stay out of it.
+	var out := squad_alive()
+	if breach and e.team == "enemy":
+		var f := faction(e)
+		for o in units:
+			if o.team == "enemy" and o.active and not o.dead and not o.gone and not o.sunk and faction(o) != f and not Data.ETYPES[o.type].get("static", false) and o.type != "boss":
+				out.append(o)
+	return out
 
 func engineer_build(e: Unit) -> bool:
 	var tg = nearest_squad(e)
@@ -3326,13 +3345,21 @@ func engineer_build(e: Unit) -> bool:
 
 func enemy_act(e: Unit) -> void:
 	var E: Dictionary = Data.ETYPES[e.type]
-	var sq := squad_alive()
+	var sq := foes_of(e)
 	if sq.is_empty() or e.air:
 		return
 	if e.type == "boss":
 		await boss_act(e)
 		return
+	if e.elite == "hungry":
+		await eat_body(e)
 	match e.type:
+		"hive":
+			await hive_act(e)
+			return
+		"burrow":
+			await burrow_act(e)
+			return
 		"skitter":
 			await skitter_act(e)
 			return
@@ -3372,7 +3399,7 @@ func enemy_act(e: Unit) -> void:
 			await enemy_advance(e, e.x + (90 if e.x >= tg.x else -90), E.speed)
 		if e.dead or e.air:
 			return
-		var b = best_shot(e, squad_alive(), E.range)
+		var b = best_shot(e, foes_of(e), E.range)
 		if b != null:
 			await wait(6)
 			await enemy_shoot(e, b.t, E)
@@ -3384,7 +3411,7 @@ func enemy_act(e: Unit) -> void:
 		if e.dead or e.air:
 			return
 		var tt = null
-		for s in squad_alive():
+		for s in foes_of(e):
 			if absf(s.x - e.x) <= 32 and absf(s.y - e.y) <= 26:
 				tt = s
 				break
@@ -3403,18 +3430,18 @@ func enemy_act(e: Unit) -> void:
 		return
 	if E.get("arc", false):
 		var cands := sq.filter(func(s): return absf(s.x - e.x) <= E.range)
-		if cands.is_empty() and not e.hold and E.speed:
+		if not e.hold and E.speed:
 			var tg = nearest_squad(e)
-			await enemy_advance(e, tg.x, E.speed, func(): return squad_alive().any(func(s): return absf(s.x - e.x) <= E.range * 0.9))
+			await enemy_advance(e, tg.x, E.speed, func(): return foes_of(e).any(func(s): return absf(s.x - e.x) <= E.range * 0.9))
 			if e.dead or e.air:
 				return
-			cands = squad_alive().filter(func(s): return absf(s.x - e.x) <= E.range)
+			cands = foes_of(e).filter(func(s): return absf(s.x - e.x) <= E.range)
 		if cands.is_empty():
 			return
 		var best = null
 		var bsc := -1e9
 		for s in cands:
-			var sc: float = squad_alive().filter(func(o): return absf(o.x - s.x) < 45).size() * 10 - s.hp * 0.3
+			var sc: float = foes_of(e).filter(func(o): return absf(o.x - s.x) < 45).size() * 10 - s.hp * 0.3
 			if sc > bsc:
 				bsc = sc
 				best = s
@@ -3426,27 +3453,31 @@ func enemy_act(e: Unit) -> void:
 		elif await engineer_build(e):
 			await until(settled)
 	var best = best_shot(e, sq, E.range)
-	if not E.get("static", false) and not e.hold and (best == null or absf(best.t.x - e.x) > E.prefer):
+	if not E.get("static", false) and not e.hold:
+		# Worms style: always move, then shoot. Close in until there's a shot from preferred range,
+		# but take at least a few steps every turn.
 		var tg = nearest_squad(e)
+		var x0 := e.x
 		await enemy_advance(e, tg.x + (E.prefer * 0.5 if tg.x < e.x else -E.prefer * 0.5), E.speed, func():
+			if absf(e.x - x0) < 40:
+				return false
 			var b2 = best_shot(e, sq, E.range)
 			return b2 != null and absf(b2.t.x - e.x) <= E.prefer)
 		if e.dead or e.air:
 			return
-		best = best_shot(e, squad_alive(), E.range)
+		best = best_shot(e, foes_of(e), E.range)
 	if best != null:
 		await wait(6)
 		await enemy_shoot(e, best.t, E)
 	elif E.has("nade") and not e.dead and randf() < E.nade:
-		var near := squad_alive().filter(func(s): return absf(s.x - e.x) <= 380)
+		var near := foes_of(e).filter(func(s): return absf(s.x - e.x) <= 380)
 		near.sort_custom(func(a, b): return absf(a.x - e.x) < absf(b.x - e.x))
 		if near.size():
 			float_text(e, "GRENADE!", Color("ff7a3d"))
 			await lob(e, near[0], 7, 28, 1.3)
 
 # ---------------------------------------------------------------- Vharr aliens
-# Each alien acts on what it marked last enemy phase (a pounce reticle, a ray line, a rune), then
-# marks its next move, so the player always sees the threat a full turn ahead. Nothing here rolls dice.
+# Like the Jackals, every alien moves and attacks in the same enemy phase. Nothing is marked ahead.
 func hover_y(u: Unit, x: float, y: float) -> float:
 	## Where a hovering alien floats over x: its altitude above the floor below (or the water),
 	## lower when a ceiling is in the way.
@@ -3518,7 +3549,7 @@ func hover_move(e: Unit, tx: float, budget: float) -> void:
 	await walk_along(e, pts)
 
 func leap_to(e: Unit, p: Vector2) -> void:
-	## A fixed hop that always lands on the marked spot (the same arc the grapple zip uses).
+	## A fixed hop that always lands on the target spot (the same arc the grapple zip uses).
 	e.face = 1 if p.x >= e.x else -1
 	e.walk = null
 	e.air = true
@@ -3526,32 +3557,31 @@ func leap_to(e: Unit, p: Vector2) -> void:
 	await until(func(): return e.zip == null or e.dead)
 
 func skitter_act(e: Unit) -> void:
+	## Scramble in close (climbing walls on the way), then pounce on the nearest target and bite.
 	var E: Dictionary = Data.ETYPES.skitter
-	if e.pounce != null:
-		var p: Vector2 = e.pounce
-		e.pounce = null
-		Sfx.play("toss")
-		await leap_to(e, p)
-		if e.dead:
-			return
-		for o in units:
-			if o == e or o.dead or o.gone or o.sunk or o.type == "skitter" or (o.team != "squad" and o.team != "enemy"):
-				continue
-			if absf(o.x - e.x) < 20 + o.w / 2.0 and absf(o.y - e.y) < 30:
-				Sfx.play("slash")
-				fx.append({"kind": "slash", "x": o.x, "y": o.y - o.h / 2.0, "t": 0, "dur": 10, "sc": 1.0, "face": e.face})
-				damage(o, E.dmg, e, {})
-	else:
-		var tg = nearest_squad(e)
-		if tg != null and absf(tg.x - e.x) > E.leap * 0.8:
-			await enemy_advance(e, tg.x + (E.leap * 0.6 if tg.x < e.x else -E.leap * 0.6), E.speed)
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	if Vector2(tg.x - e.x, tg.y - e.y).length() > E.leap * 0.9:
+		await enemy_advance(e, tg.x, E.speed, func():
+			var t2 = nearest_squad(e)
+			return t2 != null and Vector2(t2.x - e.x, t2.y - e.y).length() <= E.leap * 0.9)
 	if e.dead or e.air:
 		return
-	var t2 = nearest_squad(e)
-	if t2 != null and Vector2(t2.x - e.x, t2.y - e.y).length() <= E.leap:
-		e.pounce = Vector2(t2.x, t2.y)
-		e.face = 1 if t2.x >= e.x else -1
-		float_text(e, "POUNCE!", Color("c47bff"))
+	tg = nearest_squad(e)
+	if tg == null or Vector2(tg.x - e.x, tg.y - e.y).length() > E.leap:
+		return
+	Sfx.play("toss")
+	await leap_to(e, Vector2(tg.x - signf(tg.x - e.x) * 8, tg.y))
+	if e.dead:
+		return
+	for o in units:
+		if o == e or o.dead or o.gone or o.sunk or o.type == "skitter" or (o.team != "squad" and o.team != "enemy"):
+			continue
+		if absf(o.x - e.x) < 20 + o.w / 2.0 and absf(o.y - e.y) < 30:
+			Sfx.play("slash")
+			fx.append({"kind": "slash", "x": o.x, "y": o.y - o.h / 2.0, "t": 0, "dur": 10, "sc": 1.0, "face": e.face})
+			damage(o, E.dmg, e, {})
 
 func beam_path(e: Unit, ang: float) -> Dictionary:
 	## The squid ray: a straight line that passes through one wall up to 28px thick.
@@ -3599,13 +3629,8 @@ func fire_beam(e: Unit, ang: float) -> void:
 	await wait(14)
 
 func squid_act(e: Unit) -> void:
+	## Glide to its preferred range, then fire the ray at the nearest target.
 	var E: Dictionary = Data.ETYPES.squid
-	if e.beam != null:
-		var a: float = e.beam
-		e.beam = null
-		await fire_beam(e, a)
-		if e.dead:
-			return
 	var tg = nearest_squad(e)
 	if tg == null:
 		return
@@ -3620,9 +3645,9 @@ func squid_act(e: Unit) -> void:
 	tg = nearest_squad(e)
 	if tg != null and dist(e, tg) <= E.range:
 		var c := e.center()
-		e.beam = atan2(tg.y - tg.h / 2.0 - c.y, tg.x - c.x)
 		e.face = 1 if tg.x >= e.x else -1
-		float_text(e, "LOCKING ON", Color("c47bff"))
+		await wait(8)
+		await fire_beam(e, atan2(tg.y - tg.h / 2.0 - c.y, tg.x - c.x))
 
 func rune_spot(e: Unit, tg: Unit):
 	## Where the Blinker marks its rune: right behind the soldier (the side away from the Blinker), else in front.
@@ -3630,22 +3655,15 @@ func rune_spot(e: Unit, tg: Unit):
 	for off in [-30.0, 30.0, -60.0, 60.0]:
 		var x: float = tg.x + off * -dir
 		var y = T.stand_y(x, tg.y - 40)
-		if y != null and y < WATER_Y - 4 and absf(y - tg.y) < 40:
+		if y != null and y < WATER_Y - 4 and absf(y - tg.y) < 40 and not units.any(func(o): return o != e and not o.dead and not o.gone and not o.is_pickup() and absf(o.x - x) < (o.w + e.w) / 2.0 and absf(o.y - y) < 30):
 			return Vector2(x, y)
 	return null
 
 func blink(e: Unit, r: Vector2) -> void:
-	## Teleport onto the rune. Anything already standing there telefrags the Blinker.
-	var occ = null
-	for o in units:
-		if o == e or o.dead or o.gone or o.sunk or o.is_pickup() or o.kind == "pow":
-			continue
-		if absf(o.x - r.x) < (o.w + e.w) / 2.0 - 2 and o.y > r.y - e.h and o.y - o.h < r.y:
-			occ = o
-			break
 	for i in 8:
 		part({"x": e.x, "y": e.y - i * 4, "vx": 0.0, "vy": -1.0, "life": 24, "max": 24, "c": Color("c47bff"), "s": 3.0, "g": 0.0})
 	Sfx.play("power")
+	e.face = 1 if r.x >= e.x else -1
 	e.x = r.x
 	e.y = r.y
 	e.air = false
@@ -3653,48 +3671,144 @@ func blink(e: Unit, r: Vector2) -> void:
 	e.vy = 0
 	for i in 8:
 		part({"x": e.x + (i - 4) * 3, "y": e.y - 16, "vx": (i - 4) * 0.5, "vy": -0.5, "life": 24, "max": 24, "c": Color("9df25c"), "s": 3.0, "g": 0.0})
-	if occ != null:
-		var credit = occ if occ.team == "squad" else (occ.last_hit_by if occ.last_hit_by is Unit and occ.last_hit_by.team == "squad" else null)
-		float_text(e, "TELEFRAG!", Color("9df25c"), true)
-		shake += 4
-		damage(occ, 4, e, {})
-		if not occ.heavy and not occ.is_prop() and not occ.dead:
-			occ.vx = (1 if occ.x >= r.x else -1) * 4.0 * kb(occ)
-			occ.vy = -4
-			occ.air = true
-			occ.walk = null
-			occ.last_hit_by = e
-		damage(e, e.max_hp, credit, {})
 	await wait(12)
 
 func blinker_act(e: Unit) -> void:
+	## Teleport behind the nearest target (within 360px; else walk closer) and claw it.
 	var E: Dictionary = Data.ETYPES.blinker
-	if e.rune != null:
-		var r: Vector2 = e.rune
-		e.rune = null
-		await blink(e, r)
-		if e.dead:
-			return
-		var tt = null
-		for s in squad_alive():
-			if absf(s.x - e.x) <= 34 and absf(s.y - e.y) <= 30:
-				tt = s
-				break
-		if tt != null:
-			e.face = 1 if tt.x >= e.x else -1
-			e.pose = "throw"; e.pose_t = 16
-			Sfx.play("slash")
-			fx.append({"kind": "slash", "x": tt.x, "y": tt.y - tt.h / 2.0, "t": 0, "dur": 12, "sc": 1.4, "face": e.face})
-			await wait(8)
-			damage(tt, int(round(E.dmg * (1 + alert * 0.06))), e, {})
-			if not tt.dead and not tt.immovable:
-				tt.vx = e.face * E.knock * kb(tt); tt.vy = -3.5; tt.air = true; tt.walk = null; tt.bumped = null; tt.last_hit_by = e
-			await until(settled)
 	var tg = nearest_squad(e)
-	if tg != null and not e.dead:
-		e.rune = rune_spot(e, tg)
-		if e.rune != null:
-			float_text(e, "RUNE MARKED", Color("c47bff"))
+	if tg == null:
+		return
+	if absf(tg.x - e.x) > 360:
+		await enemy_advance(e, tg.x, E.speed)
+		return
+	var r = rune_spot(e, tg)
+	if r == null:
+		return
+	await blink(e, r)
+	if e.dead:
+		return
+	var tt = null
+	for s in foes_of(e):
+		if absf(s.x - e.x) <= 34 and absf(s.y - e.y) <= 30:
+			tt = s
+			break
+	if tt != null:
+		e.face = 1 if tt.x >= e.x else -1
+		e.pose = "throw"; e.pose_t = 16
+		Sfx.play("slash")
+		fx.append({"kind": "slash", "x": tt.x, "y": tt.y - tt.h / 2.0, "t": 0, "dur": 12, "sc": 1.4, "face": e.face})
+		await wait(8)
+		damage(tt, int(round(E.dmg * (1 + alert * 0.06))), e, {})
+		if not tt.dead and not tt.immovable and not tt.heavy:
+			tt.vx = e.face * E.knock * kb(tt); tt.vy = -3.5; tt.air = true; tt.walk = null; tt.bumped = null; tt.last_hit_by = e
+		await until(settled)
+
+func tick_acids() -> void:
+	## End of the enemy phase: anyone but the Vharr standing in Hive acid takes 3.
+	for a in acids:
+		for u in units:
+			if u.dead or u.gone or u.sunk or u.is_prop() or u.is_pickup() or u.kind == "pow" or faction(u) == "vharr":
+				continue
+			if absf(u.x - a.x) < a.r and absf(u.y - a.y) < 20:
+				float_text(u, "ACID", Color("9df25c"))
+				damage(u, 3, null, {"status": true})
+		a.turns -= 1
+	acids = acids.filter(func(a): return a.turns > 0)
+
+func spawn_skitter(x: float, y: float) -> Unit:
+	var sy = T.stand_y(x, y - 40)
+	var k := mk_enemy("skitter", x, sy if sy != null else y)
+	k.active = true
+	units.append(k)
+	return k
+
+func hive_act(e: Unit) -> void:
+	## Hive Pod (E2): counts down in plain sight, then hatches Skitters that act next phase.
+	var E: Dictionary = Data.ETYPES.hive
+	var n: int = e.fl.get("hatch", E.hatch) - 1
+	if n > 0:
+		e.fl["hatch"] = n
+		return
+	e.fl["hatch"] = E.hatch
+	if units.filter(func(o): return o.type == "skitter" and not o.dead and absf(o.x - e.x) < 400).size() >= 8:
+		return  # the nest is full; it waits for room
+	float_text(e, "HATCH!", Color("9df25c"), true)
+	Sfx.play("splash")
+	for k in E.brood:
+		spawn_skitter(e.x + (k * 2 - 1) * 22, e.y)
+	await wait(16)
+
+func burrow_act(e: Unit) -> void:
+	## Skitter tunnel (E1): one wave per enemy phase, the next wave's size shown over it, then it caves in.
+	var E: Dictionary = Data.ETYPES.burrow
+	var i: int = e.fl.get("wave", 0)
+	if i >= E.waves.size():
+		float_text(e, "CAVED IN", Color("e8dcc2"), true)
+		dust(e.x, e.y - 4, Color("c9b38a"), 10)
+		e.dead = true
+		e.hp = 0
+		return
+	float_text(e, "SWARM!", Color("9df25c"), true)
+	Sfx.play("scream", -8)
+	for k in E.waves[i]:
+		spawn_skitter(e.x - 20 + k * 14, e.y)
+		await wait(4)
+	e.fl["wave"] = i + 1
+	await wait(10)
+
+func alpha_near(e: Unit) -> bool:
+	## ALPHA elite: others of its kind within 160px act twice.
+	return units.any(func(o): return o != e and o.elite == "alpha" and o.type == e.type and not o.dead and absf(o.x - e.x) <= 160)
+
+func eat_body(e: Unit) -> void:
+	## HUNGRY elite: eats a fallen body within 60px to heal 8. The body is gone for good.
+	for o in units:
+		if o.dead and not o.gone and not o.sunk and o.kind == "enemy" and o != e and absf(o.x - e.x) <= 60 and absf(o.y - e.y) < 40:
+			o.gone = true
+			e.hp = mini(e.max_hp, e.hp + 8)
+			float_text(e, "+8 FEEDS", Color("9df25c"), true)
+			Sfx.play("slash")
+			await wait(12)
+			return
+
+func place_encounter(id: String) -> void:
+	## E1 Swarm or E2 Nest in the first fighting stretch after the mid camp's yard.
+	if id == "" or T.stretches.is_empty():
+		return
+	var st: Array = T.stretches[-1]
+	for s2 in T.stretches:
+		if T.yard.size() and s2[0] > T.yard[1]:
+			st = s2
+			break
+	var w: float = st[1] - st[0]
+	var put := func(type: String, f: float) -> Unit:
+		var x: float = st[0] + w * f
+		var y = T.stand_y(x, 0)
+		var k := 0
+		while (y == null or y >= WATER_Y - 4) and k < 20:
+			x += 12
+			y = T.stand_y(x, 0)
+			k += 1
+		if y == null or y >= WATER_Y - 4:
+			return null
+		var u := mk_enemy(type, x, y)
+		units.append(u)
+		place_alien(u)
+		return u
+	if id == "nest":
+		var stagger := 1
+		for f in [0.3, 0.55, 0.8]:
+			var h = put.call("hive", f)
+			if h != null:
+				h.fl["hatch"] = stagger + 1
+				stagger += 1
+		put.call("squid", 0.65)
+	elif id == "swarm":
+		put.call("burrow", 0.45)
+		var b2 = put.call("burrow", 0.8)
+		if b2 != null:
+			b2.fl["wave"] = 1  # the far tunnel starts on its second wave: 4, then 3
 
 func boss_act(bo: Unit) -> void:
 	if bo.x > cam_x + W - 170:

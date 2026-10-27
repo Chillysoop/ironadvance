@@ -30,6 +30,7 @@ var chunks: Array = []
 var bridges: Array = []  # standing bridge structs: posts are checked after every carve
 var arena_x := 0
 var yard: Array = []     # [x0, x1] of the clearing after the mid camp, where a detour plays out
+var stretches: Array = []  # [x0, x1] of each fighting stretch, in order
 var camps: Array = []    # safe camps inside the level: {x0, x1, used}
 
 func _init(battle) -> void:
@@ -98,7 +99,7 @@ func build(mission: Dictionary) -> void:
 	pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear(); camps.clear(); yard = []
 	arena_x = 1 << 20  # outposts have no arena
 	var rules: Dictionary = mission.get("rules", {})
-	var stretches: Array = []   # fighting stretches, where a biome's extra fuel and mines go
+	stretches = []   # fighting stretches, where a biome's extra fuel and mines and encounters go
 	for sname in mission.segments:
 		var s: Dictionary = Data.SEGMENTS[sname]
 		if s.get("yard", false):
