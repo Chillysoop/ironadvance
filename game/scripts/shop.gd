@@ -70,11 +70,11 @@ func say(s: String) -> void:
 	msg_t = 200
 
 func build() -> void:
+	for c in get_children():
+		c.queue_free()
 	if mode == "barracks":
 		build_barracks()
 		return
-	for c in get_children():
-		c.queue_free()
 	var cw := 104.0
 	for i in stock_cards.size():
 		var o: Dictionary = stock_cards[i]
@@ -218,7 +218,7 @@ func _draw() -> void:
 		var perks: Array = Run.archetypes(s).map(func(a): return "%s %s" % [a[0], ["I", "II", "III"][a[1] - 1]])
 		var yy := y + 112
 		for line in CardView.wrap_text(", ".join(perks) if perks.size() else "No abilities yet", 156, 16):
-			Art.text(self, line, Vector2(x + 8, yy), 16, Color("ffd23a") if perks.size() else Color("6c7480"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			Art.text(self, line, Vector2(x + 8, yy), 16, Color("ffd23a") if perks.size() else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 			yy += 13
 	# owned gear
 	var gx := 24.0
@@ -228,7 +228,7 @@ func _draw() -> void:
 	while Art.text_width(gl, 16, true) > 460 and gl.length() > 4:
 		gl = gl.substr(0, gl.length() - 4) + "."
 	Art.text(self, gl, Vector2(gx + 50, 501), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
-	if msg_t > 0:
+	if msg_t > 0 and not chooser is TilePicker:
 		var w := Art.text_width(msg, 16, true) + 20
 		draw_rect(Rect2(480 - w / 2, 296, w, 20), Color(0.05, 0.035, 0.03, 0.9))
 		Art.text(self, msg, Vector2(480, 311), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
@@ -264,13 +264,31 @@ func choose(title: String, opts: Array, card_size := Vector2(104, 146)) -> int:
 	chooser = null
 	return r
 
-func choose_soldier(title: String, alive_only := true) -> Dictionary:
+func choose_soldier(title: String, alive_only := true, focus := Rect2()) -> Dictionary:
 	var cand: Array = Run.soldiers.filter(func(s): return s.alive == alive_only)
 	if cand.is_empty():
 		return {}
-	var opts: Array = cand.map(func(s): return {"kind": "service", "name": s.def.name, "text": "%s  LV%d  HP %d/%d  %d cards" % [s.def.cls, s.lvl, s.hp, Run.eff_max_hp(s), s.deck.size()], "icon": "ic_heart" if s.alive else "ic_skull"})
-	var i := await choose(title, opts)
+	var i := await pick_tile(title, cand, focus)
 	return cand[i] if i >= 0 else {}
+
+func tile_rect(i: int) -> Rect2:
+	## A squad tile along the bottom of the screen, as _draw lays them out.
+	return Rect2(24.0 + i * 180, 326.0, 172, 148)
+
+func pick_tile(title: String, cand: Array, focus := Rect2()) -> int:
+	## The squad tiles light up and the soldier is picked by clicking one; everything else dims.
+	## Returns the index into cand, or -1 on cancel.
+	var tp := TilePicker.new()
+	tp.title = title
+	tp.focus = focus
+	tp.tiles = cand.map(func(s): return tile_rect(Run.soldiers.find(s)))
+	tp.picked.connect(func(k): chosen.emit(k))
+	chooser = tp
+	add_child(tp)
+	var r: int = await chosen
+	tp.queue_free()
+	chooser = null
+	return r
 
 func choose_card(title: String, s: Dictionary, filter := Callable()) -> Dictionary:
 	var cand: Array = s.deck if not filter.is_valid() else s.deck.filter(filter)
@@ -295,7 +313,7 @@ func buy_card(i: int) -> void:
 	if o.get("sold", false) or Run.scrip < o.price:
 		Sfx.play("deny")
 		return
-	var s := await choose_soldier("WHO GETS %s?" % Data.card(o).name.to_upper())
+	var s := await choose_soldier("WHO GETS %s?" % Data.card(o).name.to_upper(), true, Rect2(24 + i * 112, 92, 104, 146))
 	if s.is_empty() or not pay(o.price):
 		return
 	s.deck.append(Run.new_card(o.key, o.tier))
@@ -453,8 +471,7 @@ func restore_tag() -> void:
 	if cand.is_empty():
 		say("Everyone still has all their dog tags.")
 		return
-	var opts: Array = cand.map(func(s): return {"kind": "service", "name": s.def.name, "text": "%s  %d of %d dog tags left" % [s.def.cls, s.tags, Data.DOG_TAGS], "icon": "ic_heart"})
-	var i := await choose("WHO GETS A NEW DOG TAG?", opts)
+	var i := await pick_tile("WHO GETS A NEW DOG TAG?", cand)
 	if i < 0 or not pay(price(Data.TAG_PRICE)):
 		return
 	cand[i].tags += 1
@@ -475,3 +492,90 @@ class Chooser extends Control:
 	func _draw() -> void:
 		draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.86))
 		Art.text(self, title, Vector2(480, 70), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+
+class TilePicker extends Control:
+	## Soldier pick over the shop: candidate squad tiles pulse and take the click,
+	## right-click, ESC or CANCEL backs out.
+	signal picked(i: int)
+	var title := ""
+	var tiles: Array = []      # Rect2 per candidate
+	var focus := Rect2()       # what is being handed out (a shop card), left undimmed
+	var hover := -1
+	var t := 0
+	func _ready() -> void:
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		var cancel := HudScript.PixButton.new()
+		cancel.text = "CANCEL"
+		cancel.color = Color("9aa2ae")
+		cancel.size = Vector2(130, 34)
+		cancel.position = Vector2(24, 488)
+		cancel.pressed.connect(func(): Sfx.play("click"); picked.emit(-1))
+		add_child(cancel)
+	func _process(_d: float) -> void:
+		t += 1
+		queue_redraw()
+	func _input(ev: InputEvent) -> void:
+		if ev is InputEventKey and ev.pressed and ev.keycode == KEY_ESCAPE:
+			get_viewport().set_input_as_handled()
+			picked.emit(-1)
+	func _gui_input(ev: InputEvent) -> void:
+		if ev is InputEventMouseMotion:
+			hover = -1
+			for k in tiles.size():
+				if tiles[k].has_point(ev.position):
+					hover = k
+		elif ev is InputEventMouseButton and ev.pressed:
+			if ev.button_index == MOUSE_BUTTON_RIGHT:
+				picked.emit(-1)
+			elif ev.button_index == MOUSE_BUTTON_LEFT:
+				for k in tiles.size():
+					if tiles[k].has_point(ev.position):
+						Sfx.play("select")
+						picked.emit(k)
+			accept_event()
+	func _draw() -> void:
+		var dim := Color(0.02, 0.02, 0.04, 0.72)
+		# dim everything except the candidate tiles and the focus card
+		var holes: Array = tiles.duplicate()
+		if focus.has_area():
+			holes.append(focus.grow(4))
+		var ys: Array = [0.0, 540.0]
+		for h in holes:
+			ys.append(h.position.y); ys.append(h.end.y)
+		ys.sort()
+		for k in ys.size() - 1:
+			var y0: float = ys[k]
+			var y1: float = ys[k + 1]
+			if y1 <= y0:
+				continue
+			var xs: Array = []
+			for h in holes:
+				if h.position.y <= y0 and h.end.y >= y1:
+					xs.append(Vector2(h.position.x, h.end.x))
+			xs.sort_custom(func(a, b): return a.x < b.x)
+			var x := 0.0
+			for r in xs:
+				if r.x > x:
+					draw_rect(Rect2(x, y0, r.x - x, y1 - y0), dim)
+				x = maxf(x, r.y)
+			if x < 960:
+				draw_rect(Rect2(x, y0, 960 - x, y1 - y0), dim)
+		# title banner across the middle, right above the tiles
+		draw_rect(Rect2(0, 252, 960, 56), Color(0.05, 0.035, 0.03, 0.94))
+		draw_rect(Rect2(0, 252, 960, 2), Color("ffd23a"))
+		draw_rect(Rect2(0, 306, 960, 2), Color("ffd23a"))
+		Art.text(self, title, Vector2(480, 280), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+		Art.text(self, "Click a soldier below.  Right-click or ESC to cancel.", Vector2(480, 299), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		var pulse := 0.55 + 0.45 * sin(t / 8.0)
+		for k in tiles.size():
+			var r: Rect2 = tiles[k]
+			var on := k == hover
+			var col := Color("ffd23a") if not on else Color.WHITE
+			draw_rect(r.grow(3), Color(col, 1.0 if on else pulse), false, 3.0)
+			if on:
+				draw_rect(r, Color(1, 1, 1, 0.08))
+			# a bouncing arrow over each pickable soldier
+			var ax := r.get_center().x
+			var ay := r.position.y - 4 - (2 if (t / 10) % 2 == 0 else 0)
+			draw_colored_polygon(PackedVector2Array([Vector2(ax - 6, ay - 6), Vector2(ax + 6, ay - 6), Vector2(ax, ay)]), col)

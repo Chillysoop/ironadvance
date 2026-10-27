@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat,
+## Scenarios: title, start, aim, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat,
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -424,6 +424,8 @@ func run() -> void:
 			main.show_shop()
 			await frames_wait(20)
 			await shot("shop")
+		"picker":
+			await picker()
 		"flow":
 			# title -> brief -> each mission (forced win) -> results -> shop -> next brief
 			main.show_title()
@@ -675,6 +677,49 @@ func find_struct(b: Battle, t: String) -> Dictionary:
 		if s.t == t:
 			return s
 	return {}
+
+func picker() -> void:
+	## The Quartermaster's soldier picks: buying a card or picking whose deck to work on lights up
+	## the squad tiles along the bottom instead of opening a popup.
+	Run.new_run()
+	Run.scrip = 400
+	Run.soldiers[0].hp = 10
+	Run.soldiers[2].tags = 1
+	main.show_shop()
+	await frames_wait(20)
+	await shot("picker_shop")
+	var sh: Control = main.screen
+	var o: Dictionary = sh.stock_cards[0]
+	var before: int = Run.soldiers[1].deck.size()
+	sh.buy_card(0)
+	await frames_wait(20)
+	await shot("picker_buy")
+	sh.chosen.emit(1)
+	await frames_wait(10)
+	check(Run.soldiers[1].deck.size() == before + 1 and o.get("sold", false), "buying a card puts it in the picked soldier's deck")
+	await shot("picker_bought")
+	sh.buy_card(1)
+	await frames_wait(10)
+	sh.chosen.emit(-1)
+	await frames_wait(10)
+	check(not sh.stock_cards[1].get("sold", false) and sh.chooser == null, "cancelling a pick buys nothing")
+	sh.remove_card()
+	await frames_wait(20)
+	await shot("picker_remove")
+	sh.chosen.emit(-1)
+	await frames_wait(10)
+	sh.mode = "barracks"
+	sh.build()
+	sh.restore_tag()
+	await frames_wait(20)
+	await shot("picker_tag")
+	var tags: int = Run.soldiers[2].tags
+	sh.chosen.emit(0)
+	await frames_wait(10)
+	check(Run.soldiers[2].tags == tags + 1, "the dog tag goes to the only soldier missing one")
+	main.show_title()
+	await frames_wait(30)
+	await shot("picker_title")
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)
