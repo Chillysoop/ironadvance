@@ -28,6 +28,7 @@ var extra_picks := 0       # Double Down: the next level-up takes two options
 var intel := ""            # this mission's briefing condition (W2)
 var side := ""             # "outpost" while an Elite Outpost side fight is running (W1)
 var threat := 0            # threat level chosen for this run (W5)
+var qm_cache := {}         # the Quartermaster's shelf for this HQ visit
 var temp_luck := 0         # Luck that only lasts for the current mission
 var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": []}   # kept across runs (W4, W5); memorial = the fallen
 const META_PATH := "user://meta.json"
@@ -80,7 +81,7 @@ func roll_intel() -> void:
 func route_offers() -> Array:
 	var others: Array = ["outpost", "powcamp", "hospital"]
 	others.shuffle()
-	return ["depot"] + others.slice(0, 2)
+	return ["front"] + others.slice(0, 2)
 
 func evolutions(s: Dictionary) -> Array:
 	## M4: an Epic or better card plus the matching kit evolves into a Metal Slug weapon.
@@ -127,6 +128,7 @@ func new_run() -> void:
 	intel = ""
 	side = ""
 	temp_luck = 0
+	qm_cache = {}
 	total_score = 0
 	uid = 1
 	seed_val = randi()

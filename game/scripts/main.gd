@@ -1,10 +1,11 @@
 extends Node
-## Game flow: title -> briefing -> mission -> results -> shop -> next briefing.
+## Game flow: title -> HQ -> briefing -> mission -> results -> gate home to HQ -> road stop -> next briefing.
 
 const BattleScene := preload("res://scenes/battle.tscn")
 const HudScript := preload("res://scripts/hud.gd")
 const ShopScript := preload("res://scripts/shop.gd")
 const DebriefScript := preload("res://scripts/debrief.gd")
+const HqScript := preload("res://scripts/hq.gd")
 
 var battle: Battle = null
 var hud: CanvasLayer = null
@@ -51,7 +52,17 @@ func show_title() -> void:
 
 func start_run() -> void:
 	Run.new_run()
-	show_brief()
+	show_hq(false)
+
+func show_hq(arrived: bool) -> void:
+	## Home base between missions. The gate dials straight into mission 1 at the start of a run,
+	## and onto the road east after that.
+	clear()
+	var h: Control = HqScript.new()
+	h.arrived = arrived
+	h.dial.connect(func(): show_route() if Run.history.size() else show_brief())
+	screen = h
+	ui_layer.add_child(h)
 
 func show_brief() -> void:
 	clear()
@@ -113,7 +124,7 @@ func show_debrief(st: Dictionary) -> void:
 	clear()
 	var d: Control = DebriefScript.new()
 	d.medals = Run.medals(st)
-	d.done.connect(show_route)
+	d.done.connect(func(): show_hq(true))
 	screen = d
 	ui_layer.add_child(d)
 
@@ -130,6 +141,8 @@ func show_route() -> void:
 func go_stop(key: String) -> void:
 	Sfx.play("start")
 	match key:
+		"front":
+			next_mission()
 		"depot":
 			show_shop()
 		"outpost":
@@ -168,6 +181,7 @@ func show_spoils(tiers: Array, trophy: bool) -> void:
 	ui_layer.add_child(d)
 
 func next_mission() -> void:
+	Run.discount = 0.0
 	Run.mission += 1
 	show_brief()
 

@@ -47,6 +47,7 @@ var pow_queue: Array = []
 var lvl_queue: Array = []
 var boss_active := false
 var boss_dead := false
+var gate = null          # the gate home to HQ, opened after the boss falls
 var radio_t = null
 var aim_hold := false
 var sway_t := 0
@@ -3192,8 +3193,69 @@ func victory() -> void:
 	stats["surv_bonus"] = sb
 	sweep_loot(INF)
 	sync_back()
-	await wait(150)
+	if boss_dead and not mission.get("outpost", false):
+		await gate_home()
+	else:
+		await wait(150)
 	mission_over.emit(true)
+
+func gate_home() -> void:
+	## The boss is down: the captured gate spins up in the arena and the squad steps through to HQ.
+	await wait(60)
+	var al := squad_alive()
+	var front: float = al.reduce(func(m, s): return maxf(m, s.x), cam_x + W * 0.3)
+	var gx := clampf(front + 130, cam_x + 120, minf(cam_x + W - 110, world_w - 90))
+	var gy = T.stand_y(gx, 0)
+	if gy == null:
+		gy = H * 0.7
+	gate = {"x": gx, "y": float(gy) - 58, "r": 44.0, "alpha": 0.0, "chev": 0, "open": 0.0, "spin": 0.0, "burst": 0.0}
+	banner("GATE ONLINE", Color("53d4e2"), "STEP THROUGH TO HQ")
+	Sfx.play("power")
+	for i in 40:
+		gate.alpha = (i + 1) / 40.0
+		if i % 4 == 0:
+			sparks(gx + (randf() - 0.5) * 90, gate.y + (randf() - 0.5) * 90, 2)
+		await wait(1)
+	for k in 9:
+		for i in 10:
+			gate.spin += 0.05
+			await wait(1)
+		gate.chev = k + 1
+		Sfx.play("tick")
+	Sfx.play("bigboom")
+	shake += 3
+	for i in 24:
+		gate.burst = 1.0 - absf(i - 8) / 16.0
+		gate.open = minf(1.0, i / 10.0)
+		await wait(1)
+	gate.burst = 0.0
+	# everyone walks in; each fades as they cross the horizon
+	for s in al:
+		var pts: Array = []
+		var x: float = s.x
+		var dir := signf(gx - x)
+		while absf(gx - x) > 3:
+			x += dir * 3
+			var sy = T.stand_y(x, 0)
+			pts.append([x, float(sy) if sy != null else s.y, false])
+		s.pose = ""; s.pose_t = 0
+		s.walk = pts
+		s.walk_i = 0
+	var n := 0
+	while n < 360 and al.any(func(s): return not s.gone):
+		for s in al:
+			if not s.gone and absf(s.x - gx) < 14:
+				s.alpha = maxf(0.0, s.alpha - 0.08)
+				if s.alpha <= 0.0:
+					s.gone = true
+					s.walk = null
+					Sfx.play("ping")
+		n += 1
+		await wait(1)
+	for i in 20:
+		gate.open = 1.0 - (i + 1) / 20.0
+		await wait(1)
+	await wait(20)
 
 func sync_back() -> void:
 	## Writes HP and deaths back to the persistent squad.

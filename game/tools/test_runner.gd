@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags.
+## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate.
 ## --mission=N picks the mission for bot.
 
 var out_dir := "user://shots"
@@ -415,6 +415,9 @@ func run() -> void:
 			await frames_wait(20)
 			press_first()
 			await frames_wait(20)
+			await shot("flow_hq_start")
+			main.screen.dial.emit()
+			await frames_wait(20)
 			await shot("flow_brief0")
 			for m in 3:
 				press_first()
@@ -435,13 +438,18 @@ func run() -> void:
 				main.screen.open_all()
 				await frames_wait(90)
 				main.screen.done.emit()
+				await frames_wait(30)
+				await shot("flow_hq%d" % m)
+				main.screen.open_shop("shop")
+				await frames_wait(20)
+				await shot("flow_shop%d" % m)
+				main.screen.sub.done.emit()
+				await frames_wait(10)
+				main.screen.dial.emit()
 				await frames_wait(20)
 				await shot("flow_route%d" % m)
 				if m == 0:
-					main.go_stop("depot")
-					await frames_wait(20)
-					await shot("flow_shop%d" % m)
-					main.screen.done.emit()
+					main.go_stop("front")
 				else:
 					main.go_stop("outpost")
 					await frames_wait(5)
@@ -641,6 +649,8 @@ func run() -> void:
 			await hazards()
 		"tags":
 			await tags()
+		"gate":
+			await gate()
 		"campaign":
 			Run.new_run()
 			for m in 3:
@@ -767,6 +777,73 @@ func hazards() -> void:
 	await frames_wait(20)
 	await shot("hz_crane_after")
 	check(boss != null and (boss.cracked or boss.hp < boss.max_hp), "the crane container hits the Boar (hp %d/%d cracked %s)" % [boss.hp, boss.max_hp, boss.cracked])
+
+func gate() -> void:
+	## Beating the boss opens the gate; the squad walks through and comes out at HQ.
+	main.show_title()
+	await frames_wait(5)
+	main.start_run()
+	await frames_wait(40)
+	await shot("gate_hq_start")
+	check(main.screen.get("arrived") == false, "a run starts at HQ")
+	main.screen.dial.emit()
+	await frames_wait(10)
+	check(main.screen.get("mode") == "brief", "the first dial goes straight to mission 1's briefing")
+	press_first()
+	await frames_wait(5)
+	var b: Battle = main.battle
+	await until(func(): return b.state == "player" and not b.busy)
+	b.boss_dead = true
+	b.victory()
+	await until(func(): return b.gate != null and b.gate.chev >= 5, 3000)
+	await shot("gate_dialing")
+	await until(func(): return b.gate.open >= 1.0 and b.squad().any(func(u): return u.alpha < 1.0), 3000)
+	await shot("gate_walk")
+	var sq: Array = b.squad()
+	await until(func(): return main.battle == null, 4000)
+	check(sq.all(func(u): return u.gone), "the whole squad steps through the gate")
+	press_first()
+	await frames_wait(20)
+	main.screen.open_all()
+	await frames_wait(90)
+	main.screen.done.emit()
+	await frames_wait(25)
+	await shot("gate_hq_arrive")
+	check(main.screen.get("arrived") == true, "the debrief leads home to HQ")
+	await frames_wait(80)
+	await shot("gate_hq")
+	main.screen.open_shop("barracks")
+	await frames_wait(20)
+	await shot("gate_barracks")
+	check(main.screen.sub.get("mode") == "barracks", "the Barracks opens")
+	var stock: Array = main.screen.sub.stock_cards
+	main.screen.sub.done.emit()
+	await frames_wait(10)
+	main.screen.open_shop("shop")
+	await frames_wait(10)
+	check(main.screen.sub.stock_cards == stock, "the Quartermaster keeps one shelf per visit")
+	await shot("gate_qm")
+	main.screen.sub.done.emit()
+	await frames_wait(10)
+	Run.meta.memorial.append({"name": "TESTY", "key": "moss", "cls": "Marksman", "lvl": 3, "perks": [], "mission": 2})
+	main.screen.open_memorial()
+	await frames_wait(20)
+	await shot("gate_memorial")
+	Run.meta.memorial.pop_back()
+	main.screen.build()
+	main.screen.memorial_open = false
+	main.screen.open_armory()
+	await frames_wait(20)
+	await shot("gate_armory")
+	main.screen.sub.done.emit()
+	await frames_wait(10)
+	main.screen.dial.emit()
+	await frames_wait(20)
+	await shot("gate_route")
+	check(main.screen.get("mode") == "route", "after a mission the gate dials the road east")
+	main.go_stop("front")
+	await frames_wait(20)
+	check(main.screen.get("mode") == "brief" and Run.mission == 1, "straight to the front goes to mission 2")
 
 func tags() -> void:
 	## Dog tags: going down spends a tag, going down with none is KIA for good, recruits fill the slot.
