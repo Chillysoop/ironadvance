@@ -14,6 +14,8 @@ func _draw() -> void:
 	draw_ladders(cx)
 	draw_bridges()
 	draw_strikes(cx)
+	if b.gate != null:
+		Art.draw_gate(self, Vector2(b.gate.x, b.gate.y), b.gate.r, b.t, b.gate.chev, b.gate.open, b.gate.alpha, b.gate.spin, b.gate.burst)
 	for r in b.ropes:
 		draw_line(Vector2(r.x, r.y), Vector2(r.u.x, r.u.y - 20), Color("d8d0b8"), 1.0)
 	for u in b.units:

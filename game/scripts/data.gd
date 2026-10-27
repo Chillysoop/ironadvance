@@ -445,6 +445,7 @@ const EVOLUTIONS := [
 
 # Route stops between missions (W1). The Supply Depot is always on offer.
 const STOPS := {
+	"front": {"name": "STRAIGHT TO THE FRONT", "text": "No detour. The gate opens right on the next mission."},
 	"depot": {"name": "SUPPLY DEPOT", "text": "The Quartermaster: cards, gear, services and the Armory."},
 	"outpost": {"name": "ELITE OUTPOST", "text": "A short, hard fight against elite Jackals. Pays an Epic crate and a Boar part."},
 	"powcamp": {"name": "POW CAMP", "text": "Free a camp: a free crate, 2 level-up rerolls and a gunsmith token."},
