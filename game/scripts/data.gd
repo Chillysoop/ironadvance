@@ -77,6 +77,8 @@ const CARDS := {
 	"sa_knife": {"name": "Combat Knife", "type": "MELEE", "cost": 0, "dmg": [5, 6], "range": 36, "knock": 4, "sidearm": true, "pool": false, "text": "SIDEARM: free once a turn. Never misses.", "rarity": 1},
 	"sa_chainsaw": {"name": "Chainsaw", "type": "MELEE", "cost": 1, "dmg": [11, 13], "range": 40, "knock": 1.5, "sidearm": true, "pool": false, "text": "SIDEARM: once a turn. Chews in deep and barely knocks them back.", "rarity": 2},
 	"sa_law": {"name": "LAW", "type": "LINE", "cost": 0, "radius": 34, "dmg": 14, "speed": 11.0, "sidearm": true, "law": true, "pool": false, "text": "SIDEARM: one free rocket. Comes back at the next camp.", "rarity": 2},
+	# O2: the Rambo Bow, a fresh arrow every turn for whoever took it off the elite bowman
+	"rambobow": {"name": "Rambo Bow", "type": "ARC", "cost": 1, "radius": 46, "dmg": 14, "wind": 0.4, "bow": true, "pool": false, "text": "An explosive arrow that bursts on impact. A fresh one every turn this level. Every Jackal hunts the archer.", "rarity": 3},
 	# B6: the free card a soldier gets standing at a mounted M2
 	"mounted": {"name": "Mounted M2", "type": "AIM", "cost": 0, "dmg": [3, 4], "shots": 6, "range": FULL_RANGE, "gun": "mg", "bounce": 0, "sway": 0.02, "spread": 0.05, "mounted": true, "pool": false, "text": "Free while you stand at the gun. Six heavy rounds, no kick. Once a turn.", "rarity": 2},
 	"roll": {"name": "Combat Roll", "type": "LINE", "cost": 1, "roll": true, "dist": 150, "text": "Roll up to 150px without using movement. Fits through crawl-height gaps, and the next Jackal shot at you goes over your head.", "rarity": 0, "up": {"dist": 210}},
@@ -517,11 +519,13 @@ const CAMP_HEAL := 0.25
 # Detours (run structure step 5): the mid-level camp offers 3, each a short side stretch in the
 # clearing right after camp. Each pays in a different currency, so elites are never the only good pick.
 const DETOURS := {
-	"elite": {"name": "ELITE OUTPOST", "pays": "EPIC GEAR + 2 BIO-PARTS", "icon": "ic_skull", "text": "Four elite Jackals, all with the same modifier, dug into the clearing."},
+	"elite": {"name": "ELITE OUTPOST", "pays": "EPIC GEAR + 2 BIO-PARTS", "icon": "ic_skull", "text": "Four elite Jackals, all with the same modifier, dug into the clearing. One of them carries the Rambo Bow."},
 	"pow": {"name": "POW RESCUE", "pays": "A FREE RECRUIT OR A DOG TAG", "icon": "ic_cross", "text": "Three prisoners and two guards. Free all three in %d rounds or they are moved out."},
 	"salvage": {"name": "SALVAGE YARD", "pays": "SALVAGE FOR HQ", "icon": "ic_bolt", "text": "Walk over wrecks to strip them, %d salvage each. Scavengers drift in every round. Leave whenever you like."},
 	"cache": {"name": "SUPPLY CACHE", "pays": "SCRIP + A CARD PICK", "icon": "ic_coin", "text": "An easy fight: three Jackals sitting on a supply cache."},
+	"colors": {"name": "STEAL THE COLORS", "pays": "%d SALVAGE FOR HQ", "icon": "ic_star", "text": "Their battle flag flies at the far end of the clearing. Grab it and carry it back to the green post. The carrier is slow, can't jet, and every Jackal goes for them."},
 }
+const COLORS_SALVAGE := 15
 const POW_RESCUE_ROUNDS := 5
 
 # HQ upgrades (run structure step 6): paid in Salvage, kept across runs. Ranks are bought in order.
@@ -578,6 +582,7 @@ const RELAY_BUFFS := {
 	"luck": {"name": "INTERCEPT", "text": "+2 Luck this mission."},
 	"intel": {"name": "SIGINT", "text": "Enemy intents always shown this mission."},
 }
+const RELAY_HOLD := 3  # O4: end this many turns on a relay to lock it; waves come in while you hold
 
 # Armory unlock feats (W4), kept across runs.
 const FEATS := [

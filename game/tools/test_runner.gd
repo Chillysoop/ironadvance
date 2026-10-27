@@ -704,6 +704,8 @@ func run() -> void:
 			await soldat3()
 		"soldat4":
 			await soldat4()
+		"soldat5":
+			await soldat5()
 		"drill":
 			await drill()
 		"detours":
@@ -2003,6 +2005,162 @@ func soldat4() -> void:
 	cam_on(b, 520)
 	await frames_wait(8)
 	await shot("soldat4_yard")
+
+func soldat5() -> void:
+	## Soldat round 2, game modes as objectives: steal the colors, the Rambo Bow, Marked Man, hold the relay.
+	Run.new_run()
+	var lvl := {"name": "SOLDAT YARD V", "theme": "dusk", "segments": ["start", "trenches", "camp", "yard", "towers", "camp", "arena"],
+		"boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "", "rules": {"pads": 0}, "detours": ["colors", "elite"]}
+	var b: Battle = main.start_battle(0, lvl)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	b.autopick = 0
+	b.wind = 0
+	var sq: Array = b.squad()
+	var s: Unit = sq[0]
+	var s2: Unit = sq[1]
+	# --- O3 Marked Man
+	var flags: Array = b.units.filter(func(o): return o.kind == "loot" and o.loot.type == "yellow")
+	check(flags.size() == 1, "one yellow Marked Man flag lies in the level")
+	for o in b.units:
+		if o.team == "enemy" or (o.team == "neutral" and o.kind != "loot"):
+			o.gone = true; o.dead = true
+	flat_strip(b, 200, 600)
+	cam_on(b, 480)
+	for o in sq:
+		ground_unit(b, o, 220 + sq.find(o) * 30)
+	if flags.size():
+		b.collect(s, flags[0])
+	check(s.carry == "yellow", "walking over it makes the soldier the Marked Man")
+	var e1 := b.mk_enemy("grunt", 600, b.T.stand_y(600, 0)); e1.active = true
+	var e2 := b.mk_enemy("grunt", 640, b.T.stand_y(640, 0)); e2.active = true
+	b.units.append(e1); b.units.append(e2)
+	ground_unit(b, s, 400)
+	ground_unit(b, s2, 560)
+	check(b.nearest_squad(e1) == s, "every Jackal goes for the Marked Man, even past a closer soldier")
+	var sc0 := Run.scrip
+	b.kill(e1, s2)
+	var plain := Run.scrip - sc0
+	sc0 = Run.scrip
+	b.kill(e2, s)
+	var dbl := Run.scrip - sc0
+	check(plain > 0 and dbl == plain * 2, "the Marked Man's kills pay double scrip (%d vs %d)" % [dbl, plain])
+	await until(func(): return b.settled(), 300)
+	ground_unit(b, s2, 480)
+	ground_unit(b, s, 420)
+	b.sel = s
+	var wk := b.sim_walk(s, 560, 300)
+	s.walk = wk.pts; s.walk_i = 0
+	await until(func(): return s.walk == null, 300)
+	check(s.carry == "" and s2.carry == "yellow", "walking past a teammate hands the flag over")
+	await frames_wait(6)
+	await shot("soldat5_marked")
+	# --- O1 steal the colors
+	b.start_detour("colors")
+	var colors: Array = b.units.filter(func(o): return o.kind == "loot" and o.loot.type == "colors")
+	check(colors.size() == 1 and b.units.filter(func(o): return o.detour and o.team == "enemy").size() == 3, "the colors detour plants their flag with three guards")
+	for o in b.units:
+		if o.detour and o.team == "enemy":
+			o.dead = true; o.gone = true
+	var x0: float = b.detour.x0
+	cam_on(b, x0 + 400)
+	await until(func(): return b.settled(), 300)
+	var base_mv := b.full_move(s)
+	s.fuel_max = 90; s.fuel = 90; s.move_left = base_mv
+	ground_unit(b, s, colors[0].x - 4)
+	b.collect(s, colors[0])
+	check(s.carry == "colors" and s.fuel == 0 and b.full_move(s) == roundf(base_mv * 0.6), "the carrier is slow (%d -> %d) and can't jet" % [base_mv, b.full_move(s)])
+	await frames_wait(6)
+	await shot("soldat5_colors")
+	var sal0 := int(Run.meta.get("salvage", 0))
+	ground_unit(b, s, b.colors_post())
+	await b.check_detour()
+	check(b.detour.done and int(Run.meta.get("salvage", 0)) == sal0 + Data.COLORS_SALVAGE and s.carry == "", "carrying it to the green post pays %d salvage" % Data.COLORS_SALVAGE)
+	# a carrier who goes down drops the flag
+	var s3: Unit = sq[2]
+	s3.carry = "colors"
+	b.kill(s3, null)
+	await until(func(): return b.settled(), 300)
+	check(b.units.any(func(o): return o.kind == "loot" and not o.gone and o.loot.type == "colors"), "a carrier who goes down drops the colors")
+	# --- O2 the Rambo Bow
+	b.detour = {}
+	b.start_detour("elite")
+	var bowman = null
+	for o in b.units:
+		if o.detour and o.team == "enemy" and not o.dead and o.carry == "bow":
+			bowman = o
+	check(bowman != null, "one elite in the outpost is the bowman")
+	if bowman != null:
+		b.kill(bowman, s)
+		await until(func(): return b.settled(), 300)
+		var bows: Array = b.units.filter(func(o): return o.kind == "loot" and not o.gone and o.loot.type == "bow")
+		check(bows.size() == 1, "killing him drops the Rambo Bow")
+		if bows.size():
+			b.collect(s, bows[0])
+	check(s.bow and s.hand.any(func(c): return c.key == "rambobow"), "picking it up puts an explosive arrow in hand")
+	check(b.hunted(s), "and the archer is hunted")
+	for o in b.units:
+		if o.detour and o.team == "enemy":
+			o.dead = true; o.gone = true
+	b.detour = {}
+	await until(func(): return b.settled(), 300)
+	ground_unit(b, s, x0 + 200)
+	cam_on(b, x0 + 300)
+	var tg := b.mk_enemy("grunt", x0 + 380, b.T.stand_y(x0 + 380, 0)); tg.active = true; tg.hp = 40; tg.max_hp = 40
+	b.units.append(tg)
+	s.energy = 3
+	var bi := -1
+	for i in s.hand.size():
+		if s.hand[i].key == "rambobow":
+			bi = i
+	var best = null
+	var aim := Vector2.ZERO
+	for dy in range(-200, 0, 10):
+		for dx in range(40, 260, 10):
+			var ap := Vector2(s.x + dx, s.y + dy)
+			var v := b.aim_vel(s, ap)
+			var r := b.sim_arc(v.hx, v.hy, v.vx, v.vy, 0.4, 320)
+			if r.end:
+				var e := absf(r.x - tg.x)
+				if best == null or e < best:
+					best = e; aim = ap
+	var hp0 := tg.hp
+	await b.resolve(func(): await b._act_arc(s, bi, Data.card(s.hand[bi]), aim, false))
+	await until(func(): return b.settled(), 600)
+	check(tg.hp < hp0, "the arrow bursts on the Jackal (%d -> %d)" % [hp0, tg.hp])
+	check(not s.hand.any(func(c): return c.key == "rambobow"), "one arrow a turn")
+	tg.dead = true; tg.gone = true
+	# --- O4 hold the relay
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	var rx := s.x + 40
+	var r := b.mk_unit(); r.team = "neutral"; r.kind = "relay"; r.x = rx; r.y = b.T.stand_y(rx, 0); r.w = 12; r.h = 34
+	r.loot = {"buff": "luck", "taken": false, "hold": 0}
+	b.units.append(r)
+	ground_unit(b, s, rx)
+	var l0 := Run.temp_luck
+	var n_en := func(): return b.units.filter(func(o): return o.team == "enemy" and not o.dead).size()
+	for turn in 3:
+		await until(func(): return b.state == "player" and not b.busy and b.settled(), 600)
+		ground_unit(b, s, rx)
+		s.hp = s.max_hp
+		b.end_turn(true)
+		await until(func(): return b.state == "enemy", 300)
+		await frames_wait(60)
+		var waves: int = n_en.call()
+		if turn < 2:
+			check(waves >= 2, "holding turn %d: a wave comes in (%d Jackals)" % [turn + 1, waves])
+		else:
+			check(waves == 0, "once the relay is locked the waves stop (%d)" % waves)
+		await until(func(): return b.state == "player" and not b.busy, 3000)
+		for o in b.units:
+			if o.team == "enemy":
+				o.dead = true; o.gone = true
+	check(r.loot.taken and r.loot.hold == Data.RELAY_HOLD, "three turns on the relay lock it (hold %d)" % r.loot.hold)
+	check(Run.temp_luck == l0 + 5, "luck: +2 capture, +1 holding, +2 more when it locks (%d -> %d)" % [l0, Run.temp_luck])
+	await frames_wait(6)
+	await shot("soldat5_relay")
 
 func peak_after_bounce(pts: Array, gy: float) -> float:
 	## Highest point (smallest y) a grenade reaches after it first touches the ground.

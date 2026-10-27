@@ -240,6 +240,22 @@ func collect(u: Unit, p: Unit) -> void:
 				u.hand.append({"id": -2, "key": key, "tier": maxi(2, Data.base_tier(key)), "temp": true})
 			banner(Data.CARDS[key].name.to_upper() + "!", Color("ffd23a"), "%s GOT 3 SHOTS. THEY LAST THIS MISSION." % u.def.name)
 			Sfx.play("power")
+		"colors":
+			u.carry = "colors"
+			u.fuel = 0
+			u.move_left = roundf(u.move_left * 0.6)
+			banner("YOU HAVE THEIR COLORS!", Color("ffd23a"), "%s: CARRY IT TO THE GREEN POST. EVERY JACKAL IS COMING." % u.def.name)
+			Sfx.play("alarm")
+		"yellow":
+			u.carry = "yellow"
+			float_text(u, "MARKED MAN: DOUBLE SCRIP", Color("ffd23a"), true)
+			log_msg("%s carries the yellow flag: their kills pay double scrip, and every Jackal wants them. Walk past a teammate to hand it over." % u.def.name)
+			Sfx.play("power")
+		"bow":
+			u.bow = true
+			u.hand.append({"id": -6, "key": "rambobow", "tier": Data.base_tier("rambobow"), "temp": true})
+			banner("THE RAMBO BOW!", Color("ff7a3d"), "%s GETS AN EXPLOSIVE ARROW EVERY TURN. EVERY JACKAL HUNTS THEM." % u.def.name)
+			Sfx.play("levelup")
 		"gun":
 			u.hand.append({"id": -2, "key": L.card, "tier": Data.base_tier(L.card), "temp": true})
 			float_text(u, "GOT A " + Data.CARDS[L.card].name.to_upper() + "! ONE SHOT", Color("ffd23a"), true)
@@ -381,6 +397,11 @@ func spawn_map_loot() -> void:
 			continue  # only dirt hides a cache
 		var c := mk_unit(); c.team = "neutral"; c.kind = "cache"; c.x = x; c.y = gy + 18; c.w = 10; c.h = 10
 		units.append(c)
+	# O3 Marked Man: one yellow flag lies somewhere in the level
+	var fx := randf_range(lo + 300, maxf(lo + 300, hi - 300))
+	var fy = T.stand_y(fx, 0)
+	if fy != null:
+		drop_loot(fx, fy - 4, {"type": "yellow"}, 0.0)
 	# radio relays (W3): one or two per mission, each with its own buff
 	var buffs: Array = Data.RELAY_BUFFS.keys()
 	buffs.shuffle()
@@ -390,7 +411,7 @@ func spawn_map_loot() -> void:
 		if y == null:
 			continue
 		var r := mk_unit(); r.team = "neutral"; r.kind = "relay"; r.x = x; r.y = y; r.w = 12; r.h = 34
-		r.loot = {"buff": buffs[i % buffs.size()], "taken": false}
+		r.loot = {"buff": buffs[i % buffs.size()], "taken": false, "hold": 0}
 		units.append(r)
 
 func drop_loot(x: float, y: float, payload: Dictionary, pop := 1.0) -> Unit:
@@ -1380,6 +1401,14 @@ func kill(tg: Unit, src) -> void:
 	tg.dead_t = 0
 	tg.walk = null
 	tg.overwatch = 0
+	if tg.carry != "":
+		drop_loot(tg.x, tg.y - 14, {"type": tg.carry}, 0.4)
+		if tg.carry == "colors":
+			float_text(tg, "COLORS DROPPED", Color("ff7a3d"), true)
+		tg.carry = ""
+	if tg.bow:
+		tg.bow = false
+		drop_loot(tg.x, tg.y - 14, {"type": "bow"}, 0.4)
 	feed_kill(tg, src)
 	if pop_next and tg.kind == "enemy":
 		overkill_pop(tg)
@@ -1412,7 +1441,8 @@ func kill(tg: Unit, src) -> void:
 		float_text(tg, ("x%d " % mult if mult > 1 else "") + "+%d" % (base * mult), Color("ffb23e"), true)
 		float_at(tg.x, tg.y - tg.h - 34, pick(Data.SCREAMS), Color("ffe9c0"))
 		Sfx.play("scream", -6)
-		give_scrip(int(maxi(2, base / 25) * (1.5 if Run.has_cmd("warchest") else 1.0)), tg.x, tg.y - tg.h - 50)
+		var marked: bool = src is Unit and src.team == "squad" and src.carry == "yellow"
+		give_scrip(int(maxi(2, base / 25) * (1.5 if Run.has_cmd("warchest") else 1.0)) * (2 if marked else 1), tg.x, tg.y - tg.h - 50)
 		if tg.has_st("toxic") and squad_alive().any(func(h): return h.perk("pandemic")):
 			for o2 in units:
 				if o2.team == "enemy" and not o2.dead and o2 != tg and absf(o2.x - tg.x) < 90 and absf(o2.y - tg.y) < 60:
@@ -3038,9 +3068,17 @@ func detour_text(id: String) -> String:
 		return t % Data.WRECK_SALVAGE
 	return t
 
+func detour_pays(id: String) -> String:
+	var p: String = Data.DETOURS[id].pays
+	return p % Data.COLORS_SALVAGE if id == "colors" else p
+
+func colors_post() -> float:
+	## O1: the green post the stolen colors go back to, at the near end of the clearing (never off screen).
+	return maxf(detour.x0 + 40, cam_x + 40)
+
 func pick_detour() -> void:
 	## The mid-level camp: pick one side job for the clearing ahead, or press on.
-	var opts: Array = mission.detours.map(func(id): return {"kind": "service", "title": "DETOUR", "icon": Data.DETOURS[id].icon, "name": Data.DETOURS[id].name, "text": "%s PAYS: %s" % [detour_text(id), Data.DETOURS[id].pays], "id": id})
+	var opts: Array = mission.detours.map(func(id): return {"kind": "service", "title": "DETOUR", "icon": Data.DETOURS[id].icon, "name": Data.DETOURS[id].name, "text": "%s PAYS: %s" % [detour_text(id), detour_pays(id)], "id": id})
 	opts.append({"kind": "service", "title": "NO DETOUR", "icon": "ic_boot", "name": "PRESS ON", "text": "Leave the clearing empty and keep moving.", "id": ""})
 	var ch := await ask("detour", "PICK A DETOUR", "The clearing past camp has room for one side job. Each pays in a different currency.", opts)
 	var id: String = opts[ch].id if ch >= 0 else ""  # skipping the pick means pressing on
@@ -3055,7 +3093,13 @@ func start_detour(id: String) -> void:
 		"elite":
 			detour.mod = pick_elite(false)
 			for sp in [["grunt", 300], ["shield", 400], ["nade", 560], ["brute", 650]]:
-				detour_enemy(sp[0], x0 + sp[1], detour.mod)
+				var de := detour_enemy(sp[0], x0 + sp[1], detour.mod)
+				if sp[1] == 650:
+					de.carry = "bow"  # O2: the bowman; kill him and the Rambo Bow is yours
+		"colors":
+			for sp in [["grunt", 470], ["shield", 590], ["grunt", 690]]:
+				detour_enemy(sp[0], x0 + sp[1], "")
+			drop_loot(x0 + 650, T.stand_y(x0 + 650, 0) - 4, {"type": "colors"}, 0.0)
 		"pow":
 			var pi := randi()
 			for dx in [220, 430, 620]:
@@ -3077,7 +3121,7 @@ func start_detour(id: String) -> void:
 			var cu := mk_unit(); cu.team = "neutral"; cu.kind = "crate"; cu.x = x0 + 660; cu.y = T.stand_y(cu.x, 0); cu.w = 16; cu.h = 14; cu.hp = 1; cu.max_hp = 1
 			units.append(cu)
 	var D: Dictionary = Data.DETOURS[id]
-	banner(D.name, Color("ffb23e"), "PAYS: " + D.pays)
+	banner(D.name, Color("ffb23e"), "PAYS: " + detour_pays(id))
 	log_msg("Detour: %s %s" % [D.name.capitalize(), detour_text(id)])
 	stats["detour"] = id
 	activate_enemies()
@@ -3116,6 +3160,14 @@ func check_detour() -> void:
 		"salvage":
 			if units.any(func(w): return w.kind == "wreck" and not w.stripped):
 				return
+		"colors":
+			var post := colors_post()
+			if not squad_alive().any(func(s): return s.carry == "colors" and absf(s.x - post) < 34):
+				return
+			for s in squad_alive():
+				if s.carry == "colors":
+					s.carry = ""
+					s.move_left = minf(s.move_left, full_move(s))
 	detour.done = true
 	busy = true
 	await wait(20)
@@ -3146,6 +3198,11 @@ func check_detour() -> void:
 					give_scrip(50, cx, T.ground_at(cx) - 40)
 		"salvage":
 			banner("YARD STRIPPED!", Color("62d26f"), "%d SALVAGE FOR HQ" % int(stats.get("salvage", 0)))
+		"colors":
+			Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.COLORS_SALVAGE
+			stats["salvage"] = int(stats.get("salvage", 0)) + Data.COLORS_SALVAGE
+			banner("COLORS CAPTURED!", Color("62d26f"), "%d SALVAGE FOR HQ" % Data.COLORS_SALVAGE)
+			log_msg("Their battle flag is ours: %d salvage for HQ." % Data.COLORS_SALVAGE)
 		"cache":
 			banner("CACHE SECURED!", Color("62d26f"), "+80 SCRIP AND A CARD")
 			give_scrip(80, cx, T.ground_at(cx) - 40)
@@ -3487,11 +3544,43 @@ func capture_relay(r: Unit, s: Unit) -> void:
 			Run.temp_luck += 2
 		"intel":
 			relay_intel = true
+	r.loot.hold = 1
 	alert = mini(10, alert + 1)
 	banner("RELAY CAPTURED: " + bf.name, Color("53d4e2"), bf.text.to_upper() + "  ALERT +1")
 	Sfx.play("power")
 	give_xp(s, 4)
 	log_msg("%s captured a radio relay: %s Alert +1." % [s.def.name, bf.text])
+
+func hold_relay(r: Unit, s: Unit) -> void:
+	## O4: every extra turn ended on a captured relay pays +1 Luck; the third locks it and doubles its buff.
+	r.loot.hold += 1
+	give_xp(s, 4)
+	if r.loot.hold < Data.RELAY_HOLD:
+		Run.temp_luck += 1
+		float_text(r, "HOLDING %d/%d: +1 LUCK" % [r.loot.hold, Data.RELAY_HOLD], Color("53d4e2"), true)
+		return
+	match r.loot.buff:
+		"hand":
+			relay_hand += 1
+		"luck":
+			Run.temp_luck += 2
+		"intel":
+			Run.temp_luck += 2
+	var bf: Dictionary = Data.RELAY_BUFFS[r.loot.buff]
+	banner("RELAY LOCKED: " + bf.name + " x2", Color("53d4e2"), "HELD FOR %d TURNS" % Data.RELAY_HOLD)
+	Sfx.play("levelup")
+	log_msg("%s held the relay for %d turns: its buff doubles." % [s.def.name, Data.RELAY_HOLD])
+
+func relay_waves() -> void:
+	## O4: while a relay is being held, Jackals pour in from the right at the start of each enemy phase.
+	for r in units.filter(func(o): return o.kind == "relay" and o.loot.hold >= 1 and o.loot.hold < Data.RELAY_HOLD):
+		var x := minf(world_w - 20.0, cam_x + W - 30)
+		for k in 2:
+			var px := x - k * 22
+			var e := mk_enemy("grunt", px, T.stand_y(px, 0))
+			e.active = true
+			units.append(e)
+		float_at(x - 10, T.ground_at(x) - 60, "RELAY WAVE", Color("ff7a3d"), true)
 
 func call_slug(by: Unit) -> void:
 	## The SV-001 drops in beside the caller and stays for one round.
@@ -3582,12 +3671,14 @@ func start_player_turn() -> void:
 		s.overwatch = 0
 		s.dragged = false
 		if s.fuel_max > 0 and not s.air:
-			s.fuel = s.fuel_max
+			s.fuel = 0 if s.carry == "colors" else s.fuel_max
 		stow_hand(s)
 		draw_cards(s, hand_size(s))
 		if not s.hand.any(func(c): return c.key == "hop"):
 			s.hand.append({"id": -4, "key": "hop", "tier": Data.base_tier("hop"), "temp": true})
 		give_sidearm(s)
+		if s.bow and not s.hand.any(func(c): return c.key == "rambobow"):
+			s.hand.append({"id": -6, "key": "rambobow", "tier": Data.base_tier("rambobow"), "temp": true})
 		if s.adr >= 100 and not s.hand.any(func(c): return c.get("od", false) and not c.has("duo")):
 			grant_overdrive(s)
 	refresh_duos()
@@ -3626,7 +3717,8 @@ func start_player_turn() -> void:
 
 func full_move(s: Unit) -> float:
 	## B5: light weapons add movement, heavy ones take some away.
-	return s.def.spd + s.s.bonus.move + int(s.g("move")) + (60 if s.perk("charge") else 0) + int(s.g("light")) - int(s.g("heavy"))
+	var mv: float = s.def.spd + s.s.bonus.move + int(s.g("move")) + (60 if s.perk("charge") else 0) + int(s.g("light")) - int(s.g("heavy"))
+	return roundf(mv * 0.6) if s.carry == "colors" else mv
 
 func jet_fuel(u: Unit) -> int:
 	## Jet Boots fuel; a heavy weapon burns through it a third faster (so there is a third less).
@@ -3752,11 +3844,19 @@ func end_turn(force := false) -> void:
 		ui_dirty = true
 		return
 	end_confirm_t = 0
-	for r in units.filter(func(o): return o.kind == "relay" and not o.loot.taken):
+	for r in units.filter(func(o): return o.kind == "relay" and o.loot.hold < Data.RELAY_HOLD):
+		var on = null
 		for s in squad_alive():
 			if absf(s.x - r.x) < 26 and absf(s.y - r.y) < 30:
-				capture_relay(r, s)
+				on = s
 				break
+		if on != null and not r.loot.taken:
+			capture_relay(r, on)
+		elif on != null:
+			hold_relay(r, on)
+		elif r.loot.taken:
+			r.loot.hold = 99  # walked off: the hold is over, the buff stays
+			float_text(r, "HOLD BROKEN", Color("ff7a3d"), true)
 	for s in squad_alive():
 		if s.perk("tracker") and s.energy > 0:
 			s.overwatch += s.energy
@@ -3773,6 +3873,7 @@ func enemy_phase() -> void:
 	ui_dirty = true
 	banner("ENEMY PHASE", Color("ff4d3d"))
 	await wait(45)
+	relay_waves()
 	for m in units.filter(func(e): return e.elite == "medic" and not e.dead and e.active):
 		for e in units:
 			if e.team == "enemy" and not e.dead and e != m and e.hp < e.max_hp and absf(e.x - m.x) < 140:
@@ -3946,7 +4047,7 @@ func best_shot(e: Unit, targets: Array, rng: float):
 		var vis := visibility(e, tg)
 		if not vis:
 			continue
-		var sc: float = vis * 30 - d / 10 + (-10 if tg.armor else 0) + (tg.max_hp - tg.hp) * 0.5 + (500 if tg == taunter else 0)
+		var sc: float = vis * 30 - d / 10 + (-10 if tg.armor else 0) + (tg.max_hp - tg.hp) * 0.5 + (500 if tg == taunter else 0) + (300 if hunted(tg) else 0)
 		if best == null or sc > best.sc:
 			best = {"t": tg, "vis": vis, "sc": sc}
 	return best
@@ -4203,9 +4304,16 @@ func jackal_nade(e: Unit) -> bool:
 	float_text(e, "FIRE IN THE HOLE!", Color("ff7a3d"))
 	return await lob(e, tg, 11, 36, 1.0)
 
+func hunted(u: Unit) -> bool:
+	## O1-O3: the flag carrier and the archer are every Jackal's first pick.
+	return u.team == "squad" and (u.carry != "" or u.bow)
+
 func nearest_squad(e: Unit):
 	if taunter != null and not taunter.dead and absf(taunter.x - e.x) < 520:
 		return taunter
+	for s in squad_alive():
+		if hunted(s) and absf(s.x - e.x) < 520 and targetable(e, s):
+			return s
 	var best = null
 	for s in foes_of(e):
 		if s.team == "squad" and not targetable(e, s):
@@ -5357,7 +5465,15 @@ func step() -> void:
 		if u.team == "squad" and not u.dead:
 			for p in units:
 				if p.kind == "loot" and not p.gone and not p.sunk and absf(p.x - u.x) < (66 if Run.implanted(u.s, "magnet") else 22) and absf(p.y - u.y) < 30:
+					if (p.loot.type == "colors" or p.loot.type == "yellow") and (u.carry != "" or p.air):
+						continue  # one flag at a time, and a dropped one has to land first
 					collect(u, p)
+				if u.carry == "yellow" and u.walk != null and p.team == "squad" and p != u and not p.dead and absf(p.x - u.x) < 14 and absf(p.y - u.y) < 30 and p.carry == "":
+					# O3: walk past a teammate to hand the yellow flag over
+					p.carry = "yellow"
+					u.carry = ""
+					float_text(p, "MARKED MAN", Color("ffd23a"), true)
+					Sfx.play("select")
 				if p.kind == "wreck" and not p.stripped and absf(p.x - u.x) < 28 and absf(p.y - u.y) < 30:
 					strip_wreck(p, u)
 				if p.kind == "pow" and not p.freed and absf(p.x - u.x) < 26 and absf(p.y - u.y) < 30:
