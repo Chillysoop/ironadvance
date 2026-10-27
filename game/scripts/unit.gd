@@ -72,6 +72,11 @@ var st: Dictionary = {}  # statuses (Data.STATUS key -> turns left)
 var st_by: Dictionary = {}  # who applied each status, for kill credit
 var hit_sides: Dictionary = {}  # this round: squad unit id -> side they hit from (CROSSFIRE)
 var rico := false     # Ricochet Body: already bounced off a wall this flight
+var soak := 0         # a Jackal's body: bullets it can still stop before it's shredded
+var rot := 0.0        # a body's tumble while it flies
+var fuel := 0         # Jet Boots: fuel left, refilled each turn that starts on the ground
+var fuel_max := 0
+var jetting := false
 # squad only
 var s: Dictionary = {}  # persistent Run soldier record
 var def: Dictionary = {}
@@ -102,7 +107,11 @@ func is_prop() -> bool:
 
 func is_pickup() -> bool:
 	## Loot on the ground and buried caches: bullets and blasts pass through them.
-	return kind == "loot" or kind == "cache" or kind == "relay" or kind == "wreck"
+	return kind == "loot" or kind == "cache" or kind == "relay" or kind == "wreck" or kind == "pad"
+
+func is_body() -> bool:
+	## A dead Jackal left lying on the field: cover, and something to throw at its friends.
+	return dead and kind == "enemy" and type != "boss" and not gone and not sunk
 
 func has_st(k: String) -> bool:
 	return st.get(k, 0) > 0

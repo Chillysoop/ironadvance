@@ -206,6 +206,9 @@ func draw_unit(u: Unit) -> void:
 				draw_rect(Rect2(pos.x - 3, gy - 2, 7, 1), Color(1, 0.92, 0.5, a))
 				draw_rect(Rect2(pos.x, gy - 5, 1, 7), Color(1, 0.92, 0.5, a))
 			return
+		"pad":
+			draw_pad(u, pos)
+			return
 		"mine":
 			# a dished steel plate half buried in the dirt, its light blinking faster when someone is close
 			var near := b.squad_alive().any(func(s): return absf(s.x - u.x) < 70 and absf(s.y - u.y) < 40)
@@ -256,6 +259,8 @@ func draw_unit(u: Unit) -> void:
 		rot = atan2(u.vy, u.vx) * 0.3 * u.face
 	if u.rushing:
 		rot = u.face * 0.5
+	if u.dead and u.air:
+		rot = u.rot
 	if u.para:
 		draw_set_transform(pos + Vector2(0, -50), 0, Vector2(Art.PX, Art.PX))
 		var pt: Texture2D = Art.tex.parachute
@@ -280,6 +285,47 @@ func draw_unit(u: Unit) -> void:
 		if u.muzzle > 0 and u.sheet != "en_brute":
 			var mo := Art.muzzle_offset(u.sheet, a[0], a[1], u.gun_angle)
 			draw_muzzle(pos + kick + Vector2(mo.x * u.face, mo.y), u.face, u.gun_angle)
+
+func draw_pad(u: Unit, pos: Vector2) -> void:
+	## A bonus pad: a steel plate with a light strip. Counting down it projects the next bonus
+	## and the rounds left; when ready the bonus floats over it for whoever gets there first.
+	var L: Dictionary = u.loot
+	var B: Dictionary = Data.BONUSES[b.pad_bonus(u)]
+	draw_rect(Rect2(pos.x - 14, pos.y - 5, 28, 5), C_DARK)
+	draw_rect(Rect2(pos.x - 13, pos.y - 4, 26, 3), Color("7d8590"))
+	for i in 4:
+		var on: bool = L.ready and (b.t / 6 + i) % 4 < 2
+		draw_rect(Rect2(pos.x - 11 + i * 6, pos.y - 4, 4, 1), B.c if on or not L.ready and i < 4 - L.t else Color("3a3f46"))
+	if L.ready:
+		var by := pos.y - 24 + sin(b.t / 10.0) * 2
+		draw_circle(Vector2(pos.x, by), 11 + sin(b.t / 5.0), Color(B.c, 0.22))
+		draw_rect(Rect2(pos.x - 7, by - 7, 14, 14), C_DARK)
+		draw_rect(Rect2(pos.x - 6, by - 6, 12, 12), B.c)
+		draw_rect(Rect2(pos.x - 6, by - 6, 12, 2), Color(1, 1, 1, 0.45))
+		Art.text(self, B.glyph, Vector2(pos.x + 1, by + 4), 8, C_DARK, HORIZONTAL_ALIGNMENT_CENTER, 0)
+		Art.text(self, B.name, Vector2(pos.x, by - 12), 8, B.c, HORIZONTAL_ALIGNMENT_CENTER)
+	else:
+		var a := 0.35 + 0.15 * sin(b.t / 12.0)
+		draw_rect(Rect2(pos.x - 6, pos.y - 26, 12, 22), Color(B.c, a * 0.25))
+		draw_rect(Rect2(pos.x - 6, pos.y - 26, 12, 12), Color(B.c, a), false, 1.0)
+		Art.text(self, B.glyph, Vector2(pos.x + 1, pos.y - 16), 8, Color(B.c, 0.8), HORIZONTAL_ALIGNMENT_CENTER, 0)
+		Art.text(self, "%s IN %d" % [B.name, L.t], Vector2(pos.x, pos.y - 30), 8, Color(B.c, 0.85), HORIZONTAL_ALIGNMENT_CENTER)
+
+func draw_ghost(u: Unit, sim: Dictionary, col: Color, label: String) -> void:
+	## Where a soldier will end up: a dotted path and a see-through copy of them at the end.
+	var i := 0
+	while i < sim.pts.size():
+		var p: Vector2 = sim.pts[i]
+		draw_rect(Rect2(p.x - 1, p.y - u.h / 2.0 - 1, 2, 2), Color(col, 0.75))
+		i += 3
+	var bad: bool = sim.water or sim.fall > 0
+	var c := Color("ff4d3d") if bad else col
+	if sim.water:
+		label += ": INTO THE WATER"
+	elif sim.fall > 0:
+		label += ": FALL -%d" % sim.fall
+	Art.draw_char(self, u.sheet, "idle", 0, Vector2(sim.x, sim.y), u.face, false, 0, 0.45, 0.0, false, 1.0, c)
+	Art.text(self, label, Vector2(sim.x, sim.y - u.h - 8), 8, c, HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_strongbox(pos: Vector2, white: bool) -> void:
 	var r := Rect2(pos.x - 10, pos.y - 14, 20, 14)
@@ -400,7 +446,7 @@ func draw_wreck(u: Unit, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck"] or u.type == "boss" or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad"] or u.type == "boss" or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -447,6 +493,10 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 		k += 4
 	var ac := Color("ffb23e") if u.adr >= 100 else Color("ff7a3d")
 	draw_rect(Rect2(x - w / 2, y + 6, roundf(w * u.adr / 100.0), 2), ac)
+	if u.fuel_max > 0:
+		# Jet Boots fuel: a blue strip under the plate
+		draw_rect(Rect2(x - w / 2 - 2, y + 10, w + 4, 4), Color(C_DARK, 0.85))
+		draw_rect(Rect2(x - w / 2, y + 11, roundf(w * u.fuel / float(u.fuel_max)), 2), Color("53d4e2") if u.fuel > 0 else Color("4a505a"))
 	if u.adr >= 50:
 		draw_texture_rect(Art.tex.ic_flame, Rect2(x + w / 2 + 2, y - 2, 8, 8), false)
 	if u.armor > 0:
@@ -604,6 +654,13 @@ func draw_targeting() -> void:
 			yy += 12
 		draw_rect(Rect2(pz, 40, Battle.W * 0.28, Battle.H - 40), Color(1, 0.7, 0.24, 0.05))
 		Art.text(self, "PUSH ZONE >>", Vector2(pz + 8, 58), 8, Color("ffb23e"))
+	if b.jet_armed:
+		var sim := b.sim_body(u, 0.0, 0.0, m, u.fuel)
+		draw_dashed_line(Vector2(u.x, u.y - u.h / 2.0), m, Color(0.33, 0.83, 0.89, 0.6), 1.0, 4.0)
+		draw_ghost(u, sim, Color("53d4e2"), "JET")
+		Art.text(self, "HOLD CLICK TO FLY   FUEL %d" % u.fuel, Vector2(m.x + 12, m.y + 22), 8, Color("53d4e2"))
+		draw_reticle(m, Color("53d4e2"))
+		return
 	if b.card_idx < 0:
 		if u.move_left > 1:
 			var L := b.sim_walk(u, u.x - u.move_left, u.move_left)
@@ -682,7 +739,8 @@ func draw_targeting() -> void:
 				var col := Color("ffb23e") if hh.head else Color("ff4d3d")
 				draw_brackets(Rect2(tg.x - tg.w / 2 - 4, tg.y - tg.h - 4, tg.w + 8, tg.h + 8), col)
 				var lab := "BODY"
-				if tg.kind == "fuel": lab = "LEAK"
+				if tg.dead: lab = "CORPSE BLOCKS"
+				elif tg.kind == "fuel": lab = "LEAK"
 				elif tg.kind == "charge": lab = "DEFUSE"
 				elif tg.kind == "crate": lab = "OPEN"
 				elif tg.kind == "strongbox": lab = "LOCKED: BLAST OR PRY"
@@ -704,6 +762,7 @@ func draw_targeting() -> void:
 			var sw := b.sway_of(u, c)
 			Art.text(self, "STEADY" if sw < 0.01 else ("WILD SWAY" if sw > 0.06 else ("SWAY  [SHIFT] HOLD" if not b.aim_hold else "HOLDING")), Vector2(aa.mx, u.y + 30), 8, Color("ff7a3d") if sw > 0.06 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 			draw_reticle(m, Color(1, 0.3, 0.3))
+			draw_recoil(u, c, aa.a)
 		"ARC":
 			var v := b.aim_vel(u, m)
 			var sim := b.sim_arc(v.hx, v.hy, v.vx, v.vy, c.get("wind", 1.0), 40)
@@ -727,7 +786,7 @@ func draw_targeting() -> void:
 					Art.text(self, "NO GRIP", Vector2(gs.ax, gs.ay - 10), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.get("jump", false) or c.get("rush", false):
 				var v := b.jump_vel(u, m, c.get("jpow", 1.0)) if c.get("jump", false) else b.rush_vel(u, m)
-				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50)
+				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50, true)
 				for i in sim.pts.size():
 					if i % 2 == 0:
 						var p: Vector2 = sim.pts[i]
@@ -746,6 +805,7 @@ func draw_targeting() -> void:
 							draw_brackets(Rect2(s.x - s.w / 2 - 4, s.y - s.h - 4, s.w + 8, s.h + 8), Color("ff4d3d"))
 						Art.text(self, "YOU ARE IN THE BLAST" if al.has(u) else "ALLY IN BLAST", Vector2(end.x, end.y - R - 8), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 				draw_reticle(m, Color("ff7a3d"))
+				draw_recoil(u, c, a)
 		"MELEE", "ALLY":
 			var lst: Array
 			if c.type == "MELEE":
@@ -759,6 +819,12 @@ func draw_targeting() -> void:
 				Art.text(self, "NO ENEMY IN REACH" if c.type == "MELEE" else "NO SQUADMATE IN RANGE", Vector2(u.x, u.y + 30), 8, col, HORIZONTAL_ALIGNMENT_CENTER)
 			if c.type == "ALLY":
 				draw_rect(Rect2(u.x - c.range, u.y - 80, c.range * 2, 100), Color(0.38, 0.82, 0.44, 0.35), false, 1.0)
+
+func draw_recoil(u: Unit, c: Dictionary, ang: float) -> void:
+	var kv := b.recoil_vel(u, c, ang)
+	if kv == Vector2.ZERO:
+		return
+	draw_ghost(u, b.sim_body(u, kv.x, kv.y), Color("c9d1da"), "RECOIL")
 
 func draw_brackets(r: Rect2, col: Color) -> void:
 	var l := 6.0
@@ -887,6 +953,9 @@ func draw_hover() -> void:
 			"scrip": lines = ["%d SCRIP" % L.n]
 			_: lines = ["TROPHY: " + L.name]
 		lines.append("Anything left behind goes to the stash.")
+	elif h.kind == "pad":
+		var B: Dictionary = Data.BONUSES[b.pad_bonus(h)]
+		lines = ["BONUS PAD: " + B.name, "READY: whoever stands on it takes it." if h.loot.ready else "Ready in %d round%s." % [h.loot.t, "" if h.loot.t == 1 else "s"], B.text, "Jackals race for it too."]
 	elif h.kind == "mine":
 		lines = ["JACKAL MINE", "Your soldiers set it off by stepping on it.", "Jackals only trip it when they land on it: knock them onto it.", "Shoot or blast it to clear it. Blast 38."]
 	elif h.is_prop():
