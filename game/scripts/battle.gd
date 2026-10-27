@@ -1211,7 +1211,7 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 	tg.flash = 10
 	if tg.team == "squad":
 		if debug:
-			print("[dmg r%d] %s -%d (hp %d) by %s %s" % [round_n, tg.def.key, amt, tg.hp, (src.team + ":" + src.type) if src is Unit else str(src), str(o)])
+			print("[dmg r%d] %s -%d (hp %d) by %s %s" % [round_n, tg.def.key, amt, tg.hp, (src.team + ":" + (src.type if src.team != "squad" else src.def.key)) if src is Unit else str(src), str(o)])
 		if tg.hp - amt <= 0:
 			if tg.second_wind:
 				tg.second_wind = false
@@ -1579,6 +1579,8 @@ func detonate(p: Dictionary) -> void:
 		float_at(p.x, p.y - 20, "BEACON SET", Color("62d26f"), true)
 		Sfx.play("tick")
 		return
+	if debug:
+		print("[proj r%d] %s owner %s dmg%d" % [round_n, p.kind, (p.owner.type if p.owner.team != "squad" else p.owner.def.key) if p.owner is Unit else "null", p.dmg])
 	explode(p.x, p.y, p.r, p.dmg, p.owner, pc.get("burnblast", false))
 	if pc.has("carve"):
 		T.carve(p.x, p.y, pc.carve, p.owner)
@@ -4380,6 +4382,8 @@ func step() -> void:
 			if b.has("barrel") and b.barrel != null:
 				b.barrel.dead = true
 				b.barrel.gone = true
+			if debug:
+				print("[boom r%d] %s r%d dmg%d" % [round_n, (b.barrel.kind + ":" + b.barrel.type) if b.has("barrel") and b.barrel != null else ("owner:" + (b.owner.type if b.owner is Unit else "null")), int(b.r), b.dmg])
 			explode(b.x, b.y, b.r, b.dmg, b.owner, b.get("burn", b.r >= 80))
 	booms = booms.filter(func(b): return not b.get("done", false))
 	for p in parts:

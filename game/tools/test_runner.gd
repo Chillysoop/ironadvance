@@ -1,7 +1,8 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat.
+## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat,
+## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad).
 ## --mission=N picks the mission for bot.
 
 var out_dir := "user://shots"
@@ -9,6 +10,10 @@ var scenario := ""
 var main: Node
 var frames := 0
 var mission_arg := 0
+var seed_arg := 1
+var runs_arg := 1
+var playtest_debug := false
+var start_arg := 0
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -22,6 +27,12 @@ func _ready() -> void:
 			out_dir = a.substr(6)
 		elif a.begins_with("--mission="):
 			mission_arg = int(a.substr(10))
+		elif a.begins_with("--seed="):
+			seed_arg = int(a.substr(7))
+		elif a.begins_with("--start="):
+			start_arg = int(a.substr(8))
+		elif a.begins_with("--runs="):
+			runs_arg = int(a.substr(7))
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	await get_tree().process_frame
 	main = get_tree().current_scene
@@ -631,6 +642,10 @@ func run() -> void:
 			await aliens()
 		"aliens2":
 			await aliens2()
+		"playtest":
+			await playtest()
+		"pinball":
+			await pinball()
 		"campaign":
 			Run.new_run()
 			for m in 3:
@@ -1782,8 +1797,8 @@ func play_hop(b: Battle, u: Unit, v: Vector2) -> void:
 	var d: float = v.length() / (10.5 * c.jpow) * reach
 	b.select_card(idx)
 	b.commit_aim(b.hand_pos(u) + v.normalized() * d)
-	await until(func(): return not b.busy, 600)
-	await until(func(): return not u.air, 600)
+	await until(func(): return not is_instance_valid(b) or not b.busy, 600)
+	await until(func(): return not is_instance_valid(u) or not u.air, 600)
 	await frames_wait(10)
 
 func force_card(u: Unit, key: String) -> int:
@@ -1802,17 +1817,53 @@ func nearest_enemy(b: Battle, u: Unit) -> Unit:
 				best = e
 	return best
 
-func bot(mission: int, max_rounds: int, fresh := true) -> bool:
+func squad_near(b: Battle, p: Vector2, r: float) -> bool:
+	## any living soldier (shooter included) within r of p
+	return b.squad_alive().any(func(s): return Vector2(s.x, s.y - s.h / 2.0).distance_to(p) < r)
+
+func foe_near(b: Battle, p: Vector2, r: float) -> bool:
+	## an enemy in the blast, and no barrel or fuel drum in it that would carry the blast to the squad
+	for o in b.units:
+		if not o.dead and not o.gone and (o.kind == "barrel" or o.kind == "fuel") and Vector2(o.x, o.y - o.h / 2.0).distance_to(p) < r + 10:
+			if squad_near(b, Vector2(o.x, o.y - o.h / 2.0), (84.0 if o.kind == "fuel" else 44.0) + 40):
+				return false
+	return b.units.any(func(e): return not e.dead and e.team == "enemy" and e.active and Vector2(e.x, e.y - e.h / 2.0).distance_to(p) < r)
+
+func rocket_safe(b: Battle, u: Unit, c: Dictionary, e: Unit) -> bool:
+	## where a straight rocket at e would burst: it must be near a foe and clear of the squad
+	var hp_ := Vector2(u.x + (6 if e.x >= u.x else -6), u.y - u.h + 10)
+	var ang := atan2(e.y - 12 - hp_.y, e.x - hp_.x)
+	var tr := b.trace_bullet(hp_.x, hp_.y, ang, 1400, 0, u, false)
+	var p = null
+	if tr.hits.size():
+		p = Vector2(tr.hits[0].x, tr.hits[0].y)
+	elif tr.end != null:
+		p = Vector2(tr.end.x, tr.end.y)
+	if p == null:
+		return false
+	var r: float = c.get("radius", 30)
+	return not squad_near(b, p, r + 24) and foe_near(b, p, r + 10)
+
+var bot_stats := {}
+var bot_last := ""
+
+func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 	## A simple autoplayer: shoot the nearest visible enemy, lob at clusters, heal, push right.
 	if fresh:
 		Run.new_run()
-	var b: Battle = main.start_battle(mission)
+	var b: Battle = main.start_battle(mission, custom)
 	b.autopick = 0
-	b.speed = 8.0
+	b.speed = 24.0 if playtest_debug else 8.0
+	b.debug = playtest_debug
+	bot_stats = {"actions": 0, "enemy_ticks": 0, "hp_lost": 0, "round_hp": []}
 	var res := {"done": false, "won": false, "line": ""}
+	# read the battle before Main's handler frees it
+	b.mission_over.disconnect(main._on_mission_over)
 	b.mission_over.connect(func(w):
 		res.done = true; res.won = w
-		res.line = "rounds %d score %d kills %d cam %d/%d alive %d" % [b.round_n, b.score, b.stats.kills, int(b.cam_x), b.world_w, b.squad_alive().size()], CONNECT_ONE_SHOT)
+		res.line = "rounds %d score %d kills %d cam %d/%d alive %d" % [b.round_n, b.score, b.stats.kills, int(b.cam_x), b.world_w, b.squad_alive().size()]
+		bot_stats.merge({"rounds": b.round_n, "kills": b.stats.kills, "downs": b.stats.kia, "fallen": b.stats.fallen.duplicate(), "cam": int(b.cam_x), "world": b.world_w, "alive": b.squad_alive().size(), "ticks": b.t})
+		main._on_mission_over(w), CONNECT_ONE_SHOT)
 	var last_shot := 0
 	while not res.done and b.round_n < max_rounds:
 		await until(func(): return res.done or (b.state == "player" and not b.busy), 20000)
@@ -1822,6 +1873,14 @@ func bot(mission: int, max_rounds: int, fresh := true) -> bool:
 			if res.done or b.state != "player":
 				break
 			b.select_unit(u)
+			# step off an airstrike marker before anything else
+			var mk: Array = b.strikes.filter(func(k): return not k.get("friendly", false) and absf(k.x - u.x) < 64)
+			if mk.size() and u.move_left > 20:
+				var away: float = u.x + 90.0 if u.x >= mk[0].x else u.x - 90.0
+				if b.strikes.any(func(k): return absf(k.x - away) < 64):
+					away = u.x - 90.0 if away > u.x else u.x + 90.0
+				b.do_move(u, away)
+				await until(func(): return res.done or not b.busy, 20000)
 			var guard := 0
 			while guard < 8 and not res.done and b.state == "player":
 				guard += 1
@@ -1829,75 +1888,101 @@ func bot(mission: int, max_rounds: int, fresh := true) -> bool:
 				if res.done or u.dead:
 					break
 				var played := false
+				var foes: Array = b.units.filter(func(o): return not o.dead and not o.gone and ((o.team == "enemy" and o.active) or (o.kind == "charge" and not o.primed)) and absf(o.x - u.x) < 900)
+				var prio := func(o): return (0 if o.kind == "charge" else (1 if o.type == "radio" else 2)) * 10000 + absf(o.x - u.x)
+				foes.sort_custom(func(p1, p2): return prio.call(p1) < prio.call(p2))
 				for i in u.hand.size():
 					var c := Data.card(u.hand[i])
 					if u.energy < b.card_cost(u, u.hand[i]):
 						continue
-					var e := nearest_enemy(b, u)
 					if c.type == "SELF" and not c.get("overwatch", false):
+						bot_last = c.get("name", "?")
 						b.select_card(i)
 						played = true
 						break
 					if c.type == "ALLY":
 						var hurt := b.squad_alive().filter(func(s): return s.hp < s.max_hp - 6 and b.ally_valid(u, s, c))
 						if hurt.size():
+							bot_last = c.get("name", "?")
 							b.select_card(i)
 							b.play_on_target(hurt[0])
 							played = true
 							break
 						continue
-					if e == null:
-						continue
-					if c.type == "AIM":
-						var aa := b.aim_angle(u, c, Vector2(e.x, e.y - e.h * 0.6))
-						var tr := b.trace_bullet(aa.mx, aa.my, aa.a, c.range, c.get("bounce", 0), u, c.get("pierce", false))
-						if tr.hits.any(func(h): return h.u.team == "enemy" or h.u.is_prop()):
-							b.select_card(i)
-							b.commit_aim(Vector2(e.x, e.y - e.h * 0.6))
-							played = true
-							break
-					elif c.type == "ARC" and absf(e.x - u.x) < 260 and absf(e.x - u.x) > 70 and not c.get("smoke", false) and not b.squad_alive().any(func(s): return absf(s.x - e.x) < 70):
-						b.select_card(i)
-						var sol = b.solve_arc(u.x + (6 if e.x > u.x else -6), u.y - u.h + 10, e.x, e.y - 4, c.get("wind", 1.0), 13)
-						if sol != null:
+					for e in foes.slice(0, 6):
+						if c.type == "AIM":
+							var aa := b.aim_angle(u, c, Vector2(e.x, e.y - e.h * 0.6))
+							var tr := b.trace_bullet(aa.mx, aa.my, aa.a, c.range, c.get("bounce", 0), u, c.get("pierce", false))
+							var safe: bool = not tr.hits.any(func(h): return h.u.team == "squad" or h.u.kind == "pow")
+							if safe and c.has("radius") and tr.hits.size():
+								safe = not squad_near(b, Vector2(tr.hits[0].x, tr.hits[0].y), c.radius + 20)
+							if safe and tr.hits.any(func(h): return h.u.team == "enemy" or h.u.is_prop()):
+								bot_last = c.get("name", "?")
+								b.select_card(i)
+								b.commit_aim(Vector2(e.x, e.y - e.h * 0.6))
+								played = true
+						elif e.kind == "charge":
+							continue
+						elif c.type == "ARC" and absf(e.x - u.x) < 260 and absf(e.x - u.x) > 70 and not c.get("smoke", false):
 							var hx: float = u.x + (6 if e.x > u.x else -6)
 							var hy: float = u.y - u.h + 10
-							var pw := Vector2(sol.vx, sol.vy).length()
-							var d := pw / 13.0 * 220
-							b.commit_aim(Vector2(hx, hy) + Vector2(sol.vx, sol.vy).normalized() * d)
-						else:
-							b.cancel_card()
-							continue
-						played = true
-						break
-					elif c.type == "LINE" and not c.get("grapple", false) and not c.get("jump", false) and not c.get("rush", false) and absf(e.x - u.x) > 80:
-						b.select_card(i)
-						b.commit_aim(Vector2(e.x, e.y - 12))
-						played = true
-						break
-					elif c.type == "MELEE" and b.melee_valid(u, e, c):
-						b.select_card(i)
-						b.play_on_target(e)
-						played = true
+							var sol = b.solve_arc(hx, hy, e.x, e.y - 4, c.get("wind", 1.0), 13)
+							if sol == null:
+								continue
+							var land := b.sim_arc(hx, hy, sol.vx, sol.vy, c.get("wind", 1.0), 320)
+							var rr: float = c.get("radius", 30) + (60.0 if c.get("bounce", false) else 0.0) + (60.0 if c.has("cluster") else 0.0)
+							if land.end and not squad_near(b, Vector2(land.x, land.y), rr + 50) and not squad_near(b, Vector2(e.x, e.y - e.h / 2.0), rr + 50) and foe_near(b, Vector2(land.x, land.y), rr + 10):
+								bot_last = c.get("name", "?")
+								b.select_card(i)
+								var pw := Vector2(sol.vx, sol.vy).length()
+								b.commit_aim(Vector2(hx, hy) + Vector2(sol.vx, sol.vy).normalized() * (pw / 13.0 * 220))
+								played = true
+						elif c.type == "LINE" and not c.get("grapple", false) and not c.get("jump", false) and not c.get("rush", false) and absf(e.x - u.x) > 80 and rocket_safe(b, u, c, e):
+							bot_last = c.get("name", "?")
+							b.select_card(i)
+							b.commit_aim(Vector2(e.x, e.y - 12))
+							played = true
+						elif c.type == "MELEE" and b.melee_valid(u, e, c):
+							bot_last = c.get("name", "?")
+							b.select_card(i)
+							b.play_on_target(e)
+							played = true
+						if played:
+							break
+					if played:
 						break
 				if not played:
 					break
+				if playtest_debug:
+					var en := nearest_enemy(b, u)
+					print("[act r%d] %s plays %s at %s" % [b.round_n, u.def.key, bot_last, ("%s dx%d" % [en.type, int(en.x - u.x)]) if en != null else "-"])
+				bot_stats.actions += 1
 				await until(func(): return res.done or not b.busy, 20000)
 			if res.done or b.state != "player":
 				break
 			await until(func(): return res.done or not b.busy, 20000)
 			if u.move_left > 20 and not u.dead:
 				var e2 := nearest_enemy(b, u)
-				# keep spacing: each soldier stops 46px behind the one ahead
+				# keep spacing: each soldier stops 60px behind the one ahead
 				var order := b.squad_alive()
 				order.sort_custom(func(a, c): return a.x > c.x)
-				var lead_x: float = u.x + u.move_left if order[0] == u else order[0].x
-				var tx: float = minf(u.x + u.move_left, lead_x - 46.0 * order.find(u))
+				var lead_x: float = minf(u.x + u.move_left, order[-1].x + 340.0) if order[0] == u else order[0].x
+				var tx: float = minf(u.x + u.move_left, lead_x - 60.0 * order.find(u))
 				if e2 != null and e2.x - u.x < 140:
 					tx = minf(tx, u.x + 10)
 				if tx < u.x + 4:
 					tx = u.x - 30 if order.find(u) > 0 else u.x
+				# stop short of mines, live charges and leaking fuel instead of walking onto them
+				var hz: Array = b.units.filter(func(o): return not o.dead and not o.gone and ((o.kind == "mine" and not o.primed) or o.kind == "charge" or (o.kind == "fuel" and o.leak != null)) and o.x > u.x - 4 and absf(o.y - u.y) < 40)
+				for o in hz:
+					var keep: float = 18.0 if o.kind == "mine" else 70.0
+					if o.x - keep < tx and o.x > u.x:
+						tx = maxf(u.x, o.x - keep)
+				for k in b.strikes:
+					if not k.get("friendly", false) and absf(k.x - tx) < 64:
+						tx = k.x - 70 if u.x < k.x else k.x + 70
 				b.do_move(u, tx)
+				bot_stats.actions += 1
 				await until(func(): return res.done or not b.busy, 20000)
 				# take a ladder when one is right ahead and the way on foot is blocked
 				var climbed := false
@@ -1907,26 +1992,56 @@ func bot(mission: int, max_rounds: int, fresh := true) -> bool:
 						await until(func(): return res.done or not b.busy, 20000)
 						climbed = true
 						break
-				# otherwise hop the wall or gap, aiming for the farthest dry spot it can reach
-				if not climbed and not u.dead and u.move_left > 20 and u.energy >= 1 and b.state == "player" and b.sim_walk(u, u.x + 40, 40).used < 4:
-					var jx: float = u.x + 150.0
-					while jx > u.x + 30:
-						var jy = b.T.stand_y(jx, u.y - 90)
-						if jy != null and jy < Battle.WATER_Y - 4:
-							var aim := hop_aim(b, u, jx)
-							if aim.e < 6:
-								await play_hop(b, u, aim.v)
+				# otherwise hop the wall, gap or mine, aiming for the farthest dry spot it can reach
+				var mine_ahead: bool = b.units.any(func(o): return o.kind == "mine" and not o.primed and not o.gone and o.x > u.x and o.x - u.x < 30 and absf(o.y - u.y) < 12)
+				if not climbed and not u.dead and u.move_left > 20 and u.energy >= 1 and b.state == "player" and (mine_ahead or b.sim_walk(u, u.x + 40, 40).used < 4):
+					var hopped := false
+					for attempt in 2:
+						if attempt == 1:
+							# pressed against a fence or wall: back off for a run-up and try again
+							if u.move_left < 60 or res.done:
 								break
-						jx -= 10
+							b.do_move(u, u.x - 44)
+							await until(func(): return res.done or not b.busy, 20000)
+							if res.done or u.dead or u.move_left < 1:
+								break
+						var x0: float = u.x
+						var jx: float = x0 + 190.0
+						while jx > x0 + 30 and not hopped:
+							for lift in [90.0, 150.0]:
+								var jy = b.T.stand_y(jx, u.y - lift)
+								if jy != null and jy < Battle.WATER_Y - 4:
+									var aim := hop_aim(b, u, jx)
+									if aim.e < 10:
+										await play_hop(b, u, aim.v)
+										hopped = true
+										break
+							jx -= 10
+						if hopped:
+							break
+					if playtest_debug and not hopped:
+						print("[stuck r%d] %s at %d,%d climbed %s hand %s" % [b.round_n, u.def.key, int(u.x), int(u.y), climbed, u.hand.map(func(h): return h.key)])
+				elif playtest_debug and climbed:
+					print("[climb r%d] %s now %d,%d" % [b.round_n, u.def.key, int(u.x), int(u.y)])
 		if res.done:
 			break
 		if b.round_n - last_shot >= 3 or b.round_n == 1:
 			last_shot = b.round_n
 			await shot("bot_m%d_r%02d" % [mission, b.round_n])
+		if playtest_debug:
+			print("[pos r%d] cam %d alert %d squad %s foes %s" % [b.round_n, int(b.cam_x), b.alert, b.squad_alive().map(func(x): return "%s@%d,%d e%d m%d" % [x.def.key, int(x.x), int(x.y), x.energy, int(x.move_left)]), b.units.filter(func(o): return o.team == "enemy" and not o.dead and o.active).map(func(o): return "%s@%d" % [o.type, int(o.x)])])
+		var hp0: int = b.squad_alive().reduce(func(a, x): return a + x.hp, 0)
+		var t0 := b.t
 		b.end_turn(true)
 		await until(func(): return res.done or (b.state == "player" and not b.busy) or b.state == "over", 30000)
+		bot_stats.enemy_ticks += b.t - t0
+		var hp1: int = b.squad_alive().reduce(func(a, x): return a + x.hp, 0)
+		bot_stats.round_hp.append(hp0 - hp1)
 	if not res.done:
 		res.line = "rounds %d score %d kills %d cam %d/%d alive %d" % [b.round_n, b.score, b.stats.kills, int(b.cam_x), b.world_w, b.squad_alive().size()]
+	if not res.done:
+		bot_stats.merge({"rounds": b.round_n, "kills": b.stats.kills, "downs": b.stats.kia, "fallen": b.stats.fallen.duplicate(), "cam": int(b.cam_x), "world": b.world_w, "alive": b.squad_alive().size(), "ticks": b.t})
+	bot_stats.merge({"done": res.done, "won": res.won})
 	print("[bot] mission ", mission, " done ", res.done, " won ", res.won, " ", res.get("line", ""), " lv ", Run.soldiers.map(func(s): return s.lvl), " scrip ", Run.scrip)
 	if res.done:
 		await frames_wait(5)
@@ -1937,3 +2052,75 @@ func press_first() -> void:
 		if c.has_signal("pressed"):
 			c.pressed.emit()
 			return
+
+func playtest() -> void:
+	## Autoplays whole runs the way a player meets them: gate dial, biome level (BREACH, Swarm/Nest, camps, detours, boss),
+	## a hospital stop between levels when it is affordable, then the harbor finale. One [pt] JSON line per mission.
+	## --seed=N --runs=K
+	playtest_debug = true
+	for r in runs_arg:
+		seed(seed_arg * 1000 + r)
+		Run.new_run()
+		for m in Data.LEVELS.size() + 1:
+			Run.mission = m
+			Run.side = ""
+			if m < Data.LEVELS.size():
+				Run.roll_dial()
+				Run.pick_biome(Run.dial[randi() % Run.dial.size()])
+			else:
+				Run.start_finale()
+			if m < start_arg:
+				# --start=N: arrive at level N as a squad that cleared the levels before it (+4 levels each, mission pay)
+				for x in Run.soldiers:
+					for k in 4:
+						x.lvl += 1
+						x.xp = Run.xp_floor(x)
+						var opts := Run.level_options(x)
+						Run.apply_option(x, opts[randi() % opts.size()])
+					x.hp = Run.eff_max_hp(x)
+				Run.scrip += 180
+				Run.history.append({})
+				continue
+			Run.roll_intel()
+			var lv: Dictionary = Run.current_mission()
+			var before := {"scrip": Run.scrip, "hp": Run.soldiers.map(func(x): return x.hp), "tags": Run.soldiers.map(func(x): return x.tags)}
+			var ok := await bot(m, 90, false, lv)
+			var row := bot_stats.duplicate()
+			row.erase("round_hp")
+			row.merge({"seed": seed_arg, "run": r, "m": m, "biome": lv.get("biome", "finale"), "breach": lv.get("breach", false), "enc": lv.get("encounter", ""),
+				"intel": Run.intel, "detours": lv.get("detours", []), "scrip_in": before.scrip, "scrip_out": Run.scrip, "hp_in": before.hp,
+				"hp_out": Run.soldiers.map(func(x): return x.hp if x.alive else -1), "tags_out": Run.soldiers.map(func(x): return x.tags),
+				"lv": Run.soldiers.map(func(x): return x.lvl), "max_round_hp": bot_stats.round_hp.max() if bot_stats.round_hp.size() else 0})
+			print("[pt] ", JSON.stringify(row))
+			await shot("pt_s%d_r%d_m%d_end" % [seed_arg, r, m])
+			if not ok or Run.alive_count() == 0:
+				break
+			# between levels: buy the hospital when anyone is hurt and it is affordable
+			if Run.scrip >= 40 and Run.soldiers.any(func(x): return x.alive and x.hp < Run.eff_max_hp(x)):
+				Run.scrip -= 40
+				for x in Run.soldiers:
+					if x.alive:
+						x.hp = Run.eff_max_hp(x)
+
+func pinball() -> void:
+	## one blast next to a bunched squad: how many bonks and how much damage follow
+	for gap in [16.0, 24.0, 36.0, 46.0]:
+		Run.new_run()
+		var b: Battle = main.start_battle(0)
+		await until(func(): return b.state == "player" and not b.busy)
+		b.debug = true
+		for o in b.units:
+			if o.team == "enemy":
+				o.dead = true; o.gone = true
+		var sq := b.squad()
+		var x0 := 200.0
+		for i in sq.size():
+			ground_unit(b, sq[i], x0 + i * gap)
+		await frames_wait(5)
+		var hp0: int = sq.reduce(func(a, x): return a + x.hp, 0)
+		b.explode(x0 - 20, sq[0].y - 6, 40, 10, null)
+		await frames_wait(200)
+		var hp1: int = sq.reduce(func(a, x): return a + x.hp, 0)
+		print("[pinball] gap ", gap, " squad hp lost ", hp0 - hp1, " per soldier ", sq.map(func(x): return x.hp))
+		main.clear()
+		await frames_wait(5)
