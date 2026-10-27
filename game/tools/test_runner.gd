@@ -1,7 +1,7 @@
 extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
-## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp.
+## Scenarios: title, start, aim, arc, bot, shop, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens.
 ## --mission=N picks the mission for bot.
 
 var out_dir := "user://shots"
@@ -621,6 +621,8 @@ func run() -> void:
 			await biomes()
 		"detours":
 			await detours()
+		"aliens":
+			await aliens()
 		"campaign":
 			Run.new_run()
 			for m in 3:
@@ -778,6 +780,125 @@ func hazards() -> void:
 	await frames_wait(20)
 	await shot("hz_crane_after")
 	check(boss != null and (boss.cracked or boss.hp < boss.max_hp), "the crane container hits the Boar (hp %d/%d cracked %s)" % [boss.hp, boss.max_hp, boss.cracked])
+
+func alien_field(b: Battle, x: float) -> Unit:
+	## Clear the field and stand one soldier at x for an alien test.
+	for e in b.units:
+		if e.team == "enemy" or e.is_prop() or e.kind == "pow":
+			e.dead = true; e.gone = true
+	var s: Unit = b.squad()[0]
+	for o in b.squad():
+		if o != s:
+			o.x = x - 200; o.y = b.T.stand_y(o.x, 0); o.air = false
+	s.x = x; s.y = b.T.stand_y(x, 0); s.air = false; s.hp = s.max_hp
+	cam_on(b, x + 120)
+	return s
+
+func flat_open(b: Battle, x: float, w: float) -> bool:
+	## Flat ground with open sky over it from x to x + w.
+	var y0 = b.T.stand_y(x, 0)
+	if y0 == null:
+		return false
+	for k in range(0, int(w), 8):
+		var y = b.T.stand_y(x + k, 0)
+		if y == null or absf(y - y0) > 4:
+			return false
+	return true
+
+func spawn_alien(b: Battle, type: String, x: float) -> Unit:
+	var e := b.mk_enemy(type, x, b.T.stand_y(x, 0))
+	e.active = true
+	b.units.append(e)
+	b.place_alien(e)
+	return e
+
+func aliens() -> void:
+	## The first Vharr: spawn casting by level, then each alien's marked move and its physics hook.
+	Run.new_run()
+	Run.level = Run.make_level("desert", 0)
+	var b: Battle = main.start_battle(0, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var types := b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
+	check(not types.has("nade"), "no Jackal Bombers spawn (level 1: %s)" % str(types))
+	check(types.has("grunt") and types.any(func(t): return Battle.ALIENS.has(t)), "level 1 keeps riflemen with a few Vharr advisors")
+	Run.level = Run.make_level("fortress", 1)
+	b = main.start_battle(1, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	types = b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
+	check(not types.has("grunt") and not types.has("nade") and types.has("skitter") and types.has("squid") and types.has("blinker"), "level 2 gives every rifleman slot to the Vharr (%s)" % str(types))
+	check(types.count("skitter") % 3 == 0, "Skitters come in packs of 3 (%d)" % types.count("skitter"))
+	b.speed = 2.0
+	# a flat stretch near the start for the duels
+	var x0 := 300.0
+	while not flat_open(b, x0 - 120, 420):
+		x0 += 20
+	# --- Skitter: marks a pounce, lands on the mark, bites whoever is still there
+	var s := alien_field(b, x0)
+	var sk := spawn_alien(b, "skitter", x0 + 160)
+	await b.enemy_act(sk)
+	check(sk.pounce != null and absf(sk.pounce.x - s.x) < 2, "a Skitter marks a pounce on the nearest soldier")
+	await frames_wait(10)
+	await shot("alien_skitter_mark")
+	s.x -= 90; s.y = b.T.stand_y(s.x, 0)
+	var hp0 := s.hp
+	await b.enemy_act(sk)
+	await until(func(): return b.settled(), 600)
+	check(s.hp == hp0 and absf(sk.x - (x0)) < 12, "stepping off the mark dodges the pounce (skitter at %d, mark %d)" % [sk.x, x0])
+	print("[skitter] at ", sk.x, ",", sk.y, " air ", sk.air, " mark ", sk.pounce, " soldier ", s.x, ",", s.y)
+	await b.enemy_act(sk)  # landed and re-marked; this phase pounces again
+	print("[skitter] after at ", sk.x, ",", sk.y, " soldier ", s.x, ",", s.y, " dead ", sk.dead)
+	await until(func(): return b.settled(), 600)
+	check(s.hp < hp0, "standing on the mark gets you bitten (hp %d -> %d)" % [hp0, s.hp])
+	# light: the same blast throws a Skitter twice as far as a Rifleman
+	var gr := spawn_alien(b, "grunt", x0 + 60)
+	var sk2 := spawn_alien(b, "skitter", x0 + 60)
+	sk2.hp = 99; gr.hp = 99
+	b.explode(x0 + 40, b.T.stand_y(x0 + 40, 0) - 10, 40, 1, s)
+	check(absf(sk2.vx) > absf(gr.vx) * 1.8, "light Skitter flies twice as far (vx %.1f vs %.1f)" % [sk2.vx, gr.vx])
+	await until(func(): return b.settled(), 900)
+	# --- Squid Trooper: hovers, locks a ray, fires it along the line
+	s = alien_field(b, x0)
+	var sq := spawn_alien(b, "squid", x0 + 260)
+	var gy: float = b.T.stand_y(sq.x, 0)
+	check(sq.y < gy - 80, "a Squid Trooper hovers (%d above the floor)" % (gy - sq.y))
+	sq.hold = true
+	await b.enemy_act(sq)
+	check(sq.beam != null, "the Squid locks its ray on a soldier")
+	await frames_wait(10)
+	await shot("alien_squid_mark")
+	hp0 = s.hp
+	await b.enemy_act(sq)
+	await until(func(): return b.settled(), 600)
+	print("[squid] at ", sq.x, ",", sq.y, " soldier ", s.x, ",", s.y, " beam ", sq.beam, " ", b.beam_path(sq, 0.0 if sq.beam == null else sq.beam))
+	check(s.hp < hp0, "the ray hits the soldier on the line (hp %d -> %d)" % [hp0, s.hp])
+	var hp1 := sq.hp
+	b.damage(sq, sq.pod, s)
+	check(sq.weight == "" and sq.hp == hp1, "the pod soaks damage first, then breaks")
+	await until(func(): return b.settled(), 600)
+	check(not sq.air and sq.hp < hp1, "the squid drops and takes crash damage (hp %d -> %d)" % [hp1, sq.hp])
+	# --- Blinker: marks a rune behind you; anything on the rune telefrags it
+	s = alien_field(b, x0 + 60)
+	var bl := spawn_alien(b, "blinker", x0 + 240)
+	await b.enemy_act(bl)
+	check(bl.rune != null and bl.rune.x < s.x, "a Blinker marks a rune behind the soldier")
+	await frames_wait(10)
+	await shot("alien_blinker_mark")
+	hp0 = s.hp
+	await b.enemy_act(bl)
+	await until(func(): return b.settled(), 600)
+	check(s.hp < hp0 and absf(bl.x - (s.x)) < 120, "it blinks onto the rune and claws (hp %d -> %d)" % [hp0, s.hp])
+	s = alien_field(b, x0 + 60)
+	var bl2 := spawn_alien(b, "blinker", x0 + 240)
+	await b.enemy_act(bl2)
+	var r: Vector2 = bl2.rune
+	var crate := b.mk_unit()
+	crate.team = "neutral"; crate.kind = "crate"; crate.x = r.x; crate.y = r.y; crate.w = 14; crate.h = 14
+	b.units.append(crate)
+	s.x += 70; s.y = b.T.stand_y(s.x, 0)
+	await b.enemy_act(bl2)
+	await until(func(): return b.settled(), 600)
+	await shot("alien_blinker_telefrag")
+	check(bl2.dead, "a crate on the rune telefrags the Blinker (hp %d)" % bl2.hp)
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.
@@ -1247,7 +1368,6 @@ func bot(mission: int, max_rounds: int, fresh := true) -> bool:
 		Run.new_run()
 	var b: Battle = main.start_battle(mission)
 	b.autopick = 0
-	b.debug = true
 	b.speed = 8.0
 	var res := {"done": false, "won": false, "line": ""}
 	b.mission_over.connect(func(w):

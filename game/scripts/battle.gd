@@ -131,6 +131,7 @@ func setup(idx: int, custom := {}) -> void:
 		units.append(u)
 		i += 1
 	var pi := randi() % Data.POW_NAMES.size()
+	var foot := 0  # plain rifleman and bomber slots seen so far (cast_foot)
 	for sp in T.spawns:
 		var type: String = sp[0]
 		var x: float = sp[1]
@@ -150,6 +151,9 @@ func setup(idx: int, custom := {}) -> void:
 			u.pow_name = Data.POW_NAMES[pi % Data.POW_NAMES.size()]; pi += 1
 			stats.pows_total += 1
 			units.append(u); continue
+		if type == "grunt" or type == "nade":
+			type = cast_foot(foot)
+			foot += 1
 		var E: Dictionary = Data.ETYPES[type]
 		var y = T.stand_y(x, 0) if (opt.has("hold") or opt.has("top")) and not opt.has("inside") else T.stand_y(x, T.ground_at(x) - 40)
 		if opt.has("up"):
@@ -162,6 +166,12 @@ func setup(idx: int, custom := {}) -> void:
 		elif randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
 			make_elite(u, Data.ELITES.keys()[randi() % Data.ELITES.size()])
 		units.append(u)
+		place_alien(u)
+		for k in range(1, E.get("pack", 1)):
+			var px := x + k * 18.0
+			var mate := mk_enemy(type, px, T.stand_y(px, (y if y != null else 0.0) - 40))
+			mate.hold = u.hold
+			units.append(mate)
 	spawn_map_loot()
 	sel = null
 	for u in units:
@@ -382,8 +392,30 @@ func mk_enemy(type: String, x: float, y) -> Unit:
 	u.w = E.w; u.h = E.h
 	u.hp = int(round(E.hp * mission.hp_mul * (1.2 if Run.threat_on(4) else 1.0))); u.max_hp = u.hp; u.face = -1
 	u.heavy = E.get("heavy", false); u.shield = E.get("shield", false)
+	u.weight = E.get("weight", "")
+	u.pod = int(round(E.get("pod", 0) * mission.hp_mul))
 	u.sheet = "en_" + type if Art.meta.has("en_" + type) else ""
 	return u
+
+const ALIENS := ["skitter", "squid", "blinker"]
+
+func cast_foot(n: int) -> String:
+	## Who fills the nth plain rifleman or bomber slot. The Jackals' pact with the Vharr goes bad over
+	## a run: level 1 keeps its riflemen with every fourth slot a Vharr advisor, later levels and the
+	## finale give every slot to the Vharr. Bombers are gone either way.
+	var tier := 2 if mission.get("finale", false) else mission_idx
+	if tier == 0:
+		return "grunt" if n % 4 != 3 else ALIENS[(n / 4) % ALIENS.size()]
+	return ALIENS[n % ALIENS.size()]
+
+func place_alien(u: Unit) -> void:
+	## A hovering alien starts at its altitude instead of on the floor.
+	if u.weight == "hover" and u.y != null:
+		u.y = hover_y(u, u.x, u.y)
+
+func kb(u: Unit) -> float:
+	## Knockback multiplier for a weight class: light aliens fly twice as far.
+	return 2.0 if u.weight == "light" else 1.0
 
 func _ready() -> void:
 	set_process_unhandled_input(true)
@@ -865,7 +897,7 @@ func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: boo
 		if not tg.dead and c.get("burn", false):
 			add_status(tg, "burn", 2, a)
 		if c.has("knock") and not tg.heavy and not tg.dead and not tg.is_prop():
-			tg.vx = signf(hh.dx if hh.dx != 0 else 1.0) * c.knock
+			tg.vx = signf(hh.dx if hh.dx != 0 else 1.0) * c.knock * kb(tg)
 			tg.vy = -3
 			tg.air = true
 			tg.walk = null
@@ -1084,6 +1116,19 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 				float_text(tg, "ARMOR", Color("9fb4c9"))
 		else:
 			amt = int(round(amt * 1.3))
+	if tg.pod > 0 and tg.weight == "hover":
+		var pb := mini(tg.pod, amt)
+		tg.pod -= pb
+		amt -= pb
+		sparks(tg.x, tg.y + 2, 4)
+		if tg.pod <= 0:
+			break_pod(tg)
+		else:
+			float_text(tg, "POD -%d" % pb, Color("c47bff"))
+		if amt <= 0:
+			tg.flash = 10
+			ui_dirty = true
+			return
 	if tg.armor > 0:
 		var ab := mini(tg.armor, amt)
 		tg.armor -= ab
@@ -1352,7 +1397,7 @@ func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> vo
 			dm = 0 if u.perk("blastproof") else maxi(1, int(round(dm * 0.4)))
 		if not u.heavy and not u.is_prop() and not u.immovable:
 			var ang := atan2(cy - y - 6, cx - x)
-			var k := (1 - d / r) * 6 + 2.5
+			var k := ((1 - d / r) * 6 + 2.5) * kb(u)
 			if u == owner and u.perk("kinetic"):
 				k *= 1.6
 				u.jumping = true
@@ -1977,7 +2022,7 @@ func _act_melee(u: Unit, idx: int, c: Dictionary, tg: Unit, sc: bool) -> void:
 		if c.get("mark", false):
 			add_status(v, "mark", 2, u)
 		if not v.heavy and not v.dead and not v.is_prop() and not v.immovable:
-			v.vx = u.face * c.knock; v.vy = -3.5; v.air = true; v.walk = null; v.bumped = null; v.last_hit_by = u
+			v.vx = u.face * c.knock * kb(v); v.vy = -3.5; v.air = true; v.walk = null; v.bumped = null; v.last_hit_by = u
 	if c.has("selfheal"):
 		u.hp = mini(u.max_hp, u.hp + c.selfheal)
 		float_text(u, "+%d HP" % c.selfheal, Color("62d26f"))
@@ -2307,6 +2352,8 @@ func start_detour(id: String) -> void:
 	ui_dirty = true
 
 func detour_enemy(type: String, x: float, mod: String) -> Unit:
+	if type == "nade":
+		type = "grunt"  # the Bomber is retired
 	var u := mk_enemy(type, x, T.stand_y(x, 0))
 	u.detour = true
 	if mod != "":
@@ -2852,6 +2899,13 @@ func intent_of(e: Unit) -> String:
 	if not e.active:
 		return "IDLE"
 	var m := 1.0 + alert * 0.06
+	match e.type:
+		"skitter":
+			return ("POUNCE %d" % d.dmg) if e.pounce != null else "SCRAMBLE"
+		"squid":
+			return ("RAY %d" % int(round(d.dmg * m))) if e.beam != null else "GLIDE AND AIM"
+		"blinker":
+			return ("BLINK, CLAW %d" % int(round(d.dmg * m))) if e.rune != null else "MARK A RUNE"
 	var rng := func(a): return "%d-%d" % [int(round(a[0] * m)), int(round(a[1] * m))]
 	if d.get("sapper", false):
 		return "PLANT CHARGE"
@@ -3030,7 +3084,7 @@ func enemy_phase() -> void:
 	if calls and not boss_dead:
 		var n := 1 + alert / 4
 		for i in n:
-			var type: String = pick(["grunt", "grunt", "nade", "shield", "sapper"])
+			var type: String = pick(["grunt", "grunt", "shield", "sapper"] if mission_idx == 0 else ["skitter", "blinker", "shield", "sapper"])
 			var e := mk_enemy(type, cam_x + W - 60 - randf() * 240, -30.0 - i * 40)
 			e.active = true; e.heavy = false; e.air = true; e.para = true
 			units.append(e)
@@ -3183,7 +3237,7 @@ func enemy_advance(e: Unit, tx: float, budget: float, stop = null) -> void:
 					top = hh
 					break
 			hh += 4
-		if top != null and top <= 64:
+		if top != null and top <= (140 if E.get("climb", false) else 64):
 			e.face = dir
 			e.vx = 0
 			e.vault = {"y": e.y - top - 3, "vx": dir * 1.8}
@@ -3278,6 +3332,16 @@ func enemy_act(e: Unit) -> void:
 	if e.type == "boss":
 		await boss_act(e)
 		return
+	match e.type:
+		"skitter":
+			await skitter_act(e)
+			return
+		"squid":
+			await squid_act(e)
+			return
+		"blinker":
+			await blinker_act(e)
+			return
 	if E.get("sapper", false):
 		var tg = nearest_squad(e)
 		if absf(tg.x - e.x) > 60:
@@ -3379,6 +3443,258 @@ func enemy_act(e: Unit) -> void:
 		if near.size():
 			float_text(e, "GRENADE!", Color("ff7a3d"))
 			await lob(e, near[0], 7, 28, 1.3)
+
+# ---------------------------------------------------------------- Vharr aliens
+# Each alien acts on what it marked last enemy phase (a pounce reticle, a ray line, a rune), then
+# marks its next move, so the player always sees the threat a full turn ahead. Nothing here rolls dice.
+func hover_y(u: Unit, x: float, y: float) -> float:
+	## Where a hovering alien floats over x: its altitude above the floor below (or the water),
+	## lower when a ceiling is in the way.
+	var fl = T.stand_y(x, y - 2)
+	var floor_y: float = WATER_Y if fl == null else minf(fl, WATER_Y)
+	var hy: float = floor_y - Data.ETYPES[u.type].get("alt", 110)
+	var cy := floor_y - 4
+	while cy > hy - u.h:
+		if T.solid(x, cy):
+			return minf(floor_y, cy + u.h + 4)
+		cy -= CELL
+	return hy
+
+func hover_physics(u: Unit) -> void:
+	## Hovering: knockback pushes it sideways and it eases back to altitude; no gravity, no fall damage.
+	if absf(u.vx) > 0.05:
+		var nx := u.x + u.vx
+		if T.solid(nx, u.y - u.h * 0.5) or T.solid(nx, u.y - 4):
+			var imp := absf(u.vx)
+			if imp > 4:
+				collision_dmg(u, (imp - 4) * 2.5, "SLAM")
+			u.vx *= -0.25
+		else:
+			u.x = clampf(nx, 4, world_w - 4)
+		u.vx *= 0.9
+		if not u.dead and Vector2(u.vx, 0).length() >= 3:
+			body_collisions(u)
+	if u.dead or u.weight != "hover":
+		return
+	var ty := hover_y(u, u.x, u.y)
+	var ny := u.y + clampf((ty - u.y) * 0.15, -3.0, 3.0)
+	if not T.solid(u.x, ny - u.h) and not T.solid(u.x, ny):
+		u.y = ny
+	u.air = absf(u.vx) > 0.3 or absf(ty - u.y) > 1.5
+	if not u.air:
+		u.vx = 0
+		u.vy = 0
+		u.bumped = null
+
+func break_pod(u: Unit) -> void:
+	## The saucer pod is shot out: the squid drops, takes crash damage on landing, and crawls from now on.
+	u.weight = ""
+	u.pod = 0
+	u.crash = true
+	u.air = true
+	u.vy = 0.0
+	u.walk = null
+	float_text(u, "POD DOWN!", Color("c47bff"), true)
+	Sfx.play("thud")
+	for i in 6:
+		part({"x": u.x + (i - 3) * 4, "y": u.y + 2, "vx": (i - 3) * 0.6, "vy": -1.5, "life": 40, "max": 40, "c": Color("9df25c"), "s": 2.0, "g": 0.12})
+
+func hover_move(e: Unit, tx: float, budget: float) -> void:
+	## Glide toward tx at altitude, over gaps and water, until a wall is in the way.
+	if e.has_st("supp"):
+		budget *= 0.5
+	var pts: Array = []
+	var x := e.x
+	var y: float = e.y
+	var dir := signf(tx - x)
+	for i in int(minf(absf(tx - x), budget) / 2.0):
+		var nx := x + dir * 2
+		var ny := y + clampf(hover_y(e, nx, y) - y, -3.0, 3.0)
+		if T.solid(nx, ny - e.h * 0.5) or T.solid(nx, ny - 4) or T.solid(nx, ny - e.h + 2):
+			break
+		x = nx
+		y = ny
+		pts.append([x, y, false])
+	await walk_along(e, pts)
+
+func leap_to(e: Unit, p: Vector2) -> void:
+	## A fixed hop that always lands on the marked spot (the same arc the grapple zip uses).
+	e.face = 1 if p.x >= e.x else -1
+	e.walk = null
+	e.air = true
+	e.zip = {"x0": e.x, "y0": e.y, "x1": p.x, "y1": p.y, "t": 0.0}
+	await until(func(): return e.zip == null or e.dead)
+
+func skitter_act(e: Unit) -> void:
+	var E: Dictionary = Data.ETYPES.skitter
+	if e.pounce != null:
+		var p: Vector2 = e.pounce
+		e.pounce = null
+		Sfx.play("toss")
+		await leap_to(e, p)
+		if e.dead:
+			return
+		for o in units:
+			if o == e or o.dead or o.gone or o.sunk or o.type == "skitter" or (o.team != "squad" and o.team != "enemy"):
+				continue
+			if absf(o.x - e.x) < 20 + o.w / 2.0 and absf(o.y - e.y) < 30:
+				Sfx.play("slash")
+				fx.append({"kind": "slash", "x": o.x, "y": o.y - o.h / 2.0, "t": 0, "dur": 10, "sc": 1.0, "face": e.face})
+				damage(o, E.dmg, e, {})
+	else:
+		var tg = nearest_squad(e)
+		if tg != null and absf(tg.x - e.x) > E.leap * 0.8:
+			await enemy_advance(e, tg.x + (E.leap * 0.6 if tg.x < e.x else -E.leap * 0.6), E.speed)
+	if e.dead or e.air:
+		return
+	var t2 = nearest_squad(e)
+	if t2 != null and Vector2(t2.x - e.x, t2.y - e.y).length() <= E.leap:
+		e.pounce = Vector2(t2.x, t2.y)
+		e.face = 1 if t2.x >= e.x else -1
+		float_text(e, "POUNCE!", Color("c47bff"))
+
+func beam_path(e: Unit, ang: float) -> Dictionary:
+	## The squid ray: a straight line that passes through one wall up to 28px thick.
+	## Returns {end: Vector2, hits: [Unit]}; everything on the line is hit, Jackals included.
+	var E: Dictionary = Data.ETYPES.squid
+	var o := e.center()
+	var dv := Vector2(cos(ang), sin(ang))
+	var walls := 0
+	var thick := 0.0
+	var hits: Array = []
+	var d := 8.0
+	while d < E.range:
+		var p := o + dv * d
+		if p.y > WATER_Y or p.y < -40:
+			break
+		if T.solid(p.x, p.y):
+			thick += 3
+			if walls >= 1 or thick > 28:
+				return {"end": p, "hits": hits}
+		elif thick > 0:
+			walls += 1
+			thick = 0
+		for u in units:
+			if u == e or u.dead or u.gone or u.sunk or u.is_pickup() or u.kind == "pow" or hits.has(u):
+				continue
+			if absf(u.x - p.x) < u.w / 2.0 + 1 and p.y > u.y - u.h and p.y < u.y + 1:
+				hits.append(u)
+		d += 3
+	return {"end": o + dv * E.range, "hits": hits}
+
+func fire_beam(e: Unit, ang: float) -> void:
+	var E: Dictionary = Data.ETYPES.squid
+	var bp := beam_path(e, ang)
+	if debug:
+		print("[beam] from ", e.center(), " to ", bp.end, " hits ", bp.hits.map(func(h): return h.team + ":" + h.type))
+	var o := e.center()
+	e.face = 1 if cos(ang) >= 0 else -1
+	Sfx.play("snipe")
+	e.muzzle = 4
+	for k in 3:
+		tracers.append({"x1": o.x, "y1": o.y + k - 1, "x2": bp.end.x, "y2": bp.end.y + k - 1, "c": Color("c47bff") if k != 1 else Color("9df25c"), "t": 14})
+	sparks(bp.end.x, bp.end.y, 5)
+	for u in bp.hits:
+		damage(u, int(round(E.dmg * (1 + alert * 0.06))), e, {})
+	await wait(14)
+
+func squid_act(e: Unit) -> void:
+	var E: Dictionary = Data.ETYPES.squid
+	if e.beam != null:
+		var a: float = e.beam
+		e.beam = null
+		await fire_beam(e, a)
+		if e.dead:
+			return
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	var want: float = tg.x + (E.prefer if e.x >= tg.x else -E.prefer)
+	if absf(want - e.x) > 20 and not e.hold:
+		if e.weight == "hover":
+			await hover_move(e, want, E.speed)
+		else:
+			await enemy_advance(e, want, E.speed * 0.5)
+	if e.dead or e.air:
+		return
+	tg = nearest_squad(e)
+	if tg != null and dist(e, tg) <= E.range:
+		var c := e.center()
+		e.beam = atan2(tg.y - tg.h / 2.0 - c.y, tg.x - c.x)
+		e.face = 1 if tg.x >= e.x else -1
+		float_text(e, "LOCKING ON", Color("c47bff"))
+
+func rune_spot(e: Unit, tg: Unit):
+	## Where the Blinker marks its rune: right behind the soldier (the side away from the Blinker), else in front.
+	var dir := -1.0 if e.x >= tg.x else 1.0
+	for off in [-30.0, 30.0, -60.0, 60.0]:
+		var x: float = tg.x + off * -dir
+		var y = T.stand_y(x, tg.y - 40)
+		if y != null and y < WATER_Y - 4 and absf(y - tg.y) < 40:
+			return Vector2(x, y)
+	return null
+
+func blink(e: Unit, r: Vector2) -> void:
+	## Teleport onto the rune. Anything already standing there telefrags the Blinker.
+	var occ = null
+	for o in units:
+		if o == e or o.dead or o.gone or o.sunk or o.is_pickup() or o.kind == "pow":
+			continue
+		if absf(o.x - r.x) < (o.w + e.w) / 2.0 - 2 and o.y > r.y - e.h and o.y - o.h < r.y:
+			occ = o
+			break
+	for i in 8:
+		part({"x": e.x, "y": e.y - i * 4, "vx": 0.0, "vy": -1.0, "life": 24, "max": 24, "c": Color("c47bff"), "s": 3.0, "g": 0.0})
+	Sfx.play("power")
+	e.x = r.x
+	e.y = r.y
+	e.air = false
+	e.vx = 0
+	e.vy = 0
+	for i in 8:
+		part({"x": e.x + (i - 4) * 3, "y": e.y - 16, "vx": (i - 4) * 0.5, "vy": -0.5, "life": 24, "max": 24, "c": Color("9df25c"), "s": 3.0, "g": 0.0})
+	if occ != null:
+		var credit = occ if occ.team == "squad" else (occ.last_hit_by if occ.last_hit_by is Unit and occ.last_hit_by.team == "squad" else null)
+		float_text(e, "TELEFRAG!", Color("9df25c"), true)
+		shake += 4
+		damage(occ, 4, e, {})
+		if not occ.heavy and not occ.is_prop() and not occ.dead:
+			occ.vx = (1 if occ.x >= r.x else -1) * 4.0 * kb(occ)
+			occ.vy = -4
+			occ.air = true
+			occ.walk = null
+			occ.last_hit_by = e
+		damage(e, e.max_hp, credit, {})
+	await wait(12)
+
+func blinker_act(e: Unit) -> void:
+	var E: Dictionary = Data.ETYPES.blinker
+	if e.rune != null:
+		var r: Vector2 = e.rune
+		e.rune = null
+		await blink(e, r)
+		if e.dead:
+			return
+		var tt = null
+		for s in squad_alive():
+			if absf(s.x - e.x) <= 34 and absf(s.y - e.y) <= 30:
+				tt = s
+				break
+		if tt != null:
+			e.face = 1 if tt.x >= e.x else -1
+			e.pose = "throw"; e.pose_t = 16
+			Sfx.play("slash")
+			fx.append({"kind": "slash", "x": tt.x, "y": tt.y - tt.h / 2.0, "t": 0, "dur": 12, "sc": 1.4, "face": e.face})
+			await wait(8)
+			damage(tt, int(round(E.dmg * (1 + alert * 0.06))), e, {})
+			if not tt.dead and not tt.immovable:
+				tt.vx = e.face * E.knock * kb(tt); tt.vy = -3.5; tt.air = true; tt.walk = null; tt.bumped = null; tt.last_hit_by = e
+			await until(settled)
+	var tg = nearest_squad(e)
+	if tg != null and not e.dead:
+		e.rune = rune_spot(e, tg)
+		if e.rune != null:
+			float_text(e, "RUNE MARKED", Color("c47bff"))
 
 func boss_act(bo: Unit) -> void:
 	if bo.x > cam_x + W - 170:
@@ -3727,7 +4043,7 @@ func body_collisions(u: Unit) -> void:
 			shake += 3
 			if not o.heavy and not o.is_prop() and not o.immovable:
 				var dir := signf(u.vx) if u.vx != 0 else 1.0
-				o.vx = dir * 8 if u.rushing else u.vx * 0.9
+				o.vx = (dir * 8 if u.rushing else u.vx * 0.9) * kb(o)
 				o.vy = -5 if u.rushing else minf(o.vy, -3)
 				o.air = true
 				o.walk = null
@@ -3745,6 +4061,9 @@ func body_collisions(u: Unit) -> void:
 
 func physics(u: Unit) -> void:
 	if u.walk != null or (u.kind == "pow" and u.freed):
+		return
+	if u.weight == "hover" and not u.dead:
+		hover_physics(u)
 		return
 	if not u.air:
 		if not T.solid(u.x, u.y):
@@ -3793,6 +4112,9 @@ func physics(u: Unit) -> void:
 			u.air = false
 			u.vx = 0
 			u.vy = 0
+			if u.crash:
+				u.crash = false
+				collision_dmg(u, 5, "CRASH")
 			if u.para:
 				u.para = false
 			elif imp > 6.5 and not u.rushing and not u.jumping and not u.leaping:

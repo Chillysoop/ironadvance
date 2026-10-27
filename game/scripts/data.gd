@@ -554,6 +554,11 @@ const ETYPES := {
 	"engineer": {"name": "Jackal Engineer", "hp": 12, "dmg": [2, 3], "range": 360, "speed": 80, "prefer": 320, "builds": true, "score": 150, "w": 16, "h": 34, "note": "Builds concrete walls for the Jackal line."},
 	"sapper": {"name": "Jackal Sapper", "hp": 11, "speed": 150, "sapper": true, "score": 175, "w": 16, "h": 34, "note": "Runs in and plants a charge that blows next turn. Shoot the charge to defuse it."},
 	"mortarcrew": {"name": "Mortar Crew", "hp": 18, "arc": true, "heavyArc": true, "dmg": 12, "radius": 46, "range": 900, "speed": 0, "score": 250, "w": 18, "h": 34, "note": "Shells your cover from long range. Sits still. Something is hanging over it."},
+	# Vharr aliens. Every power is marked on the field a turn ahead (see Battle.draw intents), and
+	# "weight" sets how physics moves them: light flies twice as far, hover holds altitude on a pod.
+	"skitter": {"name": "Skitter", "faction": "vharr", "weight": "light", "hp": 6, "dmg": 4, "leap": 240, "speed": 140, "climb": true, "pack": 3, "score": 60, "w": 16, "h": 14, "note": "Comes in packs. Scrambles up walls, then pounces on the marked spot. Light: flies twice as far when knocked."},
+	"squid": {"name": "Squid Trooper", "faction": "vharr", "weight": "hover", "hp": 8, "pod": 8, "dmg": 4, "range": 520, "speed": 110, "prefer": 300, "alt": 110, "score": 150, "w": 18, "h": 30, "note": "Hovers on a saucer pod. Its ray fires along the marked line and goes through one thin wall. Break the pod and it drops."},
+	"blinker": {"name": "Blinker", "faction": "vharr", "hp": 10, "dmg": 7, "knock": 4.5, "speed": 60, "score": 175, "w": 16, "h": 34, "note": "Teleports onto its rune and claws whoever is next to it. Anything standing on the rune when it blinks telefrags it."},
 	"boss": {"name": "IRON BOAR", "hp": 150, "dmg": [3, 4], "shots": 4, "range": 660, "heavy": true, "score": 3000, "w": 120, "h": 64, "note": "Armored tank: shrugs off 60% of damage until its armor cracks. Crushing debris cracks it at once."},
 }
 
@@ -813,7 +818,7 @@ func stat_line(c: Dictionary) -> String:
 	if c.get("smoke", false) or c.get("gas", false):
 		return "RADIUS %d  %d RNDS" % [int(c.srad), c.sturns]
 	if c.get("beacon", false):
-		return "%d BOMBS  DMG 15" % c.bombs
+		return "%d BOMBS  DMG 15" % c.get("bombs", 3)
 	if c.get("overwatch", false):
 		return "%d SHOT%s" % [c.ow, "S" if c.ow > 1 else ""]
 	if c.has("armor"):

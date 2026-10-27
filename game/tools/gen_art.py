@@ -1634,6 +1634,113 @@ def ui():
             d.point((3, 3), fill=U['W']); d.point((3, 4), fill=U['W'])
         im.save(os.path.join(OUT, 'ui', n + '.png'))
 
+
+# ---------------------------------------------------------------- Vharr aliens
+# Violet skin, ooze-green glow and pale bone, so they never read as Jackals at a glance.
+VHARR = {'a': '#b06ae0', 'A': '#7d3cb0', 'd': '#4a1f6e', 'o': '#9df25c', 'O': '#5fbf2a', 'n': '#e8dcc2', 'N': '#b8aa8c'}
+
+SKITTER = {
+    'body': [
+        "....nnnnnn......",
+        "..nnNNNNNNnn....",
+        ".nNaaaaaaaaNn...",
+        "nNaaAAaaAAaaaoo.",
+        "NaaaaaaaaaaaaoOd",
+        ".dAAAAAAAAAAAAd.",
+    ],
+    'legs0': ["..d..d...d..d...", ".d..d...d..d....", "d..d...d..d....."],
+    'legs1': ["..d..d...d..d...", "...d..d...d..d..", "....d..d...d..d."],
+    'pounce': ["dd...d..d...dd..", "................", "................"],
+}
+BLINKER = [
+    "....aaaa....",
+    "...aaaaAa...",
+    "...aaaaoo...",
+    "...aaaaaa...",
+    "....dAAd....",
+    "...nnnnnn...",
+    "..aAnNNnAa..",
+    ".aA.aAAa.Aa.",
+    ".a..aAAa..a.",
+    "a...aAAa...a",
+    "o...dAAd...o",
+    ".....AA.....",
+    "....a..a....",
+    "....a..a....",
+    "...a....a...",
+    "...a....a...",
+    "..dd....dd..",
+]
+BLINKER_RUN = ["....a..a....", "...a...a....", "..a.....a...", ".dd.....a...", "........dd..", "............"]
+SQUID = [
+    "....aaaaaa....",
+    "..aaaaaaaaaa..",
+    ".aaAaaaaaaaaa.",
+    ".aAAaaaaaaoOa.",
+    "aaAAaaaaaaooaa",
+    "aAAAAaaaaaaaaa",
+    ".dAAAAAAAAAAd.",
+    "..d.a.a.a.a.dk",
+    ".a..a.a.a..akk",
+    "a..a..a..a..a.",
+]
+SQUID_WIGGLE = [".a..a..a..a.d.", "..a..a.a..a..a", ".a.a...a.a..a."]
+
+def alien_sheet(name, F):
+    """Writes a gunless 24x24 sheet like the brute's, from anim -> [image]; missing anims reuse idle."""
+    pal = palette(VHARR)
+    for a in ANIMS:
+        F.setdefault(a, F['idle'])
+    cols = max(len(v) for v in F.values())
+    rows = len(ANIMS)
+    sheet = Image.new('RGBA', (cols * FW, rows * 2 * FH), (0, 0, 0, 0))
+    meta = {'frame': [FW, FH], 'anchor': [12, 24], 'anims': {}, 'flash_row_offset': rows}
+    for r, a in enumerate(ANIMS):
+        fr = [outline(im) for im in F[a]]
+        meta['anims'][a] = {'row': r, 'n': len(fr), 'shoulder': [[12, 12]] * len(fr), 'gun': [False] * len(fr)}
+        for c, im in enumerate(fr):
+            sheet.paste(im, (c * FW, r * FH))
+            sheet.paste(flash_white(im), (c * FW, (r + rows) * FH))
+    sheet.save(os.path.join(OUT, 'sprites', name + '.png'))
+    return meta
+
+def alien_frames():
+    pal = palette(VHARR)
+    def frame(parts):
+        img = Image.new('RGBA', (FW, FH), (0, 0, 0, 0))
+        for rows, ox, oy in parts:
+            stamp(img, rows, ox, oy, pal)
+        return img
+    def dying(base):
+        return [settle(base.rotate(a, resample=Image.NEAREST, center=(12, 18))) for a in (30, 60, 90, 120, 180)]
+    meta = {}
+    # skitter: a low crab-bug, 7 px tall
+    sk = lambda legs, dy=0: frame([(SKITTER['body'], 4, 15 + dy), (SKITTER[legs], 4, 21 + dy)])
+    meta['en_skitter'] = alien_sheet('en_skitter', {
+        'idle': [sk('legs0'), sk('legs0'), sk('legs1'), sk('legs1')],
+        'run': [sk('legs0'), sk('legs1', -1), sk('legs0'), sk('legs1', -1)],
+        'jump': [sk('pounce', -1), sk('pounce')],
+        'hurt': [sk('legs1')],
+        'die': dying(sk('legs1')),
+    })
+    # blinker: tall and thin, glowing claws
+    bl = lambda legs=None, dy=0: frame([(BLINKER if legs is None else BLINKER[:11] + legs, 6, 7 + dy)])
+    meta['en_blinker'] = alien_sheet('en_blinker', {
+        'idle': [bl(), bl(), bl(dy=1), bl(dy=1)],
+        'run': [bl(BLINKER_RUN), bl(), bl(BLINKER_RUN, 1), bl()],
+        'jump': [bl(BLINKER_RUN)],
+        'throw': [bl(), bl(dy=1)],
+        'die': dying(bl()),
+    })
+    # squid trooper: a Mars-People dome with a little ray gun; the saucer pod is drawn in game under it
+    sq = lambda wig=None, dy=0: frame([(SQUID if wig is None else SQUID[:9] + [wig], 5, 14 + dy)])
+    meta['en_squid'] = alien_sheet('en_squid', {
+        'idle': [sq(), sq(SQUID_WIGGLE[0]), sq(SQUID_WIGGLE[1], -1), sq(SQUID_WIGGLE[2], -1)],
+        'run': [sq(SQUID_WIGGLE[0]), sq(SQUID_WIGGLE[1]), sq(SQUID_WIGGLE[2]), sq()],
+        'die': dying(sq(SQUID_WIGGLE[2])),
+    })
+    return meta
+
 def main():
     os.makedirs(os.path.join(OUT, 'sprites'), exist_ok=True)
     os.makedirs(os.path.join(OUT, 'bg'), exist_ok=True)
@@ -1648,6 +1755,7 @@ def main():
         g = CHAR_STYLE[key]['gun']
         meta['en_' + key] = write_sheet('en_' + key, fr, gun_image(g, pal))
     meta['en_brute'] = brute_frames()
+    meta.update(alien_frames())
     pow_frames()
     boss_sheet()
     props()
