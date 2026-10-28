@@ -84,6 +84,11 @@ func set_state(snap: Dictionary) -> void:
 	if snap.has("_squad"):
 		soldiers = snap._squad.filter(func(i): return i >= 0).map(func(i): return roster[i])
 
+func tips_on() -> bool:
+	## New-player tips (battle coach, faction intros, HQ welcome). DON'T SHOW AGAIN turns them all off;
+	## the test harness never sees them.
+	return not meta.get("tips_off", false) and not OS.get_cmdline_user_args().has("--iatest")
+
 func save_meta() -> void:
 	var m := meta
 	if campaign():

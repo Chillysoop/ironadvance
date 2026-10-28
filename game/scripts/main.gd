@@ -48,7 +48,9 @@ func show_title() -> void:
 	Run.leave_campaign()
 	var s := Screen.new()
 	s.mode = "title"
-	s.buttons = [["CAMPAIGN", func(): show_slots()], ["QUICK RUN", func(): start_run()]]
+	# N4: each mode says what it is
+	s.buttons = [["CAMPAIGN", func(): show_slots(), "5 ACTS  COMPANY OF %d  SAVED" % Data.COMPANY_MAX],
+		["QUICK RUN", func(): start_run(), "%d LEVELS AND A FINALE" % Data.LEVELS.size()]]
 	var tmax := mini(int(Run.meta.threat_max), Data.THREATS.size())
 	if tmax > 0:
 		# W5: every campaign win opens the next threat level
@@ -327,12 +329,16 @@ class Screen extends Control:
 		var total := 0.0
 		for i in n:
 			var bw := maxf(250.0 if i == 0 or (mode in ["dial", "title"] and i < 2) else 140.0, Art.text_width(buttons[i][0], 16) + 40)
+			if buttons[i].size() > 2:
+				bw = maxf(bw, Art.text_width(buttons[i][2], 8) + 24)
 			widths.append(bw)
 			total += bw + (10 if i > 0 else 0)
 		var x := 480 - total / 2
 		for i in n:
 			var bt = load("res://scripts/hud.gd").PixButton.new()
 			bt.text = buttons[i][0]
+			if buttons[i].size() > 2:
+				bt.sub = buttons[i][2]
 			var nd := Run.dial.size()
 			bt.color = Color("ff4d3d") if i == 0 or (mode == "dial" and i < nd) or (mode == "title" and i == 1) else Color("9aa2ae")
 			bt.size = Vector2(widths[i], 40)
@@ -463,7 +469,7 @@ class Screen extends Control:
 		var ver := FileAccess.get_file_as_string("res://version.txt").strip_edges()
 		Art.text(self, "BUILD " + (ver if ver != "" else "DEV"), Vector2(950, 530), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)
 		if t % 60 < 40:
-			Art.text(self, "3 MISSIONS  4 SOLDIERS  1 IRON BOAR TOO MANY", Vector2(480, 528), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "4 SOLDIERS  1 IRON BOAR TOO MANY", Vector2(480, 528), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 	func draw_brief() -> void:
 		var m: Dictionary = Run.current_mission()
 		var head := "FINALE" if m.get("finale", false) else ("LEVEL %d OF %d" % [Run.mission + 1, Data.LEVELS.size()] if m.has("biome") else "MISSION %d" % (Run.mission + 1))
@@ -594,7 +600,10 @@ class Screen extends Control:
 			if unlock != "":
 				Art.text(self, "ARMORY UNLOCK: " + unlock.to_upper(), Vector2(480, 152), 8, Color("b48cff"), HORIZONTAL_ALIGNMENT_CENTER)
 		elif mode == "lost":
-			Art.text(self, "THE JACKALS HOLD THE LINE. REGROUP AND GO AGAIN.", Vector2(480, 124), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+			# N3: what ended it, and what the next run keeps
+			var why := "SQUAD WIPED. LAST DOWN: %s." % stats.last_down if stats.has("last_down") else "SQUAD WIPED."
+			Art.text(self, why, Vector2(480, 124), 8, Color("ff9a80"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "THIS RUN IS OVER. SALVAGE, BIO-PARTS, HQ UPGRADES AND UNLOCKS CARRY TO THE NEXT ONE.", Vector2(480, 140), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 		var rows := [["SCORE", str(stats.get("score", 0))], ["KILLS", str(stats.get("kills", 0))], ["CRUSHES", str(stats.get("crushes", 0))], ["POWS FREED", str(stats.get("pows", 0))], ["PUSHES", str(stats.get("pushes", 0))], ["ROUNDS", str(stats.get("rounds", 0))], ["SCRIP EARNED", str(stats.get("scrip", 0))]]
 		if int(stats.get("salvage", 0)) > 0:
 			rows.append(["SALVAGE FOR HQ", str(stats.salvage)])

@@ -20,6 +20,8 @@ var tags: Array = []
 var deck_view: Control = null
 var deck_open := false    # the DECK viewer is up (it waits on nothing, so Esc may close it)
 var hand_x0 := 270.0      # left edge of the hand, so the action meter can sit beside it
+var coach_queue: Array = []  # N1/N5: [who, title, text] pages waiting for a quiet player turn
+var coach_box: Control = null
 var targeting := false    # a card is armed: the hand ghosts out so it doesn't hide what you aim at
 
 const INK := Color(0.05, 0.035, 0.03)
@@ -108,6 +110,10 @@ func setup(battle: Battle) -> void:
 	modal.mouse_filter = Control.MOUSE_FILTER_STOP
 	modal.visible = false
 	root.add_child(modal)
+	coach_box = Control.new()
+	coach_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	coach_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(coach_box)
 	for i in 5:
 		var tg := Tag.new()
 		tg.hud = self
@@ -184,6 +190,10 @@ func refresh() -> void:
 func _process(_d: float) -> void:
 	if b == null:
 		return
+	if coach_queue.size() and coach_box.get_child_count() == 0 and b.state == "player" and not b.busy and not modal.visible and not deck_open:
+		var cb := Coach.new()
+		cb.hud = self
+		coach_box.add_child(cb)
 	# While a card is armed the hand sinks and fades, and over a unit it lets the click through,
 	# so a Jackal lying behind the cards can still be aimed at and hit.
 	targeting = b.card_idx >= 0 and b.state == "player"
@@ -571,6 +581,66 @@ class Tag extends Control:
 			draw_rect(Rect2(x0 + 36, 22, roundf(bw * f), 1), Color("53d4e2"))
 		else:
 			Art.text(self, "DOWN" if u.downed else "KIA", Vector2(x0 + 36, 21), 8, Color("ffb23e") if u.downed else Color("ff4d3d"))
+
+class Coach extends Control:
+	## N1/N5: new-player tips in the Quartermaster's box style. NEXT pages through the queue;
+	## SKIP drops the rest; DON'T SHOW AGAIN turns every tip off for good.
+	var hud
+	func _ready() -> void:
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		var x := 560.0
+		for bb in [["NEXT", 0], ["SKIP", 1], ["DON'T SHOW AGAIN", 2]]:
+			var bt := PixButton.new()
+			bt.text = bb[0]
+			bt.color = Color("ffd23a") if bb[1] == 0 else Color("9aa2ae")
+			bt.size = Vector2(Art.text_width(bb[0], 8) + 30, 22)
+			bt.position = Vector2(x, 118)
+			x += bt.size.x + 8
+			var k: int = bb[1]
+			bt.pressed.connect(func(): press(k))
+			add_child(bt)
+	func press(k: int) -> void:
+		Sfx.play("click")
+		if k == 2:
+			Run.meta["tips_off"] = true
+			Run.save_meta()
+		if k == 0 and hud.coach_queue.size() > 1:
+			hud.coach_queue.pop_front()
+			return
+		hud.coach_queue.clear()
+		queue_free()
+	func _gui_input(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed:
+			accept_event()
+			if ev.button_index == MOUSE_BUTTON_LEFT:
+				press(0)
+	func _input(ev: InputEvent) -> void:
+		# keys page the tips too, and never reach the battle underneath
+		if ev is InputEventKey and ev.pressed and not ev.echo:
+			if ev.keycode in [KEY_SPACE, KEY_ENTER, KEY_KP_ENTER]:
+				press(0)
+			elif ev.keycode == KEY_ESCAPE:
+				press(1)
+			get_viewport().set_input_as_handled()
+	func _process(_d: float) -> void:
+		queue_redraw()
+	func _draw() -> void:
+		if hud.coach_queue.is_empty():
+			return
+		var pg: Array = hud.coach_queue[0]
+		draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.35))
+		var r := Rect2(24, 34, 912, 112)
+		draw_rect(r, Color(0.05, 0.035, 0.03, 0.96))
+		draw_rect(r, Color("ffd23a"), false, 2.0)
+		draw_rect(Rect2(36, 46, 60, 60), Color("2e3a24"))
+		Art.text(self, pg[0], Vector2(66, 82), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+		var more: int = hud.coach_queue.size() - 1
+		Art.text(self, pg[1] + ("   %d MORE" % more if more > 0 else ""), Vector2(110, 56), 8, Color("ffd23a"))
+		var y := 78.0
+		for ln in CardView.wrap_text(pg[2], 800, 16):
+			Art.text(self, ln, Vector2(110, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+			y += 16
 
 class ModalBG extends Control:
 	var title := ""

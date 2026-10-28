@@ -577,6 +577,8 @@ func begin() -> void:
 		banner(mission.get("banner", "MISSION %d START!" % (mission_idx + 1)), Color("ffb23e"), mission.name)
 	if breach:
 		log_msg("BREACH: the Vharr and the Jackals are fighting each other. Each shoots whoever is nearest, so let them.")
+	if hud != null and Run.tips_on() and Run.history.is_empty() and not practice():
+		hud.coach_queue.append_array(COACH)
 	activate_enemies()
 	await wait(60)
 	if state == "title":
@@ -1530,6 +1532,18 @@ func grant_overdrive(u: Unit) -> void:
 	log_msg("%s unlocked %s. It's in their hand." % [u.def.name, Data.CARDS[key].name])
 	ui_dirty = true
 
+func who_did(tg: Unit, src) -> String:
+	## N3: a plain name for whatever downed a soldier, for the mission-failed screen.
+	if src is Unit and src.team == "enemy":
+		if src.type == "boss":
+			return "THE VHARR BOAR" if src.fl.get("vharr", false) else "THE IRON BOAR"
+		return "A " + str(Data.ETYPES[src.type].name).to_upper()
+	if src is Unit and src == tg:
+		return "THEIR OWN BLAST"
+	if src is Unit and src.team == "squad":
+		return "FRIENDLY FIRE (%s)" % src.def.name.to_upper()
+	return "A FALL OR DEBRIS"
+
 func kill(tg: Unit, src) -> void:
 	if tg.dead:
 		return
@@ -1716,6 +1730,7 @@ func kill(tg: Unit, src) -> void:
 				booms.append({"t": 10 + i * 14, "x": tg.x + (randf() - .5) * 90, "y": tg.y - 20 - randf() * 40, "r": 34.0, "dmg": 0, "owner": null})
 	elif tg.team == "squad":
 		stats.kia += 1
+		stats["last_down"] = "%s, BY %s" % [tg.def.name.to_upper(), who_did(tg, src)]
 		if tg.s.tags > 0 or mission.get("patrol", false):
 			# a dog tag buys their life: out until the next camp, or back next mission.
 			# A campaign patrol (M5) never costs a life: an empty-tagged soldier is only knocked out.
@@ -3602,6 +3617,7 @@ func activate_enemies() -> void:
 			continue
 		if e.x < cam_x + W + 40 or (e.fl.get("hunt", false) and e.x < cam_x + W + 700):
 			e.active = true
+			meet(e)
 			if e.fl.get("lead", false):
 				banner("YOU ARE BEING HUNTED", Color("c47bff"), "AN ELITE %s IS STALKING THE SQUAD" % Data.ETYPES[e.type].name.to_upper())
 				Sfx.play("alarm")
@@ -3634,6 +3650,35 @@ func activate_enemies() -> void:
 					banner("WARNING!!", Color("ff4d3d"), "IRON BOAR APPROACHING")
 					log_msg("The IRON BOAR rolls in. Something heavy is hanging over it...")
 				Sfx.play("alarm")
+
+# ---------------------------------------------------------------- N1/N5: new-player tips
+const COACH := [
+	["1/5", "YOUR TURN", "Each soldier has 3 ENERGY a turn. Cards cost energy (the yellow number). Click a card, aim with the mouse, click to fire. Right-click cancels."],
+	["2/5", "MOVING", "Click the ground to walk the selected soldier. The MOVE gauge beside the hand shows how far they can still go. Click a soldier or their plate to switch."],
+	["3/5", "NEXT AND END TURN", "NEXT (SPACE) jumps to the next soldier who can still act. END TURN (ENTER) ends the round for the whole squad; it asks twice while someone can still act."],
+	["4/5", "THE ENEMY TURN", "After you end the turn, every enemy moves and then shoots. The ALERT bar up top climbs while you stall, and a full bar calls in airstrikes. Push right: ending a turn in the PUSH ZONE scrolls on and cuts the alert."],
+	["5/5", "PHYSICS HURTS", "Blasts throw bodies around. Falls, slams and crushing debris do damage, to your squad too. Hold ALT any time for each soldier's energy and movement."],
+]
+const INTROS := {
+	"jackal": ["JKL", "THE JACKALS", "Mercenaries holding the gate worlds: riflemen, grenadiers, gun nests and radiomen who call in paratroopers. Knock them off ledges or bring the scenery down on them."],
+	"vharr": ["VHR", "THE VHARR", "Aliens coming through the gates. They don't fight like the Jackals: some hover, some burrow. Where both factions are on the map they shoot each other too, so let them."],
+	"boar": ["BOAR", "THE IRON BOAR", "The Jackals' war machine. Bullets barely scratch it until its armor plate cracks, and crushing cracks it: drop towers, crates or debris on it, then shoot."],
+}
+
+func meet(e: Unit) -> void:
+	## N5: the first time a faction (or the Boar) shows up, the coach introduces it once, for good.
+	if hud == null or not Run.tips_on():
+		return
+	var key := "boar" if e.type == "boss" else faction(e)
+	if not INTROS.has(key):
+		return
+	var met: Array = Run.meta.get("met", [])
+	if met.has(key):
+		return
+	met.append(key)
+	Run.meta["met"] = met
+	Run.save_meta()
+	hud.coach_queue.append(INTROS[key])
 
 # ---------------------------------------------------------------- rewards & level-ups
 func ask(kind: String, title: String, sub: String, opts: Array, who = null) -> int:
