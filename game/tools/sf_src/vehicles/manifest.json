@@ -1,0 +1,266 @@
+[
+ {
+  "op": "style",
+  "prompt": "A small light tank, side view facing right: khaki hull with a dark track belt and road wheels, a small round turret with a forward cannon, a hatch on top. Chunky black outline and palette like the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_shield_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_mg_f0.png"
+  ],
+  "size": 32,
+  "outputs": [
+   "tank_0.png",
+   "tank_1.png",
+   "tank_2.png",
+   "tank_3.png",
+   "tank_4.png",
+   "tank_5.png",
+   "tank_6.png",
+   "tank_7.png",
+   "tank_8.png"
+  ],
+  "asset_ids": [
+   "8c579232-3584-4b4b-b398-dcbc317ab2f6",
+   "f42f270a-3811-4b71-b114-efd87c1d8caf",
+   "5c4a81a2-10e7-417e-ad8a-b902c7751918",
+   "5a770164-9cad-4f93-961a-5c42547fb8dd",
+   "9789cdd6-36d5-46b0-9a90-a22fdc52abef",
+   "ad3f4615-2038-47b0-b94b-f555ec22073d",
+   "a3884da2-336f-4e57-8f46-8190cc8ea0cb",
+   "c6afa3e2-204a-4e3d-8142-dea0a9454c9d",
+   "ba8da1a9-47fc-41cd-8151-349717b5c22f"
+  ],
+  "picked": "none (too big for the seat heights); options not kept"
+ },
+ {
+  "op": "style",
+  "prompt": "A small military motorbike, side view facing right, khaki frame, two black wheels with grey hubs, handlebars, a seat, no rider. Chunky black outline and palette like the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_shield_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_mg_f0.png"
+  ],
+  "size": 32,
+  "outputs": [
+   "bike_0.png",
+   "bike_1.png",
+   "bike_2.png",
+   "bike_3.png",
+   "bike_4.png",
+   "bike_5.png",
+   "bike_6.png",
+   "bike_7.png",
+   "bike_8.png"
+  ],
+  "asset_ids": [
+   "6a6ee46a-d338-41ba-a232-2bd5db086a12",
+   "6fb2569e-688e-430e-952a-809417ef4d53",
+   "abbe370f-be4a-4b84-8c10-4f6fb0d8bec0",
+   "de9a80ad-a926-4192-9ee3-e0e39a600613",
+   "b6603acf-6b3f-40ea-a02a-0196473174f3",
+   "8668a08a-9387-4382-9c7e-88997c9d0921",
+   "3f646bb8-98b7-40c8-a1dd-3a98b04acaf2",
+   "e9a15a40-a511-4980-9280-9eaa9ff93490",
+   "455caaea-df87-4385-8382-0f9b8b7642ad"
+  ],
+  "picked": "none (too big for the seat heights); options not kept"
+ },
+ {
+  "op": "style",
+  "prompt": "The armored cockpit hull of a small two-legged military walker mech, side view facing right, khaki armor plates with rivets, a round blue glass viewport at the front, a short machine gun barrel under the nose, open top where the pilot sits. Only the hull: NO legs (they are drawn separately). Chunky black outline like the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_shield_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_mg_f0.png"
+  ],
+  "size": 32,
+  "outputs": [
+   "walker_0.png",
+   "walker_1.png",
+   "walker_2.png",
+   "walker_3.png",
+   "walker_4.png",
+   "walker_5.png",
+   "walker_6.png",
+   "walker_7.png",
+   "walker_8.png"
+  ],
+  "asset_ids": [
+   "a9ff63d2-ae69-4166-8b6a-c92a240f8863",
+   "0456cf98-9018-49c6-9108-36b73f682f09",
+   "b9ccc98f-64b4-4751-9c21-282c5f9e821a",
+   "1ed7c1f4-7473-4047-a64e-f356b49a8419",
+   "b1a99f9c-27f4-4f00-bf3b-ddc15aec6eba",
+   "e14bdee1-893d-4724-955a-e5c687ccf7fe",
+   "5498c825-6157-4dde-a568-8f0d218d3814",
+   "cd93d672-7f26-451c-aab1-bcdda0e35f06",
+   "0bbba947-638e-4f34-a277-ab44d1249b10"
+  ],
+  "picked": "none (a pilot is baked into the cockpit); options not kept"
+ },
+ {
+  "op": "style",
+  "prompt": "A small light tank, side view facing right: khaki hull with a dark track belt and road wheels, a small round turret with a forward cannon, an open hatch on top, no crew visible. Chunky black outline and palette like the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_shield_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_mg_f0.png"
+  ],
+  "size": 24,
+  "outputs": [
+   "tank_0.png",
+   "tank_1.png",
+   "tank_2.png",
+   "tank_3.png",
+   "tank_4.png",
+   "tank_5.png",
+   "tank_6.png",
+   "tank_7.png",
+   "tank_8.png"
+  ],
+  "asset_ids": [
+   "2b48747a-5330-4a13-b418-13327c6054e6",
+   "7267038a-c24c-42d4-945c-e205d936af17",
+   "ee859df6-ab9f-4f50-a1d1-411d30d10f0c",
+   "7d8a40b1-9283-44ce-9d51-5fb407dae3f6",
+   "d2f5a5f8-a63c-479f-920c-561073ede43f",
+   "aaef9e80-c018-4403-b4f6-93f8d350a692",
+   "18623615-0989-4984-b954-895303105b0b",
+   "07931662-cdb6-436a-a956-01912a4774a0",
+   "3f937a45-d97f-4944-b6a9-a79fb45bd04c"
+  ],
+  "picked": "none (too big for the seat heights); options not kept"
+ },
+ {
+  "op": "style",
+  "prompt": "The armored cockpit hull of a small two-legged military walker mech, side view facing right: khaki riveted armor, a round blue glass viewport at the front, a short gun barrel under the nose. The cockpit is EMPTY with an open top (no pilot, no person). Only the hull: NO legs. Chunky black outline like the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_shield_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_mg_f0.png"
+  ],
+  "size": 24,
+  "outputs": [
+   "walker_0.png",
+   "walker_1.png",
+   "walker_2.png",
+   "walker_3.png",
+   "walker_4.png",
+   "walker_5.png",
+   "walker_6.png",
+   "walker_7.png",
+   "walker_8.png"
+  ],
+  "asset_ids": [
+   "f3b9218f-7f41-4f49-af7e-154e4537db39",
+   "5fb1e042-ecec-4488-bfeb-9e325a32806b",
+   "804c382f-9bc8-45da-a977-22ba50f74325",
+   "dc0197eb-1fae-49b5-9797-e24ae7bf798b",
+   "f0c2ef32-ffc5-4585-81f5-7b768157de48",
+   "b6e0d293-1fbf-4a8a-9c02-4f0a74f3e679",
+   "7221035e-937f-41ab-8968-3e830cd041fe",
+   "d8a25d11-742a-4823-a6d1-807919db53c1",
+   "ab259370-80f0-4859-9236-492910b07880"
+  ],
+  "picked": "walker_1 -> walker.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A small military motorbike, side view facing right, khaki frame, two black wheels with grey hubs, handlebars, a seat, no rider. Chunky black outline and palette like the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_shield_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_mg_f0.png"
+  ],
+  "size": 24,
+  "outputs": [
+   "bike_0.png",
+   "bike_1.png",
+   "bike_2.png",
+   "bike_3.png",
+   "bike_4.png",
+   "bike_5.png",
+   "bike_6.png",
+   "bike_7.png",
+   "bike_8.png"
+  ],
+  "asset_ids": [
+   "5567f792-ca37-45ca-a955-85ac5bb4b82b",
+   "cd3b688f-daa7-46b1-9455-d2556ff4a53b",
+   "c1a02917-d759-4f8f-890a-4965bbe7d3b7",
+   "7ab728bf-bd80-4545-bd77-81d8e2c1c50c",
+   "4764bb08-9af8-4f25-a0e9-a3d18e4f2339",
+   "14aea681-4028-4511-b3fc-ac4cd54be225",
+   "f6429236-4628-4b78-8a78-62bdf4e9b52a",
+   "3b97205e-8c30-4773-8571-e9baa0e4dfb0",
+   "908f60a6-76a1-4198-bbfb-66bd6fdbc1fc"
+  ],
+  "picked": "none (too big for the seat heights); options not kept"
+ },
+ {
+  "op": "style",
+  "prompt": "A small military motorbike, side view facing right, khaki frame, two black wheels with grey hubs, handlebars, a seat, no rider. Chunky black outline and palette like the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_shield_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_mg_f0.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "bikesm_0.png",
+   "bikesm_1.png",
+   "bikesm_2.png",
+   "bikesm_3.png",
+   "bikesm_4.png",
+   "bikesm_5.png",
+   "bikesm_6.png",
+   "bikesm_7.png",
+   "bikesm_8.png"
+  ],
+  "asset_ids": [
+   "ebe46662-68a0-4f13-8729-3744aeab39bf",
+   "e0b687c1-0a59-4f04-a6c8-4615cce3cd51",
+   "610b451d-8ae9-46e9-bdb8-0a92757d6016",
+   "245dc5ad-e8dd-4c29-8111-cfd285326701",
+   "c9ef8e1f-5cd2-4c47-afc8-dd2e087a4636",
+   "fc07c9b1-a7f1-4d89-a147-6f5057c10450",
+   "edb7dabb-431f-4ad0-8b78-27df1a59b858",
+   "40d720a8-7f53-4a2a-befd-e005c5303fde",
+   "78fb4c15-6444-4777-b0d5-df674888e53c"
+  ],
+  "picked": "bikesm_4 -> bike.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A LOW, wide light tank hull seen from the side, facing right: khaki armor over a dark track belt with road wheels, a cannon mounted on the hull front, and an open commander ring on top (no turret, no crew). Wide and flat: about twice as wide as tall. Chunky black outline and palette like the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_shield_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_mg_f0.png"
+  ],
+  "size": 24,
+  "outputs": [
+   "tanklow_0.png",
+   "tanklow_1.png",
+   "tanklow_2.png",
+   "tanklow_3.png",
+   "tanklow_4.png",
+   "tanklow_5.png",
+   "tanklow_6.png",
+   "tanklow_7.png",
+   "tanklow_8.png"
+  ],
+  "asset_ids": [
+   "e93bd2a4-ba13-4122-b889-46d33c881de6",
+   "52d3e094-97f8-4af6-a443-3e744c37c561",
+   "87addf88-a47b-454e-853d-124aee27b19e",
+   "fe7378f9-ae6a-4b04-9373-5f1bd6772fc7",
+   "73c0776e-8f5f-4973-8611-063711ce2df3",
+   "781c28f5-c670-4282-98aa-d1c4a88feac1",
+   "96d314ec-4259-4320-a577-b1b3e4b5ca1d",
+   "25978bcd-0622-4740-8789-6f5b8bd546df",
+   "e51e75cc-c68c-4903-977f-74f58e6e4a63"
+  ],
+  "picked": "tanklow_2 -> tank.png"
+ }
+]

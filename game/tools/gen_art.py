@@ -660,6 +660,30 @@ def sf_char(name):
                 for ang, up in ((8, 0), (30, 5), (62, 4), (90, 0), (96, 2), (90, 0))]
     return F
 
+def sf_vehicles():
+    """Walker hull, bike and tank from Sprite Fusion (tools/sf_src/vehicles). Each gets a Jackal khaki
+    version, an olive one for squad drivers and a white hit flash; world_view draws them in place of
+    the old rectangles (walker legs stay procedural so they can stride)."""
+    import colorsys
+    for k in ('walker', 'bike', 'tank'):
+        im = sf_clean([Image.open(os.path.join(SF_SRC, 'vehicles', k + '.png')).convert('RGBA')], 16)[0]
+        im = im.crop(im.getbbox())
+        im.save(os.path.join(OUT, 'sprites', 'veh_%s.png' % k))
+        flash_white(im).save(os.path.join(OUT, 'sprites', 'veh_%s_w.png' % k))
+        sq = im.copy()
+        px = sq.load()
+        for y in range(sq.height):
+            for x in range(sq.width):
+                r, g, b, a = px[x, y]
+                if not a or (r, g, b, a) == OUTLINE:
+                    continue
+                h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+                if 0.05 < h < 0.17 and s > 0.15:
+                    # khaki armour -> squad olive, same shading
+                    r2, g2, b2 = colorsys.hsv_to_rgb(0.2, min(1, s * 1.1), v * 0.8)
+                    px[x, y] = (int(r2 * 255), int(g2 * 255), int(b2 * 255), 255)
+        sq.save(os.path.join(OUT, 'sprites', 'veh_%s_sq.png' % k))
+
 # ---------------------------------------------------------------- big pieces: brute, POW, boss, MG nest
 def brute_frames():
     pal = palette(ENEMY_PAL['brute'])
@@ -2210,6 +2234,7 @@ def main():
     meta['en_gatetrooper'] = write_sheet('en_gatetrooper', sf_char('gatetrooper'), gun_image('ray', ray))
     # Shield Wall: a Sprite Fusion edit of the riot Jackal into heavy plate (tools/sf_src/wallshield)
     meta['en_wallshield'] = write_sheet('en_wallshield', sf_char('wallshield'), gun_image('pistol', palette(ENEMY_PAL['shield'])))
+    sf_vehicles()
     meta['en_brute'] = brute_frames()
     meta.update(alien_frames())
     pow_frames()

@@ -747,49 +747,26 @@ func draw_vehicle(type: String, pos: Vector2, face: int, white: bool, moving: bo
 	var c := Color.WHITE if white else col
 	var dk := c.darkened(0.4)
 	var ph := sin(b.t * 0.25) if moving else 0.0
-	match type:
-		"walker":
-			if not front:
-				for side in [-1.0, 1.0]:
-					var sw: float = ph * 4.0 * side
-					var hip: Vector2 = pos + Vector2(side * 7, -20)
-					var knee: Vector2 = pos + Vector2(side * 11 + sw * 0.5, -10)
-					var foot: Vector2 = pos + Vector2(side * 8 + sw, 0)
-					draw_line(hip, knee, C_DARK, 5.0)
-					draw_line(knee, foot, C_DARK, 5.0)
-					draw_line(hip, knee, dk, 3.0)
-					draw_line(knee, foot, dk, 3.0)
-					draw_rect(Rect2(foot.x - 5, foot.y - 3, 10, 3), C_DARK)
-				return
-			draw_rect(Rect2(pos.x - 15, pos.y - 31, 30, 15), C_DARK)
-			draw_rect(Rect2(pos.x - 14, pos.y - 30, 28, 13), c)
-			draw_rect(Rect2(pos.x - 14, pos.y - 21, 28, 4), dk)
-			draw_rect(Rect2(pos.x + (8 if f > 0 else -14), pos.y - 28, 6, 5), Color("9fd6ff") if not white else Color.WHITE)
-			draw_rect(Rect2(pos.x + (14 if f > 0 else -26), pos.y - 22, 12, 4), C_DARK)
-			draw_rect(Rect2(pos.x - 4, pos.y - 17, 8, 3), C_DARK)
-		"bike":
-			if not front:
-				draw_circle(pos + Vector2(-11 * f, -5), 5.5, C_DARK)
-				draw_circle(pos + Vector2(-11 * f, -5), 2.5, Color("6a6a6a"))
-				return
-			draw_line(pos + Vector2(-11 * f, -6), pos + Vector2(10 * f, -6), C_DARK, 4.0)
-			draw_line(pos + Vector2(-11 * f, -6), pos + Vector2(10 * f, -6), c, 2.0)
-			draw_rect(Rect2(pos.x - 7, pos.y - 11, 12, 5), c)
-			draw_line(pos + Vector2(10 * f, -6), pos + Vector2(7 * f, -16), C_DARK, 2.0)
-			draw_circle(pos + Vector2(11 * f, -5), 5.5, C_DARK)
-			draw_circle(pos + Vector2(11 * f, -5), 2.5, Color("6a6a6a"))
-		"tank":
-			if not front:
-				return
-			draw_rect(Rect2(pos.x - 11, pos.y - 25, 22, 9), C_DARK)
-			draw_rect(Rect2(pos.x - 10, pos.y - 24, 20, 7), c)
-			draw_rect(Rect2(pos.x + (10 if f > 0 else -30), pos.y - 23, 20, 4), C_DARK)
-			draw_rect(Rect2(pos.x - 22, pos.y - 18, 44, 11), C_DARK)
-			draw_rect(Rect2(pos.x - 21, pos.y - 17, 42, 9), c)
-			draw_rect(Rect2(pos.x - 21, pos.y - 11, 42, 3), dk)
-			draw_rect(Rect2(pos.x - 23, pos.y - 8, 46, 8), C_DARK)
-			for wx in [-16, -8, 0, 8, 16]:
-				draw_circle(pos + Vector2(wx + (ph * 2.0), -4), 2.5, Color("4a4a4a"))
+	if type != "walker" and not front:
+		return
+	if front:
+		# G5: the hulls are Sprite Fusion sprites (gen_art.py sf_vehicles); squad drivers get the olive one
+		var vt: Texture2D = Art.tex["veh_" + type + ("_w" if white else ("_sq" if col.g > col.r else ""))]
+		var sz := Vector2(vt.get_width(), vt.get_height()) * Art.PX
+		var base: float = {"walker": -14.0 + ph * 1.5, "bike": absf(ph) * -1.0, "tank": 0.0}[type]
+		draw_texture_rect(vt, Rect2(pos.x - sz.x / 2.0 * f, pos.y + base - sz.y, sz.x * f, sz.y), false)
+		return
+	# the walker's legs stay procedural so they can stride, drawn behind the driver
+	for side in [-1.0, 1.0]:
+		var sw: float = ph * 4.0 * side
+		var hip: Vector2 = pos + Vector2(side * 7, -20)
+		var knee: Vector2 = pos + Vector2(side * 11 + sw * 0.5, -10)
+		var foot: Vector2 = pos + Vector2(side * 8 + sw, 0)
+		draw_line(hip, knee, C_DARK, 5.0)
+		draw_line(knee, foot, C_DARK, 5.0)
+		draw_line(hip, knee, dk, 3.0)
+		draw_line(knee, foot, dk, 3.0)
+		draw_rect(Rect2(foot.x - 5, foot.y - 3, 10, 3), C_DARK)
 
 func draw_gunship(u: Unit, pos: Vector2, white: bool) -> void:
 	## E7: a Jackal attack helicopter. Its marked strafing strip is drawn on the ground under it.
