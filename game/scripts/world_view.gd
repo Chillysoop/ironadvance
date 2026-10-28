@@ -13,6 +13,7 @@ const C_OOZE := Color("9df25c")
 func _draw() -> void:
 	if b.T == null:
 		return
+	Art.big_heads = Run.toggle_on("bigheads")  # D3, for this draw only
 	var cx := b.cam_x
 	draw_ladders(cx)
 	draw_bridges()
@@ -34,6 +35,7 @@ func _draw() -> void:
 	draw_acids()
 	draw_wells()
 	draw_biome()
+	draw_crumble()
 	for u in b.units:
 		if u.dead:
 			draw_unit(u)
@@ -52,6 +54,7 @@ func _draw() -> void:
 	draw_fx()
 	for u in b.units:
 		draw_plate(u)
+	Art.big_heads = false
 	draw_targeting()
 	draw_texts()
 	draw_barks()
@@ -194,6 +197,9 @@ func draw_unit(u: Unit) -> void:
 			return
 		"cart":
 			draw_cart(u, pos, white)
+			return
+		"dealer":
+			draw_dealer(u, pos)
 			return
 		"crate":
 			draw_sprite("crate_w" if white else "crate", pos, Vector2(0.5, 1.0))
@@ -711,6 +717,9 @@ func draw_relay(u: Unit, pos: Vector2) -> void:
 
 func draw_sentry(u: Unit, pos: Vector2, white: bool) -> void:
 	## N2: a squat tripod turret in Bolt's orange, with its laser on whatever it will shoot.
+	if u.loot.get("trooper", false):
+		draw_trooper(u, pos, white)
+		return
 	var tg = b.sentry_target(u) if b.t % 6 == 0 or not u.fl.has("tg") else u.fl.tg
 	u.fl["tg"] = tg
 	if tg != null and not tg.dead:
@@ -889,7 +898,7 @@ func draw_wreck(u: Unit, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog", "ride", "hulk", "sticky", "cart"] or b.is_boss(u) or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog", "ride", "hulk", "sticky", "cart", "dealer"] or b.is_boss(u) or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -1645,6 +1654,10 @@ func draw_hover() -> void:
 		lines = ["MINE CART", "Hit it with anything and it rolls away from you.", "It runs over every Jackal in its path: 18 damage each."]
 	elif h.is_prop():
 		lines = ["FUEL BARREL", "Explodes when hit. Blast 44."]
+	elif h.kind == "sentry" and h.loot.get("trooper", false):
+		lines = ["FIRE TEAM  HP %d/%d" % [h.hp, h.max_hp], "Pinned down: walk within 140px to bring them in." if h.loot.get("pinned", false) else "Shoots the nearest enemy at the end of your turn.", "They head back to the lines at the next camp."]
+	elif h.kind == "dealer":
+		lines = ["ARMS DEALER", "Walk up to him to see his %d items and prices." % h.loot.stock.size()]
 	elif h.kind == "sentry":
 		lines = ["SENTRY GUN  HP %d/%d" % [h.hp, h.max_hp], "Shoots the nearest enemy along its laser", "at the end of your turn. Your shots pass it."]
 	elif h.kind == "sticky":
@@ -1771,3 +1784,49 @@ func draw_jet(x: float, gy: float) -> void:
 		draw_circle(Vector2(x + wx + 1, gy - 2), 2.5, C_DARK)
 	for k in 3:
 		draw_rect(Rect2(x - 52 - k * 10 - randf() * 6, gy - 13 + k, 8, 3), Color("ffd23a", 0.6 - k * 0.15))
+
+# ---------------------------------------------------------------- R2-R4 mid-level events
+func draw_trooper(u: Unit, pos: Vector2, white: bool) -> void:
+	## R2: a friendly rifleman, kneeling and waving while pinned, upright once he's with you
+	var pinned: bool = u.loot.get("pinned", false)
+	var anim := "run" if u.walk != null else "idle"
+	Art.draw_char(self, "sq_rook_beret", anim, (b.t / 6) % 8 if anim == "run" else (b.t / 12 + u.id) % 4, pos, u.face, white, 0, 1.0, u.gun_angle, true, 1.0, Color(0.78, 1.0, 0.78))
+	var trs: Array = b.troopers()
+	if pinned and trs.size() and trs[0] == u:
+		# one label over the pair, above the Jackals' name plates
+		var mid := pos + Vector2((trs[-1].x - u.x) / 2.0, 0)
+		Art.text(self, "FIRE TEAM PINNED DOWN", mid + Vector2(0, -64), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		if b.t % 40 < 20:
+			Art.text(self, "REACH US!", mid + Vector2(0, -76), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+	var w := 20.0
+	draw_rect(Rect2(pos.x - w / 2, pos.y - 36, w, 3), C_DARK)
+	draw_rect(Rect2(pos.x - w / 2 + 1, pos.y - 35, (w - 2) * u.hp / maxf(1, u.max_hp), 1), Color("62d26f"))
+
+func draw_dealer(u: Unit, pos: Vector2) -> void:
+	## R4: the arms dealer behind a stall of crates
+	Art.draw_char(self, "en_radio", "idle", (b.t / 14) % 4, pos, -1, false, 0, 1.0, 0, false, 1.0, Color(1.0, 0.9, 0.6))
+	draw_rect(Rect2(pos.x + 8, pos.y - 14, 26, 14), C_DARK)
+	draw_rect(Rect2(pos.x + 9, pos.y - 13, 24, 12), Color("8a6a3a"))
+	draw_rect(Rect2(pos.x + 9, pos.y - 8, 24, 1), Color("5a4220"))
+	var left: int = u.loot.stock.size()
+	Art.text(self, "ARMS DEALER" if left else "SOLD OUT", pos + Vector2(10, -44), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+	if left:
+		Art.text(self, "%d ITEMS  WALK UP TO TRADE" % left, pos + Vector2(10, -32), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+
+func draw_crumble() -> void:
+	## R3: what has fallen away, and the strip that goes next round
+	var c: Dictionary = b.crumble
+	if c.is_empty() or c.x >= c.x1:
+		return
+	var nx: float = minf(c.x1, c.x + Data.CRUMBLE_STEP)
+	if not on_screen((c.x + nx) / 2.0, 200):
+		return
+	var top := 60.0
+	var hatch := Color("ff4d3d", 0.22 if c.on else 0.1)
+	draw_rect(Rect2(c.x, top, nx - c.x, b.WATER_Y - top), hatch)
+	var y := top
+	while y < b.WATER_Y:
+		draw_line(Vector2(c.x, y), Vector2(minf(nx, c.x + 40), y + 40), Color("ff4d3d", 0.3), 2.0)
+		y += 24
+	draw_rect(Rect2(nx - 2, top, 3, b.WATER_Y - top), Color("ff4d3d"))
+	Art.text(self, "FALLS NEXT ROUND" if c.on else "COLLAPSE ZONE", Vector2((c.x + nx) / 2.0, top + 14), 8, Color("ff7a5a"), HORIZONTAL_ALIGNMENT_CENTER)

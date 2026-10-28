@@ -39,6 +39,7 @@ var burned: Array = []     # biomes skipped or already played this run; they nev
 var dial_levels := {}      # biome id -> the level it would build, rolled with the dial (Gate Control 3 shows it)
 var dial_rerolled := false # Gate Control 2: one reroll per HQ visit
 var sway_mul := 1.0        # the current biome's sway rule, read by Data.card during a battle
+var daily := ""            # D2: the date of today's Daily Op while one is running, else ""
 var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "bio": 0, "hq": {}, "implants": {}}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
 const META_PATH := "user://meta.json"
 # Campaign mode (B1): the campaign keeps its own HQ, Salvage, Bio-parts, implants and Memorial.
@@ -192,7 +193,16 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	# E7, E8: or a Jackal Gunship or a Di-Cokka tank in its place
 	var minis := ["jwalker", "dicokka"] if bm.rules.get("ceiling", false) else ["jwalker", "gunship", "dicokka"]
 	var miniboss: String = minis[randi() % minis.size()]
-	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "breach": breach, "encounter": enc, "boss": boss, "walker": walker, "miniboss": miniboss,
+	# R2-R4: one mid-level event, R5: three bounties, all on the briefing
+	# (their own dice, so adding them left every level's layout as it was)
+	var er := RandomNumberGenerator.new()
+	er.seed = hash([id, tier, seed_val, mission])
+	var event: String = Data.EVENTS.keys()[er.randi() % Data.EVENTS.size()]
+	var bpool: Array = Data.BOUNTIES.map(func(x): return x.id).filter(func(k): return k != "sniperfirst" or not bm.rules.get("aliens", false))
+	for i in range(bpool.size() - 1, 0, -1):
+		var j := er.randi() % (i + 1)
+		var t = bpool[i]; bpool[i] = bpool[j]; bpool[j] = t
+	return {"event": event, "bounties": bpool.slice(0, 3), "name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "breach": breach, "encounter": enc, "boss": boss, "walker": walker, "miniboss": miniboss,
 		"segments": ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")],
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
 
@@ -298,8 +308,87 @@ func new_run() -> void:
 	total_score = 0
 	uid = 1
 	seed_val = randi()
-	for k in draft():
+	for k in (daily_squad(daily) if daily != "" else draft()):
 		soldiers.append(make_soldier(class_def(k)))
+
+# ---------------------------------------------------------------- D2 Daily Op, D3 fun toggles
+func daily_key() -> String:
+	return Time.get_date_string_from_system()
+
+func daily_squad(key: String) -> Array:
+	## The same four classes for everyone on a given day, from every class in the game.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("ironadvance-squad-" + key)
+	var keys: Array = Data.SQUAD_DEFS.map(func(d): return d.key)
+	var out: Array = []
+	while out.size() < 4:
+		var k: String = keys[rng.randi() % keys.size()]
+		if not out.has(k):
+			out.append(k)
+	return out
+
+func start_daily() -> void:
+	## A fresh run on today's seed: same squad, same dials and maps for everyone today.
+	daily = daily_key()
+	seed(hash("ironadvance-" + daily))
+	new_run()
+
+func daily_best() -> int:
+	var d: Dictionary = meta.get("daily", {})
+	return int(d.get("score", 0)) if d.get("day", "") == daily_key() else 0
+
+func daily_over() -> void:
+	## Keep today's best score. Yesterday's is dropped: the op comes back fresh each day.
+	if daily == "":
+		return
+	if daily_best() < total_score or meta.get("daily", {}).get("day", "") != daily:
+		meta["daily"] = {"day": daily, "score": maxi(total_score, daily_best())}
+		save_meta()
+
+func toggle_ready(id: String) -> bool:
+	for tg in Data.TOGGLES:
+		if tg.id == id:
+			var fd: Array = Data.FEATS.filter(func(f): return f.id == tg.feat)
+			return fd.size() > 0 and int(meta.feats.get(tg.feat, 0)) >= int(fd[0].n)
+	return false
+
+func toggle_on(id: String) -> bool:
+	return toggle_ready(id) and meta.get("toggles", {}).get(id, false)
+
+func flip_toggle(id: String) -> void:
+	if not toggle_ready(id):
+		return
+	var t: Dictionary = meta.get("toggles", {})
+	t[id] = not t.get(id, false)
+	meta["toggles"] = t
+	save_meta()
+
+# ---------------------------------------------------------------- R5 bounty board
+func bounty(id: String) -> Dictionary:
+	return Data.BOUNTIES.filter(func(b): return b.id == id)[0]
+
+func bounty_done(id: String, st: Dictionary) -> bool:
+	match id:
+		"nofall": return int(st.get("falls", 0)) == 0
+		"nodown": return int(st.get("downs", 0)) == 0 and int(st.get("kia", 0)) == 0
+		"sniperfirst": return st.get("first_kill", "") == "jsniper"
+		"crush2": return int(st.get("crushes", 0)) >= 2
+		"pows": return int(st.get("pows", 0)) >= int(st.get("pows_total", 0))
+		"push3": return int(st.get("pushes", 0)) >= 3
+		"fast": return int(st.get("rounds", 99)) <= 18
+		"melee3": return int(st.get("melee_kills", 0)) >= 3
+	return false
+
+func pay_bounties(st: Dictionary) -> Array:
+	## The level's bounties, each [name, pay, done]; the done ones are paid in scrip now.
+	var out: Array = []
+	for id in level.get("bounties", []):
+		var bt := bounty(id)
+		var ok := bounty_done(id, st)
+		if ok:
+			scrip += int(bt.pay)
+		out.append([bt.name, int(bt.pay), ok])
+	return out
 
 # ---------------------------------------------------------------- X1/X2: the squad draft and specialists
 func squad_classes() -> Array:
