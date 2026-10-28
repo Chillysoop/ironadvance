@@ -412,7 +412,7 @@ func show_deck() -> void:
 	for c in modal.get_children():
 		c.queue_free()
 	var bg := ModalBG.new()
-	bg.title = "%s  LV%d  %s" % [u.def.name, u.s.lvl, u.def.cls.to_upper()]
+	bg.title = "%s  LV%d  %s" % [u.def.name, u.s.lvl, Run.title_of(u.s).to_upper()]
 	var perks: Array = u.s.perks.map(func(p): return Data.perk(u.def.key, p).name)
 	var arch: Array = Run.archetypes(u.s).map(func(a): return "%s %s" % [a[0], ["I", "II", "III"][a[1] - 1]])
 	bg.sub = "%s: %s   Abilities: %s%s" % [u.def.trait[0], u.def.trait[1], ", ".join(perks) if perks.size() else "none yet", ("   (" + ", ".join(arch) + ")") if arch.size() else ""]

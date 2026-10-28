@@ -510,16 +510,47 @@ const SHOP_PRICE := [45, 70, 100]
 const DOG_TAGS := 2        # going down spends a tag; going down with none left is KIA for good
 const RECRUIT_PRICE := 80
 const TAG_PRICE := 70
+const XTRAIN_PRICE := 60   # P3: Barracks cross-training
+
+func cross_ok(key: String) -> bool:
+	## Cards another class can learn: nothing that needs Rex, a vehicle or an Overdrive.
+	var c: Dictionary = CARDS[key]
+	return not c.get("od", false) and c.get("pool", true) and not c.has("dog") and not c.get("mech", false) and not key in ["whistle", "hounds", "guard", "supplyrun", "patchjob", "eject", "drill", "hop"]
+
+func cross_pool(cls: String) -> Array:
+	## Every other class's pool cards this class doesn't already have.
+	var own: Array = []
+	for d in SQUAD_DEFS:
+		if d.key == cls:
+			own = d.pool
+	var out: Array = []
+	for d in SQUAD_DEFS:
+		if d.key == cls:
+			continue
+		for k in d.pool:
+			if not own.has(k) and not out.has(k) and cross_ok(k):
+				out.append(k)
+	return out
 # F3: a Jackal who surrendered in a BREACH and was walked out signs up as a recruit with this trait
 const DEFECTOR_TRAIT := {"id": "defector", "name": "Defector", "text": "Ex-Jackal: knows their tricks. +3 max HP and +4 dodge."}
 const CALLSIGNS := ["BISHOP", "DUKE", "FLINT", "GUNNER", "HAWK", "JINX", "KNOX", "LUCKY", "MAVERICK", "NOVA",
 	"ONYX", "PATCH", "RAZOR", "SARGE", "SPUD", "TANK", "VIPER", "WREN", "YANK", "ZERO", "BLUE", "CROW", "DIESEL", "ROACH"]
 # Recruit traits: shown before you hire, never rolled after.
 const RECRUIT_TRAITS := [
-	{"id": "quick", "name": "Quick", "text": "+25 movement."},
-	{"id": "tough", "name": "Tough", "text": "+5 max HP."},
-	{"id": "slippery", "name": "Slippery", "text": "+6 dodge."},
+	{"id": "quick", "name": "Quick", "text": "+25 movement. Starts with a Dash.", "card": "dash"},
+	{"id": "tough", "name": "Tough", "text": "+5 max HP. Starts with Dig In.", "card": "digin"},
+	{"id": "slippery", "name": "Slippery", "text": "+6 dodge. Starts with a Combat Roll.", "card": "roll"},
 	{"id": "drilled", "name": "Drilled", "text": "Starts with one card upgraded."},
+	# P2 backgrounds: a small buff and one starting card each
+	{"id": "stuntman", "name": "Stuntman", "text": "Combat Roll costs 0. Starts with a Combat Roll.", "card": "roll"},
+	{"id": "miner", "name": "Miner", "text": "The Drill bores twice as far. Starts with a second Drill.", "card": "drill"},
+	{"id": "pilot", "name": "Pilot", "text": "Jet Boots carry 50% more fuel. Starts with a Jump Pack.", "card": "jumppack"},
+	{"id": "excop", "name": "Ex-Cop", "text": "+4 dodge. Starts with a Flashbang.", "card": "flashbang"},
+	{"id": "farmhand", "name": "Farmhand", "text": "+8 max HP. Starts with Sandbags.", "card": "sandbags"},
+	{"id": "lifeguard", "name": "Lifeguard", "text": "Never drowns: swims back to the nearest shore. Starts with a Smoke Can.", "card": "smoke"},
+	{"id": "boxer", "name": "Boxer", "text": "Melee cards deal +3. Starts with a Knife.", "card": "knife"},
+	{"id": "hunter", "name": "Hunter", "text": "Starts every mission with 25 adrenaline. Starts with a Tag Round.", "card": "tagshot"},
+	{"id": "corpsman", "name": "Corpsman", "text": "Heals 3 more. Starts with a Field Dressing.", "card": "medkit"},
 ]
 
 const SQUAD_DEFS := [
@@ -881,6 +912,68 @@ const BRANCHES := {
 			{"id": "wellsable", "name": "Gravity Gland", "text": "Gravity Grenade costs 0."}]},
 	],
 }
+# P1: taking a branch's capstone earns a prestige title, a gold pin on the headgear and a small
+# second trait (by the branch's place in the class: tough, fleet, slippery, seasoned).
+const PRESTIGE := {
+	"ricochet": "Trickshot Ace",
+	"headhunter": "Deadeye",
+	"sentinel": "Overwatch Master",
+	"gunslinger": "Pistolero",
+	"wallbanger": "Wall Breaker",
+	"juicer": "Adrenaline Junkie",
+	"ghost": "Phantom Medic",
+	"chemist": "Mad Chemist",
+	"surgeon": "Chief Surgeon",
+	"coordinator": "Field Coordinator",
+	"artillerist": "Master Gunner",
+	"rocketjumper": "Sky Demon",
+	"pyro": "Firestarter",
+	"wrecker": "Demolisher",
+	"sapper": "Master Sapper",
+	"bowler": "Human Cannonball",
+	"juggernaut": "Unstoppable",
+	"heavy": "Bullet Hose",
+	"breacher": "Door Kicker",
+	"wrestler": "Champion",
+	"turrettech": "Gun Wizard",
+	"fortifier": "Bunker King",
+	"bridgewright": "Master Builder",
+	"scrapper": "Junk King",
+	"packleader": "Alpha",
+	"retriever": "Fetch Master",
+	"guarddog": "Watchman",
+	"falconer": "Hawkeye",
+	"walkerbranch": "Mech Ace",
+	"tankslug": "Tank Ace",
+	"ejectartist": "Crash Test Pilot",
+	"mechanic": "Grease Wizard",
+	"trailblazer": "Pathfinder",
+	"spotterb": "Lamplighter",
+	"dronejockey": "Drone Ace",
+	"saboteur": "Ghost Saboteur",
+	"reflector": "Bulletproof Blade",
+	"shadow": "Night Shadow",
+	"wallrunner": "Free Runner",
+	"iaidoka": "Sword Saint",
+	"magnetist": "Magnet Queen",
+	"graviton": "Event Horizon",
+	"teslab": "Storm Caller",
+	"kinetic": "Force of Nature",
+	"observer": "Hammer of God",
+	"officer": "Colonel",
+	"quartermaster": "Supply Lord",
+	"signals": "Voice of Command",
+	"blinker": "Phase Walker",
+	"corroder": "Acid Queen",
+	"mindlinker": "Puppet Master",
+	"wardenb": "Hive Warden",
+}
+const PRESTIGE_TRAITS := [
+	{"name": "Battle-Hardened", "text": "+4 max HP.", "hp": 4},
+	{"name": "Fleet", "text": "+25 movement.", "move": 25},
+	{"name": "Ghosting", "text": "+5 dodge.", "dodge": 5},
+	{"name": "Old Hand", "text": "+4 max HP and +10 movement.", "hp": 4, "move": 10},
+]
 const PERK_TIER := ["MINOR", "MAJOR", "CAPSTONE"]
 
 # Legendary keystone items live in ITEMS (one per archetype). Anyone can wear one, which makes hybrids.

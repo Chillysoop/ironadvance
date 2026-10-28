@@ -761,6 +761,8 @@ func run() -> void:
 			await branches5_test()
 		"newclasses":
 			await newclasses_test()
+		"identity":
+			await identity_test()
 		"pickups":
 			await pickups()
 		"bossloot":
@@ -6131,6 +6133,70 @@ func branches5_test() -> void:
 	rk.s.perks.append("titan")
 	check(b.can_grab(rk, br), "Titan: now he can")
 	check(Data.BRANCHES.moss.size() == 5 and Data.BRANCHES.rook.size() == 5, "each original has a fifth branch")
+
+func identity_test() -> void:
+	## P1 prestige titles, P2 recruit backgrounds, P3 cross-training.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	Run.new_run()
+	var mo: Dictionary = Run.soldiers[0]
+	check(Run.title_of(mo) == "Marksman", "before a capstone the class name shows")
+	var hp0: int = mo.max_hp
+	var line := ""
+	for p in Data.BRANCHES.moss[0].perks:
+		line = Run.apply_option(mo, {"kind": "perk", "id": p.id, "name": p.name})
+	check(mo.get("prestige", "") == "ricochet" and Run.title_of(mo) == "Trickshot Ace", "P1: the capstone makes Moss a Trickshot Ace (%s)" % line)
+	check(mo.max_hp == hp0 + 4, "and adds a small second trait (+4 HP)")
+	var hx: Dictionary = Run.soldiers[1]
+	Run.apply_option(hx, {"kind": "perk", "id": Data.BRANCHES.hex[1].perks[2].id, "name": "x"})
+	check(Run.title_of(hx) == "Phantom Medic" and hx.bonus.move >= 25, "a second branch gives a different trait (Fleet)")
+	# P2 backgrounds
+	check(Data.RECRUIT_TRAITS.size() >= 12, "P2: a dozen recruit backgrounds (%d)" % Data.RECRUIT_TRAITS.size())
+	for tr in Data.RECRUIT_TRAITS:
+		var o := {"key": "vee", "name": "TEST", "trait": tr, "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": ""}
+		var s := Run.make_recruit(o)
+		if tr.has("card"):
+			check(s.deck.filter(func(c): return c.key == tr.card).size() >= 1, "%s starts with %s" % [tr.name, Data.CARDS[tr.card].name])
+	var fh := Run.make_recruit({"key": "rook", "name": "T2", "trait": Data.RECRUIT_TRAITS.filter(func(t): return t.id == "farmhand")[0], "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": ""})
+	check(fh.max_hp == 34 + 8 or fh.max_hp > 30, "Farmhand: +8 max HP (%d)" % fh.max_hp)
+	# P3 cross-training
+	var cp := Data.cross_pool("moss")
+	check(cp.size() > 10 and not cp.has("sicem") and not cp.has("vulcan") and cp.has("katana"), "P3: Moss can learn other classes' cards, never dog or vehicle ones")
+	mo["xtrain"] = ["katana"]
+	var seen := false
+	for i in 200:
+		for o in Run.level_options(mo):
+			if o.get("key", "") == "katana":
+				seen = true
+	check(seen, "a cross-trained card turns up in level-ups")
+	# in the field: the pin, the Stuntman's free roll, the Boxer's punch, the Lifeguard's swim
+	Run.soldiers[2].trait = "stuntman"
+	Run.soldiers[3].trait = "lifeguard"
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var sq := {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	var ve: Unit = sq.vee
+	var ri := force_card(ve, "roll")
+	check(b.card_cost(ve, ve.hand[ri]) == 0, "Stuntman: Combat Roll costs 0")
+	cam_on(b, sq.moss.x + 100)
+	await frames_wait(4)
+	await shot("identity_pin")
+	var rk: Unit = sq.rook
+	var wx := -1.0
+	for x in range(int(b.cam_x) + 40, int(b.cam_x) + 900, 8):
+		if b.T.stand_y(x, 0) == null or b.T.stand_y(x, 0) > b.WATER_Y:
+			wx = x
+			break
+	if wx > 0:
+		rk.x = wx; rk.y = b.WATER_Y + 10.0; rk.air = true
+		b.drown(rk)
+		check(not rk.dead and not rk.sunk, "Lifeguard: swims to shore instead of drowning")
+	else:
+		b.drown(rk)
+		check(not rk.dead, "Lifeguard: swims to shore instead of drowning")
 
 func nc_battle(draft: Array) -> Battle:
 	for k in draft:

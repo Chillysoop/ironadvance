@@ -623,7 +623,7 @@ func draw_left(me: Dictionary) -> void:
 	Art.text(self, me.def.name, Vector2(x, y), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 2)
 	Art.text(self, "LV%d" % me.lvl, Vector2(LEFT.end.x - 10, y), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
 	y += 14
-	Art.text(self, me.def.cls, Vector2(x, y), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+	Art.text(self, Run.title_of(me), Vector2(x, y), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 	if me.alive:
 		Art.draw_tags(self, Vector2(LEFT.end.x - 24, y - 10), me.tags)
 		y += 10
@@ -777,6 +777,15 @@ func draw_sheet(me: Dictionary) -> void:
 		head("RECRUIT", Vector2(x, y))
 		Art.text(self, "%s: %s" % [rt.name, rt.text], Vector2(x + 90, y + 1), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		y += 16
+	if me.has("prestige"):
+		var pt: Dictionary = Data.PRESTIGE_TRAITS[int(me.get("ptrait", 0))]
+		head("PRESTIGE", Vector2(x, y))
+		Art.text(self, "%s. %s: %s" % [Run.title_of(me), pt.name, pt.text], Vector2(x + 90, y + 1), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		y += 16
+	if me.get("xtrain", []).size():
+		head("CROSS", Vector2(x, y))
+		Art.text(self, "Cross-trained in %s." % ", ".join(me.xtrain.map(func(k): return Data.CARDS[k].name)), Vector2(x + 90, y + 1), 16, Color("53d4e2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		y += 16
 	if Run.campaign():
 		# C5: the service record instead of the bio
 		var sv := Run.svc(me)
@@ -899,7 +908,7 @@ func draw_squad() -> void:
 		var cost := 0.0
 		for c in me.deck:
 			cost += int(Data.card(c).cost)
-		Art.text(self, me.def.cls.to_upper(), Vector2(x, y + 12), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		Art.text(self, Run.title_of(me).to_upper(), Vector2(x, y + 12), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		Art.text(self, "AVG COST %.1f" % (cost / maxf(1.0, me.deck.size())), Vector2(r.end.x - 8, y + 12), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 0, true)
 		y += 30
 		var rows := deck_rows(me)

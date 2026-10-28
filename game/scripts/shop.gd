@@ -219,6 +219,9 @@ func build_barracks() -> void:
 		var n := Run.company().size()
 		tiles[0] = ["RECRUIT", rp, "Hire a new soldier into the company (%d of %d). Pick from %d recruits.%s" % [n, Data.COMPANY_MAX, 3 if Run.hq("barracks") >= 1 else 2, " They inherit %s's best cards." % Run.legacy_deck().name if not Run.legacy_deck().is_empty() else ""], recruit,
 			"The company is full." if not Run.company_room() else Services.short(rp), Run.company_room() and Run.scrip >= rp]
+	var xp := price(Data.XTRAIN_PRICE)
+	tiles.append(["CROSS-TRAIN", xp, "A soldier learns a card from another class: it joins their deck and turns up in their level-ups from now on.", cross_train,
+		Services.short(xp), Run.scrip >= xp])
 	if trainee.size():
 		tiles.append(["TRAINING", 0, "%s's free level from Barracks 2. Pick it like a level-up." % trainee[0].def.name, func(): train(trainee[0]), "", true])
 	for i in tiles.size():
@@ -231,7 +234,7 @@ func build_barracks() -> void:
 		tile.ok = sv[5]
 		tile.color = Color("62d26f")
 		tile.size = Vector2(300, 74)
-		tile.position = Vector2(24 + i * 312, 150)
+		tile.position = Vector2(24 + (i % 3) * 312, 150 + (i / 3) * 84)
 		tile.pressed.connect(sv[3])
 		add_child(tile)
 	# U3: change any soldier's headgear and kit colors, free
@@ -505,6 +508,31 @@ func enlist() -> void:
 		return
 	var s := Run.enlist(offers[i])
 	say("%s joins the company as a %s. Put them in the squad from the War Room." % [s.def.name, s.def.cls])
+	build()
+
+func cross_train() -> void:
+	## P3: one card from another class's pool, picked from three.
+	if Run.scrip < price(Data.XTRAIN_PRICE):
+		Sfx.play("deny")
+		return
+	var s := await choose_soldier("WHO CROSS-TRAINS?")
+	if s.is_empty():
+		return
+	var pool: Array = Data.cross_pool(s.key).filter(func(k): return not s.get("xtrain", []).has(k))
+	pool.shuffle()
+	var opts: Array = pool.slice(0, 3).map(func(k): return {"kind": "card", "key": k, "tier": Data.base_tier(k)})
+	if opts.is_empty():
+		say("%s has learned everything the others can teach." % s.def.name)
+		return
+	var i := await choose("%s LEARNS..." % s.def.name, opts, Vector2(132, 176))
+	if i < 0 or not pay(price(Data.XTRAIN_PRICE)):
+		return
+	var k: String = opts[i].key
+	s.deck.append(Run.new_card(k, -1, "level"))
+	if not s.has("xtrain"):
+		s["xtrain"] = []
+	s.xtrain.append(k)
+	say("%s cross-trained in %s. It can turn up in their level-ups now." % [s.def.name, Data.CARDS[k].name])
 	build()
 
 func train(s: Dictionary) -> void:

@@ -4016,6 +4016,8 @@ func card_cost(u: Unit, inst: Dictionary) -> int:
 		cost = maxi(0, cost - 1)
 	if inst.key == "stomp" and ks(u, "jumpjets"):
 		cost = 0
+	if inst.key == "roll" and u.s.get("trait", "") == "stuntman":
+		cost = 0
 	if inst.key == "patchjob" and u.perk("quickpatch"):
 		cost = maxi(0, cost - 1)
 	if inst.key == "mcannon" and u.def.key == "gears" and u.fl.get("cannoned", false) and not u.fl.has("broadside"):
@@ -4642,7 +4644,11 @@ func drill_len(u: Unit, c: Dictionary, p: Vector2) -> float:
 	## How far this drill goes: out to the cursor along the bore line, as far as movement allows.
 	var d := drill_dir(u, p)
 	var want := maxf(8.0, (p - Vector2(u.x, u.y - u.h / 2.0)).dot(d))
-	return minf(want, u.move_left + c.get("reach", 0))
+	return minf(want, u.move_left * drill_mul(u) + c.get("reach", 0))
+
+func drill_mul(u: Unit) -> float:
+	## P2 Miner: the Drill bores twice as far on the same movement.
+	return 2.0 if u.team == "squad" and u.s.get("trait", "") == "miner" else 1.0
 
 func drill_face(u: Unit, x: float, y: float, d: Vector2) -> bool:
 	## Is there terrain right in front of the drill bit at a body standing at (x, y)?
@@ -4738,7 +4744,7 @@ func _act_drill(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
 	await until(func(): return u.drill == null or u.dead)
 	u.drill = null
 	var used: float = budget - maxf(0.0, D.left)
-	u.move_left = maxf(0.0, u.move_left - maxf(0.0, used - reach))
+	u.move_left = maxf(0.0, u.move_left - maxf(0.0, used - reach) / drill_mul(u))
 	u.moved = true
 	stats["drilled"] = stats.get("drilled", 0) + int(used)
 	if not u.dead and not T.solid(u.x, u.y + 1):
@@ -4977,6 +4983,8 @@ func _act_melee(u: Unit, idx: int, c: Dictionary, tg: Unit, sc: bool) -> void:
 	var d := ri(c.dmg[0], c.dmg[1])
 	if sc:
 		d = int(round(d * 1.25))
+	if u.s.get("trait", "") == "boxer":
+		d += 3
 	if c.get("key", "") == "katana" and u.perk("backstab") and tg.face == int(signf(tg.x - u.x)):
 		d *= 2
 		float_text(tg, "BACKSTAB", Color("e0f4ff"), true)
@@ -5008,6 +5016,8 @@ func heal_amount(u: Unit, c: Dictionary) -> int:
 		h += 3
 	if u.perk("triage"):
 		h += 4
+	if u.s.get("trait", "") == "corpsman":
+		h += 3
 	return h + int(u.g("heal"))
 
 func _act_ally(u: Unit, idx: int, c: Dictionary, tg: Unit) -> void:
@@ -5901,6 +5911,10 @@ func apply_level_option(u: Unit, o: Dictionary) -> void:
 	elif o.kind == "perk":
 		if o.id == "secondwind":
 			u.second_wind = true
+		if u.s.get("prestige", "") != "" and Data.PRESTIGE.get(u.s.prestige, "") != "" and line.contains(" is now a "):
+			u.max_hp = Run.eff_max_hp(u.s)
+			u.dodge = u.def.dodge + u.s.bonus.dodge
+			banner("PRESTIGE!", Color("ffd23a"), "%s IS NOW A %s" % [u.def.name, Run.title_of(u.s).to_upper()])
 	log_msg(line)
 	Sfx.play("power")
 	ui_dirty = true
@@ -6457,6 +6471,9 @@ func start_player_turn() -> void:
 	var al0 := squad_alive()
 	if round_n == 1:
 		for s in al0:
+			if s.s.get("trait", "") == "hunter":
+				gain_adr(s, 25)
+		for s in al0:
 			if s.perk("motorpool"):
 				s.hand.append({"id": -3, "key": "slugcall", "tier": Data.OD_TIER, "temp": true})
 	if round_n == 1 and Run.campaign() and Run.hq("hangar") >= 1 and al0.size():
@@ -6512,6 +6529,8 @@ func full_move(s: Unit) -> float:
 func jet_fuel(u: Unit) -> int:
 	## Jet Boots fuel; a heavy weapon burns through it a third faster (so there is a third less).
 	var f := int(u.g("jet"))
+	if u.team == "squad" and u.s.get("trait", "") == "pilot":
+		f = int(round(f * 1.5))
 	return int(round(f * 0.67)) if u.g("heavy") > 0 else f
 
 func sidearm_key(s: Unit) -> String:
@@ -9003,11 +9022,28 @@ func physics(u: Unit) -> void:
 
 func drown(u: Unit) -> void:
 	## Worms rules: anything that ends up in the water goes under for good.
+	if u.team == "squad" and not u.dead and u.s.get("trait", "") == "lifeguard" and lifeguard_swim(u):
+		return
 	splash(u.x)
 	u.sunk = true
 	if not u.dead:
 		float_at(u.x, WATER_Y - 30, (u.def.name + " DROWNED") if u.team == "squad" else "SPLASH!", Color("9fe3f0"), true)
 		kill(u, u.last_hit_by if u.last_hit_by != null and u.last_hit_by is Unit and u.last_hit_by.team == "squad" else null)
+
+func lifeguard_swim(u: Unit) -> bool:
+	## P2 Lifeguard: swims to the nearest dry ground on screen instead of going under.
+	for k in range(1, 60):
+		for sgn in [-1, 1]:
+			var x: float = u.x + sgn * k * 12.0
+			if x < cam_x + 10 or x > cam_x + W - 10:
+				continue
+			var y = T.stand_y(x, 0)
+			if y != null and y < WATER_Y - 6:
+				splash(u.x)
+				u.x = x; u.y = y; u.vx = 0; u.vy = 0; u.air = false; u.walk = null
+				float_text(u, "LIFEGUARD", Color("9fe3f0"), true)
+				return true
+	return false
 
 func ice_step(u: Unit, x: float, y: float, v: float) -> Dictionary:
 	## One frame of a skid across ice: follow the surface a step up or down, stop at a wall,
