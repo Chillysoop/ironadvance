@@ -98,6 +98,10 @@ func dump_unsettled(b: Battle, n: int) -> void:
 
 func run() -> void:
 	print("[test] scenario ", scenario)
+	# X1/X2: specialists a previous test freed would change the squad and the recruit pool; every
+	# scenario starts from the four originals
+	Run.meta["unlocked"] = Run.meta.get("unlocked", []).filter(func(k): return not str(k).begins_with("cls_"))
+	Run.meta.erase("draft")
 	match scenario:
 		"title":
 			main.show_title()
