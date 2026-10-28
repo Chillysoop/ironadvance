@@ -252,6 +252,12 @@ func hint_text() -> String:
 			return "OVERDRIVE: aim the launch. Anyone in the way gets smashed into the scenery."
 		if c.get("drill", false):
 			return "DRILL: aim through the terrain in your way. It bores until your movement runs out; click, SPACE or ESC stops it early."
+		if c.get("dog", "") == "bite":
+			return "SIC 'EM: click a Jackal inside the ring around Rex. He leaps over and bites."
+		if c.get("dog", "") == "fetch":
+			return "FETCH: click loot, a crate or a POW inside the ring around Rex. He grabs it and brings it back."
+		if c.get("girder", false):
+			return "GIRDER: click where the beam goes, even in mid-air. Shoot its bolt later to drop it."
 		if c.get("jump", false):
 			return "JUMP PACK: aim the arc. You land soft. Landing in the push zone counts as a push."
 		if c.get("beacon", false):

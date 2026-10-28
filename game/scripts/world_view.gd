@@ -214,6 +214,9 @@ func draw_unit(u: Unit) -> void:
 		"sentry":
 			draw_sentry(u, pos, white)
 			return
+		"dog":
+			draw_dog(u, pos, white)
+			return
 		"rivet":
 			# N2: the bolt a girder hangs from. Shoot it and the beam drops.
 			draw_rect(Rect2(pos.x - 4, pos.y - 9, 8, 8), C_DARK)
@@ -669,6 +672,37 @@ func draw_sentry(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_rect(Rect2(pos.x - 10, pos.y - 26, 20, 4), C_DARK)
 	draw_rect(Rect2(pos.x - 9, pos.y - 25, 18.0 * u.hp / maxf(1, u.max_hp), 2), Color("62d26f"))
 
+func draw_dog(u: Unit, pos: Vector2, white: bool) -> void:
+	## N7: Rex, a tan shepherd in a red collar. The pack's extra dogs are a shade darker.
+	var fur := Color.WHITE if white else (Color("8a6a44") if u.loot.get("temp", false) else Color("c09a64"))
+	var dark := fur.darkened(0.45)
+	var f := float(u.face)
+	var run := u.air or u.zip != null
+	var ph := (b.t / 4) % 2 if run else 0
+	# legs
+	for lx in [-6.0, -3.0, 4.0, 7.0]:
+		var sw := ((2.0 if ph == 0 else -2.0) * (1.0 if lx < 0 else -1.0)) if run else 0.0
+		draw_line(pos + Vector2(lx * f, -6), pos + Vector2((lx + sw) * f, 0), C_DARK, 3.0)
+	# body, tail, head, ear, snout
+	draw_rect(Rect2(pos.x - 9, pos.y - 12, 18, 7), C_DARK)
+	draw_rect(Rect2(pos.x - 8, pos.y - 11, 16, 5), fur)
+	draw_rect(Rect2(pos.x - 6, pos.y - 11, 9, 2), dark)
+	draw_line(pos + Vector2(-8 * f, -10), pos + Vector2(-13 * f, -14 - ph), C_DARK, 3.0)
+	draw_line(pos + Vector2(-8 * f, -10), pos + Vector2(-12 * f, -14 - ph), fur, 1.5)
+	var hx := pos.x + 9 * f
+	draw_rect(Rect2(hx - 4, pos.y - 17, 9, 7), C_DARK)
+	draw_rect(Rect2(hx - 3, pos.y - 16, 7, 5), fur)
+	draw_rect(Rect2(hx + (3 if f > 0 else -7), pos.y - 14, 4, 3), dark)
+	draw_rect(Rect2(hx + (-2 if f > 0 else 0), pos.y - 20, 2, 4), dark)
+	draw_rect(Rect2(hx + (1 if f > 0 else -2), pos.y - 15, 1, 1), C_DARK)
+	draw_rect(Rect2(hx - 3, pos.y - 11, 6, 2), Color("d63a2a"))
+	if u.loot.get("temp", false):
+		return
+	if u.loot.get("guard") is Unit and b.t % 60 < 40:
+		Art.text(self, "GUARD", pos + Vector2(0, -30), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+	draw_rect(Rect2(pos.x - 10, pos.y - 25, 20, 4), C_DARK)
+	draw_rect(Rect2(pos.x - 9, pos.y - 24, 18.0 * u.hp / maxf(1, u.max_hp), 2), Color("62d26f"))
+
 func draw_slug(u: Unit, pos: Vector2, white: bool) -> void:
 	## The SV-001: the Boar's chassis, repainted in squad green and facing east.
 	var tx: Texture2D = Art.tex.boss
@@ -702,7 +736,7 @@ func draw_wreck(u: Unit, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet"] or b.is_boss(u) or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog"] or b.is_boss(u) or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -1095,6 +1129,25 @@ func draw_targeting() -> void:
 					Art.draw_char(self, u.sheet, "idle", 0, Vector2(gs.x, gs.y), u.face, false, 0, 0.5)
 				else:
 					Art.text(self, "NO GRIP", Vector2(gs.ax, gs.ay - 10), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif c.has("dog"):
+				var dt: Dictionary = b.dog_target(u, c, m)
+				var rx = dt.get("rex")
+				if rx != null:
+					var a0 := Vector2(rx.x, rx.y - 8)
+					draw_arc(Vector2(rx.x, rx.y), b.dog_reach(u, c), 0, TAU, 48, Color(1, 0.82, 0.23, 0.18), 1.0)
+					draw_dashed_line(a0, dt.get("to", m) + Vector2(0, -8), Color("ffd23a") if dt.ok else Color("ff4d3d"), 1.0, 4.0)
+				if not dt.ok:
+					Art.text(self, dt.why, m + Vector2(0, -14), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+				elif dt.tg != null:
+					draw_arc(Vector2(dt.tg.x, dt.tg.y - dt.tg.h / 2.0), dt.tg.h * 0.7, 0, TAU, 24, Color("ffd23a"), 2.0)
+					Art.text(self, "SIC 'EM!" if c.dog == "bite" else "FETCH!", Vector2(dt.tg.x, dt.tg.y - dt.tg.h - 12), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif c.get("girder", false):
+				var from := Vector2(u.x, u.y - 22)
+				var reach: float = c.reach * (2.0 if u.perk("longspan") else 1.0)
+				var to := from + (m - from).limit_length(reach)
+				var gw: float = c.gw * b.build_scale(u) * (1.5 if u.perk("longspan") else 1.0)
+				draw_dashed_line(from, to, Color(0.79, 0.82, 0.85, 0.7), 1.0, 4.0)
+				draw_rect(Rect2(to.x - gw / 2.0, to.y, gw, 8), Color(0.79, 0.82, 0.85, 0.45))
 			elif c.get("drill", false):
 				var d := b.drill_dir(u, m)
 				var reach: float = u.move_left + c.get("reach", 0)
@@ -1425,6 +1478,9 @@ func draw_hover() -> void:
 		lines = ["FUEL BARREL", "Explodes when hit. Blast 44."]
 	elif h.kind == "sentry":
 		lines = ["SENTRY GUN  HP %d/%d" % [h.hp, h.max_hp], "Shoots the nearest enemy along its laser", "at the end of your turn. Your shots pass it."]
+	elif h.kind == "dog":
+		var g = h.loot.get("guard")
+		lines = ["REX  HP %d/%d" % [h.hp, h.max_hp], "Moves only when Track plays a dog card.", "GUARDING " + g.def.name if g is Unit else "Your shots pass him."]
 	elif h.kind == "rivet":
 		lines = ["GIRDER BOLT", "Shoot it and the girder drops,", "crushing whatever is under it."]
 	elif h.team != "squad":
