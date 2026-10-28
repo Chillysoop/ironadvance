@@ -2,7 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks),
+## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -806,6 +806,8 @@ func run() -> void:
 			await tuning()
 		"clicks":
 			await clicks()
+		"pause":
+			await pause_menu()
 		"trailer":
 			await preload("res://tools/trailer.gd").new().run(self, clip_arg)
 		"campaign":
@@ -1434,6 +1436,36 @@ func clicks() -> void:
 	await frames_wait(6)
 	check(Run.soldiers[1].deck.size() == deck0 + 1 and Run.scrip < gold, "clicking Hex's plate gives Hex the card")
 	Run.meta["tips_off"] = tips
+
+func press_key(k: Key) -> void:
+	for down in [true, false]:
+		var ev := InputEventKey.new()
+		ev.keycode = k
+		ev.pressed = down
+		get_viewport().push_input(ev, true)
+	await frames_wait(3)
+
+func pause_menu() -> void:
+	## N7: Esc cancels an armed card first; with nothing armed it pauses under a menu, and Esc resumes.
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.select_card(0)
+	await press_key(KEY_ESCAPE)
+	check(b.card_idx < 0 and not get_tree().paused, "Esc with a card armed cancels it and doesn't pause")
+	await press_key(KEY_ESCAPE)
+	var menu = main.hud.get_children().filter(func(c): return c is HudScript.PauseMenu)
+	check(get_tree().paused and menu.size() == 1, "Esc with nothing armed pauses under the menu")
+	var t0: int = b.t
+	await frames_wait(10)
+	check(b.t == t0, "the battle stands still while paused")
+	await press_key(KEY_ESCAPE)
+	check(not get_tree().paused, "Esc again resumes")
+	await press_key(KEY_ESCAPE)
+	menu = main.hud.get_children().filter(func(c): return c is HudScript.PauseMenu)
+	menu[0].quit()
+	await frames_wait(5)
+	check(main.battle == null and not get_tree().paused, "QUIT TO TITLE leaves the battle")
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)
