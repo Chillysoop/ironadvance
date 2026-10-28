@@ -18,6 +18,9 @@ func _ready() -> void:
 			tex[k + "_gun_w"] = load("res://assets/sprites/%s_gun_w.png" % k)
 	for n in ["pow", "boss", "boss_barrel", "barrel", "barrel_w", "fuel", "fuel_w", "charge", "charge_w", "sandbags", "crate", "crate_w", "explosion", "muzzle", "puff", "slash", "parachute"]:
 		tex[n] = load("res://assets/sprites/%s.png" % n)
+	for v in ["hive", "droppod", "vgate", "burrow"]:
+		tex["vh_" + v] = load("res://assets/sprites/vh_%s.png" % v)
+		tex["vh_" + v + "_w"] = load("res://assets/sprites/vh_%s_w.png" % v)
 	for v in ["walker", "bike", "tank"]:
 		for suf in ["", "_sq", "_w"]:
 			tex["veh_" + v + suf] = load("res://assets/sprites/veh_%s%s.png" % [v, suf])

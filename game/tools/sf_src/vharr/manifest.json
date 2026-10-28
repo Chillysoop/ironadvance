@@ -1,0 +1,142 @@
+[
+ {
+  "op": "style",
+  "prompt": "A Skitter tunnel: a low brown dirt mound with a dark round hole in the middle, a few purple alien crystals poking out, side view, wide and flat. Same chunky outline as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_blinker_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_bloater_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_burrower_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_grappler_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_overseer_f0.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "burrow_0.png",
+   "burrow_1.png",
+   "burrow_2.png",
+   "burrow_3.png",
+   "burrow_4.png",
+   "burrow_5.png",
+   "burrow_6.png",
+   "burrow_7.png",
+   "burrow_8.png"
+  ],
+  "asset_ids": [
+   "8332a258-bca0-4803-8fe1-93d61d716a9d",
+   "7a3ced34-ed19-4834-ad38-3cf336f0a05b",
+   "f225a185-59f8-45fa-8358-9439ae333b9c",
+   "ee8fd570-d3b6-413d-aee6-bcfc2c9049d5",
+   "f0ed3952-7111-4382-92b3-dc1a72f70b7f",
+   "f176225a-f17f-4edc-8f2c-686d63864789",
+   "1c583d80-83e3-4dec-a3ca-a1e6259fdfb5",
+   "d4cc2c7e-0067-4529-9e86-255cdedbc511",
+   "c1053430-c939-4ae4-a19b-ba952b878459"
+  ],
+  "picked": "burrow_4 -> burrow.png (other options not kept)"
+ },
+ {
+  "op": "style",
+  "prompt": "A Vharr hive pod: a ribbed purple alien egg sac sitting on the ground, lighter violet highlights on top, small glowing green spots, side view. Same chunky outline, purple palette and green glow as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_blinker_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_bloater_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_burrower_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_grappler_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_overseer_f0.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "hive_0.png",
+   "hive_1.png",
+   "hive_2.png",
+   "hive_3.png",
+   "hive_4.png",
+   "hive_5.png",
+   "hive_6.png",
+   "hive_7.png",
+   "hive_8.png"
+  ],
+  "asset_ids": [
+   "8108d056-3ff7-45de-8d67-7565e1f6ff89",
+   "b2c7dda5-381c-4b5d-aa1d-14e637a33827",
+   "e0296827-50fb-4f6b-88de-d45f59d4c387",
+   "6c90169b-dc27-4df9-8dc1-846abb924924",
+   "32c6ce98-476d-4c17-a98e-be73ba404b19",
+   "bb3bd0c7-10a3-4f46-83d0-609ffaef145e",
+   "2a8a774d-085c-423c-b3b5-83582fc9987d",
+   "50481d45-7cea-4c21-b249-ab62047be670",
+   "811e1713-3508-4da2-9966-e39d80fd5d39"
+  ],
+  "picked": "hive_3 -> hive.png (other options not kept)"
+ },
+ {
+  "op": "style",
+  "prompt": "A Vharr drop pod: an upright dark violet alien capsule that has crashed into the ground, a glowing green seam down the middle, ribbed plates, side view. Same chunky outline, purple palette and green glow as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_blinker_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_bloater_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_burrower_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_grappler_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_overseer_f0.png"
+  ],
+  "size": 24,
+  "outputs": [
+   "droppod_0.png",
+   "droppod_1.png",
+   "droppod_2.png",
+   "droppod_3.png",
+   "droppod_4.png",
+   "droppod_5.png",
+   "droppod_6.png",
+   "droppod_7.png",
+   "droppod_8.png"
+  ],
+  "asset_ids": [
+   "88ce462b-3c9c-4dbc-9af9-fafb6379c179",
+   "58458079-9f99-4c4b-a500-65eb3e6f7433",
+   "97c50746-acf0-45bf-bdfe-d40cb7791ffb",
+   "437a1549-8b6f-4632-ac46-f1a5cb5686c9",
+   "1358b0b4-8629-4887-ac67-92e334dc04d3",
+   "f51aa0a0-6199-4e8d-81a4-0d62b22ba3ab",
+   "0d681e2b-6aae-4983-b42b-77ab3ac06b4b",
+   "e48a62e9-643e-48bf-9217-97e4280cc30c",
+   "8946e528-82c0-461b-a55d-41c0dd8e3c07"
+  ],
+  "picked": "droppod_0 -> droppod.png (other options not kept)"
+ },
+ {
+  "op": "style",
+  "prompt": "A Vharr gate: two tall ribbed dark violet alien stone pillars joined by a lintel on top, with an EMPTY open gap between the pillars (the portal is drawn separately), front view. Same chunky outline, purple palette and green glow accents as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_blinker_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_bloater_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_burrower_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_grappler_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/en_overseer_f0.png"
+  ],
+  "size": 32,
+  "outputs": [
+   "vgate_0.png",
+   "vgate_1.png",
+   "vgate_2.png",
+   "vgate_3.png",
+   "vgate_4.png",
+   "vgate_5.png",
+   "vgate_6.png",
+   "vgate_7.png",
+   "vgate_8.png"
+  ],
+  "asset_ids": [
+   "020e908e-1b65-49b6-bbf9-3114f60d94c6",
+   "3744cf8e-8467-4cdc-a9d6-4c71fddd3b75",
+   "c2f96688-39b0-43f3-9a3c-6a5d27bcd5cd",
+   "71994f7d-2beb-48f8-80b0-007732f7b705",
+   "2b3222ff-f06d-4082-baae-97558ff8c96f",
+   "8b7b655c-51a7-4700-b0b0-e624d0919012",
+   "3d2faf2c-73ce-4bee-a569-8a0922fb1058",
+   "758fd064-9acd-44c6-a751-6a6b81089f2c",
+   "03f840ea-4570-43f7-8a2e-c659de5d9c6d"
+  ],
+  "picked": "vgate_0 -> vgate.png (other options not kept)"
+ }
+]
