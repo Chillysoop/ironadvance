@@ -1648,7 +1648,7 @@ func aliens2() -> void:
 	Run.roll_dial()
 	check(Run.dial.all(func(id): return not Run.dial_breach[id]), "level 1 never rolls a BREACH")
 	var lv := Run.make_level("fortress", 1, true)
-	check(lv.breach and lv.encounter in ["swarm", "nest"], "a level 2 level carries its breach flag and an encounter (%s)" % lv.encounter)
+	check(lv.breach and lv.encounter in Data.ENCOUNTERS, "a level 2 level carries its breach flag and an encounter (%s)" % lv.encounter)
 	# the nest: three Hive Pods with staggered timers
 	lv.encounter = "nest"
 	Run.level = lv
@@ -1891,7 +1891,7 @@ func aliens5() -> void:
 	## Q2 Burrow Queen: the desert and mountain mini-boss encounter.
 	Run.new_run()
 	check(Run.make_level("desert", 1).encounter == "queen" and Run.make_level("mountain", 2).encounter == "queen", "desert and mountain levels from level 2 hold the Burrow Queen")
-	check(Run.make_level("desert", 0).encounter == "" and Run.make_level("jungle", 1).encounter in ["swarm", "nest"], "level 1 and other biomes don't")
+	check(Run.make_level("desert", 0).encounter == "" and Run.make_level("jungle", 1).encounter in Data.ENCOUNTERS, "level 1 and other biomes don't")
 	Run.level = Run.make_level("desert", 1)
 	var b: Battle = main.start_battle(1, Run.level)
 	await until(func(): return b.state == "player" and not b.busy)
