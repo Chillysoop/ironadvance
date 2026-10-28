@@ -227,6 +227,10 @@ func setup(idx: int, custom := {}) -> void:
 			u.hp = int(mission.boss_hp * bm); u.max_hp = u.hp; u.plate = int(mission.plate * bm) if type == "boss" else 0
 			if type == "boss" and (mission.get("finale", false) or mission.get("vharr_boar", false)):
 				u.fl["vharr"] = true  # Q3: the flagship comes refit with Vharr tech
+			elif type == "boss" and rookie_boar():
+				# D1: until a player has beaten one Boar, the level 1 Boar is a softer Rookie Boar
+				u.fl["rookie"] = true
+				u.hp = int(u.hp * ROOKIE_HP); u.max_hp = u.hp; u.plate = int(u.plate * ROOKIE_HP)
 		elif randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
 			make_elite(u, pick_elite(faction(u) == "vharr"))
 		units.append(u)
@@ -1532,6 +1536,12 @@ func grant_overdrive(u: Unit) -> void:
 	log_msg("%s unlocked %s. It's in their hand." % [u.def.name, Data.CARDS[key].name])
 	ui_dirty = true
 
+const ROOKIE_HP := 0.67   # D1: 120 HP / 36 plate becomes 80 / 24
+
+func rookie_boar() -> bool:
+	# the test harness keeps the full Boar so its numbers stay comparable
+	return not Run.campaign() and Run.mission == 0 and not practice() and not Run.meta.get("boar_down", false) and not OS.get_cmdline_user_args().has("--iatest")
+
 func who_did(tg: Unit, src) -> String:
 	## N3: a plain name for whatever downed a soldier, for the mission-failed screen.
 	if src is Unit and src.team == "enemy":
@@ -1719,6 +1729,8 @@ func kill(tg: Unit, src) -> void:
 			banner("HIVE SHIP DOWN!", Color("9df25c"), "THE SKY IS CLEAR")
 		if is_boss(tg):
 			boss_dead = true
+			if tg.type == "boss":
+				Run.meta["boar_down"] = true  # D1: no more Rookie Boars once one is beaten
 			drop_loot(tg.x, tg.y - 40, {"type": "item", "item": Run.roll_item(Data.TIER_MAX)}, 1.4)
 			var relics: Array = Data.GEAR.filter(func(g): return g.get("boss", false) and not Run.has_gear(g.id))
 			if not relics.is_empty():
@@ -3647,7 +3659,7 @@ func activate_enemies() -> void:
 					banner("WARNING!!", Color("c47bff"), "VHARR BOAR APPROACHING")
 					log_msg("The flagship BOAR rolls in refit with Vharr tech: a dome over the turret and a tongue. Crushing and melee go through the dome.")
 				else:
-					banner("WARNING!!", Color("ff4d3d"), "IRON BOAR APPROACHING")
+					banner("WARNING!!", Color("ff4d3d"), "ROOKIE BOAR APPROACHING" if e.fl.get("rookie", false) else "IRON BOAR APPROACHING")
 					log_msg("The IRON BOAR rolls in. Something heavy is hanging over it...")
 				Sfx.play("alarm")
 
@@ -3677,7 +3689,8 @@ func meet(e: Unit) -> void:
 		return
 	met.append(key)
 	Run.meta["met"] = met
-	Run.save_meta()
+	if not Run.campaign():
+		Run.save_meta()  # mid-op a campaign save would write a half-fought op; the next HQ save keeps it
 	hud.coach_queue.append(INTROS[key])
 
 # ---------------------------------------------------------------- rewards & level-ups
@@ -7191,9 +7204,13 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if hud != null and hud.deck_open:
 			return  # keys stay out of the battle while the deck viewer is up
 		if ev.keycode == KEY_ESCAPE:
-			if card_idx < 0:
+			# N7: Esc cancels an armed card (or the jet, or a mid-air hang) first; with nothing to cancel it pauses
+			if card_idx >= 0 or jet_armed:
+				cancel_card()
+			elif sel != null and sel.hang:
 				drop_hang(sel)
-			cancel_card()
+			elif hud != null:
+				hud.toggle_pause()
 			return
 		if state != "player" or busy:
 			return
