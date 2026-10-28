@@ -328,7 +328,7 @@ func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> 
 			picked.emit(-100 - idx if bg.banish else idx))
 		modal.add_child(cv)
 	var skip := PixButton.new()
-	skip.text = {"level": "SKIP +15$", "loot": "TO STASH"}.get(kind, "SKIP")
+	skip.text = {"level": "SKIP +15$", "loot": "TO STASH", "dealer": "LEAVE"}.get(kind, "SKIP")
 	skip.color = Color("9aa2ae")
 	skip.size = Vector2(120 if kind in ["level", "loot"] else 90, 26)
 	skip.position = Vector2(480 - skip.size.x / 2, 392)

@@ -113,6 +113,8 @@ func random_look() -> Dictionary:
 func anim_info(sheet: String, anim: String) -> Dictionary:
 	return meta[sheet].anims.get(anim, meta[sheet].anims.idle)
 
+var big_heads := false  # D3 BIG HEADS: set by the world view while it draws a battle
+
 func draw_char(ci: CanvasItem, sheet: String, anim: String, frame: int, pos: Vector2, face: int, white := false, rot := 0.0, alpha := 1.0, gun_angle := 0.0, show_gun := true, scale := 1.0, tint := Color.WHITE) -> void:
 	## Draws a body frame anchored at the feet, plus the arm+gun layer rotated to gun_angle
 	## (radians, measured in the facing direction: 0 = straight ahead, negative = up).
@@ -130,6 +132,13 @@ func draw_char(ci: CanvasItem, sheet: String, anim: String, frame: int, pos: Vec
 	ci.draw_set_transform(pos, rot, Vector2(s * face, s))
 	var mod := Color(tint.r, tint.g, tint.b, alpha)
 	ci.draw_texture_rect_region(tex[sheet], Rect2(-ax, -ay, fw, fh), src, mod)
+	if big_heads and info.has("shoulder"):
+		# the rows above the shoulders again, 1.8x, growing up and out from the neck
+		var hy: float = info.shoulder[fi][1] - 2
+		if hy > 2:
+			var k := 1.8
+			var neck: float = -ay + hy
+			ci.draw_texture_rect_region(tex[sheet], Rect2(-ax * k, neck - hy * k, fw * k, hy * k), Rect2(src.position, Vector2(fw, hy)), mod)
 	if show_gun and info.gun[fi] and m.has("gun_pivot"):
 		var sh: Array = info.shoulder[fi]
 		var gp: Array = m.gun_pivot

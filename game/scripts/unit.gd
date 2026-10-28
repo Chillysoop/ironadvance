@@ -118,7 +118,7 @@ func is_prop() -> bool:
 
 func is_pickup() -> bool:
 	## Loot on the ground and buried caches: bullets and blasts pass through them.
-	return kind == "loot" or kind == "cache" or kind == "relay" or kind == "wreck" or kind == "pad"
+	return kind == "loot" or kind == "cache" or kind == "relay" or kind == "wreck" or kind == "pad" or kind == "dealer"
 
 func is_body() -> bool:
 	## A dead Jackal left lying on the field: cover, and something to throw at its friends.

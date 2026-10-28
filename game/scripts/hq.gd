@@ -475,6 +475,21 @@ func open_memorial() -> void:
 	for c in get_children():
 		c.queue_free()
 	add_child(close)
+	# D3: fun toggles, each unlocked by an Armory feat
+	for i in Data.TOGGLES.size():
+		var tg: Dictionary = Data.TOGGLES[i]
+		var id: String = tg.id
+		var ready := Run.toggle_ready(id)
+		var on := Run.toggle_on(id)
+		var bt := HudScript.PixButton.new()
+		bt.text = tg.name + (" ON" if on else (" OFF" if ready else ""))
+		bt.sub = tg.short if ready else "EARN FEAT " + Data.FEATS.filter(func(f): return f.id == tg.feat)[0].name
+		bt.color = Color("62d26f") if on else (Color("9aa2ae") if ready else Color("4a4f57"))
+		bt.disabled = not ready
+		bt.size = Vector2(212, 40)
+		bt.position = Vector2(30 + i * 228, 410)
+		bt.pressed.connect(func(): Sfx.play("click"); Run.flip_toggle(id); open_memorial())
+		add_child(bt)
 	sub = null
 	add_nav("memorial")
 
@@ -891,18 +906,19 @@ func draw_motor_pool() -> void:
 func draw_memorial_panel() -> void:
 	draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.86))
 	Art.text(self, "THE MEMORIAL", Vector2(480, 70), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+	Art.text(self, "FUN TOGGLES: NOTHING GETS HARDER, IT JUST PLAYS STRANGE", Vector2(480, 398), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 	var m: Array = Run.meta.memorial
 	if m.is_empty():
 		Art.text(self, "No names yet. Keep it that way.", Vector2(480, 120), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 		return
 	Art.text(self, "Recruits of a fallen soldier's class can start with one of their abilities.", Vector2(480, 96), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
-	var shown: Array = m.slice(maxi(0, m.size() - 16))
+	var shown: Array = m.slice(maxi(0, m.size() - 12))  # six a column, so the toggles fit below
 	shown.reverse()
 	for i in shown.size():
 		var e: Dictionary = shown[i]
-		var col := 0 if i < 8 else 1
+		var col := 0 if i < 6 else 1
 		var x := 120.0 + col * 380
-		var y := 130.0 + (i % 8) * 40
+		var y := 130.0 + (i % 6) * 40
 		Art.draw_tags(self, Vector2(x, y - 10), 1, 1.0, 1)
 		Art.text(self, e.name, Vector2(x + 16, y - 2), 8, Color.WHITE)
 		Art.text(self, "%s  LV%d  FELL ON MISSION %d" % [e.cls.to_upper(), int(e.lvl), int(e.mission)], Vector2(x + 16, y + 12), 8, Color("9aa2ae"))

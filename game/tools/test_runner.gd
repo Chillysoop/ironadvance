@@ -774,6 +774,8 @@ func run() -> void:
 			await jackals2_test()
 		"biomes2":
 			await biomes2_test()
+		"events10":
+			await events10_test()
 		"pickups":
 			await pickups()
 		"bossloot":
@@ -3662,7 +3664,7 @@ func soldat() -> void:
 	var hp_s := s.hp
 	await b.walk_along(s, b.sim_walk(s, pd.x, 100).pts)
 	await frames_wait(4)
-	check(not pd.loot.ready and (s.has_st(k) or (k == "medkit" and s.hp > hp_s) or (k == "nadekit" and s.hand.any(func(c): return c.key == "frag" and c.get("temp", false)))), "a soldier who steps on it takes %s" % k)
+	check(not pd.loot.ready and (s.has_st(k) or (k == "medkit" and s.hp > hp_s) or (k == "nadekit" and s.hand.any(func(c): return c.key == "frag" and c.get("temp", false))) or (k == "monkey" and s.hand.any(func(c): return c.key == "monkeyclimb"))), "a soldier who steps on it takes %s" % k)
 	await frames_wait(10)
 	await shot("soldat_pad_taken")
 	pd.loot.ready = true
@@ -7086,3 +7088,168 @@ func sfvfx2() -> void:
 		await shot("sf2_tesla_%02d" % f)
 	b.speed = 1.0
 	print("[sfvfx2] done, live effects ", b.vfx.list.size())
+
+func e_battle(event: String, bounties := []) -> Battle:
+	var lvl := Run.make_level("desert", 0)
+	lvl["event"] = event
+	lvl["bounties"] = bounties
+	lvl["encounter"] = ""
+	Run.level = lvl
+	var b: Battle = main.start_battle(0, lvl)
+	b.autopick = 0  # a level-up earned in the last battle asks first
+	await until(func(): return b.state == "player" and not b.busy)
+	b.autopick = -1
+	b.speed = 2.0
+	return b
+
+func events10_test() -> void:
+	## R2-R6, D2, D3: mid-level events, bounty board, Metal Slug transformations, Daily Op, fun toggles.
+	var keep: Dictionary = Run.meta.duplicate(true)  # the toggles and feats set here are saved to disk
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["toggles"] = {}
+	Run.leave_campaign()
+	var lv := Run.make_level("desert", 1)
+	check(Data.EVENTS.has(lv.event) and lv.bounties.size() == 3 and lv.bounties.all(func(k): return Data.BOUNTIES.any(func(x): return x.id == k)), "every level rolls an event and three bounties (%s %s)" % [lv.event, str(lv.bounties)])
+	check(range(20).all(func(_i): return not Run.make_level("hive", 2).bounties.has("sniperfirst")), "no Counter-Snipe bounty where there are no Snipers")
+	# R2 fire team
+	Run.new_run()
+	var b: Battle = await e_battle("fireteam")
+	var trs: Array = b.troopers()
+	check(trs.size() == 2 and trs.all(func(o): return o.loot.get("pinned", false) and o.team == "ally"), "R2: two pinned friendly riflemen in the first stretch")
+	var sq: Array = b.squad()
+	var mo: Unit = sq[0]
+	ground_unit(b, mo, trs[0].x - 60, trs[0].y - 30)
+	cam_on(b, trs[0].x)
+	await frames_wait(4)
+	await shot("r2_pinned")
+	b.check_troopers(mo)
+	check(trs.all(func(o): return not o.loot.has("pinned")), "reach them and they join")
+	for o in b.units:
+		if o.team == "enemy":
+			o.gone = true
+	var e := j2_enemy(b, "grunt", trs[1].x + 70)
+	e.hp = 30; e.max_hp = 30
+	await b.sentries_fire()
+	check(e.hp < 30, "the fire team shoots at the end of the turn (%d)" % e.hp)
+	var before := "%d,%d %d,%d" % [trs[0].x, trs[0].y, trs[1].x, trs[1].y]
+	ground_unit(b, mo, trs[0].x + 300, trs[0].y - 60)
+	b.troopers_follow()
+	await until(func(): return trs.all(func(o): return o.walk == null), 600)
+	check(trs.all(func(o): return o.x > float(before.split(",")[0]) + 80 and o.x < mo.x), "they keep up behind the lead soldier (%d %d / %d, from %s)" % [trs[0].x, trs[1].x, mo.x, before])
+	await shot("r2_joined")
+	b.troopers_leave()
+	check(b.troopers().is_empty(), "they head back to the lines at camp")
+	# R3 collapse
+	b = await e_battle("collapse")
+	check(not b.crumble.is_empty() and not b.crumble.on, "R3: the second stretch is set to crumble")
+	sq = b.squad()
+	var x0: float = b.crumble.x0
+	for i in sq.size():
+		ground_unit(b, sq[i], x0 + 140 + i * 30, 0)
+	cam_on(b, x0 + 200)
+	await b.crumble_round()
+	check(b.crumble.on, "it starts once the squad is in")
+	var cx: float = b.crumble.x
+	await b.crumble_round()
+	check(b.crumble.x == cx + Data.CRUMBLE_STEP and not b.T.solid(cx + 40, b.T.ground_at(cx + 40) if b.T.ground_at(cx + 40) < 600 else 600), "a round later 120px of ground is gone")
+	await frames_wait(4)
+	await shot("r3_collapse")
+	# R4 dealer
+	b = await e_battle("dealer")
+	var ds: Array = b.units.filter(func(o): return o.kind == "dealer")
+	check(ds.size() == 1 and ds[0].loot.stock.size() == 3, "R4: an arms dealer with three items")
+	var d: Unit = ds[0]
+	var it0: Dictionary = d.loot.stock[0]
+	check(b.dealer_price(it0) < Run.item_price(it0) or Run.item_price(it0) <= 2, "cheaper than the Quartermaster (%d vs %d)" % [b.dealer_price(it0), Run.item_price(it0)])
+	sq = b.squad()
+	mo = sq[0]
+	ground_unit(b, mo, d.x - 30, 0)
+	cam_on(b, d.x)
+	await frames_wait(4)
+	await shot("r4_dealer")
+	Run.scrip = b.dealer_price(it0) + 1
+	b.autopick = 0
+	await b.check_dealer(mo)
+	b.autopick = -1
+	check(d.loot.stock.size() == 2 and Run.scrip == 1, "buy one: paid his price, two left (%d scrip)" % Run.scrip)
+	# R5 bounties
+	var st := {"falls": 0, "downs": 0, "kia": 0, "first_kill": "jsniper", "crushes": 2, "pows": 1, "pows_total": 1, "pushes": 3, "rounds": 12, "melee_kills": 3}
+	check(Data.BOUNTIES.all(func(x): return Run.bounty_done(x.id, st)), "R5: a perfect level clears every bounty")
+	var bad := {"falls": 1, "downs": 1, "kia": 1, "first_kill": "grunt", "crushes": 1, "pows": 0, "pows_total": 1, "pushes": 2, "rounds": 19, "melee_kills": 2}
+	check(Data.BOUNTIES.all(func(x): return not Run.bounty_done(x.id, bad)), "and a sloppy one clears none")
+	Run.level = {"bounties": ["nofall", "fast", "melee3"]}
+	var s0 := Run.scrip
+	var paid: Array = Run.pay_bounties({"falls": 0, "rounds": 30, "melee_kills": 4})
+	check(paid.size() == 3 and paid[0][2] and not paid[1][2] and paid[2][2] and Run.scrip == s0 + 60, "paid on the debrief: %s" % str(paid))
+	# R6 transformations
+	b = await e_battle("")
+	sq = b.squad()
+	mo = sq[0]
+	var hp0 := mo.max_hp
+	b.transform_bonus("fat", mo)
+	check(mo.max_hp == hp0 + 10 and mo.has_st("fat"), "R6 FAT: +10 HP")
+	var n0 := mo.hand.size()
+	b.transform_bonus("zombie", sq[1])
+	check(sq[1].hand.filter(func(c): return c.key == "vomit").size() == 2 and sq[1].has_st("zombie"), "ZOMBIE: two Vomit cards and undying")
+	b.transform_bonus("monkey", sq[2])
+	check(sq[2].hand.filter(func(c): return c.key == "monkeyclimb").size() == 2, "MONKEY: two Monkey Climbs")
+	sq[1].hp = 1
+	b.damage(sq[1], 40, null)
+	await until(func(): return b.settled(), 300)
+	check(not sq[1].dead and not sq[1].downed, "a zombie shrugs off a killing blow")
+	mo.st.erase("fat")
+	b.fat_end(mo)
+	check(mo.max_hp == hp0, "FAT wears off cleanly")
+	# D2 Daily Op
+	check(Run.daily_squad("2026-10-28") == Run.daily_squad("2026-10-28") and Run.daily_squad("2026-10-28").size() == 4, "D2: the same squad all day (%s)" % str(Run.daily_squad("2026-10-28")))
+	check(Run.daily_squad("2026-10-28") != Run.daily_squad("2026-10-29") or Run.daily_squad("2026-10-29") != Run.daily_squad("2026-10-30"), "and a different one tomorrow")
+	Run.start_daily()
+	var dk: Array = Run.soldiers.map(func(x): return x.def.key)
+	check(dk == Run.daily_squad(Run.daily_key()), "Daily Op deploys today's squad")
+	Run.total_score = 500
+	Run.daily_over()
+	check(Run.daily_best() == 500, "and keeps today's best score")
+	Run.daily = ""
+	# D3 toggles
+	Run.meta.feats["timber"] = 0
+	Run.flip_toggle("moon")
+	check(not Run.toggle_on("moon"), "D3: a toggle is locked until its feat is earned")
+	Run.meta.feats["timber"] = 1
+	Run.meta.feats["pyro"] = 3
+	Run.meta.feats["skeet"] = 3
+	Run.flip_toggle("moon")
+	Run.flip_toggle("nades")
+	Run.flip_toggle("bigheads")
+	check(Run.toggle_on("moon") and Run.toggle_on("nades"), "earned and switched on")
+	Run.new_run()
+	b = await e_battle("")
+	check(absf(b.grav - Battle.GRAV * 0.5) < 0.001, "MOON GRAVITY halves gravity")
+	for o in b.units:
+		if o.team == "enemy":
+			o.gone = true
+	var g := j2_enemy(b, "grunt", b.squad()[0].x + 200)
+	var nl := b.units.filter(func(o): return o.kind == "loot").size()
+	b.damage(g, 999, b.squad()[0])
+	await until(func(): return b.settled(), 300)
+	check(b.units.filter(func(o): return o.kind == "loot").size() > nl, "GRENADE RAIN: a dead Jackal drops a frag")
+	cam_on(b, g.x)
+	await frames_wait(4)
+	await shot("d3_bigheads")
+	Run.meta["toggles"] = {}
+	# screens
+	Run.new_run()
+	Run.level = Run.make_level("desert", 0)
+	Run.level["event"] = "dealer"
+	main.show_brief()
+	await frames_wait(6)
+	await shot("r5_brief")
+	main.show_title()
+	await frames_wait(6)
+	await shot("d2_title")
+	main.show_hq(false)
+	await frames_wait(6)
+	main.screen.open_memorial()
+	await frames_wait(6)
+	await shot("d3_memorial")
+	Run.meta = keep
+	Run.save_meta()

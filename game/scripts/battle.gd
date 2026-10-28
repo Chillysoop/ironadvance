@@ -80,7 +80,7 @@ var feed: Array = []     # kill feed lines: {killer, how, victim, kc, stamp, t}
 var kill_how := ""       # what is dealing the damage right now when it isn't a card (FALL, CRUSHED, BURN)
 var act_card := ""       # name of the card behind the current action, for the kill feed
 var pop_next := false    # the next kill was an overkill: the Jackal bursts instead of leaving a body
-var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0, "kia": 0, "max_alert": 0, "pows_total": 0, "loot": 0, "tags": 0, "best_combo": 0, "fallen": []}
+var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0, "kia": 0, "max_alert": 0, "pows_total": 0, "loot": 0, "tags": 0, "best_combo": 0, "fallen": [], "falls": 0, "downs": 0, "melee_kills": 0}
 var act_once := {}        # tag-team combos that pay out once per action
 var squad_bonks := {}     # "id:id" or id -> tick of the last squadmate bonk for that pair or that soldier
 const BONK_RESET := 120   # ticks before the same two soldiers can bonk again
@@ -132,7 +132,7 @@ func setup(idx: int, custom := {}) -> void:
 		rs.erase("law_spent")
 	breach = mission.get("breach", false)
 	Run.sway_mul = rules.get("sway", 1.0)
-	grav = GRAV * rules.get("grav", 1.0)
+	grav = GRAV * rules.get("grav", 1.0) * (0.5 if Run.toggle_on("moon") else 1.0)
 	Run.temp_luck = 2 if Run.intel == "veterans" else 0
 	theme = mission.theme
 	th = Data.THEMES[theme].duplicate()
@@ -278,6 +278,7 @@ func setup(idx: int, custom := {}) -> void:
 	place_encounter(mission.get("encounter", ""))
 	place_vehicles()
 	setup_biome()
+	setup_events()
 	place_job()
 	spawn_map_loot()
 	sel = null
@@ -628,8 +629,9 @@ func make_sentry(u, x: float, y: float, hp: int, dmg: Array) -> Unit:
 	st.hp = hp; st.max_hp = hp; st.face = 1
 	st.loot = {"by": u, "dmg": dmg}
 	units.append(st)
-	puff(x, y - 8, 1.5)
-	float_at(x, y - 30, "SENTRY UP", Color("62d26f"))
+	if u != null:
+		puff(x, y - 8, 1.5)
+		float_at(x, y - 30, "SENTRY UP", Color("62d26f"))
 	return st
 
 func sentry_target(st: Unit):
@@ -690,7 +692,7 @@ func sentry_fire(st: Unit) -> void:
 		await wait(16)
 
 func sentries_fire() -> void:
-	var sts := units.filter(func(o): return o.kind == "sentry" and not o.dead and not o.gone)
+	var sts := units.filter(func(o): return o.kind == "sentry" and not o.dead and not o.gone and not o.loot.get("pinned", false))
 	if sts.is_empty():
 		return
 	for st in sts:
@@ -2674,6 +2676,202 @@ func hazard_word() -> String:
 		return "INTO THE LAVA"
 	return ""
 
+# ---------------------------------------------------------------- R2-R6 mid-level events, D3 fun toggles
+var crumble := {}        # R3: {x0, x1, x, on} the edge of the stretch that is falling away
+
+func setup_events() -> void:
+	crumble = {}
+	if T.stretches.is_empty() or mission.get("finale", false) or tutorial():
+		return
+	var st0: Array = T.stretches[0]
+	match mission.get("event", ""):
+		"fireteam":
+			# R2: two friendly riflemen pinned down in the middle of the first stretch
+			# on open ground, not up a tower they could never climb down from
+			var spots: Array = []
+			var x: float = (st0[0] + st0[1]) / 2.0
+			while spots.size() < 2 and x < st0[1]:
+				var gy = T.stand_y(x, T.ground_at(x) - 40)
+				if gy != null and absf(gy - T.ground_at(x)) < 9:
+					spots.append([x, gy])
+					x += 26.0
+				else:
+					x += 8.0
+			for sp in spots:
+				var x2: float = sp[0]
+				var y: float = sp[1]
+				var tr := make_sentry(null, x2, y, 20, [3, 4])
+				tr.loot["trooper"] = true
+				tr.loot["pinned"] = true
+				tr.heavy = false
+				tr.w = 14; tr.h = 30
+				tr.face = 1
+			if units.any(func(o): return o.kind == "sentry" and o.loot.get("trooper", false)):
+				log_msg("A friendly fire team is pinned down up ahead. Reach them and they join you until camp.")
+		"collapse":
+			# R3: the second stretch falls away behind the squad
+			if T.stretches.size() >= 2:
+				crumble = {"x0": T.stretches[1][0] - 60.0, "x1": T.stretches[1][1] + 60.0, "x": T.stretches[1][0] - 60.0, "on": false}
+		"dealer":
+			# R4: a trader at the end of the first stretch with three items rolled now, shown before you buy
+			var x: float = st0[1] - 30.0
+			var y = T.stand_y(x, T.ground_at(x) - 40)
+			if y != null:
+				var d := mk_unit(); d.team = "neutral"; d.kind = "dealer"; d.x = x; d.y = y; d.w = 20; d.h = 30; d.face = -1
+				d.loot = {"stock": [Run.roll_item(1), Run.roll_item(1), Run.roll_item(2)]}
+				units.append(d)
+	for id in mission.get("bounties", []):
+		var bt: Dictionary = Run.bounty(id)
+		log_msg("BOUNTY %s (+%d$): %s" % [bt.name, bt.pay, bt.text])
+
+func troopers() -> Array:
+	return units.filter(func(o): return o.kind == "sentry" and o.loot.get("trooper", false) and not o.dead and not o.gone)
+
+func check_troopers(u: Unit) -> void:
+	## R2: a soldier who reaches the pinned fire team brings them into the fight.
+	for tr in troopers():
+		if tr.loot.get("pinned", false) and absf(tr.x - u.x) < 140 and absf(tr.y - u.y) < 60:
+			for o in troopers():
+				o.loot.erase("pinned")
+			banner("FIRE TEAM JOINS!", Color("62d26f"), "THEY SHOOT AT THE END OF YOUR TURN UNTIL CAMP")
+			Sfx.play("power")
+			return
+
+func troopers_follow() -> void:
+	## R2: the fire team keeps up just behind whoever is out in front.
+	var sq := squad_alive()
+	if sq.is_empty():
+		return
+	var lead: Unit = sq[0]
+	for s in sq:
+		if s.x > lead.x:
+			lead = s
+	var i := 0
+	for tr in troopers():
+		if tr.loot.get("pinned", false):
+			continue
+		var tx: float = lead.x - 40.0 - i * 26.0
+		i += 1
+		if absf(tx - tr.x) < 20:
+			continue
+		var pts: Array = []
+		var x: float = tr.x
+		var y: float = tr.y
+		var dir := signf(tx - x)
+		while absf(tx - x) > 3 and pts.size() < 240:
+			var nx := x + dir * 3.0
+			var ny = T.stand_y(nx, y - 30)
+			if ny == null or ny - y < -30 or ny - y > 40:  # scrambles up a sandbag, drops down off a ledge
+				break
+			x = nx
+			y = ny
+			pts.append([x, y])
+		if pts.size():
+			tr.walk = pts
+			tr.walk_i = 0
+			tr.face = int(dir)
+
+func troopers_leave() -> void:
+	for tr in troopers():
+		float_text(tr, "BACK TO THE LINES", Color("62d26f"), true)
+		tr.gone = true
+
+func dealer_price(it: Dictionary) -> int:
+	return int(round(Run.item_price(it) * Data.DEALER_MUL))
+
+func check_dealer(u: Unit) -> void:
+	## R4: walk up to the arms dealer to see his three items and their prices.
+	if u.dead or u.team != "squad" or state != "player":
+		return
+	for d in units:
+		if d.kind != "dealer" or d.gone or absf(d.x - u.x) > 44 or absf(d.y - u.y) > 30 or d.loot.get("seen", -1) == round_n:
+			continue
+		d.loot["seen"] = round_n
+		var stock: Array = d.loot.stock
+		while stock.size():
+			var opts: Array = stock.map(func(it): return Run.item_opt(it, "%d SCRIP" % dealer_price(it)))
+			var k := await ask("dealer", "ARMS DEALER", "Fixed prices. You have %d scrip." % Run.scrip, opts)
+			if k < 0:
+				break
+			var it: Dictionary = stock[k]
+			if Run.scrip < dealer_price(it):
+				float_text(u, "NOT ENOUGH SCRIP", Color("ff7a5a"))
+				Sfx.play("deny")
+				break
+			Run.scrip -= dealer_price(it)
+			stock.remove_at(k)
+			float_text(u, "%s TO %s" % [Data.item_name(it).to_upper(), Run.add_loot(it).to_upper()], Color("62d26f"), true)
+			Sfx.play("coin")
+			ui_dirty = true
+		return
+
+func crumble_round() -> void:
+	## R3: once the squad is into the stretch, the ground behind falls away 120px every round.
+	if crumble.is_empty() or crumble.x >= crumble.x1:
+		return
+	if not crumble.on:
+		if not squad_alive().any(func(s): return s.x > crumble.x0 + 80):
+			return
+		crumble.on = true
+		banner("THE GROUND IS GIVING WAY!", Color("ff7a3d"), "IT FALLS 120PX BEHIND YOU EVERY ROUND")
+		await wait(30)
+		return
+	var x0: float = crumble.x
+	var x1: float = minf(crumble.x1, x0 + Data.CRUMBLE_STEP)
+	crumble.x = x1
+	for cx in range(int(x0 / CELL), int(x1 / CELL)):
+		for cy in Terrain.WATER_ROW:
+			if T.grid[cy * T.cols + cx] != 0:
+				if (cx + cy) % 9 == 0:
+					debris(cx * CELL + 2, cy * CELL + 2, T.grid[cy * T.cols + cx], true)
+				T.set_cell(cx, cy, 0)
+	T.check_floating(x1 + 20, 300, 260, null)
+	T.check_bridges(null)
+	shake += 6
+	Sfx.play("bigboom")
+	for u in units:
+		if not u.dead and not u.gone and u.x >= x0 - 8 and u.x < x1 + 4:
+			u.air = true
+			u.walk = null
+	await wait(20)
+	await until(settled)
+
+# --- R6 transformations
+func transform_bonus(k: String, u: Unit) -> bool:
+	## The Metal Slug pad powers. Returns false for anything that isn't one.
+	match k:
+		"fat":
+			u.hp += 10
+			u.max_hp += 10
+			u.fl["fat_hp"] = int(u.fl.get("fat_hp", 0)) + 10
+			u.st["fat"] = Data.BONUS_TURNS
+		"zombie":
+			if u.team == "squad":
+				for i in 2:
+					u.hand.append({"id": -2, "key": "vomit", "tier": Data.base_tier("vomit"), "temp": true})
+				u.st["zombie"] = Data.BONUS_TURNS
+		"monkey":
+			if u.team == "squad":
+				for i in 2:
+					u.hand.append({"id": -2, "key": "monkeyclimb", "tier": Data.base_tier("monkeyclimb"), "temp": true})
+		_:
+			return false
+	return true
+
+func fat_end(u: Unit) -> void:
+	if u.fl.has("fat_hp") and not u.has_st("fat"):
+		u.max_hp -= int(u.fl.fat_hp)
+		u.hp = mini(u.hp, u.max_hp)
+		u.fl.erase("fat_hp")
+
+# --- D3 fun toggles
+func bounce_body(u: Unit, imp: float) -> bool:
+	## BOUNCY BODIES: the dead come back up off the floor.
+	if not Run.toggle_on("bouncy") or not u.dead or imp < 2.0:
+		return false
+	u.vy = -imp * 0.7
+	return true
+
 # ---------------------------------------------------------------- helpers
 func practice() -> bool:
 	return mission.get("practice", false)
@@ -3109,11 +3307,12 @@ func tick_statuses(team: String) -> void:
 			damage(u, 2, u.st_by.get("toxic", null), {"status": true})
 			kill_how = ""
 			u.armor = a
-		for k in ["burn", "toxic", "mark", "berserk", "cloak", "flamegod", "vest", "roll", "flared", "pinned"]:
+		for k in ["burn", "toxic", "mark", "berserk", "cloak", "flamegod", "vest", "roll", "flared", "pinned", "fat", "zombie"]:
 			if u.st.has(k):
 				u.st[k] -= 1
 				if u.st[k] <= 0:
 					u.st.erase(k)
+		fat_end(u)
 
 func ray_clear(x1: float, y1: float, x2: float, y2: float) -> bool:
 	var dx := x2 - x1
@@ -3505,9 +3704,12 @@ func give_scrip(n: int, x: float, y: float) -> void:
 	float_at(x, y, "+%d$" % n, Color("ffd23a"))
 	ui_dirty = true
 
+var last_hit_o := {}  # the options of the damage call in progress, for kill() to read
+
 func damage(tg: Unit, amt: int, src, o := {}) -> void:
 	if tg.dead or tg.gone or amt <= 0:
 		return
+	last_hit_o = o
 	if tg.kind == "pow":
 		return
 	var own = src if src != null and src is Unit and src.team == "squad" else null
@@ -3823,6 +4025,10 @@ func who_did(tg: Unit, src) -> String:
 func kill(tg: Unit, src) -> void:
 	if tg.dead:
 		return
+	if tg.team == "squad" and tg.has_st("zombie") and not tg.sunk and tg.y < lava_y():
+		tg.hp = 1  # R6 ZOMBIE: can't go down
+		float_text(tg, "UNDEAD!", Color("9df25c"), true)
+		return
 	tg.dead = true
 	tg.hp = 0
 	tg.dead_t = 0
@@ -3859,6 +4065,12 @@ func kill(tg: Unit, src) -> void:
 			bodies[0].soak = 0
 	if tg.team == "enemy":
 		stats.kills += 1
+		if not stats.has("first_kill"):
+			stats["first_kill"] = tg.type  # R5: COUNTER-SNIPE
+		if last_hit_o.get("melee", false) and src is Unit and src.team == "squad":
+			stats.melee_kills += 1  # R5: UP CLOSE
+		if Run.toggle_on("nades") and not is_boss(tg):
+			drop_loot(tg.x, tg.y - 14, {"type": "gun", "card": "frag"}, 0.6)  # D3: GRENADE RAIN
 		var kinds: Dictionary = stats.get("kinds", {})
 		kinds[tg.type] = int(kinds.get(tg.type, 0)) + 1  # B5: the Alien Lab counts what you kill
 		stats["kinds"] = kinds
@@ -4019,6 +4231,7 @@ func kill(tg: Unit, src) -> void:
 				booms.append({"t": 10 + i * 14, "x": tg.x + (randf() - .5) * 90, "y": tg.y - 20 - randf() * 40, "r": 34.0, "dmg": 0, "owner": null})
 	elif tg.team == "squad":
 		stats.kia += 1
+		stats.downs += 1
 		stats["last_down"] = "%s, BY %s" % [tg.def.name.to_upper(), who_did(tg, src)]
 		if tg.s.tags > 0 or mission.get("patrol", false):
 			# a dog tag buys their life: out until the next camp, or back next mission.
@@ -4139,6 +4352,8 @@ func collision_dmg(u: Unit, amt: float, label: String) -> void:
 	float_text(u, label, Color("e8dcc2"))
 	shake += 2
 	Sfx.play("bonk")
+	if label == "FALL" and u.team == "squad":
+		stats.falls += 1  # R5: SURE FOOTED
 	var src = u.last_hit_by if u.last_hit_by != null and u.last_hit_by != u else null
 	if src != null and src is Unit and src.perk("bulldozer"):
 		d *= 2
@@ -4191,6 +4406,8 @@ func blast_scale(owner) -> float:
 	return (1.2 if owner.perk("bigboom") else 1.0) + float(owner.g("blast", 0.0))
 
 func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> void:
+	if owner is Unit and owner.has_st("fat"):
+		r *= 1.5  # R6 FAT: 50% bigger blasts
 	# FUEL-AIR: a blast inside smoke or gas grows by half; a gas cloud is used up
 	var g = gas_at(x, y)
 	if dmg > 0 and (g != null or smoke_at(x, y)):
@@ -5941,6 +6158,8 @@ func _act_walk(u: Unit, pts: Array, cost: float) -> void:
 
 # ---------------------------------------------------------------- screen scrolling
 func check_push(u: Unit) -> void:
+	check_troopers(u)
+	await check_dealer(u)
 	await check_camp(u)
 	if u.dead or cam_x >= world_w - W:
 		return
@@ -5969,6 +6188,7 @@ func make_camp(c: Dictionary) -> void:
 	busy = true
 	banner("CAMP", Color("62d26f"), "SAFE FOR NOW")
 	lava_drain()
+	troopers_leave()
 	Sfx.play("levelup")
 	await wait(30)
 	var i := 0
@@ -6997,6 +7217,7 @@ func hand_size(s: Unit) -> int:
 	return maxi(2, 4 + s.s.bonus.hand + (1 if s.perk("fieldkit") else 0) + (1 if Run.implanted(s.s, "thirdarm") else 0) + relay_hand - (1 if Run.threat_on(3) else 0) + (1 if Run.has_gear("ammodrone") else 0) + (1 if round_n == 1 and Run.relic_tier("ammodrone") >= 3 else 0))
 
 func start_player_turn() -> void:
+	troopers_follow()
 	round_n += 1
 	stats.rounds = round_n
 	wind = int(round(ri(-6, 6) * rules.get("wind", 1.0)))
@@ -7188,6 +7409,8 @@ func grant_bonus(p: Unit, u: Unit) -> void:
 		var hl := mini(15, u.max_hp - u.hp)
 		u.hp += hl
 		float_text(u, "+%d HP" % hl, Color("62d26f"))
+	elif transform_bonus(k, u):
+		pass
 	elif k == "nadekit":
 		# K2: a soldier gets two Frag Grenades that stay in hand until thrown; a Jackal lobs one on its next attack
 		if u.team == "squad":
@@ -7462,6 +7685,7 @@ func enemy_phase() -> void:
 		Sfx.play("alarm")
 		await wait(40)
 	await biome_round()
+	await crumble_round()
 	classes_enemy_end()
 	await leg_check()
 	if squad_alive().is_empty():
@@ -9613,6 +9837,8 @@ func physics(u: Unit) -> void:
 			u.y = ly
 			var imp: float = u.vy
 			var lm := T.mat(u.x, ly)
+			if bounce_body(u, imp):
+				continue
 			if lm == Terrain.RUBBER and imp > 2.5 and not u.para:
 				# rubber tarp: straight back up, and the bounce eats the fall
 				u.y = ly - 0.5
