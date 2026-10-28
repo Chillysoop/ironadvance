@@ -57,6 +57,8 @@ ENEMY_PAL = {
     'mortarcrew': dict(JACKAL, h='#8a6a3a', H='#6a4e26', j='#443018', u='#b8c07c', U='#929a58', v='#646a38'),
     'para':       dict(JACKAL, h='#d84a3a', H='#a8302a', j='#6a1c18'),
     'jetter':     dict(JACKAL, h='#3ab0a8', H='#24807a', j='#14504c'),
+    'jsniper':    dict(JACKAL, h='#6a7a40', H='#4e5a2c', j='#2e361a', u='#8c8a5a', U='#6a6840', v='#46442a'),
+    'flamer':     dict(JACKAL, h='#3a3a3a', H='#262626', j='#121212', u='#a8603a', U='#844428', v='#562a18'),
 }
 
 def palette(over):
@@ -197,6 +199,18 @@ TORSOS = {
 # Back items: drawn behind the body, 8 wide x 10 tall at (1, 6)
 BACKS = {
     'none': [],
+    'fueltank': [
+        "........",
+        "........",
+        "........",
+        "...KKK..",
+        "..KRRRK.",
+        "..KRYRK.",
+        "..KRYRK.",
+        "..KRRRK.",
+        "..KRRRK.",
+        "...KKK..",
+    ],
     'pack': [
         "........",
         "........",
@@ -357,6 +371,8 @@ CHAR_STYLE = {
     'mortarcrew': dict(head='helmet', torso='bomber', back='none', gun='none'),
     'para':       dict(head='helmet', torso='jackal', back='pack', gun='rifle'),
     'jetter':     dict(head='helmet', torso='jackal', back='jetpack', gun='rifle'),
+    'jsniper':    dict(head='boonie', torso='jackal', back='none', gun='sniper'),
+    'flamer':     dict(head='mask', torso='jackal', back='fueltank', gun='hmg'),
 }
 
 FW = FH = 24  # frame size in art pixels
@@ -2098,7 +2114,7 @@ def main():
         fr = char_frames(key, pal)
         meta['sq_' + key] = write_sheet('sq_' + key, fr, gun_image(CHAR_STYLE[key]['gun'], pal))
     look_sheets(meta)
-    for key in ('grunt', 'shield', 'nade', 'mg', 'radio', 'engineer', 'sapper', 'mortarcrew', 'para', 'jetter'):
+    for key in ('grunt', 'shield', 'nade', 'mg', 'radio', 'engineer', 'sapper', 'mortarcrew', 'para', 'jetter', 'jsniper', 'flamer'):
         pal = palette(ENEMY_PAL[key])
         fr = char_frames(key, pal)
         g = CHAR_STYLE[key]['gun']

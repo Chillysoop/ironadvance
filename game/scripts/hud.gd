@@ -45,6 +45,11 @@ func setup(battle: Battle) -> void:
 	hand_box = Control.new()
 	hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(hand_box)
+	var vp := VehiclePop.new()
+	vp.hud = self
+	vp.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(vp)
 	# NEXT is the big plunger now; END TURN and MOVE (auto-advance) are small buttons above it
 	next_btn = PixButton.new()
 	next_btn.text = "NEXT"
@@ -182,7 +187,8 @@ func refresh() -> void:
 		var c := Data.card(inst)
 		cv.cost = b.card_cost(u, inst)
 		cv.selected = b.card_idx == i
-		cv.disabled = not my_turn or u.energy < cv.cost
+		cv.no_move = b.out_of_move(u, c)
+		cv.disabled = not my_turn or u.energy < cv.cost or cv.no_move
 		cv.supercharged = u.adr >= 50 and not inst.get("od", false) and Data.is_attack(c)
 		cv.chain = b.chain_ready(u, inst) if my_turn else ""
 	overlay.queue_redraw()
@@ -281,8 +287,11 @@ func hint_text() -> String:
 		if c.get("beacon", false):
 			return "BEACON: lob it onto the Jackals. Three bombs land there when their phase starts."
 		if b.armed_fuse() != null:
-			return "GRENADE: aim the throw. The mouse wheel (or [ and ]) sets the fuse from 1 to 4 seconds; the trail shows every bounce and where it bursts."
+			return "GRENADE: aim the throw. The mouse wheel (or [ and ]) sets the fuse from 1 to 4 seconds; only the start of the throw is shown, so judge the bounces like in Worms."
 		return Data.TYPES[c.type].hint
+	if u.mech != null and u.mech.max > 0:
+		var V: Dictionary = Data.VEHICLES[u.mech.type]
+		return "%s is driving the %s (HP %d/%d): it takes every hit until it breaks. %s %s" % [u.def.name, V.name, maxi(0, u.mech.hp), u.mech.max, V.pitch, "Click ground to move." if u.move_left > 1 else ""]
 	if u.move_left > 1:
 		return "Click ground to move %s. Hold ALT for intel. Click a ladder top to climb. Ending in the push zone scrolls early and cuts the alert." % u.def.name
 	return "%s is out of movement. Play cards, switch soldier (TAB) or end the turn." % u.def.name
@@ -679,8 +688,10 @@ class PauseMenu extends Control:
 			Run.load_campaign(int(Run.camp.slot))
 		main.show_title()
 	func _input(ev: InputEvent) -> void:
-		if ev is InputEventKey and ev.pressed and not ev.echo:
-			if ev.keycode == KEY_ESCAPE:
+		# right-click backs out like Esc (the game is paused, so the main screen can't map it)
+		var back: bool = ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT
+		if back or (ev is InputEventKey and ev.pressed and not ev.echo):
+			if back or ev.keycode == KEY_ESCAPE:
 				if page == "menu":
 					resume()
 				else:
@@ -864,6 +875,40 @@ class Overlay extends Control:
 			draw_rect(Rect2(r.position.x + 4, my + 4, 38, 1), Color("b48cff"))
 		Art.text(self, "%d" % int(mv), Vector2(r.get_center().x, my + 21), 8, Color("62d26f") if mv > 1 else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 
+	func draw_boosts(b: Battle, y: float) -> float:
+		## Top left: every power-up and status on the selected soldier (Predator, Berserker, Burning...),
+		## with turns left and what it does. Returns the height used so the log moves under it.
+		var u: Unit = b.sel
+		if u == null or u.dead or u.team != "squad":
+			return 0.0
+		var rows: Array = []
+		for k in u.st:
+			if u.st[k] > 0 and Data.STATUS.has(k):
+				var S: Dictionary = Data.STATUS[k]
+				var left := "%d GRENADE%s" % [u.st[k], "" if u.st[k] == 1 else "S"] if k == "cluster" else ("%d TURN%s" % [u.st[k], "" if u.st[k] == 1 else "S"])
+				rows.append([S.name, left, S.text, S.c])
+		if rows.is_empty():
+			return 0.0
+		var ink := Color(0.05, 0.035, 0.03)
+		var w := 0.0
+		for r in rows:
+			w = maxf(w, Art.text_width(r[0] + "  " + r[1], 8) + 8 + Art.text_width(r[2], 16, true))
+		w = minf(w + 20, 520.0)
+		var hgt := 18.0 + rows.size() * 16
+		draw_rect(Rect2(5, y - 1, w + 2, hgt + 2), ink)
+		draw_rect(Rect2(6, y, w, hgt), Color(0.1, 0.11, 0.13, 0.92))
+		draw_rect(Rect2(6, y, w, 2), Color("b48cff"))
+		Art.text(self, "%s: POWER-UPS AND STATUS" % u.def.name, Vector2(12, y + 13), 8, Color("ffd23a"))
+		for i in rows.size():
+			var r: Array = rows[i]
+			var ry := y + 28 + i * 16
+			var head: String = r[0] + "  " + r[1]
+			var pulse: float = 0.75 + 0.25 * sin(b.t / 8.0)
+			draw_rect(Rect2(12, ry - 9, 4, 10), Color(r[3], pulse))
+			Art.text(self, head, Vector2(20, ry), 8, r[3])
+			Art.text(self, r[2], Vector2(28 + Art.text_width(head, 8), ry + 1), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		return hgt + 8
+
 	func _draw() -> void:
 		var b: Battle = hud.b
 		if b == null:
@@ -959,6 +1004,7 @@ class Overlay extends Control:
 				draw_rect(Rect2(bx, 58, bw * minf(1, boss.plate / float(b.mission.plate)), 2), Color("9fb4c9"))
 		# log
 		var ly := 52.0 if boss == null or (not b.boss_active and boss.type != "queen") else 84.0
+		ly += draw_boosts(b, ly - 12)
 		for i in b.log_lines.size():
 			var a := 0.55 + 0.45 * float(i + 1) / b.log_lines.size()
 			Art.text(self, b.log_lines[i], Vector2(10, ly + i * 14), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
@@ -1026,3 +1072,110 @@ class Overlay extends Control:
 			Art.text(self, bn.text, Vector2(480 + (1 - k) * -300, 226), sz, bn.c, HORIZONTAL_ALIGNMENT_CENTER, 3, false, al)
 			if bn.sub != "":
 				Art.text(self, bn.sub, Vector2(480, 252), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, false, al)
+
+# ---------------------------------------------------------------- the boarding card
+class VehiclePop extends Control:
+	## Climbing into (or out of) a vehicle: what it does for you, and the exact cards that
+	## joined or left the driver's hand, shown as real cards for a few seconds.
+	var hud
+	var shown := -1
+	var shown_mode := ""
+	var cvs: Array = []
+	const DUR := 330
+	const CW := 100.0
+	const CH := 138.0
+
+	func _process(_d: float) -> void:
+		var b: Battle = hud.b
+		var p: Dictionary = b.vpop if b != null else {}
+		var live: bool = p.size() > 0 and b.t - p.t0 < DUR and b.state != "title"
+		if not live:
+			if shown != -1:
+				clear()
+			visible = false
+			return
+		visible = true
+		if shown != p.t0 or shown_mode != p.mode:
+			build(p)
+		# fade in and out, and step aside while a card is being aimed
+		var age: int = b.t - p.t0
+		var a := minf(1.0, age / 8.0) * clampf((DUR - age) / 30.0, 0, 1)
+		modulate.a = a * (0.25 if hud.targeting else 1.0)
+		queue_redraw()
+
+	func stamp_for(p: Dictionary) -> String:
+		return "REMOVED" if p.mode != "in" else ""
+
+	func clear() -> void:
+		for c in cvs:
+			c.queue_free()
+		cvs.clear()
+		shown = -1
+
+	func cards_of(p: Dictionary) -> Array:
+		return p.added if p.mode == "in" else p.removed
+
+	func content(p: Dictionary) -> Array:
+		## [title, lines] for the card's text.
+		var V: Dictionary = Data.VEHICLES[p.type]
+		var u: Unit = p.u
+		var nm: String = u.def.name
+		var gone := "VEHICLE CARDS REMOVED FROM %s'S HAND." % nm if p.removed.size() else ""
+		var out: Array
+		match p.mode:
+			"in":
+				var mx: int = u.mech.max if u.mech != null else int(V.hp)
+				out = ["HIJACKED! %s IS DRIVING THE %s" % [nm, V.name], ["VEHICLE HP %d. %s" % [mx, Data.VEHICLE_RULES], "%s. %s" % [Data.vehicle_move(p.type), V.pitch], "CARDS ADDED TO %s'S HAND. THEY COME BACK EVERY TURN YOU DRIVE." % nm]]
+			"out":
+				out = ["%s IS OUT OF THE %s" % [nm, V.name], ["Back on foot: %s's own HP takes the hits again, at normal movement." % nm, gone]]
+			_:
+				out = ["%s WRECKED" % V.name, ["%s tumbles out unhurt, now on foot." % nm, "Patch Job rebuilds the walker. Vehicle cards won't play until then." if u.def.key == "gears" else "Walk onto another parked vehicle to drive again.", gone]]
+		out[1] = out[1].filter(func(l): return l != "")
+		return out
+
+	func box(p: Dictionary) -> Rect2:
+		var n: int = cards_of(p).size()
+		var tl: Array = content(p)
+		var w := maxf(n * (CW + 10) + 30, Art.text_width(tl[0], 16) + 40)
+		for l in tl[1]:
+			w = maxf(w, Art.text_width(l, 16, true) + 40)
+		w = minf(w, 940)
+		var h: float = 50.0 + tl[1].size() * 18 + (CH + 26 if n > 0 else 0.0)
+		return Rect2(480 - w / 2, 62, w, h)
+
+	func build(p: Dictionary) -> void:
+		clear()
+		shown = p.t0
+		shown_mode = p.mode
+		var ks: Array = cards_of(p)
+		var r := box(p)
+		var x0 := 480 - (ks.size() * (CW + 10) - 10) / 2.0
+		for i in ks.size():
+			var cv := CardView.new()
+			cv.opt = {"key": ks[i], "tier": Data.base_tier(ks[i])}
+			cv.size = Vector2(CW, CH)
+			cv.position = Vector2(x0 + i * (CW + 10), r.end.y - CH - 12)
+			cv.label_top = "+ IN HAND" if p.mode == "in" else ""
+			cv.stamp = stamp_for(p)
+			add_child(cv)
+			cv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			cvs.append(cv)
+
+	func _draw() -> void:
+		var b: Battle = hud.b
+		var p: Dictionary = b.vpop
+		if p.is_empty():
+			return
+		var r := box(p)
+		var tl: Array = content(p)
+		var ink := Color(0.05, 0.035, 0.03)
+		var col := Color("ffb23e") if p.mode == "in" else Color("ff7a3d")
+		draw_rect(r.grow(2), ink)
+		draw_rect(r, Color(0.1, 0.11, 0.13, 0.95))
+		draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 3), col)
+		var cx := r.get_center().x
+		Art.text(self, tl[0], Vector2(cx, r.position.y + 26), 16, col, HORIZONTAL_ALIGNMENT_CENTER, 2)
+		var lines: Array = tl[1]
+		for i in lines.size():
+			var last: bool = i == lines.size() - 1
+			Art.text(self, lines[i], Vector2(cx, r.position.y + 50 + i * 18), 16, Color("ffd23a") if last else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)

@@ -259,7 +259,17 @@ func tile_under(p: Vector2) -> ItemTile:
 	return null
 
 func _input(ev: InputEvent) -> void:
-	if not is_visible_in_tree() or not merging.is_empty() or not ev is InputEventMouse:
+	if not is_visible_in_tree():
+		return
+	# right-click backs out one step: a merge or a picked slot first, before it leaves the armory
+	if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT and not drag.get("on", false) and (not merging.is_empty() or not pick.is_empty()):
+		get_viewport().set_input_as_handled()
+		Sfx.play("click")
+		merging = {}
+		pick = {}
+		build()
+		return
+	if not merging.is_empty() or not ev is InputEventMouse:
 		return
 	var p: Vector2 = make_input_local(ev).position
 	mouse_p = p

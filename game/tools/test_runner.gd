@@ -4,7 +4,7 @@ extends Node
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
 ## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer), track (N7 K9 Handler), vehicles (N3 Gears, R1 hijack, E6 Jackal Walker), branches5 (B1-B4 fifth branches),
 ## gear (click a slot to see what fits, drag and drop, deck changes, a fifth soldier at HQ),
-## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), operator (tablet call-ins), training (N6 drill),
+## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -765,6 +765,10 @@ func run() -> void:
 			await newclasses_test()
 		"identity":
 			await identity_test()
+		"jackals2":
+			await jackals2_test()
+		"biomes2":
+			await biomes2_test()
 		"pickups":
 			await pickups()
 		"bossloot":
@@ -833,6 +837,8 @@ func run() -> void:
 			await clicks()
 		"pause":
 			await pause_menu()
+		"uiclarity":
+			await ui_clarity()
 		"operator":
 			await operator_call()
 		"training":
@@ -1640,6 +1646,150 @@ func pause_menu() -> void:
 	menu[0].quit()
 	await frames_wait(5)
 	check(main.battle == null and not get_tree().paused, "QUIT TO TITLE leaves the battle")
+
+func right_click(p := Vector2(480, 300)) -> void:
+	for down in [true, false]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_RIGHT
+		ev.pressed = down
+		ev.position = p
+		ev.global_position = p
+		Input.parse_input_event(ev)
+		await frames_wait(3)
+
+func ui_clarity() -> void:
+	## Conner's 2026-10-28 clarity pass.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	var tips = Run.meta.get("tips_off", false)
+	Run.meta["tips_off"] = true
+	# class cards only for classes in the squad
+	var base: Array = Data.offer_keys(["moss", "hex", "vee", "rook"])
+	check(not base.has("whistle") and not base.has("sicem") and not base.has("vulcan") and not base.has("sentry"), "no Whistle, Sic 'Em, Vulcan or Sentry without Track, Gears or Bolt")
+	check(base.has("frag") and base.has("snipe") and base.has("shapedcharge"), "shared cards still offered")
+	var wt: Array = Data.offer_keys(["moss", "hex", "vee", "track"])
+	check(wt.has("whistle") and wt.has("sicem") and not wt.has("vulcan"), "Track in the squad brings his dog cards")
+	Run.new_run()
+	var sk: Array = Run.squad_classes()
+	check(sk == ["moss", "hex", "vee", "rook"], "squad classes %s" % [sk])
+	var bad := 0
+	for i in 40:
+		Run.qm_cache = {}
+		var sh: Control = load("res://scripts/shop.gd").new()
+		sh.restock()
+		for o in sh.stock_cards:
+			if not Data.card_classes(o.key).is_empty():
+				bad += 1
+		sh.free()
+	check(bad == 0, "40 QM restocks offer no class cards for missing classes (%d)" % bad)
+	# battle: power-up panel, Hop/Drill crossed out, grenade aim, sentry
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var u: Unit = b.sel
+	u.st["cloak"] = 2
+	u.st["berserk"] = 1
+	var hi := force_card(u, "hop")
+	var di := force_card(u, "drill")
+	u.move_left = 0
+	b.ui_dirty = true
+	await frames_wait(6)
+	var hv: CardView = main.hud.cards[hi]
+	var dv: CardView = main.hud.cards[di]
+	check(hv.no_move and hv.disabled and dv.no_move and dv.disabled, "out of movement: Hop and Drill are crossed out")
+	await shot("ui_powerups_nomove")
+	u.move_left = 100
+	b.ui_dirty = true
+	await frames_wait(4)
+	check(not hv.no_move and not dv.no_move, "with movement back they light up again")
+	u.st.erase("cloak"); u.st.erase("berserk")
+	var fi := force_card(u, "frag")
+	b.select_card(fi)
+	b.mouse = Vector2(u.x + 160, u.y - 120)
+	await frames_wait(6)
+	await shot("ui_grenade_aim")
+	b.cancel_card()
+	# sentry: the real end of turn, with the callouts
+	var x := 700.0
+	while not flat_open(b, x, 400) and x < b.world_w - 600:
+		x += 20
+	for o in b.units:
+		if o.team == "enemy" and absf(o.x - x - 150) < 520:
+			o.gone = true
+	cam_on(b, x + 150)
+	ground_unit(b, u, x, 0)
+	var e := b.mk_enemy("grunt", x + 300, b.T.stand_y(x + 300, 0))
+	e.active = true
+	e.hp = 60; e.max_hp = 60
+	b.units.append(e)
+	var st := b.make_sentry(u, x + 40, b.T.stand_y(x + 40, 0), 20, [4, 5])
+	await frames_wait(4)
+	var tg = b.sentry_target(st)
+	check(tg != null, "the sentry has a target")
+	var hp0 := e.hp
+	var seen := {"call": false, "tr": false}
+	b.end_turn(true)
+	for k in 600:
+		await get_tree().process_frame
+		if b.texts.any(func(t): return t.text == "SENTRY FIRES"):
+			seen.call = true
+		if b.tracers.any(func(t): return t.c == Color("ff9a3d")):
+			if not seen.tr:
+				await shot("ui_sentry_fires")
+			seen.tr = true
+		if b.state == "player" and not b.busy and k > 30:
+			break
+	check(seen.call and seen.tr, "at end of turn the sentry calls out and fires a bright tracer")
+	check(tg == null or e.hp < hp0 or e.dead or b.texts.any(func(t): return t.text == "SENTRY MISSED"), "the shot hit (%d -> %d) or said it missed" % [hp0, e.hp])
+	main.hud.show_deck()
+	await frames_wait(3)
+	await right_click()
+	await frames_wait(3)
+	check(not main.hud.deck_open, "right-click closes the battle deck viewer")
+	# out of battle: card tips and right-click back
+	main.show_hq(false)
+	await frames_wait(10)
+	var hq: Control = main.screen
+	hq.go("qm")
+	await frames_wait(10)
+	var shop: Control = hq.sub
+	var long := {"kind": "card", "key": "ridealong"}
+	var cv := CardView.new()
+	cv.opt = long
+	cv.size = Vector2(84, 116)
+	cv.position = Vector2(300, 200)
+	shop.add_child(cv)
+	await frames_wait(3)
+	cv.hover = true
+	await frames_wait(3)
+	check(cv.cropped != "" and cv.tip != null, "a card with cut-off text shows its full text on hover")
+	await shot("ui_card_tip")
+	cv.queue_free()
+	await right_click()
+	await frames_wait(6)
+	check(hq.idle(), "right-click leaves the QM tent for the HQ")
+	hq.go("workshop")
+	await frames_wait(6)
+	await right_click()
+	await frames_wait(6)
+	check(hq.idle(), "right-click leaves the workshop")
+	hq.go("armory")
+	await frames_wait(6)
+	await right_click()
+	await frames_wait(6)
+	check(hq.idle(), "right-click leaves the armory")
+	hq.open_dossier(0)
+	await frames_wait(6)
+	await right_click()
+	await frames_wait(6)
+	check(hq.idle(), "right-click closes a Dossier")
+	main.dial_gate()
+	await frames_wait(6)
+	await right_click()
+	await frames_wait(10)
+	check(main.screen != null and main.screen.has_method("idle"), "right-click on the gate dial goes back to HQ")
+	Run.meta = keep
+	Run.meta["tips_off"] = tips
+	Run.save_meta()
 
 func operator_call() -> void:
 	## C4: radio lines come in on a corner tablet that clicks through and hangs up by itself.
@@ -6009,14 +6159,28 @@ func vehicles_test() -> void:
 	var rk: Unit = b.squad().filter(func(u): return u.def.key == "rook")[0]
 	ground_unit(b, rk, x - 60, 0)
 	var r: Unit = b.park_ride(x - 30, "tank")
+	b.mouse = Vector2(r.x, r.y - 12)
 	await frames_wait(4)
 	await shot("vehicles_parked")
+	b.select_unit(rk)
 	b.hijack(rk, r)
 	check(rk.mech != null and rk.mech.type == "tank" and r.gone, "R1: Rook hijacks the parked tank")
 	check(rk.hand.any(func(h): return h.key == "tankshell") and rk.hand.any(func(h): return h.key == "eject"), "and its guns are in his hand")
 	check(b.full_move(rk) < rk.def.spd + 1, "a tank is slower than on foot")
-	await frames_wait(6)
+	# legibility: the boarding card lists exactly the cards that joined the hand
+	check(b.vpop.get("u") == rk and b.vpop.mode == "in" and b.vpop.added.has("tankshell") and b.vpop.added.has("vulcan") and b.vpop.added.has("eject"), "boarding card shows the cards added (%s)" % [b.vpop.get("added")])
+	b.state = "player"; b.busy = false
+	b.mouse = Vector2(rk.x + 200, rk.y - 200)
+	await frames_wait(30)
 	await shot("vehicles_hijack")
+	# leaving the vehicle: the card lists what was taken back out of the hand
+	b.damage(rk, 999, null)
+	check(rk.mech == null and not rk.hand.any(func(h): return h.get("mechtemp", false)), "a wrecked tank takes its cards back")
+	check(b.vpop.mode == "wreck" and b.vpop.removed.has("tankshell"), "wreck card shows the cards removed (%s)" % [b.vpop.get("removed")])
+	b.banners.clear()
+	await frames_wait(30)
+	await shot("vehicles_wrecked")
+	await until(func(): return b.settled(), 600)
 	# E6: blow the ground out under one leg of a Jackal Walker and it topples
 	var wx := x + 340.0
 	var jw := b.mk_enemy("jwalker", wx, b.T.stand_y(wx, 0))
@@ -6241,6 +6405,148 @@ func identity_test() -> void:
 	else:
 		b.drown(rk)
 		check(not rk.dead, "Lifeguard: swims to shore instead of drowning")
+
+func j2_enemy(b: Battle, type: String, x: float) -> Unit:
+	var e := b.mk_enemy(type, x, b.T.stand_y(x, 0))
+	e.active = true
+	b.units.append(e)
+	return e
+
+func jackals2_test() -> void:
+	## E1 sniper, E2 flametrooper, E3 paratroopers, E4 hounds, E5 shield wall, E7 gunship, E8 Di-Cokka.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var sq := {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	var x := 900.0
+	flat_strip(b, x - 200, 900)
+	for o in b.units:
+		if o.team != "squad" and absf(o.x - x - 250) < 800:
+			o.gone = true
+	var mo: Unit = sq.moss
+	ground_unit(b, mo, x, 0)
+	ground_unit(b, sq.hex, x - 60, 0)
+	ground_unit(b, sq.vee, x - 90, 0)
+	ground_unit(b, sq.rook, x - 120, 0)
+	cam_on(b, x + 200)
+	await frames_wait(6)
+	# E1: the laser goes on first, the shot comes down it next turn
+	var sn := j2_enemy(b, "jsniper", x + 400)
+	sn.hp = 60; sn.max_hp = 60
+	await b.sniper_act(sn)
+	check(sn.fl.has("laser"), "E1: the sniper lays his laser on a soldier")
+	await shot("j2_laser")
+	var hp0 := mo.hp
+	await b.sniper_act(sn)
+	await frames_wait(4)
+	check(mo.hp < hp0, "and fires down it next turn (%d -> %d)" % [hp0, mo.hp])
+	b.build_cells(x + 60, mo.y - 70, 16, 70, 2)
+	hp0 = mo.hp
+	await b.sniper_act(sn)
+	await frames_wait(4)
+	check(mo.hp == hp0, "a wall in the laser's way stops the shot")
+	sn.gone = true
+	b.T.carve(x + 68, mo.y - 30, 30, null)
+	# E2: the flametrooper's cone, and his fuel tank from behind
+	mo.hp = mo.max_hp
+	var fl := j2_enemy(b, "flamer", x + 70)
+	fl.hp = 60; fl.max_hp = 60
+	fl.face = -1
+	await b.flamer_act(fl)
+	check(mo.hp < mo.max_hp and mo.has_st("burn"), "E2: the cone of fire sets Moss Burning (%d)" % mo.hp)
+	var vx: Unit = sq.vee
+	ground_unit(b, vx, fl.x + 140, 0)
+	fl.face = -1
+	var a := atan2(fl.y - 20 - (vx.y - 20), fl.x - vx.x)
+	b.fire_bullet(vx, vx.x - 10, vx.y - 20, a, {"dmg": [2, 2], "range": 400, "bounce": 0}, false)
+	await frames_wait(8)
+	check(fl.fl.get("tank_gone", false) and fl.hp < 50, "a shot in the back blows his fuel tank (%d)" % fl.hp)
+	fl.gone = true
+	# E3: troopers hang under chutes through your turn; shoot the chute and they drop
+	await b.plane_drop(2)
+	var paras: Array = b.units.filter(func(o): return o.fl.get("chute", false))
+	check(paras.size() == 2, "E3: a plane drops two troopers on chutes")
+	var py: float = paras[0].y
+	await frames_wait(30)
+	check(absf(paras[0].y - py) < 1, "they hang there until the Jackal phase")
+	await shot("j2_chutes")
+	var pt: Unit = paras[0]
+	var pa := atan2(pt.y - 50 - (mo.y - 24), pt.x - mo.x)
+	paras[1].gone = true
+	b.fire_bullet(mo, mo.x + 10, mo.y - 24, pa, {"dmg": [3, 3], "range": 900, "bounce": 0}, false)
+	check(not pt.para, "a round through the chute cuts it")
+	await until(func(): return not pt.air or pt.dead, 600)
+	check(pt.dead or pt.hp < pt.max_hp, "and the drop hurts (%d/%d)" % [pt.hp, pt.max_hp])
+	for o in paras:
+		o.gone = true
+	# E4: a hound pins whoever it bites
+	var hd := j2_enemy(b, "jdog", sq.hex.x + 120)
+	await b.skitter_act(hd)
+	var pinned := b.squad().filter(func(s): return s.has_st("pinned"))
+	check(pinned.size() >= 1, "E4: a Jackal Hound bites and PINS a soldier")
+	hd.gone = true
+	# E5: the shield wall
+	var w0 := j2_enemy(b, "wallshield", x + 260)
+	var ws: Array = [w0]
+	w0.fl["wall"] = w0.id
+	for k in 2:
+		var m := j2_enemy(b, "wallshield", x + 280 + k * 20)
+		m.fl["wall"] = w0.id
+		ws.append(m)
+	for m in ws:
+		m.hp = 60; m.max_hp = 60; m.face = -1
+	check(b.wall_locked(w0), "E5: three Riot Jackals lock into a Shield Wall")
+	ground_unit(b, mo, x, 0)
+	b.fire_bullet(mo, mo.x + 10, mo.y - 20, atan2(w0.y - 20 - (mo.y - 20), w0.x - mo.x - 10), {"dmg": [20, 20], "range": 600, "bounce": 0}, false)
+	check(w0.hp >= 57, "the wall stops 90%% from the front (%d)" % w0.hp)
+	ws[2].x += 200
+	ws[1].x += 120
+	check(not b.wall_locked(w0), "blow them out of line and the wall breaks")
+	await shot("j2_wall")
+	for m in ws:
+		m.gone = true
+	# E7: the gunship marks a strip, rakes it next turn, and a body in the rotor hurts it
+	var g := j2_enemy(b, "gunship", x + 200)
+	b.place_alien(g)
+	await b.gunship_act(g)
+	check(g.fl.has("strafe"), "E7: the gunship marks a strafing strip by the nearest soldier")
+	await shot("j2_gunship")
+	var tgt: Unit = b.squad().filter(func(s): return s.x >= g.fl.strafe.x0 and s.x <= g.fl.strafe.x1)[0]
+	var th := tgt.hp
+	await b.gunship_act(g)
+	check(tgt.hp < th, "and rakes it next turn (%d -> %d)" % [th, tgt.hp])
+	var gh := g.hp
+	var body := j2_enemy(b, "grunt", g.x)
+	body.x = g.x; body.y = g.y - g.h + 2; body.air = true; body.vy = -1.0; body.last_hit_by = sq.rook
+	await frames_wait(3)
+	check(g.hp <= gh - 18, "a body thrown into the rotor does 18 (%d -> %d)" % [gh, g.hp])
+	body.gone = true
+	b.damage(g, 999, sq.rook)
+	await until(func(): return g.gone, 900)
+	check(g.gone, "shot down, it crashes and crushes")
+	# E8: Di-Cokka armor, soft spots and the flip
+	var dk := j2_enemy(b, "dicokka", x + 320)
+	dk.face = -1
+	ground_unit(b, mo, x, 0)
+	var h0 := dk.hp
+	b.damage(dk, 10, mo)
+	check(h0 - dk.hp == 3, "E8: Di-Cokka's front armor stops 70%% (%d)" % (h0 - dk.hp))
+	ground_unit(b, sq.hex, dk.x + 120, 0)
+	h0 = dk.hp
+	b.damage(dk, 10, sq.hex)
+	check(h0 - dk.hp == 15, "hits from behind do +50%% (%d)" % (h0 - dk.hp))
+	dk.vy = -7.0; dk.air = true; dk.last_hit_by = sq.rook
+	await until(func(): return not dk.air, 600)
+	check(dk.fl.get("flipped", 0) > 0, "knocked into the air it lands FLIPPED")
+	await shot("j2_flipped")
+	h0 = dk.hp
+	b.damage(dk, 5, mo)
+	check(h0 - dk.hp == 10, "flipped it takes double (%d)" % (h0 - dk.hp))
 
 func nc_battle(draft: Array) -> Battle:
 	for k in draft:
@@ -6477,3 +6783,179 @@ func count_cells(b: Battle, x: float, y: float, w: float, h: float) -> int:
 			if b.T.grid[cy * b.T.cols + cx] != 0:
 				n += 1
 	return n
+
+func m_battle(id: String, segs: Array) -> Battle:
+	## A short level of one biome: the start, the given segments, a camp and the arena.
+	var bm: Dictionary = Data.BIOMES[id]
+	var lvl := {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "segments": ["start"] + segs + ["camp", "arena"],
+		"boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": bm.text, "encounter": "", "boss": "hiveship" if id == "hive" else "boar", "walker": false, "miniboss": "jwalker"}
+	Run.new_run()
+	var b: Battle = main.start_battle(0, lvl)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	return b
+
+func m_clear(b: Battle) -> void:
+	for o in b.units:
+		if o.team == "enemy" or o.team == "neutral":
+			o.gone = true
+
+func biomes2_test() -> void:
+	## M1-M7: Frozen Lake, Armored Train, Ruined City, Deep Mine, Volcano, Vharr Hive, Carrier Deck.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	for id in ["lake", "train", "city", "mine", "volcano", "hive", "carrier"]:
+		var lv := Run.make_level(id, 2)
+		check(lv.segments.size() == 7 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)) and Data.LEVELS[2].pool.has(id), "%s builds a full level and is in the last level's pool" % id)
+	check(Run.make_level("hive", 2).boss == "hiveship" and not Run.make_level("hive", 2).walker, "the Hive ends at the Hive Ship and has no Jackal Walker")
+	check(range(30).all(func(_i): return Run.make_level("mine", 2).miniboss != "gunship" and Run.make_level("mine", 2).encounter != "droppods"), "no gunship and no drop pods under the mine's ceiling")
+	# M1 Frozen Lake: the crust holds soldiers, breaks under a Brute, and drops him in the lake
+	var b: Battle = await m_battle("lake", ["lake"])
+	m_clear(b)
+	var sq := {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	var mo: Unit = sq.moss
+	check(b.T.lakes.size() == 1 and b.T.mat(880, b.T.ground_at(880) + 2) == Terrain.ICE and not b.T.solid(880, b.T.ground_at(880) + 14), "M1: a crust of ice over open water")
+	ground_unit(b, mo, 820, 0)
+	cam_on(b, 880)
+	b.ice_crack(mo)
+	check(b.T.solid(820, mo.y + 2), "a soldier standing on it doesn't break it")
+	var br := j2_enemy(b, "brute", 940)
+	await frames_wait(4)
+	await shot("m1_lake")
+	b.ice_crack(br)
+	await until(func(): return br.dead or br.sunk, 400)
+	check(br.dead or br.sunk, "a Brute breaks through and goes under")
+	await shot("m1_crack")
+	# M2 Armored Train: cars, couplers, and the tunnel on a count
+	b = await m_battle("train", ["traincars"])
+	m_clear(b)
+	sq = {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	mo = sq.moss
+	check(b.T.cars.size() == 3 and b.sweeps.size() == 1 and b.sweeps[0].left == 3, "M2: three cars and a tunnel 3 rounds out")
+	var car: Dictionary = b.T.cars[1]
+	ground_unit(b, mo, car.x + 100, car.roof - 10)
+	ground_unit(b, sq.hex, car.x + 140, car.roof + 20)
+	check(absf(mo.y - car.roof) < 1 and sq.hex.y > car.roof + 40, "Moss is up on the roof, Hex inside the car")
+	var gx: float = car.x + car.w + 20
+	check(b.T.solid(gx, b.T.ground_at(car.x) + 1) and not b.T.solid(gx, b.T.ground_at(car.x) + 20), "a coupler to walk across the open gap")
+	cam_on(b, car.x + 150)
+	var hits: Array = b.sweep_hits(b.sweeps[0])
+	check(hits.has(mo) and not hits.has(sq.hex), "the tunnel would hit Moss on the roof, not Hex inside")
+	var hp0 := mo.hp
+	var hh0: int = sq.hex.hp
+	await b.biome_round()
+	await b.biome_round()
+	check(mo.hp == hp0 and b.sweeps[0].left == 1, "two rounds: the count is down to 1")
+	await shot("m2_count")
+	await b.biome_round()
+	check(mo.hp < hp0 and sq.hex.hp == hh0 and b.sweeps[0].left == 3, "third round: the tunnel hits the roof only (%d -> %d) and resets" % [hp0, mo.hp])
+	# M3 Ruined City: four- and five-storey forts
+	b = await m_battle("city", ["ruins", "highrise"])
+	var tall: Array = b.T.structs.filter(func(s): return s.t == "fort" and s.floors >= 4)
+	check(tall.size() >= 2 and tall.all(func(s): return s.top < 200), "M3: high-rises four and five floors tall")
+	cam_on(b, tall[1].x + 200)
+	await frames_wait(6)
+	await shot("m3_city")
+	# M4 Deep Mine: the ceiling, no wind, cave-ins and carts
+	b = await m_battle("mine", ["shaft"])
+	m_clear(b)
+	sq = {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	mo = sq.moss
+	check(b.T.ceiling and b.wind == 0 and range(0, b.world_w, 40).all(func(x): return b.T.solid(x, 40)), "M4: rock overhead everywhere and no wind")
+	var prop: Dictionary = b.T.structs.filter(func(s): return s.t == "prop")[0]
+	check(absf(b.T.stand_y(prop.x + 20, 0) - b.T.ground_at(prop.x + 20)) < 9, "nothing stands in the crack over a slab")
+	var under := j2_enemy(b, "grunt", prop.x + 30)
+	under.hp = 40; under.max_hp = 40
+	cam_on(b, prop.x + 100)
+	await frames_wait(4)
+	await shot("m4_mine")
+	var g: float = b.T.ground_at(prop.post)
+	b.T.carve(prop.post, g - 8, 6, mo)  # cut low, or the slab comes to rest on the stump
+	await until(func(): return b.T.chunks.is_empty() and b.settled(), 600)
+	check(not b.T.solid(prop.x + 40, prop.top + 8) and under.hp < 40, "shoot the beam and the slab comes down on the Jackal (%d)" % under.hp)
+	await shot("m4_cavein")
+	var cart: Unit = null
+	for x in [prop.x + prop.w + 60.0]:
+		cart = b.mk_unit(); cart.team = "neutral"; cart.kind = "cart"; cart.x = x; cart.y = b.T.stand_y(x, b.T.ground_at(x) - 40); cart.w = 26; cart.h = 18; cart.hp = 999; cart.max_hp = 999
+		b.units.append(cart)
+	var tg := j2_enemy(b, "grunt", cart.x + 160)
+	tg.hp = 40; tg.max_hp = 40
+	ground_unit(b, mo, cart.x - 50, 0)
+	b.damage(cart, 3, mo)
+	check(cart.slide > 0, "a hit sends the cart rolling away from the shooter")
+	await until(func(): return cart.slide == 0 and b.settled(), 600)
+	check(tg.hp <= 22, "it runs over the Jackal down the line (%d; cart %d,%d tg %d,%d gone %s)" % [tg.hp, cart.x, cart.y, tg.x, tg.y, cart.gone])
+	await shot("m4_cart")
+	# M5 Volcano: lava climbs a marked step a round, burns what it reaches, drains on a push
+	b = await m_battle("volcano", ["caldera"])
+	m_clear(b)
+	sq = {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	var low := 460.0 + 330.0
+	var lo := j2_enemy(b, "grunt", low)
+	ground_unit(b, sq.moss, 460 + 150, 0)
+	cam_on(b, low)
+	var gy: float = lo.y
+	b.T.fill_r(low - 12, gy, 24, 8, 3)
+	var n := int(ceil((b.WATER_Y - gy + 3) / 10.0))
+	check(b.lava_k == 0 and n <= Battle.LAVA_MAX, "M5: the basin floor sits within the lava's reach (%d)" % int(gy))
+	for i in n:
+		await b.biome_round()
+	check(b.lava_k == n and lo.dead and not sq.moss.dead, "%d rounds: the lava reaches the basin and burns the Jackal up, the high ground is safe" % n)
+	check(not b.T.solid(low, gy + 4), "and it ate the planks in the basin")
+	await shot("m5_lava")
+	await b.scroll_to(b.cam_x + 200, "push", sq.moss)
+	check(b.lava_k == 0, "an aggressive push drains it")
+	# M6 Vharr Hive: only Vharr, standing acid, and the walls grow back
+	b = await m_battle("hive", ["hivecore", "broodpit"])
+	var foes: Array = b.units.filter(func(o): return o.team == "enemy" and not o.gone)
+	check(foes.size() > 6 and foes.all(func(o): return b.faction(o) == "vharr"), "M6: every enemy in the Hive is Vharr (%s)" % str(foes.filter(func(o): return b.faction(o) != "vharr").map(func(o): return o.type)))
+	check(b.acids.filter(func(a): return a.turns > 100).size() >= 3, "standing acid pools that never dry")
+	cam_on(b, 900)
+	var hx := 1000.0
+	var hy: float = b.T.ground_at(hx)
+	b.T.carve(hx, hy + 10, 22, null)
+	var holes := 0
+	for cy in range(int((hy - 20) / 4), int((hy + 40) / 4)):
+		for cx in range(int((hx - 30) / 4), int((hx + 30) / 4)):
+			if b.T.grid[cy * b.T.cols + cx] == 0 and b.T.orig[cy * b.T.cols + cx] != 0:
+				holes += 1
+	var grew: int = b.regrow(60)
+	check(holes > 40 and grew >= 40 and grew <= 60, "the Hive regrows %d blocks of a %d-block crater in one round (60 at most)" % [grew, holes])
+	await frames_wait(4)
+	await shot("m6_hive")
+	# M7 Carrier Deck: steel, a lift, a jet down the lane
+	b = await m_battle("carrier", ["flightdeck"])
+	m_clear(b)
+	sq = {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	mo = sq.moss
+	check(b.T.mat(600, b.T.ground_at(600) + 2) == Terrain.STEEL and b.T.lifts.size() == 1, "M7: a steel deck and an elevator")
+	var l: Dictionary = b.T.lifts[0]
+	ground_unit(b, mo, (l.x0 + l.x1) / 2.0, 0)
+	var y0 := mo.y
+	b.move_lift(l)
+	check(not l.up and absf(mo.y - y0 - 64) < 1, "the lift drops a storey with Moss on it")
+	cam_on(b, 900)
+	await frames_wait(4)
+	await shot("m7_lift")
+	b.move_lift(l)
+	check(l.up and absf(mo.y - y0) < 1, "and brings her back up")
+	var lane: Dictionary = b.sweeps.filter(func(s): return s.k == "plane")[0]
+	var jg := j2_enemy(b, "grunt", lane.x0 + 60)
+	jg.hp = 40; jg.max_hp = 40
+	ground_unit(b, sq.hex, 460 + 860, 0)
+	var hx0: int = sq.hex.hp
+	cam_on(b, lane.x0 + 300)
+	lane.left = 1
+	await b.biome_round()
+	check(jg.hp < 40 and sq.hex.hp == hx0, "the jet hits the Jackal in its lane, not Hex up the tower (%d)" % jg.hp)
+	await shot("m7_jet")

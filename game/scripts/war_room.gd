@@ -564,6 +564,7 @@ class RadioScreen extends Control:
 		if ev is InputEventKey and ev.pressed and (ev.keycode == KEY_ENTER or ev.keycode == KEY_SPACE):
 			advance()
 		elif ev is InputEventKey and ev.pressed and ev.keycode == KEY_ESCAPE:
+			get_viewport().set_input_as_handled()
 			finish()
 	func _process(_d: float) -> void:
 		t += 1

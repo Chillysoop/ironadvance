@@ -33,6 +33,7 @@ func _draw() -> void:
 		draw_line(Vector2(r.x, r.y), Vector2(r.u.x, r.u.y - 20), r.get("c", Color("d8d0b8")), 3.0 if r.has("c") else 1.0)
 	draw_acids()
 	draw_wells()
+	draw_biome()
 	for u in b.units:
 		if u.dead:
 			draw_unit(u)
@@ -190,6 +191,9 @@ func draw_unit(u: Unit) -> void:
 			return
 		"barrel":
 			draw_sprite("barrel_w" if white else "barrel", pos, Vector2(0.5, 1.0))
+			return
+		"cart":
+			draw_cart(u, pos, white)
 			return
 		"crate":
 			draw_sprite("crate_w" if white else "crate", pos, Vector2(0.5, 1.0))
@@ -383,6 +387,21 @@ func draw_unit(u: Unit) -> void:
 	if u.type == "burrow":
 		draw_burrow(u, pos, white)
 		return
+	if u.type == "jdog":
+		draw_dog(u, pos, white)
+		return
+	if u.type == "gunship":
+		draw_gunship(u, pos, white)
+		return
+	if u.type == "dicokka":
+		draw_dicokka(u, pos, white)
+		return
+	if u.type == "jsniper" and not u.dead and u.fl.has("laser"):
+		# E1: the laser is always on, so you can see exactly where the next shot goes
+		var L: Dictionary = b.sniper_line(u)
+		draw_line(L.from, L.to, Color(1, 0.15, 0.1, 0.35), 3.0)
+		draw_line(L.from, L.to, Color(1, 0.25, 0.2, 0.9), 1.0)
+		draw_circle(L.to, 2.5 + (b.t / 6) % 2, Color("ff4d3d"))
 	if u.type == "mg":
 		var pa := pick_anim(u)
 		Art.draw_char(self, u.sheet, "idle" if not u.dead else "die", pa[1], pos + Vector2(4, -8), -1, white, 0, u.alpha, u.gun_angle, not u.dead)
@@ -761,9 +780,52 @@ func draw_vehicle(type: String, pos: Vector2, face: int, white: bool, moving: bo
 			for wx in [-16, -8, 0, 8, 16]:
 				draw_circle(pos + Vector2(wx + (ph * 2.0), -4), 2.5, Color("4a4a4a"))
 
+func draw_gunship(u: Unit, pos: Vector2, white: bool) -> void:
+	## E7: a Jackal attack helicopter. Its marked strafing strip is drawn on the ground under it.
+	if u.fl.has("strafe") and not u.dead:
+		var x: float = u.fl.strafe.x0
+		while x <= u.fl.strafe.x1:
+			var gy = b.T.stand_y(x, 0)
+			if gy != null:
+				draw_rect(Rect2(x - 3, gy - 3, 6, 3), Color(1, 0.3, 0.24, 0.55 + 0.3 * float((b.t / 8) % 2)))
+			x += 10
+		var gy0 = b.T.stand_y((u.fl.strafe.x0 + u.fl.strafe.x1) / 2.0, 0)
+		if gy0 != null:
+			Art.text(self, "STRAFE", Vector2((u.fl.strafe.x0 + u.fl.strafe.x1) / 2.0, gy0 - 14), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+	var c := Color.WHITE if white else Color("bca064")
+	var dk := c.darkened(0.4)
+	var f := float(u.face)
+	var rot := 0.0 if not u.dead else u.rot
+	draw_set_transform(pos + Vector2(0, -u.h / 2.0), rot, Vector2.ONE)
+	draw_rect(Rect2(-24, -10, 44, 18), C_DARK)
+	draw_rect(Rect2(-23, -9, 42, 16), c)
+	draw_rect(Rect2(-23, 1, 42, 6), dk)
+	draw_rect(Rect2(10 * f - (0 if f > 0 else 8), -7, 8, 7), Color("9fd6ff") if not white else Color.WHITE)
+	draw_rect(Rect2(-f * 22 - (24 if f > 0 else 0), -5, 24, 5), C_DARK)
+	draw_rect(Rect2(-f * 46 - 3, -12, 6, 12), C_DARK)
+	draw_rect(Rect2(-14, 7, 28, 3), C_DARK)
+	draw_rect(Rect2(-2, -14, 4, 4), C_DARK)
+	var sp: float = 34.0 * absf(sin(b.t * 0.6)) + 6
+	draw_rect(Rect2(-sp, -16, sp * 2, 2), C_DARK)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+
+func draw_dicokka(u: Unit, pos: Vector2, white: bool) -> void:
+	## E8: a squat Jackal tank. Flipped, it lies on its back with its tracks in the air.
+	var col := Color("a89058")
+	if u.fl.get("flipped", 0) > 0:
+		draw_set_transform(pos + Vector2(0, -13), PI, Vector2.ONE)
+		draw_vehicle("tank", Vector2(0, 13), u.face, white, false, true, col)
+		draw_set_transform_matrix(Transform2D.IDENTITY)
+		Art.text(self, "FLIPPED", pos + Vector2(0, -34), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		return
+	draw_vehicle("tank", pos, u.face, white, u.walk != null, true, col)
+	draw_rect(Rect2(pos.x - 4, pos.y - 30, 8, 5), C_DARK)
+	draw_rect(Rect2(pos.x - 3, pos.y - 29, 6, 3), Color("d84a3a"))
+
 func draw_dog(u: Unit, pos: Vector2, white: bool) -> void:
 	## N7: Rex, a tan shepherd in a red collar. The pack's extra dogs are a shade darker.
-	var fur := Color.WHITE if white else (Color("8a6a44") if u.loot.get("temp", false) else Color("c09a64"))
+	var jd := u.type == "jdog"
+	var fur := Color.WHITE if white else (Color("4e4640") if jd else (Color("8a6a44") if u.loot.get("temp", false) else Color("c09a64")))
 	var dark := fur.darkened(0.45)
 	var f := float(u.face)
 	var run := u.air or u.zip != null
@@ -784,8 +846,8 @@ func draw_dog(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_rect(Rect2(hx + (3 if f > 0 else -7), pos.y - 14, 4, 3), dark)
 	draw_rect(Rect2(hx + (-2 if f > 0 else 0), pos.y - 20, 2, 4), dark)
 	draw_rect(Rect2(hx + (1 if f > 0 else -2), pos.y - 15, 1, 1), C_DARK)
-	draw_rect(Rect2(hx - 3, pos.y - 11, 6, 2), Color("d63a2a"))
-	if u.loot.get("temp", false):
+	draw_rect(Rect2(hx - 3, pos.y - 11, 6, 2), Color("d63a2a") if not jd else Color("c9d1da"))
+	if jd or u.loot.get("temp", false):
 		return
 	if u.loot.get("guard") is Unit and b.t % 60 < 40:
 		Art.text(self, "GUARD", pos + Vector2(0, -30), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -825,7 +887,7 @@ func draw_wreck(u: Unit, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog", "ride", "hulk", "sticky"] or b.is_boss(u) or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog", "ride", "hulk", "sticky", "cart"] or b.is_boss(u) or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -1158,6 +1220,7 @@ func draw_targeting() -> void:
 				elif tg.kind == "charge": lab = "DEFUSE"
 				elif tg.kind == "crate": lab = "OPEN"
 				elif tg.kind == "strongbox": lab = "LOCKED: BLAST OR PRY"
+				elif tg.kind == "cart": lab = "PUSH"
 				elif tg.is_prop(): lab = "BOOM"
 				elif hh.head: lab = "HEAD!"
 				elif tg.shield and hh.dx > 0: lab = "SHIELD"
@@ -1183,25 +1246,11 @@ func draw_targeting() -> void:
 			var v := b.aim_vel(u, m)
 			var fz = b.armed_fuse()
 			if fz != null:
-				# K1: the whole bouncing flight up to the fuse, and where it bursts
+				# grenades are skill shots, like Worms: the same short arc as any lob, never the bounces or the burst
 				var eff: int = int(fz / 2) if u.perk("shortfuse") else fz
-				var gs := b.sim_grenade(v.hx, v.hy, v.vx, v.vy, b.wind_of(u, c), eff)
-				# ARC orange with a dark core, so the trail never reads as snow or rain
-				for i in gs.pts.size():
-					if i % 2 == 0:
-						var p: Vector2 = gs.pts[i]
-						var a := maxf(0.4, 1 - i / float(eff + 20))
-						draw_rect(Rect2(p.x - 2, p.y - 2, 5, 5), Color(0.05, 0.035, 0.03, a * 0.85))
-						draw_rect(Rect2(p.x - 1, p.y - 1, 3, 3), Color(1, 0.82, 0.35, a))
-				var bp := Vector2(gs.x, gs.y)
-				if not gs.lost:
-					var rr: float = c.get("radius", 30) * b.blast_scale(u)
-					draw_arc(bp, rr, 0, TAU, 32, Color(1, 0.45, 0.2, 0.7), 1.0)
-					draw_rect(Rect2(bp.x - 3, bp.y - 3, 6, 6), Color("ff7a3d"))
-					draw_offscreen_burst(bp)
 				Art.text(self, "FUSE %.1fs  [WHEEL]" % (eff / 60.0), Vector2(m.x + 12, m.y + 22), 8, Color("ffd23a"))
 			var sim := b.sim_arc(v.hx, v.hy, v.vx, v.vy, b.wind_of(u, c), 40)
-			for i in (sim.pts.size() if fz == null else 0):
+			for i in sim.pts.size():
 				if i % 2 == 0:
 					var p: Vector2 = sim.pts[i]
 					draw_rect(Rect2(p.x - 2, p.y - 2, 5, 5), Color(0.05, 0.035, 0.03, (1 - i / 44.0) * 0.85))
@@ -1509,18 +1558,6 @@ func draw_reticle(p: Vector2, col: Color) -> void:
 	for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
 		draw_line(p + d * (s - 3), p + d * (s + 4), col, 1.0)
 
-func draw_offscreen_burst(bp: Vector2) -> void:
-	## A grenade that bursts off screen gets an arrow on the nearest edge.
-	var lo := Vector2(b.cam_x + 10, 40)
-	var hi := Vector2(b.cam_x + Battle.W - 10, 400)
-	if bp.x >= lo.x and bp.x <= hi.x and bp.y >= lo.y:
-		return
-	var e := Vector2(clampf(bp.x, lo.x, hi.x), clampf(bp.y, lo.y, hi.y))
-	var d := (bp - e).normalized()
-	var side := Vector2(-d.y, d.x)
-	draw_colored_polygon(PackedVector2Array([e + d * 7, e - d * 3 + side * 5, e - d * 3 - side * 5]), Color("ff7a3d"))
-	Art.text(self, "BURST", e - d * 12 + Vector2(0, 3), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
-
 # ---------------------------------------------------------------- text
 func draw_texts() -> void:
 	for tx in b.texts:
@@ -1600,6 +1637,8 @@ func draw_hover() -> void:
 		lines = ["JUNCTION BOX: " + ("LIVE" if h.loot.on else "DEAD"), "Anyone standing on its cable: 4 damage, and Jackals are stunned.", "Once a round each. Knock Jackals onto it.", "Shoot or blast the box to cut the power."] if h.loot.on else ["JUNCTION BOX: DEAD", "The cable is safe to cross."]
 	elif h.kind == "mine":
 		lines = ["JACKAL MINE", "Your soldiers set it off by stepping on it.", "Jackals only trip it when they land on it: knock them onto it.", "Shoot or blast it to clear it. Blast 38."]
+	elif h.kind == "cart":
+		lines = ["MINE CART", "Hit it with anything and it rolls away from you.", "It runs over every Jackal in its path: 18 damage each."]
 	elif h.is_prop():
 		lines = ["FUEL BARREL", "Explodes when hit. Blast 44."]
 	elif h.kind == "sentry":
@@ -1608,7 +1647,8 @@ func draw_hover() -> void:
 		lines = ["STICKY CHARGE  BLAST %d" % int(h.loot.r), "A Clacker sets it off. So does a Jackal", "stepping on it in their phase."]
 	elif h.kind == "ride":
 		var V: Dictionary = Data.VEHICLES[h.loot.type]
-		lines = ["PARKED JACKAL " + V.name, "Walk onto it to drive it. It soaks every hit", "until it breaks, and its guns go in your hand."]
+		var hp: int = h.loot.get("hp", -1)
+		lines = ["PARKED JACKAL %s  HP %s" % [V.name, str(hp) if hp >= 0 else str(V.hp)], V.pitch, "%s. %s" % [Data.vehicle_move(h.loot.type), Data.VEHICLE_RULES], "CARDS WHILE DRIVING: " + Data.vehicle_card_names(h.loot.type), "Walk onto it to climb in."]
 	elif h.kind == "dog":
 		var g = h.loot.get("guard")
 		lines = ["REX  HP %d/%d" % [h.hp, h.max_hp], "Moves only when Track plays a dog card.", "GUARDING " + g.def.name if g is Unit else "Your shots pass him."]
@@ -1618,6 +1658,12 @@ func draw_hover() -> void:
 		return
 	else:
 		lines = ["%s  %s  LV%d" % [h.def.name, h.def.cls.to_upper(), h.s.lvl], "HP %d/%d   ADRENALINE %d" % [h.hp, h.max_hp, h.adr], "ENERGY %d   MOVE %dpx" % [h.energy, int(h.move_left)]]
+		if h.mech != null and h.mech.max > 0:
+			var V: Dictionary = Data.VEHICLES[h.mech.type]
+			lines.append("DRIVING %s  VEHICLE HP %d/%d  %s" % [V.name, maxi(0, h.mech.hp), h.mech.max, Data.vehicle_move(h.mech.type)])
+			lines.append("It takes every hit; %s's HP is safe." % h.def.name)
+			if not h.mech.own:
+				lines.append("VEHICLE CARDS: " + Data.vehicle_card_names(h.mech.type))
 	var w := 0.0
 	for l in lines:
 		w = maxf(w, Art.text_width(l, 16, true))
@@ -1630,3 +1676,94 @@ func draw_hover() -> void:
 	draw_rect(Rect2(x, y, w, 2), Color("ff4d3d") if h.team == "enemy" else Color("ffb23e"))
 	for i in lines.size():
 		Art.text(self, lines[i], Vector2(x + 8, y + 18 + i * 16), 16, Color.WHITE if i == 0 else Color("d7cfbb"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+
+# ---------------------------------------------------------------- M1-M7 biomes
+func draw_cart(u: Unit, pos: Vector2, white: bool) -> void:
+	## M4: an ore cart on two wheels, heaped with rock
+	var body := Color.WHITE if white else Color("6a5a48")
+	draw_rect(Rect2(pos.x - 13, pos.y - 16, 26, 12), C_DARK)
+	draw_rect(Rect2(pos.x - 12, pos.y - 15, 24, 10), body)
+	draw_rect(Rect2(pos.x - 12, pos.y - 12, 24, 1), Color("4a3e32"))
+	for k in 4:
+		draw_circle(Vector2(pos.x - 8 + k * 5, pos.y - 17), 3, Color("8a8478") if k % 2 == 0 else Color("6e6a60"))
+	var spin := u.x / 3.0
+	for wx in [-7, 7]:
+		draw_circle(Vector2(pos.x + wx, pos.y - 3), 3.5, C_DARK)
+		draw_line(Vector2(pos.x + wx, pos.y - 3), Vector2(pos.x + wx + cos(spin) * 3, pos.y - 3 + sin(spin) * 3), Color("9aa2ae"), 1.0)
+
+func draw_biome() -> void:
+	var T = b.T
+	# M5: the lava and the line it climbs to next
+	if b.rules.get("lava", 0.0) > 0:
+		var ly: float = b.lava_y()
+		var x0 := b.cam_x - 8
+		if b.lava_k > 0:
+			draw_rect(Rect2(x0, ly, b.W + 16, b.WATER_Y - ly + 2), Color("c8320e"))
+			draw_rect(Rect2(x0, ly, b.W + 16, 3), Color("ffb21e"))
+			for k in 14:
+				var bx := x0 + fmod(k * 97.0 + b.t * 0.4, b.W + 16)
+				draw_rect(Rect2(bx, ly + 4 + (k % 3) * 5, 6, 2), Color("ff7a1e"))
+		if b.lava_k < Battle.LAVA_MAX:
+			var ny: float = ly - float(b.rules.lava)
+			var x := x0
+			while x < b.cam_x + b.W + 8:
+				draw_rect(Rect2(x, ny, 10, 2), Color("ffd23a", 0.8))
+				x += 18
+			Art.text(self, "LAVA NEXT ROUND", Vector2(b.cam_x + 10, ny - 4), 8, Color("ffd23a"))
+	# M7: painted taxi lanes and the elevators' counts
+	for sw in b.sweeps:
+		var age: int = b.t - int(sw.t0)
+		if sw.k == "plane":
+			if not (on_screen(sw.x0, 300) or on_screen(sw.x1, 300)):
+				continue
+			var x: float = sw.x0
+			while x < sw.x1:
+				var gy: float = T.ground_at(x)
+				draw_colored_polygon(PackedVector2Array([Vector2(x, gy - 1), Vector2(x + 6, gy - 1), Vector2(x + 10, gy - 3), Vector2(x + 6, gy - 5), Vector2(x, gy - 5), Vector2(x + 4, gy - 3)]), Color("ffd23a", 0.7))
+				x += 28
+			var mid: float = clampf((sw.x0 + sw.x1) / 2.0, b.cam_x + 80, b.cam_x + b.W - 80)
+			Art.text(self, "JET IN %d" % sw.left if sw.left > 1 else "JET AFTER THIS ENEMY PHASE", Vector2(mid, T.ground_at(mid) + 16), 8, Color("ff4d3d") if sw.left <= 1 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			if age < 60:
+				draw_jet(lerpf(sw.x0 - 60, sw.x1 + 60, age / 60.0), T.ground_at(sw.x0))
+		elif sw.k == "tunnel":
+			for c in T.cars:
+				if not on_screen(c.x + c.w / 2.0, c.w):
+					continue
+				var cx: float = c.x + c.w / 2.0
+				Art.text(self, "TUNNEL IN %d" % sw.left if sw.left > 1 else "TUNNEL NEXT ENEMY PHASE", Vector2(cx, c.roof - 30), 8, Color("ff4d3d") if sw.left <= 1 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			if age < 54:
+				# the tunnel mouth swallows the roofs from the front
+				var k := age / 54.0
+				var tx: float = lerpf(b.cam_x + b.W + 20, b.cam_x - 40, k)
+				draw_rect(Rect2(tx, 0, b.cam_x + b.W + 40 - tx, 470 - 128.0), Color("1a1614", 0.85))
+				draw_rect(Rect2(tx - 10, 0, 10, 470 - 128.0), Color("4a3e36"))
+	for c in T.cars:
+		# M2: the dim inside of each car, behind whoever is in there
+		if on_screen(c.x + c.w / 2.0, c.w):
+			draw_rect(Rect2(c.x + 8, c.roof + 8, c.w - 16, c.h - 8), Color(0.16, 0.17, 0.19, 0.85))
+			for wx in range(int(c.x) + 24, int(c.x + c.w) - 24, 48):
+				draw_rect(Rect2(wx, c.roof + 16, 20, 10), Color(0.5, 0.42, 0.3, 0.5))
+	for l in T.lifts:
+		if not on_screen((l.x0 + l.x1) / 2.0, 200):
+			continue
+		var y: float = l.y_up if l.up else l.y_dn
+		draw_rect(Rect2(l.x0, y - 2, l.x1 - l.x0, 2), Color("ffd23a"))
+		Art.text(self, ("LIFT DOWN IN %d" if l.up else "LIFT UP IN %d") % l.t, Vector2((l.x0 + l.x1) / 2.0, l.y_up - 40), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+	# M4: rails under the mine carts
+	if T.ceiling:
+		for u in b.units:
+			if u.kind == "cart" and not u.gone and on_screen(u.x):
+				draw_rect(Rect2(u.x - 40, u.y - 1, 80, 1), Color("9aa2ae", 0.5))
+
+func draw_jet(x: float, gy: float) -> void:
+	## M7: a carrier jet rolling down the lane
+	var c := Color("8a9aa8")
+	draw_colored_polygon(PackedVector2Array([Vector2(x - 40, gy - 14), Vector2(x + 30, gy - 16), Vector2(x + 44, gy - 12), Vector2(x + 30, gy - 8), Vector2(x - 40, gy - 8)]), c)
+	draw_colored_polygon(PackedVector2Array([Vector2(x - 40, gy - 14), Vector2(x - 34, gy - 30), Vector2(x - 26, gy - 30), Vector2(x - 22, gy - 14)]), c.darkened(0.2))
+	draw_colored_polygon(PackedVector2Array([Vector2(x - 6, gy - 12), Vector2(x - 20, gy - 4), Vector2(x + 8, gy - 4), Vector2(x + 10, gy - 12)]), c.darkened(0.3))
+	draw_rect(Rect2(x + 18, gy - 18, 12, 4), Color("2a3a4a"))
+	for wx in [-28, 20]:
+		draw_rect(Rect2(x + wx, gy - 8, 2, 6), C_DARK)
+		draw_circle(Vector2(x + wx + 1, gy - 2), 2.5, C_DARK)
+	for k in 3:
+		draw_rect(Rect2(x - 52 - k * 10 - randf() * 6, gy - 13 + k, 8, 3), Color("ffd23a", 0.6 - k * 0.15))
