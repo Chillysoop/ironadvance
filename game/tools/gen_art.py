@@ -2208,6 +2208,8 @@ def main():
     # the Gate Trooper's body comes from Sprite Fusion (tools/sf_src/gatetrooper), its stolen ray from here
     ray = palette(dict(ENEMY_PAL['grunt'], G='#4a2a78', g='#9a6ae0', k='#24163c', c='#9cff6a', w='#6a4aa0', T='#3a2460'))
     meta['en_gatetrooper'] = write_sheet('en_gatetrooper', sf_char('gatetrooper'), gun_image('ray', ray))
+    # Shield Wall: a Sprite Fusion edit of the riot Jackal into heavy plate (tools/sf_src/wallshield)
+    meta['en_wallshield'] = write_sheet('en_wallshield', sf_char('wallshield'), gun_image('pistol', palette(ENEMY_PAL['shield'])))
     meta['en_brute'] = brute_frames()
     meta.update(alien_frames())
     pow_frames()
