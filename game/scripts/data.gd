@@ -934,6 +934,38 @@ const ACTS := [
 		{"id": "boss", "name": "IRON HARBOR", "biome": "harbor", "at": [520, 280], "links": ["g1", "g2"], "stronghold": true, "finale": true}]},
 ]
 
+# The company (C1-C6). The campaign keeps a roster of up to COMPANY_MAX soldiers and deploys a squad
+# of up to SQUAD_MAX, one per class. Ranks come from ops survived (C3); each promotion is a pick
+# from that rank's three options, and a Captain in the squad gives everyone CAPTAIN_DODGE.
+const COMPANY_MAX := 10
+const SQUAD_MAX := 4
+const BENCH_XP := 0.5             # the bench gets half the squad's average XP from each op (C4)
+const RANKS := [
+	{"short": "PVT", "name": "PRIVATE", "ops": 0},
+	{"short": "CPL", "name": "CORPORAL", "ops": 2},
+	{"short": "SGT", "name": "SERGEANT", "ops": 5},
+	{"short": "LT", "name": "LIEUTENANT", "ops": 9},
+	{"short": "CPT", "name": "CAPTAIN", "ops": 14},
+]
+const PROMOTIONS := {
+	"hp": {"name": "HARDENED", "text": "+10 max HP."},
+	"move": {"name": "FLEET", "text": "+40 movement every turn."},
+	"dodge": {"name": "SLIPPERY", "text": "+8 dodge."},
+	"hand": {"name": "TACTICIAN", "text": "+1 card in hand."},
+	"energy": {"name": "FIRST STRIKE", "text": "+1 energy on the first turn of every fight."},
+	"legend": {"name": "SIGNATURE", "text": "A Legendary copy of their class's best card."},
+}
+const PROMO_OFFERS := [[], ["hp", "move", "dodge"], ["hand", "energy", "legend"], ["hp", "move", "dodge"], ["hand", "energy", "legend"]]
+const CAPTAIN_DODGE := 5
+# Medals (C5): earned once each, every one a small permanent bonus for that soldier.
+const MEDALS := {
+	"heart": {"name": "PURPLE HEART", "text": "Went down and still won the op.", "up": "+3 max HP"},
+	"marksman": {"name": "MARKSMAN MEDAL", "text": "5 kills in one op.", "up": "+3 dodge"},
+	"veteran": {"name": "CAMPAIGN STAR", "text": "Survived 10 ops.", "up": "+20 movement"},
+	"ace": {"name": "SILVER STAR", "text": "30 kills in the war.", "up": "+1 energy on the first turn"},
+}
+const LEGACY_CARDS := 3           # a fallen veteran's best cards that the next recruit inherits (C6)
+
 const THEMES := {
 	"dusk": {"water": [Color("14485a"), Color("2f8aa0")], "tint": Color(1, 1, 1), "grass": Color("7cb042")},
 	"jungle": {"water": [Color("0e3a34"), Color("2a8a6a")], "tint": Color(0.92, 1.02, 0.95), "grass": Color("4ca83a")},

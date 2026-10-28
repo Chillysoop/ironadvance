@@ -86,10 +86,16 @@ func show_war_room() -> void:
 	w.quit.connect(show_title)
 	open(w)
 
-func campaign_home() -> void:
-	## After an op: held sectors pay, the squad is patched up, then HQ with the news.
-	var inc := Run.after_op()
+func campaign_home(st := {}) -> void:
+	## After an op: held sectors pay, the squad is patched up, promotions and training are
+	## picked, then HQ with the news.
+	var inc := Run.after_op(st)
 	var news: Array = []
+	news.append_array(inc.promos)
+	for m in inc.medals:
+		news.append("Medal for " + m + ".")
+	if int(inc.bench) > 0 and Run.bench().size():
+		news.append("The bench trained: +%d XP each." % inc.bench)
 	var parts: Array = []
 	for k in ["scrip", "salvage", "bio"]:
 		if int(inc[k]) > 0:
@@ -99,8 +105,18 @@ func campaign_home() -> void:
 	news.append("Everyone is patched up and has their dog tags back.")
 	if inc.rookies.size():
 		news.append("Command sent replacements: %s." % ", ".join(inc.rookies))
-	show_hq(true)
-	screen.news = news
+	if Run.pending_picks().size():
+		show_picks(func(): show_hq(true); screen.news = news)
+	else:
+		show_hq(true)
+		screen.news = news
+
+func show_picks(then: Callable) -> void:
+	## C3/C4: promotions and the bench's training levels, one pick each.
+	clear()
+	var p: Control = WarRoomScript.PickQueue.new()
+	p.done.connect(then)
+	open(p)
 
 func show_hq(arrived: bool) -> void:
 	## Home base between missions. The gate dials straight into mission 1 at the start of a run,
@@ -180,9 +196,15 @@ func _on_mission_over(won: bool) -> void:
 	st["score"] = battle.score
 	st["won"] = won
 	var xp := {}
+	var kills := {}
+	var downs := {}
 	for u in battle.squad():
 		xp[u.def.key] = u.xp_gain
+		kills[u.def.key] = int(u.fl.get("kills", 0))
+		downs[u.def.key] = u.downed or u.dead
 	st["xp"] = xp
+	st["kills_by"] = kills
+	st["downed_by"] = downs
 	Run.history.append(st)
 	clear()
 	var s := Screen.new()
@@ -195,7 +217,7 @@ func _on_mission_over(won: bool) -> void:
 		if s.mode == "op_won":
 			s.buttons = [["OPEN SUPPLY CRATES", func(): show_debrief(st)]]
 		else:
-			s.buttons = [["BACK TO HQ", func(): campaign_home()]]
+			s.buttons = [["BACK TO HQ", func(): campaign_home(st)]]
 		open(s)
 		return
 	if Run.side == "outpost" and Run.alive_count() > 0:
@@ -223,7 +245,7 @@ func show_debrief(st: Dictionary) -> void:
 	clear()
 	var d: Control = DebriefScript.new()
 	d.medals = Run.medals(st)
-	d.done.connect(func(): campaign_home() if Run.campaign() else show_hq(true))
+	d.done.connect(func(): campaign_home(st) if Run.campaign() else show_hq(true))
 	screen = d
 	ui_layer.add_child(d)
 

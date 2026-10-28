@@ -17,6 +17,8 @@ var sel := ""            # selected sector id
 var held := {}           # textures must stay referenced until the frame renders
 var go_btn: Control = null
 var threat_btn: Control = null
+var company_open := false  # C1: the roster overlay where you pick who deploys
+var msg := ""
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -58,6 +60,15 @@ func build() -> void:
 	sq.position = Vector2(784, 494)
 	sq.pressed.connect(func(): Sfx.play("click"); quit.emit())
 	add_child(sq)
+	var cb := HudScript.PixButton.new()
+	cb.small = true
+	cb.size = Vector2(112, 32)
+	cb.position = Vector2(662, 494)
+	cb.color = Color("53d4e2")
+	cb.text = "DONE" if company_open else "COMPANY"
+	cb.sub = "" if company_open else "%d IN SQUAD, %d" % [Run.soldiers.size(), Run.company().size()]
+	cb.pressed.connect(func(): Sfx.play("click"); company_open = not company_open; msg = ""; build())
+	add_child(cb)
 	var sc := Run.sector(sel)
 	var go := HudScript.PixButton.new()
 	go.size = Vector2(250, 40)
@@ -77,6 +88,8 @@ func build() -> void:
 	else:
 		go.text = "NOT REACHABLE YET"
 		go.disabled = true
+	if Run.soldiers.is_empty():
+		go.disabled = true
 	add_child(go)
 	go_btn = go
 
@@ -90,7 +103,21 @@ func lz_pos() -> Vector2:
 func link_pos(id: String) -> Vector2:
 	return lz_pos() if id == "lz" else node_pos(Run.sector(id))
 
+func card_rect(i: int) -> Rect2:
+	## Roster card i on the company overlay: two rows of five over the map.
+	return Rect2(MAP.position.x + 8 + (i % 5) * 130, MAP.position.y + 36 + (i / 5) * 176, 124, 168)
+
 func _gui_input(ev: InputEvent) -> void:
+	if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and company_open:
+		var co := Run.company()
+		for i in co.size():
+			if card_rect(i).has_point(ev.position):
+				accept_event()
+				msg = Run.toggle_squad(co[i])
+				Sfx.play("deny" if msg != "" else "select")
+				build()
+				return
+		return
 	if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 		for sc in Run.act().sectors:
 			var r := NODE / 2 + (6 if sc.get("stronghold", false) else 0)
@@ -195,6 +222,42 @@ func _draw() -> void:
 		Art.text(self, lg[0], Vector2(lx + 14, MAP.position.y + 20), 8, Color("9aa2ae"))
 		lx += Art.text_width(lg[0], 8) + 30
 	draw_side()
+	if company_open:
+		draw_company()
+
+func draw_company() -> void:
+	## C1: the whole company with each soldier's fit for the picked sector. Click to put them in or out.
+	draw_rect(MAP, Color(0.04, 0.05, 0.06, 0.97))
+	draw_rect(MAP, Color("53d4e2"), false, 2)
+	var sc := Run.sector(sel)
+	Art.text(self, "THE COMPANY  %d OF %d" % [Run.company().size(), Data.COMPANY_MAX], Vector2(MAP.position.x + 12, MAP.position.y + 22), 8, Color("53d4e2"))
+	Art.text(self, msg if msg != "" else "Click to put a soldier in or out. One of each class per squad, up to %d." % Data.SQUAD_MAX, Vector2(MAP.end.x - 12, MAP.position.y + 22), 16, Color("ff7a5a") if msg != "" else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
+	var co := Run.company()
+	for i in co.size():
+		var s: Dictionary = co[i]
+		var r := card_rect(i)
+		var on := Run.soldiers.has(s)
+		draw_rect(r, Color(0.05, 0.035, 0.03))
+		draw_rect(r.grow(-1), Color("24302a") if on else Color("1e2126"))
+		if on:
+			draw_rect(r, Color("62d26f"), false, 2)
+		Art.draw_char(self, Art.look_sheet(s), "idle", (t / 12 + i) % 4, Vector2(r.get_center().x, r.position.y + 62), 1, false, 0, 1.0 if on else 0.75, 0, true, 1.4)
+		for k in Run.rank(s):  # chevrons
+			var cx := r.position.x + 10
+			var cy := r.position.y + 10 + k * 5
+			draw_line(Vector2(cx, cy + 3), Vector2(cx + 5, cy), Color("ffd23a"), 2)
+			draw_line(Vector2(cx + 5, cy), Vector2(cx + 10, cy + 3), Color("ffd23a"), 2)
+		Art.text(self, "IN SQUAD" if on else "BENCH", Vector2(r.end.x - 6, r.end.y - 8), 8, Color("62d26f") if on else Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)
+		var y := r.position.y + 82
+		Art.text(self, "%s %s" % [Run.rank_name(s), s.def.name], Vector2(r.position.x + 8, y), 8, Color.WHITE)
+		Art.text(self, "%s  LV%d" % [s.def.cls, s.lvl], Vector2(r.position.x + 8, y + 16), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		var sv := Run.svc(s)
+		Art.text(self, "%d OPS  %d KILLS" % [int(sv.ops), int(sv.kills)], Vector2(r.position.x + 8, y + 32), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		if sv.medals.size():
+			Art.text(self, "%d MEDAL%s" % [sv.medals.size(), "" if sv.medals.size() == 1 else "S"], Vector2(r.position.x + 8, y + 48), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		if not sc.is_empty():
+			var f := Run.fit(s, sc.biome)
+			Art.text(self, f.to_upper(), Vector2(r.position.x + 8, r.end.y - 8), 8, {"great": Color("62d26f"), "ok": Color("e8dcc2"), "rough": Color("ff7a5a")}[f])
 
 func hold_text(h: Dictionary) -> String:
 	var parts: Array = []
@@ -346,3 +409,89 @@ class SlotPicker extends Control:
 			var names: Array = h.get("names", [])
 			for j in names.size():
 				Art.text(self, names[j], Vector2(cr.position.x + 16 + (j % 2) * 120, cr.position.y + 130 + (j / 2) * 18), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+
+
+# ================================================================ promotions and training (C3, C4)
+class PickQueue extends Control:
+	## After an op: each promotion and each level the bench trained up to, one pick of three.
+	signal done
+	var t := 0
+	var cur := {}
+	var opts: Array = []
+	var log_line := ""
+	func _ready() -> void:
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+		next()
+	func next() -> void:
+		for c in get_children():
+			c.queue_free()
+		var q := Run.pending_picks()
+		if q.is_empty():
+			Run.save_campaign()
+			done.emit()
+			return
+		cur = q[0]
+		var s: Dictionary = cur.s
+		if cur.kind == "promo":
+			opts = Run.promo_offers(s).map(func(id): return {"kind": "promo", "id": id, "name": Data.PROMOTIONS[id].name, "text": Data.PROMOTIONS[id].text})
+		else:
+			opts = Run.level_options(s)
+		for i in opts.size():
+			var bt = load("res://scripts/hud.gd").PixButton.new()
+			bt.text = "PICK"
+			bt.color = Color("ffd23a")
+			bt.size = Vector2(180, 36)
+			bt.position = Vector2(card(i).get_center().x - 90, card(i).end.y + 14)
+			var k := i
+			bt.pressed.connect(func(): pick(k))
+			add_child(bt)
+	func card(i: int) -> Rect2:
+		return Rect2(120 + i * 250, 220, 220, 120)
+	func pick(i: int) -> void:
+		var s: Dictionary = cur.s
+		var o: Dictionary = opts[i]
+		Sfx.play("levelup")
+		if cur.kind == "promo":
+			log_line = Run.promote(s, o.id)
+		else:
+			log_line = Run.apply_option(s, o)
+			if int(s.train) > 1:
+				s.train = int(s.train) - 1
+			else:
+				s.erase("train")
+		next()
+	func _process(_d: float) -> void:
+		t += 1
+		queue_redraw()
+	func opt_name(o: Dictionary) -> String:
+		if o.kind == "card":
+			return "%s %s" % [Data.tier_name(o.tier).capitalize(), Data.CARDS[o.key].name]
+		return o.name
+	func opt_text(o: Dictionary) -> String:
+		return Data.CARDS[o.key].text if o.kind == "card" else o.text
+	func _draw() -> void:
+		draw_rect(Rect2(0, 0, 960, 540), Color("101418"))
+		if cur.is_empty():
+			return
+		var s: Dictionary = cur.s
+		var promo: bool = cur.kind == "promo"
+		Art.text(self, "PROMOTION" if promo else "TRAINING", Vector2(480, 58), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+		var rk: int = Run.rank(s) - int(s.get("promo", 1)) + 1 if promo else Run.rank(s)
+		var line := "%s is now a %s. Pick what the new stripes bring." % [s.def.name, Data.RANKS[clampi(rk, 0, Data.RANKS.size() - 1)].name.capitalize()] if promo else "%s trained on the bench and reached level %d. Pick it like a level-up." % [s.def.name, s.lvl - int(s.get("train", 1)) + 1]
+		Art.text(self, line, Vector2(480, 92), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		if promo and rk >= Data.RANKS.size() - 1:
+			Art.text(self, "A CAPTAIN IN THE SQUAD GIVES EVERYONE +%d DODGE" % Data.CAPTAIN_DODGE, Vector2(480, 114), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+		Art.draw_char(self, Art.look_sheet(s), "cheer", (t / 10) % 2, Vector2(480, 180), 1, false, 0, 1.0, 0, false, 1.8)
+		for i in opts.size():
+			var r := card(i)
+			var o: Dictionary = opts[i]
+			draw_rect(r, Color(0.05, 0.035, 0.03))
+			draw_rect(r.grow(-1), Color("22262c"))
+			draw_rect(r, Color("ffd23a"), false, 2)
+			Art.text(self, opt_name(o), Vector2(r.get_center().x, r.position.y + 28), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			var y := r.position.y + 52
+			for ln in CardView.wrap_text(opt_text(o), r.size.x - 20, 16):
+				Art.text(self, ln, Vector2(r.get_center().x, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+				y += 16
+		if log_line != "":
+			Art.text(self, log_line, Vector2(480, 500), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)

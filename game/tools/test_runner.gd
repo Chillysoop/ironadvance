@@ -2,7 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## warmap (campaign mode),
+## warmap, company (campaign mode),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -768,6 +768,8 @@ func run() -> void:
 			await aliens5()
 		"warmap":
 			await warmap()
+		"company":
+			await company()
 		"aliens6":
 			await aliens6()
 		"playtest":
@@ -4037,6 +4039,115 @@ func warmap() -> void:
 	await shot("wm_room_act2")
 	main.show_title()
 	await frames_wait(5)
+	Run.meta.salvage = keep.salvage
+	Run.meta.hq = keep.hq
+	Run.save_meta()
+
+func company() -> void:
+	## Campaign step 2: the roster and squad pick, service records, medals, ranks and promotion
+	## picks, bench training, legacy decks for the fallen, a Captain's aura, and save links.
+	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate()}
+	Run.delete_campaign(1)
+	Run.new_campaign(1)
+	check(Run.roster.size() == 4 and Run.soldiers.size() == 4, "the company starts as the squad of four")
+	check(is_same(Run.roster[0], Run.soldiers[0]), "squad and roster are the same people")
+	var hired: Array = []
+	for i in 3:
+		hired.append(Run.enlist(Run.recruit_offers(1)[0]))
+	check(Run.company().size() == 7 and Run.soldiers.size() == 4 and Run.bench().size() == 3, "recruits join the company on the bench")
+	var dup: Dictionary = hired.filter(func(h): return true)[0]
+	var same_cls: Dictionary = Run.soldiers.filter(func(x): return x.key == dup.key)[0]
+	check(Run.toggle_squad(dup) == "" and Run.soldiers.has(dup) and not Run.soldiers.has(same_cls), "picking a benched %s swaps out the squad's %s" % [dup.def.name, same_cls.def.name])
+	Run.toggle_squad(same_cls)
+	check(Run.soldiers.has(same_cls) and Run.soldiers.size() == 4, "and swaps back")
+	check(Run.toggle_squad(Run.soldiers[3]) == "" and Run.soldiers.size() == 3, "a soldier can sit out")
+	Run.fill_squad()
+	check(Run.soldiers.size() == 4, "the squad tops up from the bench")
+	var keys := {}
+	for x in Run.soldiers:
+		keys[x.key] = true
+	check(keys.size() == Run.soldiers.size(), "one of each class in the squad")
+	# an op: Moss kills 6, Hex goes down and they still win; everyone already has one op on record
+	var moss: Dictionary = Run.soldiers.filter(func(x): return x.key == "moss")[0]
+	var hex: Dictionary = Run.soldiers.filter(func(x): return x.key == "hex")[0]
+	for x in Run.soldiers:
+		Run.svc(x).ops = 1
+	var benched: Dictionary = Run.bench()[0]
+	var bxp: int = benched.xp
+	var mhp: int = hex.max_hp
+	var mdodge: int = moss.bonus.dodge
+	var st := {"won": true, "xp": {"moss": 60, "hex": 60, "vee": 60, "rook": 60}, "kills_by": {"moss": 6}, "downed_by": {"hex": true}}
+	var inc := Run.after_op(st)
+	check(int(Run.svc(moss).ops) == 2 and int(Run.svc(moss).kills) == 6, "the service record counts ops and kills")
+	check(Run.svc(moss).medals.has("marksman") and moss.bonus.dodge == mdodge + 3, "5 kills earn the Marksman Medal (+3 dodge)")
+	check(Run.svc(hex).medals.has("heart") and hex.max_hp == mhp + 3, "going down and winning earns the Purple Heart (+3 max HP)")
+	check(Run.rank(moss) == 1 and int(moss.get("promo", 0)) == 1, "two ops make a Corporal with a promotion pick waiting")
+	check(benched.xp == bxp + 30, "the bench trains on half the squad's XP (%d -> %d)" % [bxp, benched.xp])
+	check(inc.promos.size() == 4 and inc.medals.size() == 2, "the news lists promotions and medals (%s %s)" % [inc.promos, inc.medals])
+	var picks := Run.pending_picks()
+	check(picks.filter(func(p): return p.kind == "promo").size() == 4, "four promotion picks wait")
+	main.show_picks(func(): pass)
+	await frames_wait(20)
+	await shot("co_promotion")
+	var pq = main.screen
+	var mv: int = picks[0].s.bonus.move
+	var spins := 0
+	while Run.pending_picks().size() and spins < 20:
+		var k := 0
+		if pq.cur.kind == "promo":
+			k = pq.opts.map(func(o): return o.id).find("move")
+		pq.pick(maxi(k, 0))
+		spins += 1
+		await frames_wait(2)
+	check(Run.pending_picks().is_empty(), "every pick is made")
+	check(picks[0].s.bonus.move == mv + 40, "FLEET gives +40 movement")
+	# a veteran falls: their best cards go to the next recruit
+	var vet: Dictionary = Run.soldiers.filter(func(x): return x.key == "vee")[0]
+	vet.deck.append(Run.new_card("mortar", 4, "shop"))
+	vet.alive = false
+	Run.memorialize(vet)
+	Run.after_op({})
+	check(not Run.roster.has(vet) and not Run.soldiers.has(vet), "the fallen leave the roster")
+	check(not Run.legacy_deck().is_empty(), "their cards wait on the Memorial")
+	var heir := Run.enlist(Run.recruit_offers(1)[0])
+	check(heir.get("legacy_from", "") == vet.def.name and heir.deck.any(func(c): return c.key == "mortar" and Data.tier_of(c) == 4), "the next recruit inherits %s's Legendary Mortar" % vet.def.name)
+	check(Run.legacy_deck().is_empty(), "the legacy is claimed once")
+	# a Captain steadies the squad
+	var cap: Dictionary = Run.soldiers[0]
+	cap.rank = 4
+	var b: Battle = main.start_battle(0, Run.make_op(Run.sector("d1")))
+	await frames_wait(5)
+	var u0 = b.squad().filter(func(u): return u.s == Run.soldiers[1])[0]
+	check(u0.dodge == Run.soldiers[1].def.dodge + Run.soldiers[1].bonus.dodge + int(u0.g("dodge")) + Data.CAPTAIN_DODGE, "a Captain gives the squad +%d dodge" % Data.CAPTAIN_DODGE)
+	main.clear()
+	await frames_wait(5)
+	# the War Room's company overlay
+	main.show_war_room()
+	await frames_wait(5)
+	main.screen.company_open = true
+	main.screen.build()
+	await frames_wait(20)
+	await shot("co_company")
+	# save and practice snapshots keep the squad linked to the roster
+	var snap := Run.snapshot()
+	Run.restore(snap)
+	check(is_same(Run.roster[Run.roster.find(Run.soldiers[0])], Run.soldiers[0]), "a practice-range restore keeps the squad linked")
+	Run.save_campaign()
+	var n_squad := Run.soldiers.size()
+	main.show_title()
+	await frames_wait(3)
+	Run.load_campaign(1)
+	var linked := Run.soldiers.all(func(x): return Run.roster.any(func(r): return is_same(r, x)))
+	check(linked and Run.soldiers.size() == n_squad, "a loaded campaign keeps the squad linked to the roster (%d of %d)" % [Run.soldiers.size(), n_squad])
+	check(Run.company().size() == 7, "the company comes back (%d)" % Run.company().size())
+	main.show_hq(false)
+	await frames_wait(20)
+	main.screen.open_dossier(0, "sheet")
+	await frames_wait(20)
+	await shot("co_dossier")
+	main.show_title()
+	await frames_wait(3)
+	Run.delete_campaign(1)
 	Run.meta.salvage = keep.salvage
 	Run.meta.hq = keep.hq
 	Run.save_meta()
