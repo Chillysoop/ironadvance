@@ -464,7 +464,7 @@ func run() -> void:
 			# title -> brief -> each mission (forced win) -> results -> shop -> next brief
 			main.show_title()
 			await frames_wait(20)
-			press_first()
+			main.start_run()  # QUICK RUN; the first title button is CAMPAIGN now
 			await frames_wait(20)
 			await shot("flow_hq_start")
 			main.screen.dial.emit()
