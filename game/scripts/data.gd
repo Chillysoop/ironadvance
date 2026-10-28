@@ -698,7 +698,9 @@ const ETYPES := {
 	# plates hung from tethers; it sweeps a ray across the ground and drops pods full of Vharr.
 	"hiveship": {"name": "HIVE SHIP", "faction": "vharr", "weight": "hover", "hp": 150, "alt": 230, "heavy": true, "speed": 150, "beam": 5, "sweep": 150, "beam_range": 420, "pod_dmg": 7, "score": 3000, "w": 150, "h": 44, "note": "Mothership. Floats over the arena, sweeps a ray across the ground and drops pods of Vharr on you. While its armor plates hang on, shots do 40%: shoot a plate off its tethers and it drops on whoever is under it. Blasts that reach its belly always do full damage."},
 	"shipplate": {"name": "Hull Plate", "faction": "vharr", "hp": 14, "static": true, "heavy": true, "score": 100, "w": 44, "h": 12, "note": "Armor hanging under the Hive Ship. Shoot it off its tethers: it falls like a girder and crushes whatever is under it. With every plate gone the ship takes +30% damage."},
-	"droppod": {"name": "Drop Pod", "faction": "vharr", "hp": 10, "static": true, "heavy": true, "score": 50, "w": 24, "h": 26, "note": "Crashed down full of Vharr. It opens on the next enemy phase and they come out swinging. Break it first and they die inside."},
+	"droppod": {"name": "Drop Pod", "faction": "vharr", "hp": 18, "static": true, "heavy": true, "score": 50, "w": 24, "h": 26, "note": "Crashed down full of Vharr. It opens on the next enemy phase and they come out swinging. Break it first and they die inside."},
+	# E6: a small Vharr gate that sends one alien through every enemy phase
+	"vgate": {"name": "Vharr Gate", "faction": "vharr", "hp": 40, "static": true, "heavy": true, "cap": 4, "score": 400, "w": 44, "h": 64, "note": "A small Vharr gate. Every enemy phase one alien comes through, up to four at a time. Blow it up, or drop something heavy on it: crushing does triple damage."},
 	"boss": {"name": "IRON BOAR", "hp": 150, "dmg": [3, 4], "shots": 4, "range": 660, "heavy": true, "score": 3000, "w": 120, "h": 64, "note": "Armored tank: shrugs off 60% of damage until its armor cracks. Crushing debris cracks it at once."},
 }
 
@@ -870,6 +872,7 @@ const BIOMES := {
 }
 # Each level of a run has its own pool. Played and burned biomes never come back.
 # Which Vharr fill the rifleman slots in each biome (Z on the alien page).
+const ENCOUNTERS := ["swarm", "nest", "droppods", "hunt", "outbreak", "gate"]
 const BIOME_ALIENS := {
 	"desert": ["skitter", "burrower", "squid", "warden"],
 	"fortress": ["blinker", "skitter", "weaver", "prism"],
