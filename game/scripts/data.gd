@@ -182,6 +182,27 @@ const CARDS := {
 	"skyfall": {"name": "Skyfall", "type": "SELF", "cost": 0, "od": true, "hounds": 4, "hawk": true, "text": "The hawk dives on four Jackals: 6 damage and Marked.", "rarity": 5},
 	"meddog": {"name": "Med Dog", "type": "SELF", "cost": 0, "od": true, "duo": true, "meddog": 12, "text": "Rex runs Hex's kit to everyone: heal 12 each and +1 energy.", "rarity": 5},
 	"k9strike": {"name": "K9 Strike", "type": "SELF", "cost": 0, "od": true, "duo": true, "hounds": 3, "hmark": true, "text": "Dogs pin three Jackals and Mark them, and Moss gets a free Long Shot.", "rarity": 5},
+	# N3 Gears, Slug Pilot, and R1 hijacked vehicles: "mech" cards only work from inside a vehicle
+	"vulcan": {"name": "Vulcan", "type": "AIM", "cost": 1, "mech": true, "dmg": [2, 3], "shots": 6, "range": FULL_RANGE, "gun": "mg", "bounce": 0, "sway": 0.04, "spread": 0.05, "text": "VEHICLE: the twin machine gun. Six rounds.", "rarity": 0, "up": {"shots": 8}},
+	"mcannon": {"name": "Walker Cannon", "type": "LINE", "cost": 2, "mech": true, "radius": 34, "dmg": 14, "speed": 9.0, "text": "VEHICLE: a shell straight at the cursor. Blast 34.", "rarity": 1, "up": {"dmg": 18}},
+	"stomp": {"name": "Stomp", "type": "MELEE", "cost": 1, "mech": true, "dmg": [9, 11], "range": 34, "knock": 3, "stun": true, "text": "VEHICLE: crush a Jackal next to you. Stuns.", "rarity": 0, "up": {"dmg": [12, 14]}},
+	"eject": {"name": "Eject!", "type": "LINE", "cost": 0, "mech": true, "eject": true, "radius": 56, "dmg": 20, "text": "VEHICLE: bail out. The empty vehicle charges where you aim and explodes. Blast 56.", "rarity": 1, "up": {"dmg": 26}},
+	"tankshell": {"name": "Tank Shell", "type": "LINE", "cost": 1, "mech": true, "radius": 42, "dmg": 15, "speed": 8.0, "text": "VEHICLE: the tank's main gun. Blast 42.", "rarity": 1},
+	"patchjob": {"name": "Patch Job", "type": "SELF", "cost": 2, "patch": true, "text": "On foot: climb back into a rebuilt walker at full HP.", "rarity": 1, "up": {"cost": 1}},
+	"bigslug": {"name": "Big Slug", "type": "SELF", "cost": 0, "od": true, "slug": true, "slugturns": 2, "text": "The SV-001 drops in and Gears drives it for two rounds.", "rarity": 5},
+	"missilepod": {"name": "Missile Pod", "type": "LINE", "cost": 0, "od": true, "count": 6, "radius": 26, "dmg": 9, "speed": 7.0, "text": "Six rockets in a spread at the cursor.", "rarity": 5},
+	"tankbuster": {"name": "Tank Buster", "type": "LINE", "cost": 0, "od": true, "radius": 64, "dmg": 28, "speed": 9.0, "text": "One huge shell. Blast 64.", "rarity": 5},
+	"fullsend": {"name": "Full Send", "type": "LINE", "cost": 0, "od": true, "eject": true, "rebuild": true, "radius": 90, "dmg": 30, "text": "The walker charges and blows with a 90 blast, and a fresh one is waiting for Gears.", "rarity": 5},
+	"convoy": {"name": "Convoy", "type": "SELF", "cost": 0, "od": true, "slug": true, "slugturns": 3, "squadarmor": 6, "text": "The SV-001 rolls in for three rounds and everyone gets 6 armor.", "rarity": 5},
+	"ridealong": {"name": "Ride Along", "type": "SELF", "cost": 0, "od": true, "duo": true, "ridealong": true, "text": "Rook jumps onto the walker: 6 armor each, a free Vulcan for Gears and a free Burst Fire for Rook.", "rarity": 5},
+	"fieldrefit": {"name": "Field Refit", "type": "SELF", "cost": 0, "od": true, "duo": true, "refit": 10, "text": "Hex patches the walker to full and heals everyone 10.", "rarity": 5},
+}
+# Vehicles (N3, R1, E6). seat: how far the driver sits above the ground; cards: what a hijacker
+# gets in hand while driving. A soldier's own HP is safe until the vehicle breaks.
+const VEHICLES := {
+	"walker": {"name": "WALKER", "hp": 30, "seat": 22, "move": 0, "cards": ["vulcan", "stomp", "eject"]},
+	"bike": {"name": "BIKE", "hp": 16, "seat": 8, "move": 140, "cards": ["vulcan", "eject"]},
+	"tank": {"name": "TANK", "hp": 44, "seat": 16, "move": -40, "cards": ["tankshell", "vulcan", "eject"]},
 }
 # ---------------------------------------------------------------- combos (C1, C3, C5, C6)
 const MOMENTUM := 3          # every 3rd card a soldier plays in a turn refunds 1 energy
@@ -231,7 +252,7 @@ const NICK_KILLS := 10  # D4: kills that earn a card a nickname
 const CARD_NICKS := ["Old Faithful", "The Closer", "Sweet Talker", "Big Iron", "Last Call", "House Rules"]
 const FAB_PRICE := 70
 
-const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush", "bolt": "fortify", "track": "hounds"}
+const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush", "bolt": "fortify", "track": "hounds", "gears": "bigslug"}
 # Metal Slug letter drops: 3 temporary cards in the collector's hand for the rest of the mission.
 const LETTERS := {"H": "hmg", "R": "bazooka", "F": "flameshot", "S": "shotgun", "L": "lasergun", "C": "chaser",
 	"D": "dropshot", "T": "thundershot", "Z": "zantetsu", "G": "superhmg"}
@@ -294,6 +315,10 @@ const ITEMS := {
 	"rebar": {"name": "Rebar Spool", "slot": "armor", "keystone": "bolt", "stats": {"hp": 4}, "text": "KEYSTONE: your walls are twice as big."},
 	"rivetdriver": {"name": "Rivet Driver", "slot": "weapon", "keystone": "bolt", "cards": ["girder", "girder"], "text": "KEYSTONE: adds 2 Girders. Girders cost 0."},
 	"magnetglove": {"name": "Magnet Glove", "slot": "kit", "keystone": "bolt", "stats": {"luck": 1}, "text": "KEYSTONE: your first build each turn refunds its energy."},
+	"jumpjets": {"name": "Jump Jets", "slot": "kit", "keystone": "gears", "stats": {"move": 30}, "text": "KEYSTONE: Gears' walker has +20 HP and Stomp costs 0."},
+	"treads": {"name": "Tank Treads", "slot": "armor", "keystone": "gears", "stats": {"hp": 4}, "cards": ["tankshell"], "text": "KEYSTONE: Gears deploys in a tank instead of a walker. Tank Shell joins his deck."},
+	"ejectseat": {"name": "Ejector Seat", "slot": "kit", "keystone": "gears", "stats": {"luck": 1}, "text": "KEYSTONE: Eject! draws 2 cards and Gears lands with +1 energy."},
+	"toolkit": {"name": "Mechanic's Toolkit", "slot": "kit", "keystone": "gears", "stats": {"armor_turn": 1}, "text": "KEYSTONE: every vehicle the squad drives has 50% more HP."},
 	"chokechain": {"name": "Choke Chain", "slot": "weapon", "keystone": "track", "cards": ["sicem"], "text": "KEYSTONE: adds a Sic 'Em. Sic 'Em costs 0."},
 	"treatbag": {"name": "Treat Bag", "slot": "kit", "keystone": "track", "stats": {"luck": 1}, "text": "KEYSTONE: Fetch costs 0."},
 	"k9vest": {"name": "K9 Vest", "slot": "armor", "keystone": "track", "stats": {"hp": 4}, "text": "KEYSTONE: Rex has double HP and shrugs off 3 damage from every hit."},
@@ -434,6 +459,11 @@ const SQUAD_DEFS := [
 	 "deck": ["sicem", "sicem", "fetch", "whistle", "rifle", "rifle", "pistol", "sprint", "drill"],
 	 "pool": ["sicem", "fetch", "guard", "whistle", "rifle", "pistol", "burst", "shotgun", "sprint", "roll", "digin", "smoke", "frag", "rally", "tagshot"],
 	 "trait": ["Best Friend", "Rex deploys with Track. If Rex is knocked out he's back at Track's side next turn."], "bio": "Raised Rex from a pup. Talks to him more than to people."},
+	# N3: Gears starts every mission in a walker. Its cards only work from inside a vehicle.
+	{"key": "gears", "name": "GEARS", "cls": "Slug Pilot", "hp": 22, "dodge": 6, "spd": 170,
+	 "deck": ["vulcan", "vulcan", "mcannon", "stomp", "eject", "patchjob", "pistol", "pistol", "drill"],
+	 "pool": ["vulcan", "mcannon", "stomp", "eject", "patchjob", "tankshell", "pistol", "shotgun", "frag", "sprint", "roll", "digin", "rifle", "smoke"],
+	 "trait": ["Grease Monkey", "Gears deploys in a walker, and every camp rebuilds it to full."], "bio": "Learned to drive in a stolen Slug. Never gave it back."},
 ]
 # X1: the four you start with. Everyone else is a specialist you free once to unlock (X2).
 const BASE_CLASSES := ["moss", "hex", "vee", "rook"]
@@ -442,6 +472,7 @@ const BASE_CLASSES := ["moss", "hex", "vee", "rook"]
 const SPECIALISTS := {
 	"bolt": {"pow": "Sgt. Bolt", "text": "A combat engineer the Jackals grabbed fixing their own bridge."},
 	"track": {"pow": "Cpl. Track", "text": "A K9 handler caught behind the lines. Rex wouldn't leave him."},
+	"gears": {"pow": "Pvt. Gears", "text": "A slug pilot the Jackals pulled out of a wreck. He wants a new ride."},
 }
 const RESCUES_PER_RUN := 2  # at most this many specialists turn up in one run (level 1 and level 2)
 
@@ -581,11 +612,33 @@ const BRANCHES := {
 			{"id": "huntcall", "name": "Hunting Call", "text": "Whistle draws 2 cards instead of 1."},
 			{"id": "talons", "name": "Talons", "text": "Hawk dives deal +6 damage."}]},
 	],
+	"gears": [
+		{"id": "walkerbranch", "name": "Walker", "od": "missilepod", "keystone": "jumpjets",
+		 "chain": {"name": "WALK THE LINE", "text": "Vulcan, then Stomp: refund 1 energy."},
+		 "perks": [{"id": "heavystomp", "name": "Heavy Stomp", "text": "Stomp deals +6 and hits everything next to the walker."},
+			{"id": "legservos", "name": "Leg Servos", "text": "+60 movement while in a vehicle."},
+			{"id": "armorplate", "name": "Armor Plate", "text": "Gears' walker has +15 HP."}]},
+		{"id": "tankslug", "name": "Tank Slug", "od": "tankbuster", "keystone": "treads",
+		 "chain": {"name": "BROADSIDE", "text": "Walker Cannon twice in a turn: the second is free."},
+		 "perks": [{"id": "bigbore", "name": "Big Bore", "text": "Walker Cannon and Tank Shell blasts +10."},
+			{"id": "reactive", "name": "Reactive Armor", "text": "Gears' vehicle takes 2 less damage from every hit."},
+			{"id": "crusher", "name": "Crusher", "text": "Stomp and Walker Cannon cost 1 less."}]},
+		{"id": "ejectartist", "name": "Eject Artist", "od": "fullsend", "keystone": "ejectseat",
+		 "chain": {"name": "BAIL OUT", "text": "Eject!, then Patch Job: Patch Job is free."},
+		 "perks": [{"id": "biggerboom", "name": "Bigger Boom", "text": "Eject! blasts are 50% bigger."},
+			{"id": "softlanding", "name": "Soft Landing", "text": "Ejecting gives Gears 8 armor."},
+			{"id": "quickpatch", "name": "Quick Patch", "text": "Patch Job costs 1 less."}]},
+		{"id": "mechanic", "name": "Mechanic", "od": "convoy", "keystone": "toolkit",
+		 "chain": {"name": "PIT STOP", "text": "Patch Job, then any attack card: +1 energy."},
+		 "perks": [{"id": "tuneup", "name": "Tune-Up", "text": "Every vehicle the squad drives repairs 6 HP each turn."},
+			{"id": "hotwire", "name": "Hotwire", "text": "Anyone who hijacks a vehicle gets +1 energy and a free Vulcan."},
+			{"id": "motorpool", "name": "Motor Pool", "text": "Gears starts each mission with a Slug call card."}]},
+	],
 }
 const PERK_TIER := ["MINOR", "MAJOR", "CAPSTONE"]
 
 # Legendary keystone items live in ITEMS (one per archetype). Anyone can wear one, which makes hybrids.
-const KEYSTONE_IDS := ["tungsten", "varga", "claymore", "twinrev", "overcharger", "canister", "weathervane", "medrig", "howitzer", "lizard", "fuelpack", "detbox", "gauntlet", "riotshield", "ammobelt", "zantetsu", "turretcore", "rebar", "rivetdriver", "magnetglove", "chokechain", "treatbag", "k9vest", "hawkhood"]
+const KEYSTONE_IDS := ["tungsten", "varga", "claymore", "twinrev", "overcharger", "canister", "weathervane", "medrig", "howitzer", "lizard", "fuelpack", "detbox", "gauntlet", "riotshield", "ammobelt", "zantetsu", "turretcore", "rebar", "rivetdriver", "magnetglove", "chokechain", "treatbag", "k9vest", "hawkhood", "jumpjets", "treads", "ejectseat", "toolkit"]
 
 # Branching card upgrades (P3): the Gunsmith adds up to 2 mods per card. A cost cut is one option.
 const MAX_MODS := 2
@@ -629,6 +682,8 @@ const DUOS := [
 	{"pair": ["hex", "vee"], "card": "firestorm", "holder": "vee"},
 	{"pair": ["bolt", "rook"], "card": "buildcrew", "holder": "bolt"},
 	{"pair": ["bolt", "vee"], "card": "demoteam", "holder": "bolt"},
+	{"pair": ["gears", "rook"], "card": "ridealong", "holder": "gears"},
+	{"pair": ["gears", "hex"], "card": "fieldrefit", "holder": "gears"},
 	{"pair": ["hex", "track"], "card": "meddog", "holder": "track"},
 	{"pair": ["moss", "track"], "card": "k9strike", "holder": "track"},
 ]
@@ -807,6 +862,8 @@ const ETYPES := {
 	"radio": {"name": "Jackal Radioman", "hp": 10, "dmg": [2, 3], "range": 380, "speed": 60, "prefer": 520, "radio": true, "score": 200, "w": 16, "h": 34, "note": "Calls in paratroopers when his timer hits zero. Kill him to stop it."},
 	"engineer": {"name": "Jackal Engineer", "hp": 12, "dmg": [2, 3], "range": 360, "speed": 80, "prefer": 320, "builds": true, "score": 150, "w": 16, "h": 34, "note": "Builds concrete walls for the Jackal line."},
 	"sapper": {"name": "Jackal Sapper", "hp": 11, "speed": 150, "sapper": true, "score": 175, "w": 16, "h": 34, "note": "Runs in and plants a charge that blows next turn. Shoot the charge to defuse it."},
+	# E6: a two-legged mech mid-level. Blow the ground out under one leg and it topples.
+	"jwalker": {"name": "Jackal Walker", "sheet": "en_grunt", "hp": 48, "dmg": [3, 4], "shots": 3, "range": 500, "speed": 60, "prefer": 300, "heavy": true, "score": 600, "w": 30, "h": 56, "note": "Mini-boss. A mech with a machine gun. Blow the ground out from under one leg and it topples, crushing whatever it lands on. Leaves a walker you can drive."},
 	"mortarcrew": {"name": "Mortar Crew", "hp": 18, "arc": true, "heavyArc": true, "dmg": 12, "radius": 46, "range": 900, "speed": 0, "score": 250, "w": 18, "h": 34, "note": "Shells your cover from long range. Sits still. Something is hanging over it."},
 	# Vharr aliens. Like the Jackals they move and attack in the same enemy phase, and
 	# "weight" sets how physics moves them: light flies twice as far, hover holds altitude on a pod.

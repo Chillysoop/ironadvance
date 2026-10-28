@@ -252,6 +252,8 @@ func hint_text() -> String:
 			return "OVERDRIVE: aim the launch. Anyone in the way gets smashed into the scenery."
 		if c.get("drill", false):
 			return "DRILL: aim through the terrain in your way. It bores until your movement runs out; click, SPACE or ESC stops it early."
+		if c.get("eject", false):
+			return "EJECT: aim the empty vehicle. It charges at the cursor and explodes; the driver pops out."
 		if c.get("dog", "") == "bite":
 			return "SIC 'EM: click a Jackal inside the ring around Rex. He leaps over and bites."
 		if c.get("dog", "") == "fetch":

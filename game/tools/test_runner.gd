@@ -2,7 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer), track (N7 K9 Handler),
+## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer), track (N7 K9 Handler), vehicles (N3 Gears, R1 hijack, E6 Jackal Walker),
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
@@ -749,6 +749,8 @@ func run() -> void:
 			await bolt_test()
 		"track":
 			await track_test()
+		"vehicles":
+			await vehicles_test()
 		"pickups":
 			await pickups()
 		"bossloot":
@@ -5728,6 +5730,111 @@ func track_test() -> void:
 	check(foes.all(func(f): return f.hp < 40), "Release the Hounds bites three Jackals (%s)" % [foes.map(func(f): return f.hp)])
 	check(b.units.filter(func(o): return o.kind == "dog" and not o.gone).size() == 1, "the pack leaves, Rex stays")
 	check(Run.class_keys().has("track") and Data.SPECIALISTS.has("track"), "Track is a specialist you can free and draft")
+	Run.meta = keep
+	Run.save_meta()
+
+func vehicles_test() -> void:
+	## N3 Gears in his walker, R1 hijacking a parked vehicle, E6 toppling a Jackal Walker.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	if not Run.meta.unlocked.has("cls_gears"):
+		Run.meta.unlocked.append("cls_gears")
+	Run.meta["draft"] = ["moss", "hex", "rook", "gears"]
+	Run.leave_campaign()
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var ge: Unit = b.squad().filter(func(u): return u.def.key == "gears")[0]
+	check(ge.mech != null and ge.mech.type == "walker" and ge.mech.own, "Gears deploys in his walker")
+	var x := 700.0
+	while not flat_open(b, x, 300) and x < b.world_w - 600:
+		x += 20
+	for o in b.units:
+		if (o.team == "enemy" or o.kind == "ride") and absf(o.x - x - 150) < 560:
+			o.gone = true
+	for o in b.squad():
+		if o != ge:
+			ground_unit(b, o, x - 160 - o.id * 3, 0)
+	cam_on(b, x + 100)
+	ground_unit(b, ge, x, 0)
+	await frames_wait(10)
+	await shot("vehicles_walker")
+	# the walker soaks hits
+	var hp0 := ge.hp
+	var m0: int = ge.mech.hp
+	b.damage(ge, 7, null)
+	check(ge.hp == hp0 and ge.mech.hp == m0 - 7, "the walker takes the hit, not Gears (%d/%d)" % [ge.hp, ge.mech.hp])
+	# Vulcan from the walker
+	var e := b.mk_enemy("grunt", x + 220, b.T.stand_y(x + 220, 0))
+	e.active = true
+	e.hp = 40; e.max_hp = 40
+	b.units.append(e)
+	var vi := force_card(ge, "vulcan")
+	b.select_unit(ge); b.select_card(vi)
+	b.mouse = Vector2(e.x, e.y - 20)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(e.hp < 40, "Vulcan fires from the walker (%d)" % e.hp)
+	# Eject!: the empty walker charges and blows
+	ge.energy = 3
+	var hp1 := e.hp
+	var ei := force_card(ge, "eject")
+	b.select_unit(ge); b.select_card(ei)
+	b.mouse = Vector2(e.x, e.y - 10)
+	await frames_wait(4)
+	await shot("vehicles_aim_eject")
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1800)
+	await shot("vehicles_eject")
+	check(ge.mech == null, "Eject!: Gears is out of the walker")
+	check(e.hp < hp1 or e.dead, "the walker charges and blows up the Jackal (%d -> %d)" % [hp1, e.hp])
+	# on foot the walker cards won't play, and Patch Job puts him back in
+	ge.energy = 3
+	var vi2 := force_card(ge, "vulcan")
+	check(b.mech_ok(ge, Data.card(ge.hand[vi2])) != "", "walker cards need a vehicle")
+	var pi := force_card(ge, "patchjob")
+	b.sel = ge; b.state = "player"; b.busy = false
+	b.play_self(pi)
+	await until(func(): return not b.busy, 1200)
+	check(ge.mech != null and ge.mech.hp == ge.mech.max, "Patch Job: back in a rebuilt walker")
+	# wreck the walker: Gears tumbles out unhurt
+	var hp2 := ge.hp
+	b.damage(ge, 99, null)
+	check(ge.mech == null and ge.hp == hp2, "a wrecked walker throws Gears out, unhurt")
+	await until(func(): return b.settled(), 600)
+	# R1: Rook hijacks a parked tank
+	var rk: Unit = b.squad().filter(func(u): return u.def.key == "rook")[0]
+	ground_unit(b, rk, x - 60, 0)
+	var r: Unit = b.park_ride(x - 30, "tank")
+	await frames_wait(4)
+	await shot("vehicles_parked")
+	b.hijack(rk, r)
+	check(rk.mech != null and rk.mech.type == "tank" and r.gone, "R1: Rook hijacks the parked tank")
+	check(rk.hand.any(func(h): return h.key == "tankshell") and rk.hand.any(func(h): return h.key == "eject"), "and its guns are in his hand")
+	check(b.full_move(rk) < rk.def.spd + 1, "a tank is slower than on foot")
+	await frames_wait(6)
+	await shot("vehicles_hijack")
+	# E6: blow the ground out under one leg of a Jackal Walker and it topples
+	var wx := x + 340.0
+	var jw := b.mk_enemy("jwalker", wx, b.T.stand_y(wx, 0))
+	jw.mech = {"type": "walker", "hp": 0, "max": 0, "own": false, "h0": 34, "w0": 16}
+	jw.active = true
+	b.units.append(jw)
+	var vic := b.mk_enemy("grunt", wx + 40, b.T.stand_y(wx + 40, 0))
+	vic.active = true
+	vic.hp = 40; vic.max_hp = 40
+	b.units.append(vic)
+	cam_on(b, wx)
+	await frames_wait(10)
+	await shot("vehicles_jwalker")
+	b.T.carve(wx + 14, jw.y + 6, 9, null)
+	b.state = "player"; b.busy = false
+	b.resolve(func(): await b.leg_check())
+	await until(func(): return not b.busy, 1800)
+	await shot("vehicles_toppled")
+	check(jw.dead, "E6: the Jackal Walker topples when the ground under a leg is gone")
+	check(vic.hp < 40, "and crushes the Jackal it falls on (%d)" % vic.hp)
+	check(b.units.any(func(o): return o.kind == "ride" and not o.gone and o.loot.type == "walker"), "it leaves a walker you can drive")
 	Run.meta = keep
 	Run.save_meta()
 
