@@ -3171,6 +3171,7 @@ func make_camp(c: Dictionary) -> void:
 			s.dead = false
 			s.downed = false
 			s.gone = false
+			s.sunk = false  # one who drowned too, or the update loop skips them and their first walk never ends
 			s.alpha = 1.0
 			s.hp = int(ceil(s.max_hp / 2.0))
 			# by the fire, unless the screen has already scrolled past it: then at the near edge
