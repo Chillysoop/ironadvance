@@ -164,6 +164,8 @@ func setup(idx: int, custom := {}) -> void:
 		u.draw = deck
 		if Run.implanted(s, "adrenal"):
 			u.adr = 25
+		if Run.has_gear("warpaint"):
+			u.adr = maxi(u.adr, 50 if Run.relic_tier("warpaint") >= 3 else 25)
 		if s.get("spec", "") == "engineer":
 			u.dome = 2  # C7 Gate Tech: the Engineer deploys under a dome
 		if Run.campaign() and Run.soldiers.any(func(x): return x.alive and Run.rank(x) >= Data.RANKS.size() - 1):
@@ -282,6 +284,12 @@ func collect(u: Unit, p: Unit) -> void:
 			u.hand.append({"id": -2, "key": L.card, "tier": Data.base_tier(L.card), "temp": true})
 			float_text(u, "GOT A " + Data.CARDS[L.card].name.to_upper() + "! ONE SHOT", Color("ffd23a"), true)
 			Sfx.play("power")
+		"relic":
+			Run.add_gear(L.id, Data.TIER_MAX)
+			for o in squad_alive():
+				refresh_unit_gear(o)
+			banner("BOSS TROPHY: " + Data.gear(L.id).name.to_upper(), Color("ffb21e"), Data.gear(L.id).text.to_upper())
+			Sfx.play("levelup")
 		"trophy":
 			if not Run.trophies.has(L.name):
 				Run.trophies.append(L.name)
@@ -1680,6 +1688,9 @@ func kill(tg: Unit, src) -> void:
 		if is_boss(tg):
 			boss_dead = true
 			drop_loot(tg.x, tg.y - 40, {"type": "item", "item": Run.roll_item(Data.TIER_MAX)}, 1.4)
+			var relics: Array = Data.GEAR.filter(func(g): return g.get("boss", false) and not Run.has_gear(g.id))
+			if not relics.is_empty():
+				drop_loot(tg.x - 20, tg.y - 40, {"type": "relic", "id": relics[randi() % relics.size()].id}, 1.2)
 			var part_name: String = Data.TROPHIES[mini(mission_idx, Data.TROPHIES.size() - 1)]
 			if not Run.trophies.has(part_name):
 				drop_loot(tg.x + 20, tg.y - 40, {"type": "trophy", "name": part_name}, 1.2)
@@ -3533,6 +3544,8 @@ func stash_payload(p: Dictionary) -> void:
 		"scrip":
 			Run.scrip += p.n
 			stats.scrip += p.n
+		"relic":
+			Run.add_gear(p.id, Data.TIER_MAX)
 		"trophy":
 			if not Run.trophies.has(p.name):
 				Run.trophies.append(p.name)
@@ -4186,7 +4199,7 @@ func stow_hand(s: Unit) -> void:
 	s.hand = s.hand.filter(func(c): return c.get("od", false) or c.get("temp", false))
 
 func hand_size(s: Unit) -> int:
-	return maxi(2, 4 + s.s.bonus.hand + (1 if s.perk("fieldkit") else 0) + (1 if Run.implanted(s.s, "thirdarm") else 0) + relay_hand - (1 if Run.threat_on(3) else 0))
+	return maxi(2, 4 + s.s.bonus.hand + (1 if s.perk("fieldkit") else 0) + (1 if Run.implanted(s.s, "thirdarm") else 0) + relay_hand - (1 if Run.threat_on(3) else 0) + (1 if Run.has_gear("ammodrone") else 0) + (1 if round_n == 1 and Run.relic_tier("ammodrone") >= 3 else 0))
 
 func start_player_turn() -> void:
 	round_n += 1
@@ -4198,6 +4211,8 @@ func start_player_turn() -> void:
 		if round_n == 1:
 			s.energy += s.s.bonus.energy1 + int(s.g("energy1")) + (1 if Run.has_gear("bandolier") else 0)
 		elif round_n == 2 and Run.relic_tier("bandolier") >= 3:
+			s.energy += 1
+		if Run.has_gear("overclock") and (round_n % 2 == 1 or Run.relic_tier("overclock") >= 3):
 			s.energy += 1
 		s.move_left = full_move(s)
 		s.moved = false
