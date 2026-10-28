@@ -39,6 +39,7 @@ var stretches: Array = []  # [x0, x1] of each fighting stretch, in order
 var camps: Array = []    # safe camps inside the level: {x0, x1, used}
 var ice_runs: Array = []  # [x0, x1] of each sheet of ice on the ground
 var tarps: Array = []     # [x0, x1] of each rubber tarp on the ground
+var pins := {}            # N2: cell index -> rivet unit id; a bolted girder hangs from these
 
 func _init(battle) -> void:
 	b = battle
@@ -112,7 +113,7 @@ func build(mission: Dictionary) -> void:
 	var x := 0
 	var shapes: Array = []
 	var open_pits: Array = []
-	pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear(); camps.clear(); yard = []
+	pins.clear(); pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear(); camps.clear(); yard = []
 	arena_x = 1 << 20  # outposts have no arena
 	var rules: Dictionary = mission.get("rules", {})
 	stretches = []   # fighting stretches, where a biome's extra fuel and mines and encounters go
@@ -581,7 +582,7 @@ func flood(start: int, cause) -> void:
 		head += 1
 		var cy := i / cols
 		var cx := i - cy * cols
-		if cy >= WATER_ROW - 1:
+		if cy >= WATER_ROW - 1 or pins.has(i):
 			anchored = true  # the seabed holds up anything still joined to the bottom row of ground
 			break
 		for k in 4:

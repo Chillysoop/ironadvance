@@ -155,6 +155,21 @@ const CARDS := {
 	# evolutions (M4): Epic+ card plus a specific kit
 	"heavym": {"name": "Heavy Machine Gun", "type": "AIM", "cost": 1, "dmg": [4, 4], "shots": 8, "range": FULL_RANGE, "gun": "mg", "bounce": 1, "sway": 0.04, "spread": 0.05, "pierce": true, "text": "H! Eight piercing rounds.", "rarity": 3, "pool": false},
 	"firebomb": {"name": "Fire Bomb", "type": "ARC", "cost": 1, "radius": 46, "dmg": 15, "wind": 1.0, "burnblast": true, "text": "Blows on impact and sets everything Burning.", "rarity": 3, "pool": false},
+	# N2 Bolt, Combat Engineer: builds into the terrain
+	"sandbags": {"name": "Sandbags", "type": "ARC", "cost": 1, "build": "wall", "bw": 24, "bh": 20, "wind": 0.6, "text": "Throw a sandbag pack. A wall stacks up where it lands.", "rarity": 0, "up": {"bw": 32, "bh": 26}},
+	"sentry": {"name": "Sentry Gun", "type": "ARC", "cost": 2, "build": "sentry", "shp": 14, "sdmg": [4, 5], "wind": 0.4, "text": "Deploys a turret where it lands. At the end of your turn it shoots the nearest Jackal along its laser.", "rarity": 1, "up": {"shp": 20, "sdmg": [5, 7]}},
+	"girder": {"name": "Girder", "type": "LINE", "cost": 1, "girder": true, "reach": 320, "gw": 56, "text": "Bolt a steel beam in place at the cursor, even in mid-air. Shoot its bolt and it drops and crushes.", "rarity": 1, "up": {"gw": 76}},
+	"jumppad": {"name": "Jump Pad", "type": "ARC", "cost": 1, "build": "pad", "pw": 28, "wind": 0.6, "text": "Throw a rubber pad. Soldiers and grenades bounce high off it.", "rarity": 0, "up": {"pw": 44}},
+	"rivetgun": {"name": "Rivet Gun", "type": "AIM", "cost": 1, "dmg": [3, 4], "shots": 3, "range": FULL_RANGE, "gun": "smg", "bounce": 0, "sway": 0.03, "spread": 0.04, "chip": 3, "text": "Three rivets. Punch through wood.", "rarity": 0, "up": {"shots": 4}},
+	"wrench": {"name": "Big Wrench", "type": "MELEE", "cost": 1, "dmg": [7, 9], "range": 38, "knock": 7, "text": "A heavy swing. Knocks them off their feet.", "rarity": 0, "up": {"dmg": [10, 12]}},
+	"weld": {"name": "Weld Plate", "type": "ALLY", "cost": 1, "plate": 7, "range": 120, "text": "Bolt a steel plate onto a squadmate: armor until your next turn.", "rarity": 1, "up": {"plate": 11}},
+	"fortify": {"name": "Fortify", "type": "SELF", "cost": 0, "od": true, "fortify": 8, "range": 220, "text": "Squad within 220px: 8 armor and a concrete wall in front of each of them.", "rarity": 5},
+	"sentrynest": {"name": "Sentry Nest", "type": "SELF", "cost": 0, "od": true, "nest": 3, "text": "Three sentry guns unfold around Bolt.", "rarity": 5},
+	"ironcurtain": {"name": "Iron Curtain", "type": "SELF", "cost": 0, "od": true, "fortify": 12, "range": 400, "curtain": true, "text": "A huge concrete wall between the squad and the nearest Jackal, and 12 armor for everyone.", "rarity": 5},
+	"steelrain": {"name": "Steel Rain", "type": "ARC", "cost": 0, "od": true, "beacon": true, "rain": 5, "wind": 0.3, "text": "Five girders drop out of the sky across the marker.", "rarity": 5},
+	"junkcannon": {"name": "Junk Cannon", "type": "LINE", "cost": 0, "od": true, "radius": 44, "dmg": 20, "speed": 8.0, "junk": true, "text": "Fires a ton of scrap. Big blast, and it lands as a heap of steel.", "rarity": 5},
+	"buildcrew": {"name": "Build Crew", "type": "SELF", "cost": 0, "od": true, "duo": true, "fortify": 8, "range": 220, "rook_wall": true, "text": "Bolt walls up the squad while Rook kicks a Jackal into a fresh wall.", "rarity": 5},
+	"demoteam": {"name": "Demo Team", "type": "ARC", "cost": 0, "od": true, "duo": true, "beacon": true, "rain": 3, "barrage": 4, "wind": 0.4, "text": "Bolt drops three girders and Vee walks four shells across them.", "rarity": 5},
 }
 # ---------------------------------------------------------------- combos (C1, C3, C5, C6)
 const MOMENTUM := 3          # every 3rd card a soldier plays in a turn refunds 1 energy
@@ -204,7 +219,7 @@ const NICK_KILLS := 10  # D4: kills that earn a card a nickname
 const CARD_NICKS := ["Old Faithful", "The Closer", "Sweet Talker", "Big Iron", "Last Call", "House Rules"]
 const FAB_PRICE := 70
 
-const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush"}
+const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush", "bolt": "fortify"}
 # Metal Slug letter drops: 3 temporary cards in the collector's hand for the rest of the mission.
 const LETTERS := {"H": "hmg", "R": "bazooka", "F": "flameshot", "S": "shotgun", "L": "lasergun", "C": "chaser",
 	"D": "dropshot", "T": "thundershot", "Z": "zantetsu", "G": "superhmg"}
@@ -263,6 +278,10 @@ const ITEMS := {
 	"riotshield": {"name": "Riot Shield", "slot": "armor", "keystone": "rook", "stats": {"hp": 4}, "text": "KEYSTONE: blocks 75% of bullets from the front."},
 	"ammobelt": {"name": "Ammo Belt", "slot": "kit", "keystone": "rook", "stats": {"move": 10}, "text": "KEYSTONE: Heavy MG fires 3 more rounds."},
 	"zantetsu": {"name": "Zantetsu Sword", "slot": "weapon", "keystone": "rook", "cards": ["knife", "knife"], "text": "KEYSTONE: adds 2 Knives. Knife sweeps every body in reach and cuts terrain."},
+	"turretcore": {"name": "Turret Core", "slot": "kit", "keystone": "bolt", "stats": {"armor_turn": 1}, "text": "KEYSTONE: your sentries fire piercing rounds for +2 damage."},
+	"rebar": {"name": "Rebar Spool", "slot": "armor", "keystone": "bolt", "stats": {"hp": 4}, "text": "KEYSTONE: your walls are twice as big."},
+	"rivetdriver": {"name": "Rivet Driver", "slot": "weapon", "keystone": "bolt", "cards": ["girder", "girder"], "text": "KEYSTONE: adds 2 Girders. Girders cost 0."},
+	"magnetglove": {"name": "Magnet Glove", "slot": "kit", "keystone": "bolt", "stats": {"luck": 1}, "text": "KEYSTONE: your first build each turn refunds its energy."},
 	"jetboots": {"name": "Jet Boots", "slot": "kit", "stats": {"jet": 90}, "text": "Press J, then hold the mouse to fly toward the cursor. Fuel refills each turn you start on the ground."},
 	"guidance": {"name": "Guidance Chip", "slot": "kit", "stats": {"aim_dmg": 1}, "text": "Rockets think for themselves."},
 	"napalmmix": {"name": "Napalm Mix", "slot": "kit", "stats": {"blast": 0.06}, "text": "Sticky, smelly, very flammable."},
@@ -389,7 +408,20 @@ const SQUAD_DEFS := [
 	 "deck": ["rifle", "rifle", "rifle", "burst", "sprint", "knife", "frag", "grapple", "drill"],
 	 "pool": ["rifle", "burst", "shotgun", "hmg", "knife", "digin", "grapple", "sprint", "roll", "rally", "adrenal", "tagshot", "haymaker", "taunt", "suppress"],
 	 "trait": ["Thick Skull", "Takes half damage from falls, slams and crushing debris."], "bio": "First through every door. Usually the wrong one."},
+	# N2: unlocked by freeing him as a specialist POW (X2)
+	{"key": "bolt", "name": "BOLT", "cls": "Combat Engineer", "hp": 26, "dodge": 8, "spd": 190,
+	 "deck": ["sandbags", "sandbags", "sentry", "girder", "rivetgun", "rivetgun", "pistol", "sprint", "drill"],
+	 "pool": ["sandbags", "sentry", "girder", "jumppad", "rivetgun", "wrench", "weld", "shotgun", "pistol", "sprint", "digin", "frag", "roll", "rally", "shapedcharge"],
+	 "trait": ["Toolbelt", "Everything Bolt builds is 50% bigger, and his sentries have 50% more HP."], "bio": "Built a bridge under fire once. Still sends the invoice."},
 ]
+# X1: the four you start with. Everyone else is a specialist you free once to unlock (X2).
+const BASE_CLASSES := ["moss", "hex", "vee", "rook"]
+# X2: each specialist is held in a run as a named POW. Free them and they join the squad for the
+# rest of that run, and their class goes into the squad draft for good.
+const SPECIALISTS := {
+	"bolt": {"pow": "Sgt. Bolt", "text": "A combat engineer the Jackals grabbed fixing their own bridge."},
+}
+const RESCUES_PER_RUN := 2  # at most this many specialists turn up in one run (level 1 and level 2)
 
 # Four archetype branches per soldier (P1). Each has Minor, Major and Capstone perks; a
 # perk is offered only after the one before it. The Capstone swaps the Overdrive (P2).
@@ -483,11 +515,33 @@ const BRANCHES := {
 			{"id": "hookshot", "name": "Hookshot", "text": "Grappling next to a Jackal yanks it off its feet toward Rook."},
 			{"id": "blitz", "name": "Blitz", "text": "Every push puts a free Knife in Rook's hand."}]},
 	],
+	"bolt": [
+		{"id": "turrettech", "name": "Turret Tech", "od": "sentrynest", "keystone": "turretcore",
+		 "chain": {"name": "COVERING FIRE", "text": "Sentry Gun, then any AIM card: every one of Bolt's sentries fires with you."},
+		 "perks": [{"id": "twinbarrel", "name": "Twin Barrels", "text": "Sentries fire twice."},
+			{"id": "secondsentry", "name": "Spare Parts", "text": "Each Sentry Gun card deploys two sentries."},
+			{"id": "autoloader", "name": "Autoloader", "text": "Sentries also fire at the start of your turn."}]},
+		{"id": "fortifier", "name": "Fortifier", "od": "ironcurtain", "keystone": "rebar",
+		 "chain": {"name": "DOUBLE STACK", "text": "The second Sandbags Bolt throws in a turn is free."},
+		 "perks": [{"id": "concrete", "name": "Poured Concrete", "text": "Bolt's walls are concrete: bullets bounce off instead of chewing in."},
+			{"id": "hunker", "name": "Hunker Down", "text": "Squadmates standing next to a wall Bolt built start their turn with 4 armor."},
+			{"id": "bulwark", "name": "Bulwark", "text": "Sandbags cost 0."}]},
+		{"id": "bridgewright", "name": "Bridgewright", "od": "steelrain", "keystone": "rivetdriver",
+		 "chain": {"name": "CUT LOOSE", "text": "Girder, then drop it the same turn: refund 1 energy."},
+		 "perks": [{"id": "heavysteel", "name": "Heavy Steel", "text": "Bolt's girders are twice as thick and crush harder."},
+			{"id": "longspan", "name": "Long Span", "text": "Bolt's girders are 50% longer and reach twice as far."},
+			{"id": "piledriver", "name": "Pile Driver", "text": "A girder placed over a Jackal drops on it at once."}]},
+		{"id": "scrapper", "name": "Scrapper", "od": "junkcannon", "keystone": "magnetglove",
+		 "chain": {"name": "SCRAPHEAP", "text": "A Big Wrench kill puts a free Sandbags in Bolt's hand."},
+		 "perks": [{"id": "salvager", "name": "Salvager", "text": "Bolt's kills put a free Sandbags in his hand, once a turn."},
+			{"id": "scraparmor", "name": "Scrap Armor", "text": "Bolt gains 3 armor every time he builds something."},
+			{"id": "recycler", "name": "Recycler", "text": "Every build card Bolt plays draws a card."}]},
+	],
 }
 const PERK_TIER := ["MINOR", "MAJOR", "CAPSTONE"]
 
 # Legendary keystone items live in ITEMS (one per archetype). Anyone can wear one, which makes hybrids.
-const KEYSTONE_IDS := ["tungsten", "varga", "claymore", "twinrev", "overcharger", "canister", "weathervane", "medrig", "howitzer", "lizard", "fuelpack", "detbox", "gauntlet", "riotshield", "ammobelt", "zantetsu"]
+const KEYSTONE_IDS := ["tungsten", "varga", "claymore", "twinrev", "overcharger", "canister", "weathervane", "medrig", "howitzer", "lizard", "fuelpack", "detbox", "gauntlet", "riotshield", "ammobelt", "zantetsu", "turretcore", "rebar", "rivetdriver", "magnetglove"]
 
 # Branching card upgrades (P3): the Gunsmith adds up to 2 mods per card. A cost cut is one option.
 const MAX_MODS := 2
@@ -529,6 +583,8 @@ const DUOS := [
 	{"pair": ["hex", "moss"], "card": "ownet", "holder": "moss"},
 	{"pair": ["moss", "rook"], "card": "shockawe", "holder": "rook"},
 	{"pair": ["hex", "vee"], "card": "firestorm", "holder": "vee"},
+	{"pair": ["bolt", "rook"], "card": "buildcrew", "holder": "bolt"},
+	{"pair": ["bolt", "vee"], "card": "demoteam", "holder": "bolt"},
 ]
 const DUO_RANGE := 120.0
 

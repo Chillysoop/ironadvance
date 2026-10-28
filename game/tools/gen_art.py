@@ -34,7 +34,9 @@ SQUAD_PAL = {
     'hex':  {'h': '#f4f2ea', 'H': '#cccac0', 'j': '#8c8a84', 'u': '#4ca0a0', 'U': '#2f7a7a', 'v': '#1e5050', 'p': '#3c6a6a', 'P': '#2a4e4e', 'q': '#1a3434', 'f': '#3a2a1a'},
     'vee':  {'h': '#ff5a40', 'H': '#d63a2a', 'j': '#8c2418', 'u': '#c89c5c', 'U': '#a07a40', 'v': '#6a5028', 'p': '#6a5a3a', 'P': '#4e4228', 'q': '#322a18', 'f': '#7a3a1c'},
     'rook': {'h': '#6c9cf0', 'H': '#3c6ad0', 'j': '#22408c', 'u': '#6a8c4c', 'U': '#4c6a34', 'v': '#30461e', 'p': '#5a6a40', 'P': '#42502c', 'q': '#2a321a', 'f': '#2a1c10'},
+    'bolt': {'h': '#ffc23a', 'H': '#e09a1c', 'j': '#8a5a10', 'u': '#4a5a78', 'U': '#36425a', 'v': '#222a3a', 'p': '#5a5048', 'P': '#423a34', 'q': '#2a2420', 'f': '#4a2e18'},
 }
+SQUAD_KEYS = list(SQUAD_PAL.keys())
 JACKAL = {'u': '#e0c890', 'U': '#bca064', 'v': '#8a7040', 'p': '#c0a46c', 'P': '#98804c', 'q': '#66542e', 'f': '#2a1c10'}
 ENEMY_PAL = {
     'grunt':      dict(JACKAL, h='#d84a3a', H='#a8302a', j='#6a1c18'),
@@ -330,6 +332,7 @@ CHAR_STYLE = {
     'hex':  dict(head='medic', torso='medic', back='pack', gun='pistol'),
     'vee':  dict(head='bandana', torso='vest', back='ponytail', gun='launcher'),
     'rook': dict(head='shades', torso='vest', back='pack', gun='rifle'),
+    'bolt': dict(head='hardhat', torso='vest', back='pack', gun='rifle'),
     'grunt':      dict(head='beret', torso='jackal', back='none', gun='rifle'),
     'shield':     dict(head='riot', torso='jackal', back='none', gun='pistol'),
     'nade':       dict(head='beret', torso='bomber', back='none', gun='none'),
@@ -2062,7 +2065,7 @@ def alien_frames():
 LOOK_HEADS = ['helmet', 'boonie', 'bandana', 'beret', 'hardhat', 'shades']
 
 def look_sheets(meta):
-    for key in ('moss', 'hex', 'vee', 'rook'):
+    for key in SQUAD_KEYS:
         pal = palette(SQUAD_PAL[key])
         for head in LOOK_HEADS:
             if head == CHAR_STYLE[key]['head']:
@@ -2076,7 +2079,7 @@ def main():
     os.makedirs(os.path.join(OUT, 'sprites'), exist_ok=True)
     os.makedirs(os.path.join(OUT, 'bg'), exist_ok=True)
     meta = {}
-    for key in ('moss', 'hex', 'vee', 'rook'):
+    for key in SQUAD_KEYS:
         pal = palette(SQUAD_PAL[key])
         fr = char_frames(key, pal)
         meta['sq_' + key] = write_sheet('sq_' + key, fr, gun_image(CHAR_STYLE[key]['gun'], pal))

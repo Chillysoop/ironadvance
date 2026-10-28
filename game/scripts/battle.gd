@@ -72,6 +72,7 @@ var inspect := false     # ALT held: show every soldier's actions
 var jet_armed := false   # J pressed: the next click-and-hold flies the selected soldier
 var jet_hold := false    # the mouse button is down while jetting
 var pads: Array = []     # bonus pads on this map
+var walls: Array = []    # N2: Rect2 of each wall Bolt built (Hunker Down)
 var grav := GRAV         # this map's gravity: Mountain's thin air lowers it
 var fuse_pick := 0       # frames of fuse the player dialed in with the wheel (0 = the card's own)
 var feed: Array = []     # kill feed lines: {killer, how, victim, kc, stamp, t}
@@ -154,27 +155,7 @@ func setup(idx: int, custom := {}) -> void:
 	for s in deployed:
 		if not s.alive or (mission.has("only") and s.key != mission.only):
 			continue
-		var x := 50.0 + i * 35
-		var u := mk_unit()
-		u.team = "squad"; u.kind = "soldier"; u.def = s.def; u.s = s; u.sheet = Art.look_sheet(s)
-		u.gb = Run.gear_bonus(s)
-		u.x = x; u.y = T.stand_y(x, 0); u.face = 1; u.max_hp = Run.eff_max_hp(s); u.hp = mini(s.hp, u.max_hp)
-		u.dodge = s.def.dodge + s.bonus.dodge + int(u.g("dodge"))
-		u.second_wind = s.perks.has("secondwind")
-		u.fuel_max = jet_fuel(u)
-		u.fuel = u.fuel_max
-		var deck: Array = s.deck.duplicate()
-		deck.shuffle()
-		u.draw = deck
-		if Run.implanted(s, "adrenal"):
-			u.adr = 25
-		if Run.has_gear("warpaint"):
-			u.adr = maxi(u.adr, 50 if Run.relic_tier("warpaint") >= 3 else 25)
-		if s.get("spec", "") == "engineer":
-			u.dome = 2  # C7 Gate Tech: the Engineer deploys under a dome
-		if Run.campaign() and Run.soldiers.any(func(x): return x.alive and Run.rank(x) >= Data.RANKS.size() - 1):
-			u.dodge += Data.CAPTAIN_DODGE  # C3: a Captain in the squad steadies everyone
-		units.append(u)
+		deploy_unit(s, 50.0 + i * 35)
 		i += 1
 	var pi := randi() % Data.POW_NAMES.size()
 	var foot := 0  # plain rifleman and bomber slots seen so far (cast_foot)
@@ -220,6 +201,8 @@ func setup(idx: int, custom := {}) -> void:
 			var u := mk_unit(); u.team = "neutral"; u.kind = "pow"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - opt.up) if opt.has("up") else T.stand_y(x, 0); u.face = -1
 			u.pow_name = Data.POW_NAMES[pi % Data.POW_NAMES.size()]; pi += 1
 			stats.pows_total += 1
+			if not spec_placed():
+				make_specialist(u)
 			units.append(u); continue
 		if (type == "grunt" or type == "nade") and not opt.has("tut"):
 			type = cast_foot(foot)
@@ -257,6 +240,15 @@ func setup(idx: int, custom := {}) -> void:
 			var mate := mk_enemy(type, px, T.stand_y(px, (y if y != null else 0.0) - 40))
 			mate.hold = u.hold
 			units.append(mate)
+	if not spec_placed() and T.stretches.size():
+		# X2: no prisoner in the level's segments, so the specialist is tied up mid-stretch
+		var sx: float = (T.stretches[0][0] + T.stretches[0][1]) / 2.0
+		var sy = T.stand_y(sx, 0)
+		if sy != null:
+			var p := mk_unit(); p.team = "neutral"; p.kind = "pow"; p.x = sx; p.y = sy; p.face = -1
+			stats.pows_total += 1
+			make_specialist(p)
+			units.append(p)
 	place_encounter(mission.get("encounter", ""))
 	place_job()
 	spawn_map_loot()
@@ -517,6 +509,322 @@ func open_crate(c: Unit, loud: bool) -> void:
 	else:
 		drop_loot(c.x, c.y - 8, crate_payload(1 if Run.mission >= 2 else 0))
 	ui_dirty = true
+
+
+
+# ---------------------------------------------------------------- N2 Bolt: building into the terrain
+func build_scale(u) -> float:
+	## Toolbelt: everything Bolt builds is 50% bigger.
+	return 1.5 if u is Unit and u.team == "squad" and u.def.key == "bolt" else 1.0
+
+func is_build(c: Dictionary) -> bool:
+	return c.has("build") or c.get("girder", false)
+
+func clear_of_units(x: float, y: float) -> bool:
+	for o in units:
+		if o.dead or o.gone or o.sunk or o.is_pickup() or o.kind == "rivet":
+			continue
+		if x >= o.x - o.w / 2.0 - 1 and x <= o.x + o.w / 2.0 + 1 and y >= o.y - o.h - 1 and y <= o.y + 1:
+			return false
+	return true
+
+func build_cells(x: float, y: float, w: float, h: float, m: int) -> Array:
+	## Fills empty cells of a rectangle, never on top of a body. Returns the cell indices it set.
+	var out: Array = []
+	for cy in range(int(floor(y / CELL)), int(ceil((y + h) / CELL))):
+		for cx in range(int(floor(x / CELL)), int(ceil((x + w) / CELL))):
+			if cx < 0 or cy < 0 or cx >= T.cols or cy >= Terrain.ROWS or cy * CELL >= WATER_Y:
+				continue
+			if T.grid[cy * T.cols + cx] != 0 or not clear_of_units(cx * CELL + 2.0, cy * CELL + 2.0):
+				continue
+			T.set_cell(cx, cy, m)
+			out.append(cy * T.cols + cx)
+	return out
+
+func build_wall(u, x: float, gy: float, w: float, h: float) -> void:
+	var m := 4 if u is Unit and u.perk("concrete") else 1
+	var cells := build_cells(x - w / 2.0, gy - h, w, h, m)
+	if cells.size():
+		walls.append(Rect2(x - w / 2.0, gy - h, w, h))
+		for k in 5:
+			puff(x + randf_range(-w / 2.0, w / 2.0), gy - randf_range(0, h), 1.5)
+
+func build_at(p: Dictionary) -> void:
+	## A thrown build card landed (Sandbags, Sentry Gun, Jump Pad).
+	var u = p.owner
+	var pc: Dictionary = p.card
+	var sc := build_scale(u)
+	var gy = T.stand_y(p.x, p.y - 30)
+	if gy == null:
+		float_at(p.x, p.y - 10, "SPLASH", Color("9aa2ae"))
+		return
+	match pc.build:
+		"wall":
+			var big := 2.0 if ks(u, "rebar") else 1.0
+			build_wall(u, p.x, gy, pc.bw * sc * big, pc.bh * sc * big)
+			float_at(p.x, gy - pc.bh * sc - 10, "SANDBAGS", Color("c9b38a"))
+			Sfx.play("land")
+		"sentry":
+			var n := 2 if u is Unit and u.perk("secondsentry") else 1
+			for k in n:
+				var sx: float = p.x + (k - (n - 1) / 2.0) * 26.0
+				var sy = T.stand_y(sx, gy - 30)
+				if sy != null:
+					make_sentry(u, sx, sy, int(round(pc.shp * sc)), pc.sdmg)
+			Sfx.play("select")
+		"pad":
+			var w: float = pc.pw * sc
+			for cx in range(int(floor((p.x - w / 2.0) / CELL)), int(ceil((p.x + w / 2.0) / CELL))):
+				var ty = T.stand_y(cx * CELL + 2.0, gy - 24)
+				if ty != null and absf(ty - gy) < 24:
+					T.set_cell(cx, int(ty / CELL), Terrain.RUBBER)
+			T.tarps.append([p.x - w / 2.0, p.x + w / 2.0])
+			float_at(p.x, gy - 14, "JUMP PAD", Color("ff9a3d"))
+			Sfx.play("bonk")
+	after_build(u)
+
+func after_build(u) -> void:
+	## Scrapper perks and the Magnet Glove keystone pay out on every build.
+	if not (u is Unit) or u.team != "squad" or u.dead:
+		return
+	if u.perk("scraparmor"):
+		u.armor += 3
+		float_text(u, "+3 ARMOR", Color("9fb4c9"))
+	if u.perk("recycler"):
+		draw_cards(u, 1)
+	ui_dirty = true
+
+func make_sentry(u, x: float, y: float, hp: int, dmg: Array) -> Unit:
+	var st := mk_unit()
+	st.team = "ally"; st.kind = "sentry"; st.x = x; st.y = y; st.w = 16; st.h = 20; st.heavy = true
+	st.hp = hp; st.max_hp = hp; st.face = 1
+	st.loot = {"by": u, "dmg": dmg}
+	units.append(st)
+	puff(x, y - 8, 1.5)
+	float_at(x, y - 30, "SENTRY UP", Color("62d26f"))
+	return st
+
+func sentry_target(st: Unit):
+	## The nearest Jackal (or Vharr) the sentry can see, within 520px. Drawn as its laser.
+	var best = null
+	var bd := 520.0
+	for e in units:
+		if e.team != "enemy" or e.dead or e.gone or e.sunk or e.weight == "buried" or e.has_st("cloak"):
+			continue
+		var d := Vector2(e.x - st.x, e.y - st.y).length()
+		if d < bd and not los_blocked(st.x, st.y - 14, e.x, e.y - e.h * 0.55):
+			best = e
+			bd = d
+	return best
+
+func los_blocked(x0: float, y0: float, x1: float, y1: float) -> bool:
+	var L := Vector2(x1 - x0, y1 - y0).length()
+	for k in range(8, int(L), 6):
+		if T.hard(x0 + (x1 - x0) * k / L, y0 + (y1 - y0) * k / L):
+			return true
+	return false
+
+func sentry_fire(st: Unit) -> void:
+	var tg = sentry_target(st)
+	if tg == null:
+		return
+	var by = st.loot.by
+	var ksc: bool = ks(by, "turretcore")
+	var dmg: Array = st.loot.dmg
+	if ksc:
+		dmg = [dmg[0] + 2, dmg[1] + 2]
+	var shots := 2 if by is Unit and by.perk("twinbarrel") else 1
+	for k in shots:
+		if tg.dead:
+			tg = sentry_target(st)
+			if tg == null:
+				break
+		var mx := st.x
+		var my := st.y - 14
+		st.face = 1 if tg.x >= st.x else -1
+		st.muzzle = 6
+		Sfx.play("mg", -3)
+		fire_bullet(by if by is Unit else st, mx, my, atan2(tg.y - tg.h * 0.55 - my, tg.x - mx), {"dmg": dmg, "range": 560, "bounce": 0, "pierce": ksc}, false)
+		await wait(12)
+
+func sentries_fire() -> void:
+	var sts := units.filter(func(o): return o.kind == "sentry" and not o.dead and not o.gone)
+	if sts.is_empty():
+		return
+	for st in sts:
+		await sentry_fire(st)
+	await until(settled)
+
+func _act_girder(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
+	spend_card(u, idx, c)
+	var reach: float = c.reach * (2.0 if u.perk("longspan") else 1.0)
+	var from := Vector2(u.x, u.y - 22)
+	var d := p - from
+	var L := minf(d.length(), reach)
+	var dir := d.normalized() if d.length() > 0.1 else Vector2(u.face, 0)
+	var at := from + dir * L
+	for k in range(8, int(L), 4):
+		var q := from + dir * k
+		if T.hard(q.x, q.y):
+			at = from + dir * maxf(0, k - 6)
+			break
+	u.face = 1 if at.x >= u.x else -1
+	u.pose = "throw"; u.pose_t = 18
+	Sfx.play("toss")
+	ropes.append({"u": u, "x": at.x, "y": at.y, "t": 14})
+	await wait(10)
+	var w: float = c.gw * build_scale(u) * (1.5 if u.perk("longspan") else 1.0)
+	var th := 16.0 if u.perk("heavysteel") or ks(u, "rivetdriver") else 8.0
+	var cells := build_cells(at.x - w / 2.0, at.y, w, th, 2)
+	if cells.is_empty():
+		float_at(at.x, at.y - 10, "NO ROOM", Color("ff7a3d"))
+		return
+	var rv := mk_unit()
+	rv.team = "neutral"; rv.kind = "rivet"; rv.x = at.x; rv.y = at.y + 4; rv.w = 10; rv.h = 10; rv.hp = 1; rv.max_hp = 1
+	rv.loot = {"cells": cells, "by": u, "w": w, "turn": round_n}
+	for i in cells:
+		T.pins[i] = rv.id
+	units.append(rv)
+	Sfx.play("ping")
+	sparks(at.x, at.y, 6)
+	float_at(at.x, at.y - 14, "GIRDER", Color("c9d1da"))
+	after_build(u)
+	if u.perk("piledriver") and units.any(func(e): return e.team == "enemy" and not e.dead and absf(e.x - at.x) < w / 2.0 + 6 and e.y > at.y and e.y - at.y < 260):
+		await wait(16)
+		drop_girder(rv, u)
+
+func drop_girder(rv: Unit, by) -> void:
+	## The bolt is shot out: unpin the beam and let the terrain drop it as a falling chunk.
+	if rv.dead:
+		return
+	rv.dead = true
+	rv.gone = true
+	for i in rv.loot.cells:
+		if T.pins.get(i, -1) == rv.id:
+			T.pins.erase(i)
+	var by_u = rv.loot.by if rv.loot.by is Unit else by
+	sparks(rv.x, rv.y, 8)
+	Sfx.play("ping")
+	float_at(rv.x, rv.y - 12, "BOLT SHOT!", Color("ffd23a"), true)
+	if by_u is Unit and by_u.team == "squad" and by_u.def.key == "bolt" and rv.loot.turn == round_n and state == "player" and not by_u.fl.has("cutloose"):
+		by_u.fl["cutloose"] = true
+		chain(by_u, "CUT LOOSE")
+		by_u.energy += 1
+	T.check_floating(rv.x, rv.y + 4, rv.loot.w / 2.0 + 12, by_u)
+
+func steel_rain(x: float, n: int, by) -> void:
+	## Steel Rain / Demo Team: girders appear high over the marker and fall.
+	banner("STEEL RAIN!", Color("c9d1da"))
+	Sfx.play("alarm")
+	for k in n:
+		var gx := x + (k - (n - 1) / 2.0) * 44.0
+		var gy := 20.0 + (k % 2) * 16.0
+		var cells := build_cells(gx - 22, gy, 44, 12, 2)
+		if cells.size():
+			T.check_floating(gx, gy + 6, 34, by)
+
+func scrap_heap(x: float, y: float, by) -> void:
+	## Junk Cannon: the scrap lands as a heap of steel.
+	var gy = T.stand_y(x, y - 40)
+	if gy != null:
+		build_cells(x - 20, gy - 14, 40, 14, 2)
+
+func fortify(u: Unit, c: Dictionary) -> void:
+	## Fortify / Iron Curtain / Build Crew: armor for the squad nearby and a wall in front of each.
+	banner("FORTIFY!", Color("c9d1da"))
+	Sfx.play("power")
+	var foe = null
+	for e in units:
+		if e.team == "enemy" and not e.dead and (foe == null or absf(e.x - u.x) < absf(foe.x - u.x)):
+			foe = e
+	var dir := 1.0 if foe == null or foe.x >= u.x else -1.0
+	if c.get("curtain", false):
+		var cx := u.x + dir * 60.0
+		if foe != null:
+			cx = (u.x + foe.x) / 2.0
+		var gy = T.stand_y(cx, 0)
+		if gy != null:
+			build_cells(cx - 8, gy - 90, 16, 90, 4)
+	for s in squad_alive():
+		if s == u or absf(s.x - u.x) <= c.range:
+			s.armor += c.fortify
+			float_text(s, "+%d ARMOR" % c.fortify, Color("9fb4c9"), true)
+			if not c.get("curtain", false):
+				var wx: float = s.x + dir * 22.0
+				var gy = T.stand_y(wx, s.y - 30)
+				if gy != null:
+					build_cells(wx - 4, gy - 32, 8, 32, 4)
+	if c.get("rook_wall", false):
+		var rk = null
+		for s in squad_alive():
+			if s.def.key == "rook":
+				rk = s
+		if rk != null and foe != null:
+			foe.vx = signf(foe.x - rk.x) * 9.0; foe.vy = -3.0; foe.air = true; foe.walk = null; foe.bumped = {}; foe.last_hit_by = rk
+			float_text(foe, "BOOT!", Color("ffd23a"), true)
+	await wait(20)
+
+func spec_placed() -> bool:
+	## true when this level has no specialist (X2), or its POW is already on the map
+	return mission.get("specialist", "") == "" or units.any(func(p): return p.fl.has("specialist"))
+
+func make_specialist(p: Unit) -> void:
+	var key: String = mission.specialist
+	p.fl["specialist"] = key
+	p.pow_name = Data.SPECIALISTS[key].pow
+
+func free_specialist(q: Dictionary) -> void:
+	## X2: a specialist POW is cut loose. Their class unlocks for good and they fight with you.
+	if q.pow.gone:
+		return  # already cut loose this action
+	var key: String = q.pow.fl.specialist
+	var D: Dictionary = Run.class_def(key)
+	var s := Run.free_specialist(key)
+	banner("%s RESCUED!" % D.name, Color("ffd23a"), "%s UNLOCKED" % D.cls.to_upper())
+	Sfx.play("levelup")
+	score += 800
+	stats.pows += 1
+	give_xp(q.u, 10)
+	q.pow.gone = true
+	if s.is_empty():
+		log_msg("%s the %s is in the squad draft now. Pick them before your next run." % [D.name, D.cls])
+		await wait(50)
+		return
+	var u := deploy_unit(s, q.pow.x, q.pow.y)
+	u.face = 1
+	u.energy = 0
+	u.move_left = 0
+	float_text(u, "REPORTING IN", Color("62d26f"), true)
+	bark(u, "Took you long enough. Hand me a wrench." if key == "bolt" else "Let's go.")
+	log_msg("%s the %s joins the squad for the rest of this run, and is in the squad draft from now on." % [D.name, D.cls])
+	ui_dirty = true
+	await wait(50)
+
+func deploy_unit(s: Dictionary, x: float, y = null) -> Unit:
+	## Puts a squad record on the field as a unit (mission start, or a freed specialist, X2).
+	var u := mk_unit()
+	u.team = "squad"; u.kind = "soldier"; u.def = s.def; u.s = s; u.sheet = Art.look_sheet(s)
+	u.gb = Run.gear_bonus(s)
+	u.x = x; u.y = T.stand_y(x, 0); u.face = 1; u.max_hp = Run.eff_max_hp(s); u.hp = mini(s.hp, u.max_hp)
+	u.dodge = s.def.dodge + s.bonus.dodge + int(u.g("dodge"))
+	u.second_wind = s.perks.has("secondwind")
+	u.fuel_max = jet_fuel(u)
+	u.fuel = u.fuel_max
+	var deck: Array = s.deck.duplicate()
+	deck.shuffle()
+	u.draw = deck
+	if Run.implanted(s, "adrenal"):
+		u.adr = 25
+	if Run.has_gear("warpaint"):
+		u.adr = maxi(u.adr, 50 if Run.relic_tier("warpaint") >= 3 else 25)
+	if s.get("spec", "") == "engineer":
+		u.dome = 2  # C7 Gate Tech: the Engineer deploys under a dome
+	if Run.campaign() and Run.soldiers.any(func(o): return o.alive and Run.rank(o) >= Data.RANKS.size() - 1):
+		u.dodge += Data.CAPTAIN_DODGE  # C3: a Captain in the squad steadies everyone
+	if y != null:
+		u.y = y
+	units.append(u)
+	return u
 
 func mk_unit() -> Unit:
 	var u := Unit.new()
@@ -913,6 +1221,11 @@ func chain_ready(u: Unit, inst: Dictionary) -> String:
 				return "DEATH FROM ABOVE"
 			if c.has("radius") and u.fl.get("molotov", false) and inst.key != "molotov":
 				return "ACCELERANT"
+		"bolt":
+			if c.type == "AIM" and u.fl.get("sentried", false) and not u.fl.has("covered"):
+				return "COVERING FIRE"
+			if inst.key == "sandbags" and u.fl.get("bagged", false) and not u.fl.has("stacked"):
+				return "DOUBLE STACK"
 		"rook":
 			if last == "taunt" and inst.key == "digin":
 				return "COME AND GET IT"
@@ -1026,7 +1339,7 @@ func unit_at_point(x: float, y: float, shooter, travelled: float, skip: Dictiona
 			continue
 		if shooter != null and u != shooter and u.team != "" and u.team == shooter.team and not at_war(u, shooter):
 			continue  # bullets slip past teammates, explosions don't (in a BREACH the two factions aren't teammates)
-		if u.kind == "slug" or (u.kind == "truck" and shooter != null and shooter.team == "squad"):
+		if u.kind == "slug" or ((u.kind == "truck" or u.kind == "sentry") and shooter != null and shooter.team == "squad"):
 			continue
 		if x >= u.x - u.w / 2.0 and x <= u.x + u.w / 2.0 and y >= u.y - u.h and y <= u.y:
 			return u
@@ -1399,6 +1712,19 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 			Sfx.play("splash")
 			log_msg("A fuel tank is leaking. It blows at the end of the next enemy phase.")
 		return
+	if tg.kind == "rivet":
+		drop_girder(tg, own)
+		return
+	if tg.kind == "sentry":
+		tg.hp -= amt
+		tg.flash = 8
+		sparks(tg.x, tg.y - 10, 3)
+		if tg.hp <= 0:
+			tg.dead = true
+			tg.gone = true
+			booms.append({"t": 2, "x": tg.x, "y": tg.y - 8, "r": 22.0, "dmg": 3, "owner": null})
+			float_text(tg, "SENTRY DOWN", Color("ff7a3d"), true)
+		return
 	if tg.kind == "jbox":
 		if tg.loot.on:
 			tg.loot.on = false
@@ -1659,6 +1985,13 @@ func kill(tg: Unit, src) -> void:
 		credit_card(src)
 		if src is Unit and src.team == "squad":
 			src.kills += 1  # C5: the service record
+			var wrenched: bool = act_unit == src and act_inst is Dictionary and act_inst.get("key", "") == "wrench"
+			if src.def.key == "bolt" and not src.fl.has("scrapped") and (wrenched or src.perk("salvager")):
+				# SCRAPHEAP chain / Salvager: the wreck becomes a free Sandbags
+				src.fl["scrapped"] = true
+				if wrenched:
+					chain(src, "SCRAPHEAP")
+				src.hand.append({"id": -7, "key": "sandbags", "tier": Data.base_tier("sandbags"), "temp": true, "free": true})
 			if src.s.get("spec", "") == "defector" and faction(tg) == "jackal" and absf(tg.x - src.x) < 70 and not src.fl.has("turncoat"):
 				# C7 Turncoat: an up-close kill hands the Defector the Jackal's gun for one shot
 				src.fl["turncoat"] = true
@@ -2084,6 +2417,13 @@ func detonate(p: Dictionary) -> void:
 		land_pod(p.x, p.y, p.get("cargo", ["skitter"]))
 		return
 	var pc: Dictionary = p.card
+	if pc.has("build"):
+		build_at(p)
+		return
+	if p.beacon and pc.get("rain", 0) > 0:
+		steel_rain(p.x, pc.rain, p.owner)
+		if pc.get("barrage", 0) <= 0:
+			return
 	if p.smoke and pc.get("multi", 0) > 1:
 		for k in pc.multi:
 			var ox: float = (k - (pc.multi - 1) / 2.0) * p.srad * 1.3
@@ -2124,6 +2464,8 @@ func detonate(p: Dictionary) -> void:
 	if debug:
 		print("[proj r%d] %s owner %s dmg%d" % [round_n, p.kind, (p.owner.type if p.owner.team != "squad" else p.owner.def.key) if p.owner is Unit else "null", p.dmg])
 	explode(p.x, p.y, p.r, p.dmg, p.owner, pc.get("burnblast", false))
+	if pc.get("junk", false):
+		scrap_heap(p.x, p.y, p.owner)
 	if pc.has("carve"):
 		T.carve(p.x, p.y, pc.carve, p.owner)
 	if pc.get("flash", false):
@@ -2339,6 +2681,12 @@ func card_cost(u: Unit, inst: Dictionary) -> int:
 		cost = 0
 	if c.get("beacon", false) and ks(u, "howitzer"):
 		cost = maxi(0, cost - 1)
+	if inst.key == "sandbags" and (u.perk("bulwark") or (u.def.key == "bolt" and u.fl.get("bagged", false) and not u.fl.has("stacked"))):
+		cost = 0
+	if c.get("girder", false) and ks(u, "rivetdriver"):
+		cost = 0
+	if is_build(c) and ks(u, "magnetglove") and not u.fl.get("built", false):
+		cost = 0
 	return cost
 
 func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
@@ -2404,9 +2752,20 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 		"JUICED":
 			u.fl.erase("juiced")
 			u.hand.append(inst)
+		"COVERING FIRE":
+			u.fl["covered"] = true
+			c["cover"] = true
+		"DOUBLE STACK":
+			u.fl["stacked"] = true
 	u.seq.append([inst.key, c.type])
 	if inst.key == "molotov":
 		u.fl["molotov"] = true
+	if inst.key == "sandbags":
+		u.fl["bagged"] = true
+	if inst.key == "sentry":
+		u.fl["sentried"] = true
+	if is_build(c):
+		u.fl["built"] = true
 	if inst.key == "pistol" and u.perk("cylinder"):
 		draw_cards(u, 1)
 	if c.get("echo", 0) > 0:
@@ -2600,6 +2959,9 @@ func commit_aim(p: Vector2) -> void:
 				return
 			resolve(func(): await _act_grapple(u, idx, gs))
 			return
+		if c.get("girder", false):
+			resolve(func(): await _act_girder(u, idx, c, p))
+			return
 		if c.get("drill", false):
 			if u.move_left + c.get("reach", 0) < 4:
 				float_text(u, "NO MOVE LEFT", Color("ff7a3d"))
@@ -2640,6 +3002,9 @@ func _act_aim(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
 		u.fl.erase("breath")
 	u.attacked = true
 	await fire_aim(u, c, p, sc)
+	if c.get("cover", false):
+		for st in units.filter(func(o): return o.kind == "sentry" and not o.dead and o.loot.by == u):
+			await sentry_fire(st)
 	await apply_recoil(u, kick)
 	await wait(6)
 
@@ -3162,6 +3527,11 @@ func heal_amount(u: Unit, c: Dictionary) -> int:
 
 func _act_ally(u: Unit, idx: int, c: Dictionary, tg: Unit) -> void:
 	spend_card(u, idx, c)
+	if c.has("plate"):
+		tg.armor += c.plate
+		float_text(tg, "+%d ARMOR" % c.plate, Color("9fb4c9"), true)
+		sparks(tg.x, tg.y - tg.h / 2.0, 6)
+		Sfx.play("ping")
 	if c.has("adrshot"):
 		gain_adr(tg, c.adrshot)
 		float_text(tg, "+%d ADRENALINE" % c.adrshot, Color("ff7a3d"), true)
@@ -3279,6 +3649,15 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 				s.move_left += c.rally
 				gain_adr(s, 10)
 				float_text(s, "+%d MOVE" % c.rally, Color("b48cff"))
+	if c.has("fortify"):
+		await fortify(u, c)
+	if c.has("nest"):
+		for k in c.nest:
+			var sx: float = u.x + (k - (c.nest - 1) / 2.0) * 30.0
+			var sy = T.stand_y(sx, u.y - 40)
+			if sy != null:
+				make_sentry(u, sx, sy, 16, [5, 6])
+		Sfx.play("power")
 	if c.get("surge", false):
 		Sfx.play("power")
 		for s in squad_alive():
@@ -3907,6 +4286,9 @@ func post_action() -> void:
 			sign_defector(q.pow)
 			give_xp(q.u, 8)
 			continue
+		if q.pow.fl.has("specialist"):
+			await free_specialist(q)
+			continue
 		banner("POW RESCUED!", Color("62d26f"), "+500  +25$")
 		score += 500
 		stats.pows += 1
@@ -4407,6 +4789,9 @@ func start_player_turn() -> void:
 		if s.perk("payback") and s.armor > 0:
 			s.payback = s.armor
 		s.armor = (3 if s.perk("ironhide") else 0) + int(s.g("armor_turn"))
+		if walls.size() and squad_alive().any(func(o): return o.perk("hunker")) and walls.any(func(r): return r.grow(16).has_point(Vector2(s.x, s.y - 8))):
+			s.armor += 4
+			float_text(s, "HUNKER +4", Color("9fb4c9"))
 		if s.g("regen") > 0 and s.hp < s.max_hp:
 			var rg := mini(int(s.g("regen")), s.max_hp - s.hp)
 			s.hp += rg
@@ -4462,7 +4847,10 @@ func start_player_turn() -> void:
 	banner("ROUND %d" % round_n, Color.WHITE, ("WIND %s %d" % [">>" if wind > 0 else "<<", absi(wind)]) if wind else "NO WIND")
 	log_msg("Round %d. Alert %d/10.%s" % [round_n, alert, " The line has stalled: alert is rising." if stalled() else ""])
 	ui_dirty = true
-	resolve(func(): await wait(1))
+	if units.any(func(o): return o.kind == "sentry" and not o.dead and o.loot.by is Unit and o.loot.by.perk("autoloader")):
+		resolve(func(): await sentries_fire())  # Autoloader: the sentries open the round too
+	else:
+		resolve(func(): await wait(1))
 
 func full_move(s: Unit) -> float:
 	## B5: light weapons add movement, heavy ones take some away.
@@ -4662,6 +5050,7 @@ func enemy_phase() -> void:
 		await pod_ambush()
 	for sl in units.filter(func(u): return u.kind == "slug" and not u.gone):
 		await slug_act(sl)
+	await sentries_fire()
 	var armed := units.filter(func(u): return u.kind == "charge" and not u.dead and not u.gone and not u.primed)
 	if armed.size():
 		for c in armed:
@@ -6807,7 +7196,7 @@ func body_collisions(u: Unit) -> void:
 					u.vx *= 0.35
 
 func physics(u: Unit) -> void:
-	if u.walk != null or (u.kind == "pow" and u.freed):
+	if u.walk != null or (u.kind == "pow" and u.freed) or u.kind == "rivet":
 		return
 	if u.type == "shipplate" and not u.dead:
 		# a hull plate hangs on its tethers under the Hive Ship and goes where the ship goes
