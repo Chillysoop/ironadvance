@@ -14,6 +14,7 @@ var hand_mode := false       # cards in hand peek up from the bottom edge and ri
 var label_top := ""          # small caption above the card (e.g. "TO MOSS'S DECK")
 var price := -1
 var sold := false            # shop only: greyed out with a SOLD stamp
+var stamp := ""              # a stamp across the card like SOLD (e.g. REMOVED when you leave a vehicle)
 var hotkey := ""
 var hover := false
 var ghost := false           # hand only: a card is armed, so the hand sinks out of the way of the aim
@@ -186,6 +187,11 @@ func _draw() -> void:
 		draw_circle(Vector2(10, 24), 9, INK)
 		draw_circle(Vector2(10, 24), 7, Color("ffd23a") if not dim else Color("8a7a40"))
 		Art.text(self, str(cc), Vector2(10, 29), 8, INK, HORIZONTAL_ALIGNMENT_CENTER, 0)
+	# vehicle cards wear a VEH tag under the cost: they only play from inside a vehicle
+	if kind == "card" and Data.card(opt).get("mech", false):
+		draw_rect(Rect2(2, 35, 30, 11), INK)
+		draw_rect(Rect2(3, 36, 28, 9), Color("6a7a40") if not dim else Color("4a5030"))
+		Art.text(self, "VEH", Vector2(17, 44), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0)
 	if hotkey != "":
 		Art.text(self, hotkey, Vector2(w - 8, 28), 8, Color("6a5a40"), HORIZONTAL_ALIGNMENT_RIGHT, 0)
 	# pictogram
@@ -260,11 +266,13 @@ func _draw() -> void:
 			draw_line(Vector2(w - 8 + k, 20), Vector2(8 + k, h - 12), Color("c0392b"), 2.0)
 		draw_rect(Rect2(4, 17, w - 8, 15), INK)
 		Art.text(self, "NO MOVE LEFT", Vector2(w / 2.0, 28), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_CENTER, 0)
-	if sold:
+	if sold or stamp != "":
 		draw_rect(Rect2(1, 1, w - 2, h - 4), Color(0.08, 0.06, 0.05, 0.55))
 		draw_rect(Rect2(8, h / 2.0 - 12, w - 16, 22), INK)
 		draw_rect(Rect2(10, h / 2.0 - 10, w - 20, 18), Color("8a3a2a"))
-		Art.text(self, "SOLD", Vector2(w / 2.0, h / 2.0 + 4), 16, Color("e4d6b0"), HORIZONTAL_ALIGNMENT_CENTER, 1)
+		var st := "SOLD" if sold else stamp
+		var fs := 16 if Art.text_width(st, 16) < w - 24 else 8
+		Art.text(self, st, Vector2(w / 2.0, h / 2.0 + (4 if fs == 16 else 2)), fs, Color("e4d6b0"), HORIZONTAL_ALIGNMENT_CENTER, 1)
 	elif disabled and price >= 0 and hover and Run.scrip < price:
 		var sh := "SHORT BY %d" % (price - Run.scrip)
 		var sw := Art.text_width(sh, 8) + 10

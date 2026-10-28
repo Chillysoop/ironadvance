@@ -6113,14 +6113,28 @@ func vehicles_test() -> void:
 	var rk: Unit = b.squad().filter(func(u): return u.def.key == "rook")[0]
 	ground_unit(b, rk, x - 60, 0)
 	var r: Unit = b.park_ride(x - 30, "tank")
+	b.mouse = Vector2(r.x, r.y - 12)
 	await frames_wait(4)
 	await shot("vehicles_parked")
+	b.select_unit(rk)
 	b.hijack(rk, r)
 	check(rk.mech != null and rk.mech.type == "tank" and r.gone, "R1: Rook hijacks the parked tank")
 	check(rk.hand.any(func(h): return h.key == "tankshell") and rk.hand.any(func(h): return h.key == "eject"), "and its guns are in his hand")
 	check(b.full_move(rk) < rk.def.spd + 1, "a tank is slower than on foot")
-	await frames_wait(6)
+	# legibility: the boarding card lists exactly the cards that joined the hand
+	check(b.vpop.get("u") == rk and b.vpop.mode == "in" and b.vpop.added.has("tankshell") and b.vpop.added.has("vulcan") and b.vpop.added.has("eject"), "boarding card shows the cards added (%s)" % [b.vpop.get("added")])
+	b.state = "player"; b.busy = false
+	b.mouse = Vector2(rk.x + 200, rk.y - 200)
+	await frames_wait(30)
 	await shot("vehicles_hijack")
+	# leaving the vehicle: the card lists what was taken back out of the hand
+	b.damage(rk, 999, null)
+	check(rk.mech == null and not rk.hand.any(func(h): return h.get("mechtemp", false)), "a wrecked tank takes its cards back")
+	check(b.vpop.mode == "wreck" and b.vpop.removed.has("tankshell"), "wreck card shows the cards removed (%s)" % [b.vpop.get("removed")])
+	b.banners.clear()
+	await frames_wait(30)
+	await shot("vehicles_wrecked")
+	await until(func(): return b.settled(), 600)
 	# E6: blow the ground out under one leg of a Jackal Walker and it topples
 	var wx := x + 340.0
 	var jw := b.mk_enemy("jwalker", wx, b.T.stand_y(wx, 0))

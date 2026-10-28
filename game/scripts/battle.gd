@@ -96,6 +96,7 @@ var burn_tick := false    # a burn status is dealing damage right now (feat trac
 var relay_hand := 0       # captured relays (W3)
 var relay_intel := false
 var slug_given := false
+var vpop := {}           # the boarding card: {u, type, mode: in|out|wreck, added, removed, t0}
 var loot_queue: Array = []   # pickups waiting for a decision (equip or stash) after the current action
 var mission: Dictionary = {}
 var mission_idx := 0
@@ -1118,9 +1119,19 @@ func mech_cards(u: Unit) -> void:
 		if not u.hand.any(func(h): return h.key == k and h.get("mechtemp", false)):
 			u.hand.append({"id": -7, "key": k, "tier": Data.base_tier(k), "temp": true, "mechtemp": true})
 
+func vehicle_pop(u: Unit, mode: String, type: String, added: Array, removed: Array) -> void:
+	## Pop the boarding card over the field: what the vehicle does and which cards came or went.
+	if u.team != "squad":
+		return
+	vpop = {"u": u, "mode": mode, "type": type, "added": added, "removed": removed, "t0": t}
+	ui_dirty = true
+
 func dismount(u: Unit, launch := true) -> void:
 	if u.mech == null:
 		return
+	var gone: Array = u.hand.filter(func(h): return h.get("mechtemp", false)).map(func(h): return h.key)
+	if not u.mech.own:
+		vehicle_pop(u, "out", u.mech.type, [], gone)
 	u.hand = u.hand.filter(func(h): return not h.get("mechtemp", false))
 	u.h = u.mech.h0
 	u.w = u.mech.w0
@@ -1144,7 +1155,13 @@ func mech_hit(u: Unit, amt: int) -> void:
 			debris(u.x + randf_range(-12, 12), u.y - randf_range(4, 20), 2)
 		puff(u.x, u.y - 10, 2.0)
 		Sfx.play("boom", -6)
+		var tp: String = u.mech.type
+		var own: bool = u.mech.own
 		dismount(u)
+		if own:
+			vehicle_pop(u, "wreck", tp, [], [])
+		elif vpop.get("u") == u:
+			vpop.mode = "wreck"
 		float_text(u, nm + " WRECKED", Color("ff7a3d"), true)
 		log_msg("%s's %s is wrecked. %s" % [u.def.name, nm.to_lower(), "Patch Job puts him back in one." if u.def.key == "gears" else "They're on foot."])
 	ui_dirty = true
@@ -1242,13 +1259,14 @@ func vehicles_new_turn() -> void:
 func hijack(u: Unit, r: Unit) -> void:
 	## R1: walk onto a parked vehicle and you're driving it.
 	r.gone = true
+	var before: Array = u.hand.duplicate()
 	mount(u, r.loot.type, r.loot.get("hp", -1))
-	banner("HIJACKED!", Color("ffb23e"), Data.VEHICLES[r.loot.type].name)
-	Sfx.play("power")
+	Sfx.play("power")  # the boarding card is the announcement: no banner on top of it
 	if squad_alive().any(func(o): return o.perk("hotwire")):
 		u.energy += 1
 		u.hand.append({"id": -2, "key": "vulcan", "tier": Data.base_tier("vulcan"), "temp": true, "free": true})
 		float_text(u, "HOTWIRED +1", Color("ffb23e"))
+	vehicle_pop(u, "in", r.loot.type, u.hand.filter(func(h): return not before.has(h)).map(func(h): return h.key), [])
 	log_msg("%s takes the %s. Its HP soaks every hit until it breaks." % [u.def.name, Data.VEHICLES[r.loot.type].name.to_lower()])
 	ui_dirty = true
 
