@@ -992,6 +992,13 @@ const RADIO_ACT := [
 	 ["prime", "YOU CANNOT CLOSE WHAT YOU DO NOT UNDERSTAND."],
 	 ["sq", "Watch me. Iron Company, let's go home."]],
 ]
+# C4: Major Hale calls the field tablet the first time a new war reaches HQ
+const RADIO_LANDFALL := [
+	["cmd", "Iron Company, this is Major Hale. Welcome to the delta. The Jackals own every inch of it."],
+	["cmd", "This beach is your field HQ. Kit out here, then open the WAR ROOM and pick a sector to hit."],
+	["cmd", "Take three sectors and their Boar's Den opens. Break it and the front moves on."],
+	["sq", "Nice beach, {mate}. Shame about the Jackals."],
+]
 const RADIO_JOB := {
 	"push": [["cmd", "Push through to the far end and knock out their armor."], ["cmd", "Straight fight. Break their line and keep moving east."]],
 	"rescue": [["cmd", "Three of ours are held in there. Bring them home."], ["cmd", "Prisoners spotted. Walk up and cut them loose, they'll do the rest."]],

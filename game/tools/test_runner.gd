@@ -2,7 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu),
+## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), operator (tablet call-ins),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -806,6 +806,8 @@ func run() -> void:
 			await clicks()
 		"pause":
 			await pause_menu()
+		"operator":
+			await operator_call()
 		"trailer":
 			await preload("res://tools/trailer.gd").new().run(self, clip_arg)
 		"campaign":
@@ -1464,6 +1466,25 @@ func pause_menu() -> void:
 	menu[0].quit()
 	await frames_wait(5)
 	check(main.battle == null and not get_tree().paused, "QUIT TO TITLE leaves the battle")
+
+func operator_call() -> void:
+	## C4: radio lines come in on a corner tablet that clicks through and hangs up by itself.
+	Run.new_run()
+	var lines: Array = Data.RADIO_LANDFALL.map(func(r): return Run.radio_line(r[0], r[1], Run.soldiers))
+	main.show_hq(false)
+	main.call_in(lines)
+	await frames_wait(40)
+	var oc: Control = main.call_layer.get_child(0)
+	check(oc.line().name == "MAJ. HALE" and oc.shown > 0, "Hale's first line is typing out (%d chars)" % oc.shown)
+	check(main.screen != null and main.screen.idle(), "the HQ under it stays usable")
+	await click_at(oc.global_position + Vector2(200, 60))
+	check(oc.shown == lines[0].text.length(), "a click finishes the line")
+	await click_at(oc.global_position + Vector2(200, 60))
+	check(oc.i == 1, "the next click moves to line 2")
+	await click_at(oc.global_position + Vector2(oc.W - 13, 12))
+	await frames_wait(40)
+	check(not is_instance_valid(oc), "the X hangs up and the tablet slides away")
+	main.show_hq(false)
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)

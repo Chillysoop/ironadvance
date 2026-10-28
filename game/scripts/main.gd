@@ -7,12 +7,17 @@ const ShopScript := preload("res://scripts/shop.gd")
 const DebriefScript := preload("res://scripts/debrief.gd")
 const HqScript := preload("res://scripts/hq.gd")
 const WarRoomScript := preload("res://scripts/war_room.gd")
+const OperatorCall := preload("res://scripts/operator_call.gd")
 
 var battle: Battle = null
 var hud: CanvasLayer = null
 var screen: Control = null
 var ui_layer: CanvasLayer
 var speed := 1.0
+
+var call_layer: CanvasLayer = null
+var pending_call: Array = []   # C4: radio lines waiting for the squad to hit the ground
+var pending_intro = -1
 
 func _ready() -> void:
 	ui_layer = CanvasLayer.new()
@@ -43,8 +48,27 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST and Run.campaign() and battle == null:
 		Run.save_campaign()
 
+func call_in(lines: Array) -> void:
+	## C4: someone calls in on the field tablet in the top-right corner. It sits on its own
+	## layer, so it stays up while screens change underneath it.
+	if lines.is_empty():
+		return
+	if call_layer == null:
+		call_layer = CanvasLayer.new()
+		call_layer.layer = 8
+		add_child(call_layer)
+	for c in call_layer.get_children():
+		c.queue_free()
+	var oc: Control = OperatorCall.new()
+	oc.lines = lines
+	call_layer.add_child(oc)
+
 func show_title() -> void:
 	clear()
+	if call_layer != null:
+		for c in call_layer.get_children():
+			c.queue_free()
+	pending_call = []
 	Run.leave_campaign()
 	var s := Screen.new()
 	s.mode = "title"
@@ -76,7 +100,11 @@ func show_slots() -> void:
 		if Run.camp.get("done", false):
 			show_ending()
 		else:
-			show_hq(false))
+			show_hq(false)
+			if not Run.camp.get("landfall", false) and int(Run.camp.get("ops", 0)) == 0:
+				Run.camp["landfall"] = true
+				var sq: Array = Run.soldiers.filter(func(s): return s.alive)
+				call_in(Data.RADIO_LANDFALL.map(func(r): return Run.radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())))
 	p.back.connect(show_title)
 	open(p)
 
@@ -85,8 +113,12 @@ func show_war_room() -> void:
 	Run.save_campaign()
 	var w: Control = WarRoomScript.new()
 	w.attack.connect(func(sc: Dictionary, patrol: bool):
+		var intro_was = Run.camp.get("intro", -1)
 		Run.start_op(sc, patrol)
-		show_radio(Run.radio_before(), show_brief))
+		# C4: Command's word comes in on the tablet once the squad is on the ground
+		pending_call = Run.radio_before()
+		pending_intro = intro_was
+		show_brief())
 	w.back.connect(func(): show_hq(false))
 	w.quit.connect(show_title)
 	open(w)
@@ -141,10 +173,8 @@ func campaign_home(st := {}) -> void:
 		else:
 			show_hq(true)
 			screen.news = news
-	if talk.is_empty():
-		home.call()
-	else:
-		show_radio(talk, home)
+	home.call()
+	call_in(talk)  # C4: Command's word comes in on the tablet over HQ
 
 func show_picks(then: Callable) -> void:
 	## C3/C4: promotions and the bench's training levels, one pick each.
@@ -193,7 +223,12 @@ func show_brief() -> void:
 	s.mode = "brief"
 	s.buttons = [["DEPLOY", func(): start_battle(Run.mission, Run.current_mission())]]
 	if Run.campaign():
-		s.buttons = [["DEPLOY", func(): start_battle(int(Run.act().tier), Run.current_mission())], ["<< WAR ROOM", func(): Run.level = {}; show_war_room()]]
+		s.buttons = [["DEPLOY", func(): start_battle(int(Run.act().tier), Run.current_mission())], ["<< WAR ROOM", func():
+			# backing out un-hears the call, so an act's opening still plays on the next attack
+			Run.camp["intro"] = pending_intro
+			pending_call = []
+			Run.level = {}
+			show_war_room()]]
 	open(s)
 
 func start_battle(idx: int, custom := {}) -> Battle:
@@ -208,6 +243,9 @@ func start_battle(idx: int, custom := {}) -> Battle:
 	hud.setup(battle)
 	battle.mission_over.connect(_on_mission_over)
 	battle.begin()
+	if pending_call.size():
+		call_in(pending_call)
+		pending_call = []
 	return battle
 
 func start_practice(i: int) -> void:
