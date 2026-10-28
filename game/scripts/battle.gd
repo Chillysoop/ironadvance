@@ -538,7 +538,7 @@ func begin() -> void:
 		banner("PRACTICE RANGE", Color("62d26f"), "FREE. NOTHING HERE CARRIES OVER")
 		log_msg("The dummies never shoot back and come back when they are all down. LEAVE RANGE when you are done.")
 	else:
-		banner("MISSION %d START!" % (mission_idx + 1), Color("ffb23e"), mission.name)
+		banner(mission.get("banner", "MISSION %d START!" % (mission_idx + 1)), Color("ffb23e"), mission.name)
 	if breach:
 		log_msg("BREACH: the Vharr and the Jackals are fighting each other. Each shoots whoever is nearest, so let them.")
 	activate_enemies()
@@ -1186,6 +1186,8 @@ func walk_along(u: Unit, pts: Array) -> void:
 func give_xp(u, n: int) -> void:
 	if u == null or not (u is Unit) or u.team != "squad" or u.dead or n <= 0 or practice():
 		return
+	if mission.get("patrol", false):
+		n = maxi(1, n / 2)
 	u.xp_gain += n
 	var gained := Run.add_xp(u.s, n)
 	for i in gained:
@@ -1557,9 +1559,10 @@ func kill(tg: Unit, src) -> void:
 				booms.append({"t": 10 + i * 14, "x": tg.x + (randf() - .5) * 90, "y": tg.y - 20 - randf() * 40, "r": 34.0, "dmg": 0, "owner": null})
 	elif tg.team == "squad":
 		stats.kia += 1
-		if tg.s.tags > 0:
-			# a dog tag buys their life: out until the next camp, or back next mission
-			tg.s.tags -= 1
+		if tg.s.tags > 0 or mission.get("patrol", false):
+			# a dog tag buys their life: out until the next camp, or back next mission.
+			# A campaign patrol (M5) never costs a life: an empty-tagged soldier is only knocked out.
+			tg.s.tags = maxi(0, tg.s.tags - 1)
 			tg.downed = true
 			float_text(tg, "DOWN! %d TAG%s LEFT" % [tg.s.tags, "" if tg.s.tags == 1 else "S"], Color("ffb23e"), true)
 			log_msg("%s is down until the next camp. %d dog tag%s left." % [tg.def.name, tg.s.tags, "" if tg.s.tags == 1 else "s"])
@@ -5467,6 +5470,8 @@ func victory() -> void:
 	var sb := surv * 1000
 	score += ab + sb
 	var pay := 100 + surv * 20 + (10 - alert) * 5
+	if Run.campaign():
+		pay = int(pay * (Data.PATROL_PAY if mission.get("patrol", false) else 1.0) * (1.0 + Data.CAMP_THREAT_PAY * Run.threat))
 	Run.scrip += pay
 	stats.scrip += pay
 	stats["pay"] = pay

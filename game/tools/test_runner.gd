@@ -2,6 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
+## warmap (campaign mode),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -765,6 +766,8 @@ func run() -> void:
 			await aliens4()
 		"aliens5":
 			await aliens5()
+		"warmap":
+			await warmap()
 		"playtest":
 			await playtest()
 		"straggler":
@@ -3807,6 +3810,121 @@ func playtest() -> void:
 				for x in Run.soldiers:
 					if x.alive:
 						x.hp = Run.eff_max_hp(x)
+
+func warmap() -> void:
+	## Campaign step 1: save slots, a separate base, the War Room, sector income and perks, the
+	## stronghold, act two, and a real op played by the bot.
+	main.show_title()
+	await frames_wait(20)
+	await shot("wm_title")
+	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate()}
+	Run.meta.salvage = 77
+	Run.meta.hq = {"gate": 2}
+	Run.save_meta()
+	for i in Data.CAMP_SLOTS:
+		Run.delete_campaign(i)
+	main.show_slots()
+	await frames_wait(10)
+	await shot("wm_slots_empty")
+	Run.new_campaign(0)
+	check(Run.campaign(), "a new campaign is loaded")
+	check(int(Run.meta.salvage) == 0 and Run.meta.hq.is_empty(), "the campaign starts with its own empty base (salvage %d)" % int(Run.meta.salvage))
+	check(int(Run.run_base.salvage) == 77, "the standard run's salvage is put aside")
+	check(Run.scrip == Data.CAMP_START_SCRIP, "war chest starts at %d" % Run.scrip)
+	var j = JSON.parse_string(FileAccess.get_file_as_string(Run.META_PATH))
+	check(int(j.salvage) == 77, "meta.json keeps the run's salvage while a campaign is loaded (%s)" % j.salvage)
+	main.show_hq(false)
+	await frames_wait(30)
+	await shot("wm_hq")
+	main.show_war_room()
+	await frames_wait(20)
+	await shot("wm_room_start")
+	var open: Array = Run.act().sectors.filter(func(sc): return Run.sector_open(sc)).map(func(sc): return sc.id)
+	check(open == ["d1"], "only the sector next to the landing zone is open (%s)" % [open])
+	check(not Run.sector_open(Run.sector("boss")), "the stronghold starts sealed")
+	Run.start_op(Run.sector("d1"))
+	check(Run.level.segments.size() == 6 and Run.level.segments.count("camp") == 1, "a sector op has one camp (%s)" % [Run.level.segments])
+	check(Run.level.biome == "delta" and Run.level.name == "MUDFLAT LANDING", "the op is in the sector's biome")
+	# the bot plays the first op for real
+	Run.roll_intel()
+	var lv: Dictionary = Run.current_mission()
+	var won := await bot(int(Run.act().tier), 70, false, lv)
+	await frames_wait(10)
+	await shot("wm_result")
+	print("[warmap] op 1 won=%s scrip=%d alive=%d" % [won, Run.scrip, Run.alive_count()])
+	check(main.screen != null and main.screen.get("mode") in ["op_won", "op_lost"], "the op ends on a campaign result screen")
+	check(int(Run.camp.ops) == 1, "the op is counted")
+	if won:
+		check(Run.sector_held("d1"), "winning takes the sector")
+	else:
+		check(not Run.sector_held("d1") and Run.sector_open(Run.sector("d1")), "a lost op leaves the sector open")
+		Run.camp.held.append(Run.sec_key("d1"))
+	var hurt: Dictionary = Run.soldiers[0]
+	hurt.hp = 1
+	hurt.tags = 0
+	var dead: Dictionary = Run.soldiers[3]
+	dead.alive = false
+	var scrip0 := Run.scrip
+	main.campaign_home()
+	await frames_wait(40)
+	await shot("wm_home_news")
+	check(Run.scrip == scrip0 + 20, "Mudflat Landing pays 20 scrip after the op (%d -> %d)" % [scrip0, Run.scrip])
+	check(hurt.hp == Run.eff_max_hp(hurt) and hurt.tags == Data.DOG_TAGS, "everyone is patched up with their tags back")
+	check(Run.soldiers[3].alive and Run.alive_count() == 4, "Command fills the empty slot with a rookie")
+	# take the rest of act I on paper
+	for id in ["d2", "d3"]:
+		check(Run.sector_open(Run.sector(id)), "%s opens next to Mudflat Landing" % id)
+		Run.start_op(Run.sector(id))
+		Run.op_over(true)
+	check(Run.camp_perk("aid") and Run.hq("mess") >= 1, "Rice Terraces gives the Field Hospital perk (mess %d)" % Run.hq("mess"))
+	check(Run.sector_open(Run.sector("boss")), "three sectors open the stronghold")
+	check(Run.sector_open(Run.sector("j2")) and not Run.sector_open(Run.sector("j3")), "Temple Trail still needs Signal Ridge")
+	var sal0 := int(Run.meta.salvage)
+	Run.after_op()
+	check(int(Run.meta.salvage) == sal0 + 2, "Ferry Docks pays 2 salvage")
+	# patrol a held sector: half pay, nobody dies
+	Run.start_op(Run.sector("d1"), true)
+	check(Run.level.patrol and Run.level.banner == "PATROL", "patrol op")
+	Run.op_over(true)
+	main.show_war_room()
+	await frames_wait(10)
+	main.screen.sel = "boss"
+	main.screen.build()
+	await frames_wait(10)
+	await shot("wm_room_fort")
+	Run.start_op(Run.sector("boss"))
+	check(Run.level.stronghold and Run.level.segments.size() == 7, "the stronghold is a full-length level")
+	var res := Run.op_over(true)
+	check(res.get("act_done", "") == "LANDFALL" and int(Run.camp.act) == 1, "beating the fort clears act I")
+	check(not Run.camp_perk("aid"), "act I's perks stay in act I")
+	check(Run.income().scrip == 20, "act I's income keeps paying in act II (%s)" % [Run.income()])
+	check(Run.act().sectors.filter(func(sc): return Run.sector_open(sc)).size() == 1, "act II starts with one open sector")
+	# save, leave, load
+	Run.soldiers[1].lvl = 5
+	Run.soldiers[1].deck.append(Run.new_card("frag", 2, "shop"))
+	var deck_n: int = Run.soldiers[1].deck.size()
+	Run.scrip = 999
+	main.show_title()
+	check(not Run.campaign() and int(Run.meta.salvage) == 77 and int(Run.meta.hq.gate) == 2, "leaving puts the run's base back")
+	main.show_slots()
+	await frames_wait(10)
+	await shot("wm_slots_saved")
+	check(Run.load_campaign(0), "the campaign loads")
+	check(Run.scrip == 999 and Run.soldiers[1].lvl == 5 and typeof(Run.soldiers[1].lvl) == TYPE_INT, "scrip and levels come back as they were")
+	check(Run.soldiers[1].deck.size() == deck_n, "the deck comes back")
+	check(int(Run.camp.act) == 1 and Run.camp.held.has("0:d1"), "the war map comes back")
+	check(int(Run.meta.salvage) != 77, "the campaign's own salvage comes back")
+	main.show_hq(false)
+	await frames_wait(20)
+	await shot("wm_hq_act2")
+	main.show_war_room()
+	await frames_wait(20)
+	await shot("wm_room_act2")
+	main.show_title()
+	await frames_wait(5)
+	Run.meta.salvage = keep.salvage
+	Run.meta.hq = keep.hq
+	Run.save_meta()
 
 func hoverwedge() -> void:
 	## A hovering tank (Squid, Prism, Overseer) shoved with its top into an overhang used to be stuck there

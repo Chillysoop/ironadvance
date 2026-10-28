@@ -6,6 +6,7 @@ const HudScript := preload("res://scripts/hud.gd")
 const ShopScript := preload("res://scripts/shop.gd")
 const DebriefScript := preload("res://scripts/debrief.gd")
 const HqScript := preload("res://scripts/hq.gd")
+const WarRoomScript := preload("res://scripts/war_room.gd")
 
 var battle: Battle = null
 var hud: CanvasLayer = null
@@ -37,11 +38,17 @@ func clear() -> void:
 		hud.queue_free()
 		hud = null
 
+func _notification(what: int) -> void:
+	## Closing the window between ops keeps the campaign; mid-op it rolls back to the last HQ save.
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and Run.campaign() and battle == null:
+		Run.save_campaign()
+
 func show_title() -> void:
 	clear()
+	Run.leave_campaign()
 	var s := Screen.new()
 	s.mode = "title"
-	s.buttons = [["NEW CAMPAIGN", func(): start_run()]]
+	s.buttons = [["CAMPAIGN", func(): show_slots()], ["QUICK RUN", func(): start_run()]]
 	var tmax := mini(int(Run.meta.threat_max), Data.THREATS.size())
 	if tmax > 0:
 		# W5: every campaign win opens the next threat level
@@ -52,8 +59,48 @@ func show_title() -> void:
 	open(s)
 
 func start_run() -> void:
+	Run.leave_campaign()
 	Run.new_run()
 	show_hq(false)
+
+# ---------------------------------------------------------------- campaign mode
+func show_slots() -> void:
+	clear()
+	var p: Control = WarRoomScript.SlotPicker.new()
+	p.picked.connect(func(slot: int, fresh: bool):
+		Sfx.play("start")
+		if fresh or not Run.load_campaign(slot):
+			Run.new_campaign(slot)
+		show_hq(false))
+	p.back.connect(show_title)
+	open(p)
+
+func show_war_room() -> void:
+	clear()
+	Run.save_campaign()
+	var w: Control = WarRoomScript.new()
+	w.attack.connect(func(sc: Dictionary, patrol: bool):
+		Run.start_op(sc, patrol)
+		show_brief())
+	w.back.connect(func(): show_hq(false))
+	w.quit.connect(show_title)
+	open(w)
+
+func campaign_home() -> void:
+	## After an op: held sectors pay, the squad is patched up, then HQ with the news.
+	var inc := Run.after_op()
+	var news: Array = []
+	var parts: Array = []
+	for k in ["scrip", "salvage", "bio"]:
+		if int(inc[k]) > 0:
+			parts.append("+%d %s" % [inc[k], k])
+	if parts.size():
+		news.append("Held sectors paid " + ", ".join(parts) + ".")
+	news.append("Everyone is patched up and has their dog tags back.")
+	if inc.rookies.size():
+		news.append("Command sent replacements: %s." % ", ".join(inc.rookies))
+	show_hq(true)
+	screen.news = news
 
 func show_hq(arrived: bool) -> void:
 	## Home base between missions. The gate dials straight into mission 1 at the start of a run,
@@ -61,7 +108,7 @@ func show_hq(arrived: bool) -> void:
 	clear()
 	var h: Control = HqScript.new()
 	h.arrived = arrived
-	h.dial.connect(dial_gate)
+	h.dial.connect(show_war_room if Run.campaign() else dial_gate)
 	screen = h
 	ui_layer.add_child(h)
 
@@ -94,6 +141,8 @@ func show_brief() -> void:
 	var s := Screen.new()
 	s.mode = "brief"
 	s.buttons = [["DEPLOY", func(): start_battle(Run.mission, Run.current_mission())]]
+	if Run.campaign():
+		s.buttons = [["DEPLOY", func(): start_battle(int(Run.act().tier), Run.current_mission())], ["<< WAR ROOM", func(): Run.level = {}; show_war_room()]]
 	open(s)
 
 func start_battle(idx: int, custom := {}) -> Battle:
@@ -138,6 +187,17 @@ func _on_mission_over(won: bool) -> void:
 	clear()
 	var s := Screen.new()
 	s.stats = st
+	if Run.campaign():
+		# P5: a lost op only sends the squad home; the sector stays open
+		var res := Run.op_over(won and Run.alive_count() > 0)
+		st["op"] = res
+		s.mode = "op_won" if won and Run.alive_count() > 0 else "op_lost"
+		if s.mode == "op_won":
+			s.buttons = [["OPEN SUPPLY CRATES", func(): show_debrief(st)]]
+		else:
+			s.buttons = [["BACK TO HQ", func(): campaign_home()]]
+		open(s)
+		return
 	if Run.side == "outpost" and Run.alive_count() > 0:
 		# W1: an outpost loss only costs the wounded; a win pays an Epic crate and a Boar part
 		s.mode = "won" if won else "outpost_lost"
@@ -163,7 +223,7 @@ func show_debrief(st: Dictionary) -> void:
 	clear()
 	var d: Control = DebriefScript.new()
 	d.medals = Run.medals(st)
-	d.done.connect(func(): show_hq(true))
+	d.done.connect(func(): campaign_home() if Run.campaign() else show_hq(true))
 	screen = d
 	ui_layer.add_child(d)
 
@@ -209,7 +269,7 @@ class Screen extends Control:
 		var widths: Array = []
 		var total := 0.0
 		for i in n:
-			var bw := maxf(250.0 if i == 0 or (mode == "dial" and i < 2) else 140.0, Art.text_width(buttons[i][0], 16) + 40)
+			var bw := maxf(250.0 if i == 0 or (mode in ["dial", "title"] and i < 2) else 140.0, Art.text_width(buttons[i][0], 16) + 40)
 			widths.append(bw)
 			total += bw + (10 if i > 0 else 0)
 		var x := 480 - total / 2
@@ -217,7 +277,7 @@ class Screen extends Control:
 			var bt = load("res://scripts/hud.gd").PixButton.new()
 			bt.text = buttons[i][0]
 			var nd := Run.dial.size()
-			bt.color = Color("ff4d3d") if i == 0 or (mode == "dial" and i < nd) else Color("9aa2ae")
+			bt.color = Color("ff4d3d") if i == 0 or (mode == "dial" and i < nd) or (mode == "title" and i == 1) else Color("9aa2ae")
 			bt.size = Vector2(widths[i], 40)
 			bt.position = Vector2(x, 470)
 			if mode == "dial":  # one button under each biome card, then a small way back and the reroll
@@ -263,7 +323,7 @@ class Screen extends Control:
 		match mode:
 			"title": draw_title()
 			"brief": draw_brief()
-			"won", "final", "lost", "outpost_lost": draw_result()
+			"won", "final", "lost", "outpost_lost", "op_won", "op_lost": draw_result()
 			"dial": draw_dial()
 			"hospital":
 				Art.text(self, "FIELD HOSPITAL", Vector2(480, 110), 32, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 3)
@@ -350,6 +410,8 @@ class Screen extends Control:
 	func draw_brief() -> void:
 		var m: Dictionary = Run.current_mission()
 		var head := "FINALE" if m.get("finale", false) else ("LEVEL %d OF %d" % [Run.mission + 1, Data.LEVELS.size()] if m.has("biome") else "MISSION %d" % (Run.mission + 1))
+		if Run.campaign():
+			head = "ACT %s  %s" % [Run.act().roman, m.banner]
 		Art.text(self, head, Vector2(480, 90), 16, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 		Art.text(self, m.name, Vector2(480, 130), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 		var y := 170.0
@@ -449,6 +511,9 @@ class Screen extends Control:
 			out += ", " + Data.item_name(wp)
 		return out
 	func draw_result() -> void:
+		if mode in ["op_won", "op_lost"]:
+			draw_op_result()
+			return
 		var title := "MISSION COMPLETE!" if mode == "won" else ("THE JACKALS GO HOME" if mode == "final" else ("OUTPOST HOLDS" if mode == "outpost_lost" else "MISSION FAILED"))
 		var col := Color("62d26f") if mode != "lost" else Color("ff4d3d")
 		Art.text(self, title, Vector2(480, 96), 32, col, HORIZONTAL_ALIGNMENT_CENTER, 3)
@@ -471,3 +536,29 @@ class Screen extends Control:
 			Art.text(self, rows[i][0], Vector2(330, 160 + i * 20), 8, Color("e8dcc2"))
 			Art.text(self, rows[i][1], Vector2(630, 160 + i * 20), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
 		squad_line(420, "cheer" if mode != "lost" else "idle")
+	func draw_op_result() -> void:
+		var op: Dictionary = stats.get("op", {})
+		var title := "OP FAILED"
+		var line := "THE SQUAD IS CARRIED HOME. THE SECTOR STAYS OPEN. TRY AGAIN WITH ANYONE."
+		if mode == "op_won":
+			title = "PATROL COMPLETE" if Run.level.get("patrol", false) else "SECTOR TAKEN!"
+			line = "HALF PAY. THE SECTOR WAS ALREADY YOURS." if Run.level.get("patrol", false) else ""
+			if op.has("act_done"):
+				title = "ACT %s CLEARED!" % Data.ACTS.filter(func(a): return a.name == op.act_done)[0].roman
+				line = "THE WAR IS WON." if Run.camp.get("done", false) else "THE FRONT MOVES ON: ACT %s, %s." % [Run.act().roman, Run.act().name]
+			elif op.has("perk"):
+				line = "%s: %s" % [Data.SECTOR_PERKS[op.perk].name, Data.SECTOR_PERKS[op.perk].text.to_upper()]
+			elif op.has("took"):
+				line = "%s IS YOURS. IT PAYS AFTER EVERY OP FROM NOW ON." % op.took
+		Art.text(self, title, Vector2(480, 96), 32, Color("62d26f") if mode == "op_won" else Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+		Art.text(self, line, Vector2(480, 124), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		var rows := [["SCORE", str(stats.get("score", 0))], ["KILLS", str(stats.get("kills", 0))], ["POWS FREED", str(stats.get("pows", 0))], ["ROUNDS", str(stats.get("rounds", 0))], ["SCRIP EARNED", str(stats.get("scrip", 0))]]
+		if int(stats.get("salvage", 0)) > 0:
+			rows.append(["SALVAGE FOR HQ", str(stats.salvage)])
+		if stats.get("fallen", []).size():
+			rows.append(["KILLED IN ACTION", ", ".join(stats.fallen)])
+		rows.append(["OPS FOUGHT", str(Run.camp.get("ops", 0))])
+		for i in rows.size():
+			Art.text(self, rows[i][0], Vector2(330, 160 + i * 20), 8, Color("e8dcc2"))
+			Art.text(self, rows[i][1], Vector2(630, 160 + i * 20), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
+		squad_line(420, "cheer" if mode == "op_won" else "idle")
