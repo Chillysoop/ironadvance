@@ -759,6 +759,8 @@ func run() -> void:
 			await vehicles_test()
 		"branches5":
 			await branches5_test()
+		"newclasses":
+			await newclasses_test()
 		"pickups":
 			await pickups()
 		"bossloot":
@@ -1536,9 +1538,11 @@ func hub() -> void:
 	arm.select({"where": "stash", "i": Run.stash.find(Run.stash.filter(func(it): return it.id == "ghillie")[0])})
 	await frames_wait(6)
 	await shot("hub_armory")
+	# the Quartermaster's shelf is random and can sell a third Ghillie: count from here
+	var gh0: int = Run.stash.filter(func(it): return it.id == "ghillie").size()
 	arm.copy_sel()
 	await frames_wait(6)
-	check(Run.stash.filter(func(it): return it.id == "ghillie").size() == 3 and Run.any_merge(), "COPY at the Armory finishes a triple")
+	check(Run.stash.filter(func(it): return it.id == "ghillie").size() == gh0 + 1 and Run.any_merge(), "COPY at the Armory finishes a triple")
 	check(hq.badges().get("armory", "") == "TRIPLE READY", "the Armory badge lights for the triple")
 	hq.go("barracks")
 	await frames_wait(10)
@@ -6127,6 +6131,234 @@ func branches5_test() -> void:
 	rk.s.perks.append("titan")
 	check(b.can_grab(rk, br), "Titan: now he can")
 	check(Data.BRANCHES.moss.size() == 5 and Data.BRANCHES.rook.size() == 5, "each original has a fifth branch")
+
+func nc_battle(draft: Array) -> Battle:
+	for k in draft:
+		if not Run.meta.unlocked.has("cls_" + k):
+			Run.meta.unlocked.append("cls_" + k)
+	Run.meta["draft"] = draft
+	Run.leave_campaign()
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	b.autopick = 0
+	return b
+
+func nc_enemy(b: Battle, x: float, hp := 60) -> Unit:
+	var e := b.mk_enemy("grunt", x, b.T.stand_y(x, 0))
+	e.active = true
+	e.hp = hp; e.max_hp = hp
+	b.units.append(e)
+	return e
+
+func nc_ready(b: Battle, u: Unit) -> void:
+	u.energy = 5
+	b.sel = u; b.state = "player"; b.busy = false
+
+func newclasses_test() -> void:
+	## N1 Finch, N4 Kage, N5 Volta, N6 Brass, N8 Sable: each class's own cards and trait.
+	var b: Battle = await nc_battle(["finch", "kage", "volta", "brass"])
+	var sq := {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	check(sq.size() == 4, "the four new classes deploy (%s)" % str(sq.keys()))
+	var x := 700.0
+	while not flat_open(b, x, 420) and x < b.world_w - 700:
+		x += 20
+	for o in b.units:
+		if o.team == "enemy" and absf(o.x - x - 200) < 700:
+			o.gone = true
+	var fi: Unit = sq.finch
+	var kg: Unit = sq.kage
+	var vo: Unit = sq.volta
+	var br: Unit = sq.brass
+	ground_unit(b, fi, x, 0)
+	ground_unit(b, kg, x - 30, 0)
+	ground_unit(b, vo, x - 200, 0)
+	ground_unit(b, br, x - 240, 0)
+	cam_on(b, x + 100)
+	await frames_wait(6)
+	# N1 Zipline: Finch and Kage (in reach) ride it
+	nc_ready(b, fi)
+	var zi := force_card(fi, "zipline")
+	b.select_unit(fi); b.select_card(zi)
+	b.mouse = Vector2(x + 220, fi.y - 10)
+	await shot("nc_aim_zip")
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(absf(fi.x - (x + 220)) < 20, "Zipline: Finch lands at the cursor (%d)" % (fi.x - x))
+	check(kg.x > x + 100, "Kage rode the line too (%d)" % (kg.x - x))
+	# Flare + FLARED damage
+	var e := nc_enemy(b, fi.x + 160)
+	b.flare_at(e.x, e.y - 10, 90, fi)
+	check(e.has_st("flared"), "Flare: the Jackal is FLARED")
+	b.damage(e, 5, fi)
+	check(e.hp == 52, "FLARED takes +3 (%d)" % e.hp)
+	# Recon Drone bombs it
+	nc_ready(b, fi)
+	var hp0 := e.hp
+	b.play_self(force_card(fi, "drone"))
+	await until(func(): return not b.busy, 1200)
+	check(e.hp < hp0 or e.dead, "Recon Drone: grenade on the nearest Jackal (%d -> %d)" % [hp0, e.hp])
+	check(b.mine_under(fi, fi.x, fi.y) == null and fi.def.spd >= 260, "Light Feet: fast, and no mine goes off under her")
+	# N4 Deflect: a Jackal bullet goes back at the shooter
+	ground_unit(b, kg, fi.x - 40, 0)
+	var e2 := nc_enemy(b, kg.x - 200)
+	nc_ready(b, kg)
+	b.play_self(force_card(kg, "deflect"))
+	await until(func(): return not b.busy, 1200)
+	var khp := kg.hp
+	var a := atan2(kg.y - kg.h / 2.0 - (e2.y - 18), kg.x - e2.x)
+	b.fire_bullet(e2, e2.x, e2.y - 18, a, {"dmg": [5, 5], "range": 600, "bounce": 0}, false)
+	await frames_wait(4)
+	check(kg.hp == khp and e2.hp < 60, "Deflect: Kage takes nothing, the shooter takes it (%d, %d)" % [kg.hp, e2.hp])
+	# Cat's Landing: no fall damage
+	kg.y -= 220; kg.air = true; kg.vy = 2.0
+	await until(func(): return not kg.air, 600)
+	check(kg.hp == khp, "Cat's Landing: no fall damage (%d)" % kg.hp)
+	# Katana
+	var e3 := nc_enemy(b, kg.x + 40)
+	nc_ready(b, kg)
+	kg.face = 1
+	var ki := force_card(kg, "katana")
+	b.select_unit(kg); b.select_card(ki)
+	b.play_on_target(e3)
+	await until(func(): return not b.busy, 1200)
+	check(e3.hp < 60, "Katana cuts (%d)" % e3.hp)
+	# Iaido cuts everything on the line
+	var e4 := nc_enemy(b, kg.x + 120)
+	nc_ready(b, kg)
+	var ii := force_card(kg, "iaido")
+	b.select_unit(kg); b.select_card(ii)
+	b.mouse = Vector2(kg.x + 200, kg.y - kg.h / 2.0)
+	var h3 := e3.hp
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check((e3.hp < h3 or e3.dead) and e4.hp < 60, "Iaido: one cut, two Jackals (%d, %d)" % [e3.hp, e4.hp])
+	for o in [e, e2, e3, e4]:
+		o.gone = true
+	# N5 Magnet Gun pulls, Repulsor pushes
+	ground_unit(b, vo, x, 0)
+	cam_on(b, x + 100)
+	var e5 := nc_enemy(b, x + 220)
+	nc_ready(b, vo)
+	var mi := force_card(vo, "magnet")
+	b.select_unit(vo); b.select_card(mi)
+	b.mouse = Vector2(e5.x, e5.y - 16)
+	await shot("nc_aim_magnet")
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(e5.x < x + 170, "Magnet Gun: the Jackal is yanked toward Volta (%d)" % (e5.x - x))
+	nc_ready(b, vo)
+	var d0 := e5.x - vo.x
+	var pi := force_card(vo, "repulsor")
+	b.select_unit(vo); b.select_card(pi)
+	b.mouse = Vector2(e5.x, e5.y - 16)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(e5.x - vo.x > d0 + 40, "Repulsor: thrown away (%d -> %d)" % [d0, e5.x - vo.x])
+	e5.gone = true
+	# Tesla Arc jumps through three
+	var ts := [nc_enemy(b, vo.x + 120), nc_enemy(b, vo.x + 220), nc_enemy(b, vo.x + 320)]
+	nc_ready(b, vo)
+	b.play_self(force_card(vo, "tesla"))
+	await until(func(): return not b.busy, 1200)
+	check(ts.all(func(t): return t.hp < 60), "Tesla Arc hits all three (%s)" % str(ts.map(func(t): return t.hp)))
+	await shot("nc_tesla")
+	b.wind = 5
+	check(b.wind_of(vo, Data.card("frag")) == 0.0 and b.wind_of(fi, Data.card("frag")) > 0.0, "Physics Major: wind never moves Volta's throws")
+	b.wind = 0
+	await b.singularity_at(ts[1].x, ts[1].y - 14, 140, 10, vo)
+	check(ts.all(func(t): return t.hp < 52 or t.dead), "Black Hole crushes them together")
+	for t in ts:
+		t.gone = true
+	# N6 Brass: Orders, Chain of Command, Designator, Supply Drop
+	ground_unit(b, vo, x - 300, 0)
+	ground_unit(b, kg, x + 300, 0)
+	ground_unit(b, br, x + 20, 0)
+	ground_unit(b, fi, x + 50, 0)
+	fi.energy = 0
+	nc_ready(b, br)
+	var oi := force_card(br, "orders")
+	b.select_unit(br); b.select_card(oi)
+	var fh := fi.hand.size()
+	b.play_on_target(fi)
+	await until(func(): return not b.busy, 1200)
+	check(fi.energy == 1 and fi.hand.size() == fh + 1, "Orders: +1 energy and a card")
+	fi.energy = 0
+	b.classes_new_turn()
+	check(fi.energy == 1, "Chain of Command: the nearest squadmate gets +1 energy")
+	nc_ready(b, br)
+	var st0 := b.strikes.size()
+	var di := force_card(br, "designator")
+	b.select_unit(br); b.select_card(di)
+	b.mouse = Vector2(br.x + 150, br.y - 40)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy and b.projs.is_empty(), 1800)
+	check(b.strikes.size() == st0 + 1, "Designator: a shell is marked for the Jackal phase")
+	nc_ready(b, br)
+	var sdi := force_card(br, "supplydrop")
+	var bh := br.hand.size()
+	b.play_self(sdi)
+	await until(func(): return not b.busy, 1200)
+	check(br.hand.size() == bh and br.hand[-1].get("free", false), "Supply Drop: a free card from the crate (%d/%d %s)" % [br.hand.size(), bh, str(br.hand.map(func(h): return h.key))])
+	check(Data.BRANCHES.finch.size() == 4 and Data.BRANCHES.sable.size() == 4, "each new class has four branches")
+	# N8 Sable
+	b = await nc_battle(["sable", "vee", "moss", "rook"])
+	sq = {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	x = 700.0
+	while not flat_open(b, x, 420) and x < b.world_w - 700:
+		x += 20
+	for o in b.units:
+		if o.team == "enemy" and absf(o.x - x - 200) < 700:
+			o.gone = true
+	var sb: Unit = sq.sable
+	ground_unit(b, sb, x, 0)
+	for k in ["vee", "moss", "rook"]:
+		ground_unit(b, sq[k], x - 150 - sq[k].id * 20, 0)
+	cam_on(b, x + 100)
+	await frames_wait(6)
+	b.add_status(sb, "toxic", 3, null)
+	check(not sb.has_st("toxic"), "Hybrid: Sable can't be poisoned")
+	var m1 := nc_enemy(b, x + 40, 20)
+	var m2 := nc_enemy(b, x + 140)
+	nc_ready(b, sb)
+	var li := force_card(sb, "mindlink")
+	b.select_unit(sb); b.select_card(li)
+	b.play_on_target(m1)
+	await until(func(): return not b.busy, 1200)
+	check(m1.fl.has("mind"), "Mindlink: Sable takes over the Jackal")
+	check(b.nearest_squad(m1) == m2 and not b.foes_of(m1).any(func(o): return o.team == "squad"), "a linked Jackal fights its own side")
+	check(b.foes_of(m2).has(m1), "and its side fights it")
+	b.minds_tick()
+	check(not m1.fl.has("mind"), "the link breaks after the Jackal phase")
+	b.acid_puddle(m2.x, m2.y, 40, sb)
+	sb.x = m2.x - 10
+	var shp := sb.hp
+	b.tick_acids()
+	check(m2.hp < 60 and sb.hp == shp, "Acid: burns the Jackal, never Sable (%d)" % m2.hp)
+	m1.gone = true
+	ground_unit(b, sb, x, 0)
+	var m3 := nc_enemy(b, x + 200)
+	nc_ready(b, sb)
+	var ti := force_card(sb, "tongue")
+	b.select_unit(sb); b.select_card(ti)
+	b.mouse = Vector2(m3.x, m3.y - 16)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(m3.x < x + 150 or m2.x < x + 100, "Tongue yanks the first body on the line")
+	nc_ready(b, sb)
+	sb.hand.append({"id": -3, "key": "broodcall", "tier": Data.OD_TIER, "temp": true})
+	b.play_self(sb.hand.size() - 1)
+	await until(func(): return not b.busy, 1200)
+	var brood := b.units.filter(func(o): return o.fl.get("brood", false) and not o.dead)
+	check(brood.size() == 3, "Brood Call: three friendly Skitters (%d)" % brood.size())
+	await shot("nc_brood")
+	b.minds_tick()
+	check(brood.all(func(o): return o.gone), "the brood melts away after the Jackal phase")
 
 func count_cells(b: Battle, x: float, y: float, w: float, h: float) -> int:
 	var n := 0

@@ -1987,6 +1987,1426 @@
    2
   ]
  },
+ "sq_finch": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_kage": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_volta": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_brass": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_sable": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
  "sq_moss_helmet": {
   "frame": [
    24,
@@ -11928,6 +13348,7106 @@
   ]
  },
  "sq_track_shades": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_finch_helmet": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_finch_boonie": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_finch_beret": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_finch_hardhat": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_finch_shades": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_kage_helmet": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_kage_boonie": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_kage_beret": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_kage_hardhat": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_kage_shades": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_volta_boonie": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_volta_bandana": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_volta_beret": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_volta_hardhat": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_volta_shades": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_brass_helmet": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_brass_boonie": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_brass_bandana": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_brass_hardhat": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_brass_shades": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_sable_helmet": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_sable_boonie": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_sable_bandana": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_sable_beret": {
+  "frame": [
+   24,
+   24
+  ],
+  "anchor": [
+   12,
+   24
+  ],
+  "anims": {
+   "idle": {
+    "row": 0,
+    "n": 12,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "run": {
+    "row": 1,
+    "n": 8,
+    "shoulder": [
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "jump": {
+    "row": 2,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      12
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     true,
+     true
+    ]
+   },
+   "hurt": {
+    "row": 3,
+    "n": 2,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      9,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "die": {
+    "row": 4,
+    "n": 6,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "throw": {
+    "row": 5,
+    "n": 4,
+    "shoulder": [
+     [
+      9,
+      13
+     ],
+     [
+      10,
+      13
+     ],
+     [
+      11,
+      14
+     ],
+     [
+      10,
+      13
+     ]
+    ],
+    "gun": [
+     false,
+     false,
+     false,
+     true
+    ]
+   },
+   "cheer": {
+    "row": 6,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "climb": {
+    "row": 7,
+    "n": 2,
+    "shoulder": [
+     [
+      10,
+      13
+     ],
+     [
+      10,
+      14
+     ]
+    ],
+    "gun": [
+     false,
+     false
+    ]
+   },
+   "crouch": {
+    "row": 8,
+    "n": 1,
+    "shoulder": [
+     [
+      10,
+      15
+     ]
+    ],
+    "gun": [
+     true
+    ]
+   }
+  },
+  "flash_row_offset": 9,
+  "gun_pivot": [
+   2,
+   2
+  ]
+ },
+ "sq_sable_hardhat": {
   "frame": [
    24,
    24

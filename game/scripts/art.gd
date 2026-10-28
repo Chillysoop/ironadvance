@@ -40,6 +40,11 @@ const SQUAD_PAL := {
 	"bolt": {"hat": ["ffc23a", "e09a1c", "8a5a10"], "shirt": ["4a5a78", "36425a", "222a3a"], "pants": ["5a5048", "423a34", "2a2420"]},
 	"gears": {"hat": ["ff9a3a", "d6741c", "8a4410"], "shirt": ["6a6e76", "4e5258", "30333a"], "pants": ["4a4038", "36302a", "221e1a"]},
 	"track": {"hat": ["8a5a34", "6a4224", "3e2614"], "shirt": ["b8a87c", "94845a", "625638"], "pants": ["4a5a3a", "36442a", "222c1a"]},
+	"finch": {"hat": ["7fd0e8", "4aa0c0", "276880"], "shirt": ["d8c08a", "b09a62", "7a6a40"], "pants": ["6a6e76", "4e5258", "30333a"]},
+	"kage": {"hat": ["3a3a3a", "262626", "121212"], "shirt": ["4a4650", "34303a", "201c24"], "pants": ["3a3a3a", "262626", "121212"]},
+	"volta": {"hat": ["a07ad8", "7a54b4", "4a3078"], "shirt": ["e8e6dc", "c0beb4", "84827a"], "pants": ["4a4a5a", "34343e", "202028"]},
+	"brass": {"hat": ["d84a3a", "a8322a", "6a1e18"], "shirt": ["8a8a5a", "6a6a40", "46462a"], "pants": ["5a5a3e", "42422c", "2a2a1a"]},
+	"sable": {"hat": ["7ee0a0", "4cb478", "2a7a4c"], "shirt": ["6a3e90", "4e2a6e", "301a46"], "pants": ["3e3448", "2c2434", "1c1622"]},
 }
 const LOOK_HEADS := ["helmet", "boonie", "bandana", "beret", "hardhat", "shades"]
 const LOOK_COLORS := [
@@ -57,7 +62,7 @@ const LOOK_COLORS := [
 const LOOK_NAMES := ["OLIVE", "TAN", "GUNMETAL", "RED", "NAVY", "WHITE", "ORANGE", "PURPLE", "BLACK", "TEAL"]
 
 func base_head(cls: String) -> String:
-	return {"moss": "boonie", "hex": "medic", "vee": "bandana", "rook": "shades", "bolt": "hardhat", "track": "beret", "gears": "helmet"}.get(cls, "helmet")
+	return {"moss": "boonie", "hex": "medic", "vee": "bandana", "rook": "shades", "bolt": "hardhat", "track": "beret", "gears": "helmet", "finch": "bandana", "kage": "bandana", "volta": "helmet", "brass": "beret", "sable": "shades"}.get(cls, "helmet")
 
 func look_sheet(s: Dictionary) -> String:
 	## The sheet key for a soldier record, built (and cached) the first time a look needs it.

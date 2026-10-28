@@ -208,6 +208,59 @@ const CARDS := {
 	"bodythrow": {"name": "Body Throw", "type": "ARC", "cost": 0, "bodythrow": true, "dmg": 8, "wind": 0.2, "text": "Throw the Jackal you're holding. He takes the fall, and so does whatever he lands on.", "rarity": 5, "pool": false},
 	"suplex": {"name": "Suplex", "type": "MELEE", "cost": 1, "dmg": [8, 10], "range": 34, "suplex": true, "text": "Lift a Jackal over your head and drive him into the ground behind you.", "rarity": 1, "up": {"dmg": [11, 13]}},
 	"piledrive": {"name": "Piledriver", "type": "MELEE", "cost": 0, "od": true, "dmg": [22, 26], "range": 40, "piledrive": true, "text": "Leap up with a Jackal and slam down: a crater, and everything around it is Stunned.", "rarity": 5},
+	# N1 Finch, Scout
+	"zipline": {"name": "Zipline", "type": "LINE", "cost": 1, "zipline": true, "reach": 340, "pull": 70, "text": "Fire a line to the cursor. Finch and every squadmate within 70px ride it there.", "rarity": 0, "up": {"reach": 460}},
+	"flare": {"name": "Flare", "type": "ARC", "cost": 1, "flare": 90, "wind": 0.5, "text": "Lights up every Jackal within 90px: FLARED, they take +3 from everyone for 2 turns.", "rarity": 0, "up": {"flare": 130}},
+	"drone": {"name": "Recon Drone", "type": "SELF", "cost": 1, "drone": 1, "dmg": 9, "radius": 32, "text": "The drone flies over the nearest Jackal within 420px and drops a grenade on it.", "rarity": 1, "up": {"dmg": 13}},
+	"knives": {"name": "Throwing Knives", "type": "AIM", "cost": 1, "dmg": [3, 4], "shots": 2, "range": 520, "gun": "pistol", "bounce": 0, "sway": 0.02, "spread": 0.03, "text": "Two quick knives.", "rarity": 0, "up": {"shots": 3}},
+	"pathfinder": {"name": "Pathfinder", "type": "SELF", "cost": 0, "od": true, "rally": 120, "range": 2000, "squadenergy": 1, "text": "Every squadmate: +1 energy and +120 movement.", "rarity": 5},
+	"skyline": {"name": "Skyline", "type": "LINE", "cost": 0, "od": true, "zipline": true, "reach": 900, "pull": 2000, "text": "A line across the screen. The whole squad rides it.", "rarity": 5},
+	"starshell": {"name": "Starshell", "type": "ARC", "cost": 0, "od": true, "flare": 260, "wind": 0.3, "text": "A huge flare: every Jackal within 260px is FLARED.", "rarity": 5},
+	"dronestrike": {"name": "Drone Strike", "type": "SELF", "cost": 0, "od": true, "drone": 3, "dmg": 12, "radius": 36, "text": "Three drone runs on three Jackals.", "rarity": 5},
+	"rigged": {"name": "Rigged", "type": "SELF", "cost": 0, "od": true, "rigged": true, "text": "Every barrel, fuel tank and Jackal mine on screen blows.", "rarity": 5},
+	"paintedtarget": {"name": "Painted Target", "type": "SELF", "cost": 0, "od": true, "duo": true, "paint": true, "text": "Every Jackal on screen is FLARED, and Moss gets a free Long Shot.", "rarity": 5},
+	"payload": {"name": "Payload", "type": "SELF", "cost": 0, "od": true, "duo": true, "drone": 1, "dmg": 22, "radius": 54, "text": "The drone carries one of Vee's bazooka rounds onto the nearest Jackal.", "rarity": 5},
+	# N4 Kage, Commando
+	"katana": {"name": "Katana", "type": "MELEE", "cost": 1, "dmg": [9, 11], "range": 60, "knock": 4, "text": "A long-reach slash.", "rarity": 0, "up": {"dmg": [12, 14]}},
+	"deflect": {"name": "Deflect", "type": "SELF", "cost": 1, "deflect": 1, "text": "Until your next turn, the next bullet that hits Kage flies back at whoever fired it.", "rarity": 0},
+	"walljump": {"name": "Wall Jump", "type": "LINE", "cost": 1, "jump": true, "jpow": 1.2, "text": "A big leap. Kage always lands soft.", "rarity": 0, "up": {"jpow": 1.45}},
+	"vanish": {"name": "Smoke Bomb", "type": "SELF", "cost": 1, "vanish": true, "text": "A puff of smoke and Kage is PREDATOR: untargetable until she attacks.", "rarity": 1},
+	"thousandcuts": {"name": "Thousand Cuts", "type": "LINE", "cost": 0, "od": true, "rush": true, "stab": 14, "text": "Dash along a line. 14 damage to every body she passes.", "rarity": 5},
+	"mirrorwall": {"name": "Mirror Wall", "type": "SELF", "cost": 0, "od": true, "deflect": 99, "armor": 6, "text": "Every bullet that hits Kage until your next turn flies back. +6 armor.", "rarity": 5},
+	"shadowstrike": {"name": "Shadow Strike", "type": "SELF", "cost": 0, "od": true, "vanish": true, "freekatana": 2, "text": "Vanish, with two free Katanas in hand.", "rarity": 5},
+	"wallrun": {"name": "Wall Run", "type": "SELF", "cost": 0, "od": true, "move": 220, "freejump": 2, "text": "+220 movement and two free Wall Jumps.", "rarity": 5},
+	"iaido": {"name": "Iaido", "type": "LINE", "cost": 0, "od": true, "iaido": 18, "reach": 300, "text": "One cut along a line: 18 damage to every body on it, and the terrain is sliced through.", "rarity": 5},
+	"mirrormatch": {"name": "Mirror Match", "type": "SELF", "cost": 0, "od": true, "duo": true, "mirror": true, "text": "Kage holds her blade up: Moss gets a free Ricochet Round.", "rarity": 5},
+	# N5 Volta, Gravitech
+	"magnet": {"name": "Magnet Gun", "type": "LINE", "cost": 1, "magnet": -1, "reach": 380, "text": "Yank the first body or barrel on the line toward Volta.", "rarity": 0, "up": {"reach": 520}},
+	"repulsor": {"name": "Repulsor", "type": "LINE", "cost": 1, "magnet": 1, "reach": 300, "text": "Blast the first body or barrel on the line away from Volta.", "rarity": 0, "up": {"reach": 420}},
+	"tesla": {"name": "Tesla Arc", "type": "SELF", "cost": 2, "tesla": 3, "dmg": [6, 7], "text": "Lightning hits the nearest Jackal within 300px and jumps to two more within 140px.", "rarity": 1, "up": {"dmg": [8, 9]}},
+	"singularity": {"name": "Singularity", "type": "ARC", "cost": 0, "od": true, "singularity": 140, "wind": 0.2, "text": "Everything within 140px is sucked to one point, then thrown.", "rarity": 5},
+	"railgun": {"name": "Rail Shot", "type": "AIM", "cost": 0, "od": true, "dmg": [20, 24], "range": FULL_RANGE, "gun": "sniper", "bounce": 0, "sway": 0.0, "pierce": true, "phase": true, "text": "A magnetic slug through every wall and body on the line.", "rarity": 5},
+	"blackhole": {"name": "Black Hole", "type": "ARC", "cost": 0, "od": true, "singularity": 220, "crushdmg": 10, "wind": 0.2, "text": "Everything within 220px is crushed together for 10, then thrown.", "rarity": 5},
+	"stormcage": {"name": "Storm Cage", "type": "SELF", "cost": 0, "od": true, "tesla": 7, "dmg": [8, 9], "tstun": true, "text": "Lightning jumps through seven Jackals and Stuns them.", "rarity": 5},
+	"shockwave": {"name": "Shockwave", "type": "SELF", "cost": 0, "od": true, "shockwave": 180, "text": "Everything within 180px is blown away from Volta.", "rarity": 5},
+	"delivery": {"name": "Delivery", "type": "SELF", "cost": 0, "od": true, "duo": true, "delivery": true, "text": "Vee gets two free Frag Grenades that ignore wind.", "rarity": 5},
+	"slingshot": {"name": "Slingshot", "type": "SELF", "cost": 0, "od": true, "duo": true, "slingshot": true, "text": "Volta yanks the nearest Jackal into Rook's punch: 12 damage and sent flying.", "rarity": 5},
+	# N6 Brass, Forward Officer
+	"designator": {"name": "Designator", "type": "ARC", "cost": 1, "beacon": true, "bombs": 1, "wind": 0.3, "text": "Paint a spot. A shell lands there when the Jackals' phase starts.", "rarity": 0, "up": {"bombs": 2}},
+	"supplydrop": {"name": "Supply Drop", "type": "SELF", "cost": 2, "supply": 1, "text": "A crate drops in: pick one of three cards for Brass's hand, free to play this turn.", "rarity": 1, "up": {"supply": 2}},
+	"orders": {"name": "Orders", "type": "ALLY", "cost": 1, "orders": 1, "range": 320, "text": "A squadmate gets +1 energy and draws a card.", "rarity": 0, "up": {"range": 480}},
+	"dangerclose": {"name": "Danger Close", "type": "ARC", "cost": 0, "od": true, "beacon": true, "bombs": 7, "wind": 0.3, "text": "A carpet of seven shells around the marker next phase.", "rarity": 5},
+	"creeping": {"name": "Creeping Barrage", "type": "ARC", "cost": 0, "od": true, "beacon": true, "bombs": 10, "wind": 0.3, "text": "Ten shells around the marker next phase.", "rarity": 5},
+	"rallycry": {"name": "Rally Cry", "type": "SELF", "cost": 0, "od": true, "squadenergy": 2, "text": "Every squadmate gets +2 energy.", "rarity": 5},
+	"airdrop": {"name": "Airdrop", "type": "SELF", "cost": 0, "od": true, "supply": 3, "text": "Three crates: pick three cards.", "rarity": 5},
+	"firemission": {"name": "Fire Mission", "type": "ARC", "cost": 0, "od": true, "duo": true, "beacon": true, "bombs": 8, "wind": 0.3, "text": "Vee's mortar and Brass's battery together: eight shells next phase.", "rarity": 5},
+	# N8 Sable, Vharr Splicer
+	"tongue": {"name": "Tongue", "type": "LINE", "cost": 1, "magnet": -1, "tongue": true, "reach": 320, "text": "Yank the first body on the line to Sable, Jackal or squadmate.", "rarity": 0, "up": {"reach": 440}},
+	"acidspit": {"name": "Acid Spit", "type": "ARC", "cost": 1, "acid": 40, "dmg": 5, "radius": 24, "wind": 0.4, "text": "A glob that leaves an acid puddle for 3 turns: 3 damage to every Jackal in it after the Jackals move.", "rarity": 0, "up": {"dmg": 8}},
+	"mindlink": {"name": "Mindlink", "type": "MELEE", "cost": 2, "mindlink": 1, "range": 300, "dmg": [1, 1], "knock": 0, "text": "Take over a Jackal or alien (30 HP or less) for one turn: it fights its own side.", "rarity": 1},
+	"broodcall": {"name": "Brood Call", "type": "SELF", "cost": 0, "od": true, "brood": 3, "text": "Three Skitters burst out of the ground and fight for you through the next Jackal phase.", "rarity": 5},
+	"phaseshift": {"name": "Phase Shift", "type": "SELF", "cost": 0, "od": true, "blink": 480.0, "vanish": true, "text": "Blink behind a Jackal and vanish.", "rarity": 5},
+	"acidrain": {"name": "Acid Rain", "type": "ARC", "cost": 0, "od": true, "acid": 120, "dmg": 8, "radius": 60, "wind": 0.3, "text": "A downpour of acid: a 120px puddle.", "rarity": 5},
+	"hivemind": {"name": "Hive Mind", "type": "SELF", "cost": 0, "od": true, "hivemind": 3, "text": "The three Jackals nearest Sable fight for you for a turn.", "rarity": 5},
+	"domefield": {"name": "Dome Field", "type": "SELF", "cost": 0, "od": true, "domes": 2, "drange": 2000.0, "text": "A Vharr dome over every squadmate.", "rarity": 5},
+	"bilebomb": {"name": "Bile Bomb", "type": "ARC", "cost": 0, "od": true, "duo": true, "acid": 90, "dmg": 16, "radius": 48, "wind": 0.6, "text": "Vee's grenade, Sable's bile: a big blast that leaves acid.", "rarity": 5},
 }
 # Vehicles (N3, R1, E6). seat: how far the driver sits above the ground; cards: what a hijacker
 # gets in hand while driving. A soldier's own HP is safe until the vehicle breaks.
@@ -223,6 +276,7 @@ const STATUS := {
 	"toxic": {"name": "TOXIC", "short": "TOX", "c": Color("9be34a"), "text": "2 damage a turn, armor does not help."},
 	"supp": {"name": "SUPPRESSED", "short": "SUPP", "c": Color("c9d1da"), "text": "Half movement on its next turn."},
 	"mark": {"name": "MARKED", "short": "MARK", "c": Color("ff4d3d"), "text": "The next hit on it is a critical (x1.5)."},
+	"flared": {"name": "FLARED", "short": "FLARE", "c": Color("ffe36a"), "text": "Lit up by a flare: takes +3 from every hit."},
 	"stun": {"name": "STUNNED", "short": "STUN", "c": Color("ffd23a"), "text": "Skips its next turn."},
 	# bonus pad powerups (Soldat): they last the rest of this turn and the holder's next one
 	"berserk": {"name": "BERSERKER", "short": "BERS", "c": Color("ff4d3d"), "text": "Deals double damage."},
@@ -264,7 +318,7 @@ const NICK_KILLS := 10  # D4: kills that earn a card a nickname
 const CARD_NICKS := ["Old Faithful", "The Closer", "Sweet Talker", "Big Iron", "Last Call", "House Rules"]
 const FAB_PRICE := 70
 
-const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush", "bolt": "fortify", "track": "hounds", "gears": "bigslug"}
+const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush", "bolt": "fortify", "track": "hounds", "gears": "bigslug", "finch": "pathfinder", "kage": "thousandcuts", "volta": "singularity", "brass": "dangerclose", "sable": "broodcall"}
 # Metal Slug letter drops: 3 temporary cards in the collector's hand for the rest of the mission.
 const LETTERS := {"H": "hmg", "R": "bazooka", "F": "flameshot", "S": "shotgun", "L": "lasergun", "C": "chaser",
 	"D": "dropshot", "T": "thundershot", "Z": "zantetsu", "G": "superhmg"}
@@ -327,6 +381,26 @@ const ITEMS := {
 	"rebar": {"name": "Rebar Spool", "slot": "armor", "keystone": "bolt", "stats": {"hp": 4}, "text": "KEYSTONE: your walls are twice as big."},
 	"rivetdriver": {"name": "Rivet Driver", "slot": "weapon", "keystone": "bolt", "cards": ["girder", "girder"], "text": "KEYSTONE: adds 2 Girders. Girders cost 0."},
 	"magnetglove": {"name": "Magnet Glove", "slot": "kit", "keystone": "bolt", "stats": {"luck": 1}, "text": "KEYSTONE: your first build each turn refunds its energy."},
+	"carabiner": {"name": "Carabiner", "slot": "kit", "keystone": "finch", "stats": {"move": 30}, "text": "KEYSTONE: Zipline costs 0."},
+	"flaregun": {"name": "Flare Gun", "slot": "weapon", "keystone": "finch", "cards": ["flare"], "text": "KEYSTONE: adds a Flare. Flares cost 0."},
+	"dronebay": {"name": "Drone Bay", "slot": "kit", "keystone": "finch", "stats": {"luck": 1}, "text": "KEYSTONE: Recon Drone costs 0."},
+	"thermite": {"name": "Thermite Blades", "slot": "kit", "keystone": "finch", "stats": {"aim_dmg": 1}, "text": "KEYSTONE: Finch's knives set Jackals Burning."},
+	"mirrorblade": {"name": "Mirror Blade", "slot": "weapon", "keystone": "kage", "stats": {"aim_dmg": 1}, "text": "KEYSTONE: Deflect costs 0."},
+	"shinobi": {"name": "Shinobi Garb", "slot": "armor", "keystone": "kage", "stats": {"hp": 3}, "text": "KEYSTONE: Kage's kills make her PREDATOR."},
+	"climbclaws": {"name": "Climbing Claws", "slot": "kit", "keystone": "kage", "stats": {"move": 30}, "text": "KEYSTONE: Wall Jump draws a card."},
+	"ancestral": {"name": "Ancestral Blade", "slot": "weapon", "keystone": "kage", "cards": ["katana"], "text": "KEYSTONE: adds a Katana. Katana reaches 40px farther and deals +3."},
+	"magboots": {"name": "Mag Boots", "slot": "kit", "keystone": "volta", "stats": {"armor_turn": 1}, "text": "KEYSTONE: Magnet Gun costs 0."},
+	"gravcore": {"name": "Gravity Core", "slot": "kit", "keystone": "volta", "stats": {"luck": 1}, "text": "KEYSTONE: Gravity Grenade costs 0."},
+	"teslacoil": {"name": "Tesla Coil", "slot": "weapon", "keystone": "volta", "cards": ["tesla"], "text": "KEYSTONE: adds a Tesla Arc. Lightning jumps two more times."},
+	"forcefield": {"name": "Force Field", "slot": "armor", "keystone": "volta", "stats": {"hp": 3, "armor_turn": 3}, "text": "KEYSTONE: Volta starts every turn with 3 more armor."},
+	"fieldphone": {"name": "Field Phone", "slot": "kit", "keystone": "brass", "stats": {"luck": 1}, "text": "KEYSTONE: Designators drop two more shells."},
+	"officersword": {"name": "Officer's Sabre", "slot": "weapon", "keystone": "brass", "stats": {"aim_dmg": 1}, "text": "KEYSTONE: Orders cost 0."},
+	"supplytag": {"name": "Supply Tags", "slot": "kit", "keystone": "brass", "stats": {"luck": 1}, "text": "KEYSTONE: Supply Drop costs 0."},
+	"radiopack": {"name": "Radio Pack", "slot": "kit", "keystone": "brass", "stats": {"armor_turn": 1}, "text": "KEYSTONE: Brass starts every mission with a Slug call."},
+	"phaseorgan": {"name": "Phase Organ", "slot": "kit", "keystone": "sable", "stats": {"move": 30}, "text": "KEYSTONE: every Blink draws a card."},
+	"acidgland": {"name": "Acid Gland", "slot": "weapon", "keystone": "sable", "cards": ["acidspit"], "text": "KEYSTONE: adds an Acid Spit. Acid deals 5 instead of 3."},
+	"psicrown": {"name": "Psi Crown", "slot": "armor", "keystone": "sable", "stats": {"hp": 3}, "text": "KEYSTONE: mindlinked Jackals stay yours for two turns."},
+	"wardencore": {"name": "Warden Core", "slot": "armor", "keystone": "sable", "stats": {"hp": 4}, "text": "KEYSTONE: Sable starts every turn under a dome."},
 	"xrayscope": {"name": "X-Ray Scope", "slot": "weapon", "keystone": "moss", "stats": {"aim_dmg": 1}, "text": "KEYSTONE: AIM shots that pass through a wall deal +4 damage."},
 	"radiohq": {"name": "Field Radio", "slot": "kit", "keystone": "hex", "stats": {"luck": 1}, "text": "KEYSTONE: Hand-Off also gives the receiver +1 energy."},
 	"remotedet": {"name": "Remote Detonator", "slot": "kit", "keystone": "vee", "cards": ["stickycharge"], "text": "KEYSTONE: adds a Sticky Charge. Every turn starts with a free Clacker in hand."},
@@ -480,6 +554,27 @@ const SQUAD_DEFS := [
 	 "deck": ["vulcan", "vulcan", "mcannon", "stomp", "eject", "patchjob", "pistol", "pistol", "drill"],
 	 "pool": ["vulcan", "mcannon", "stomp", "eject", "patchjob", "tankshell", "pistol", "shotgun", "frag", "sprint", "roll", "digin", "rifle", "smoke"],
 	 "trait": ["Grease Monkey", "Gears deploys in a walker, and every camp rebuilds it to full."], "bio": "Learned to drive in a stolen Slug. Never gave it back."},
+	# N1, N4, N5, N6, N8
+	{"key": "finch", "name": "FINCH", "cls": "Scout", "hp": 20, "dodge": 16, "spd": 260,
+	 "deck": ["zipline", "flare", "drone", "knives", "knives", "pistol", "sprint", "roll", "drill"],
+	 "pool": ["zipline", "flare", "drone", "knives", "pistol", "sprint", "roll", "dash", "smoke", "grapple", "frag", "tagshot", "quickdraw"],
+	 "trait": ["Light Feet", "The fastest soldier in the squad, and she never sets off Jackal mines."], "bio": "Ran messages through three sieges. Never got caught."},
+	{"key": "kage", "name": "KAGE", "cls": "Commando", "hp": 22, "dodge": 18, "spd": 215,
+	 "deck": ["katana", "katana", "deflect", "walljump", "vanish", "pistol", "sprint", "knife", "drill"],
+	 "pool": ["katana", "deflect", "walljump", "vanish", "knife", "pistol", "sprint", "roll", "smoke", "grapple", "dash"],
+	 "trait": ["Cat's Landing", "Kage never takes fall damage."], "bio": "Trained in the palace the Jackals now hold. Wants it back."},
+	{"key": "volta", "name": "VOLTA", "cls": "Gravitech", "hp": 23, "dodge": 10, "spd": 190,
+	 "deck": ["magnet", "repulsor", "tesla", "gravnade", "pistol", "pistol", "frag", "sprint", "drill"],
+	 "pool": ["magnet", "repulsor", "tesla", "gravnade", "frag", "pistol", "sprint", "roll", "smoke", "shotgun", "domeup"],
+	 "trait": ["Physics Major", "Wind never moves anything Volta throws."], "bio": "Built her first gravity gun out of a fridge. Insists it was on purpose."},
+	{"key": "brass", "name": "BRASS", "cls": "Forward Officer", "hp": 24, "dodge": 8, "spd": 180,
+	 "deck": ["designator", "designator", "orders", "supplydrop", "pistol", "rifle", "rifle", "sprint", "drill"],
+	 "pool": ["designator", "orders", "supplydrop", "rifle", "pistol", "rally", "smoke", "beacon", "digin", "overwatch", "sprint"],
+	 "trait": ["Chain of Command", "Every turn the squadmate nearest Brass gets +1 energy."], "bio": "Thirty years of radio static. Can hear a shell's caliber in its whistle."},
+	{"key": "sable", "name": "SABLE", "cls": "Vharr Splicer", "hp": 24, "dodge": 12, "spd": 200,
+	 "deck": ["blink", "tongue", "acidspit", "acidspit", "mindlink", "pistol", "pistol", "sprint", "drill"],
+	 "pool": ["blink", "tongue", "acidspit", "mindlink", "domeup", "gravnade", "pistol", "shotgun", "sprint", "roll", "smoke"],
+	 "trait": ["Hybrid", "Immune to acid and Toxic."], "bio": "Volunteered for the splice. The doctors still won't say what else it did."},
 ]
 # X1: the four you start with. Everyone else is a specialist you free once to unlock (X2).
 const BASE_CLASSES := ["moss", "hex", "vee", "rook"]
@@ -489,6 +584,11 @@ const SPECIALISTS := {
 	"bolt": {"pow": "Sgt. Bolt", "text": "A combat engineer the Jackals grabbed fixing their own bridge."},
 	"track": {"pow": "Cpl. Track", "text": "A K9 handler caught behind the lines. Rex wouldn't leave him."},
 	"gears": {"pow": "Pvt. Gears", "text": "A slug pilot the Jackals pulled out of a wreck. He wants a new ride."},
+	"finch": {"pow": "Pvt. Finch", "text": "The squad's fastest runner. She got caught carrying a message she'd already delivered."},
+	"kage": {"pow": "Sgt. Kage", "text": "A commando the Jackals took by surprise, once."},
+	"volta": {"pow": "Dr. Volta", "text": "A physicist the Jackals wanted for her magnet gun."},
+	"brass": {"pow": "Maj. Brass", "text": "A forward officer held for the codes in his head."},
+	"sable": {"pow": "Sable", "text": "A Vharr splice the Jackals keep in a cage. Sable wants a word with the Vharr."},
 }
 const RESCUES_PER_RUN := 2  # at most this many specialists turn up in one run (level 1 and level 2)
 
@@ -670,11 +770,121 @@ const BRANCHES := {
 			{"id": "hotwire", "name": "Hotwire", "text": "Anyone who hijacks a vehicle gets +1 energy and a free Vulcan."},
 			{"id": "motorpool", "name": "Motor Pool", "text": "Gears starts each mission with a Slug call card."}]},
 	],
+	"finch": [
+		{"id": "trailblazer", "name": "Trailblazer", "od": "skyline", "keystone": "carabiner",
+		 "chain": {"name": "ZIP AND SNIP", "text": "Zipline, then any AIM card: +1 energy."},
+		 "perks": [{"id": "longline", "name": "Long Line", "text": "Ziplines reach 50% farther and carry squadmates within 140px."},
+			{"id": "freefall", "name": "Free Fall", "text": "Finch's movement is +60, and Zipline draws a card."},
+			{"id": "groupride", "name": "Group Ride", "text": "Everyone who rides a Zipline gets +40 movement."}]},
+		{"id": "spotterb", "name": "Spotter", "od": "starshell", "keystone": "flaregun",
+		 "chain": {"name": "LIGHT 'EM UP", "text": "Flare, then any AIM card: a guaranteed headshot."},
+		 "perks": [{"id": "brightflare", "name": "Bright Flare", "text": "Flares light up 40px wider."},
+			{"id": "spotcrit", "name": "Spotter", "text": "FLARED Jackals take +6 instead of +3."},
+			{"id": "illum", "name": "Illumination", "text": "Flares also Suppress."}]},
+		{"id": "dronejockey", "name": "Drone Jockey", "od": "dronestrike", "keystone": "dronebay",
+		 "chain": {"name": "EYE IN THE SKY", "text": "Recon Drone, then Throwing Knives: the knives are free."},
+		 "perks": [{"id": "dronegun", "name": "Drone Gun", "text": "The drone also fires a 3-round burst at its target."},
+			{"id": "twindrone", "name": "Second Drone", "text": "Recon Drone makes two runs on two Jackals."},
+			{"id": "dronemark", "name": "Laser Designator", "text": "The drone's target is FLARED."}]},
+		{"id": "saboteur", "name": "Saboteur", "od": "rigged", "keystone": "thermite",
+		 "chain": {"name": "KNIFE PARTY", "text": "Throwing Knives twice in a turn: the second pair is free."},
+		 "perks": [{"id": "loaded", "name": "Loaded Knives", "text": "Throwing Knives deal +2."},
+			{"id": "boobytrap", "name": "Booby Trap", "text": "Jackals Finch kills explode: blast 30, 8 damage."},
+			{"id": "demoexpert", "name": "Demo Expert", "text": "Barrels and fuel tanks Finch sets off hit twice as hard."}]},
+	],
+	"kage": [
+		{"id": "reflector", "name": "Reflector", "od": "mirrorwall", "keystone": "mirrorblade",
+		 "chain": {"name": "RIPOSTE", "text": "Deflect, then Katana: the cut Stuns."},
+		 "perks": [{"id": "doubledeflect", "name": "Twin Guard", "text": "Deflect sends back two bullets."},
+			{"id": "returnfire", "name": "Return to Sender", "text": "Deflected bullets hit twice as hard."},
+			{"id": "parry", "name": "Parry", "text": "Every Katana also readies a Deflect."}]},
+		{"id": "shadow", "name": "Shadow", "od": "shadowstrike", "keystone": "shinobi",
+		 "chain": {"name": "FROM NOWHERE", "text": "Smoke Bomb, then Katana: double damage."},
+		 "perks": [{"id": "ambush", "name": "Ambush", "text": "Kage starts every mission as PREDATOR."},
+			{"id": "backstab", "name": "Backstab", "text": "Katana from behind a Jackal deals double."},
+			{"id": "smokeghost", "name": "Ghost", "text": "Smoke Bomb costs 0."}]},
+		{"id": "wallrunner", "name": "Wall Runner", "od": "wallrun", "keystone": "climbclaws",
+		 "chain": {"name": "AIR STRIKE", "text": "Wall Jump, then Katana: +1 energy."},
+		 "perks": [{"id": "freerunning", "name": "Free Running", "text": "+60 movement every turn."},
+			{"id": "springheel", "name": "Spring Heel", "text": "Wall Jump costs 0."},
+			{"id": "aerial", "name": "Aerial", "text": "Katana from the air deals +6."}]},
+		{"id": "iaidoka", "name": "Iaido", "od": "iaido", "keystone": "ancestral",
+		 "chain": {"name": "DRAW CUT", "text": "Katana twice in a turn: the second is free."},
+		 "perks": [{"id": "keenedge", "name": "Keen Edge", "text": "Katana deals +3."},
+			{"id": "sweepcut", "name": "Sweeping Cut", "text": "Katana hits every Jackal in reach."},
+			{"id": "terraincut", "name": "Cut the Mountain", "text": "Katana cuts through the terrain in front of Kage."}]},
+	],
+	"volta": [
+		{"id": "magnetist", "name": "Magnetist", "od": "railgun", "keystone": "magboots",
+		 "chain": {"name": "SLINGSHOT", "text": "Magnet Gun, then Repulsor: the Repulsor is free."},
+		 "perks": [{"id": "heavypull", "name": "Heavy Pull", "text": "Magnet Gun and Repulsor throw 50% harder."},
+			{"id": "magstorm", "name": "Mag Storm", "text": "Magnet Gun and Repulsor move every body on the line."},
+			{"id": "fieldlock", "name": "Field Lock", "text": "Jackals Volta moves are Suppressed."}]},
+		{"id": "graviton", "name": "Graviton", "od": "blackhole", "keystone": "gravcore",
+		 "chain": {"name": "EVENT HORIZON", "text": "Gravity Grenade, then Magnet Gun: the Magnet Gun is free."},
+		 "perks": [{"id": "widewell", "name": "Wide Well", "text": "Gravity Grenades pull from 40px farther."},
+			{"id": "crushwell", "name": "Crush Well", "text": "Jackals in Volta's wells take 5."},
+			{"id": "doublewell", "name": "Aftershock", "text": "Gravity Grenades pull twice."}]},
+		{"id": "teslab", "name": "Tesla", "od": "stormcage", "keystone": "teslacoil",
+		 "chain": {"name": "CONDUCTOR", "text": "Tesla Arc twice in a turn: the second is free."},
+		 "perks": [{"id": "arcjump", "name": "Arc Jump", "text": "Lightning jumps to two more Jackals."},
+			{"id": "stunbolt", "name": "Stun Bolt", "text": "Lightning Stuns."},
+			{"id": "overload", "name": "Overload", "text": "Lightning deals +3."}]},
+		{"id": "kinetic", "name": "Kinetic", "od": "shockwave", "keystone": "forcefield",
+		 "chain": {"name": "NEWTON'S THIRD", "text": "Repulsor, then Magnet Gun: +1 energy."},
+		 "perks": [{"id": "strongpush", "name": "Big Push", "text": "Repulsor reaches 50% farther."},
+			{"id": "kinimpact", "name": "Kinetic Impact", "text": "Magnet Gun and Repulsor deal 6 to every Jackal they move."},
+			{"id": "recoilshield", "name": "Recoil Shield", "text": "Every Repulsor gives Volta 4 armor."}]},
+	],
+	"brass": [
+		{"id": "observer", "name": "Observer", "od": "creeping", "keystone": "fieldphone",
+		 "chain": {"name": "BRACKET", "text": "Designator twice in a turn: the second is free."},
+		 "perks": [{"id": "spotround", "name": "Spotting Round", "text": "Designator drops one more shell."},
+			{"id": "rangefind", "name": "Rangefinder", "text": "Designator costs 0."},
+			{"id": "ffe", "name": "Fire for Effect", "text": "Every beacon Brass throws drops two more shells."}]},
+		{"id": "officer", "name": "Officer", "od": "rallycry", "keystone": "officersword",
+		 "chain": {"name": "ON MY MARK", "text": "Orders, then Designator: +1 energy."},
+		 "perks": [{"id": "command", "name": "Command Voice", "text": "Orders give +2 energy instead of 1."},
+			{"id": "inspire", "name": "Inspire", "text": "Chain of Command reaches the two nearest squadmates."},
+			{"id": "leadfront", "name": "Lead from the Front", "text": "Squadmates within 140px of Brass start their turn with +40 movement."}]},
+		{"id": "quartermaster", "name": "Quartermaster", "od": "airdrop", "keystone": "supplytag",
+		 "chain": {"name": "RESUPPLY", "text": "Supply Drop, then Orders: the Orders are free."},
+		 "perks": [{"id": "provisions", "name": "Provisions", "text": "Supply Drop also heals the squad 6."},
+			{"id": "logistics", "name": "Logistics", "text": "Supply Drop costs 1 less."},
+			{"id": "stockpile", "name": "Stockpile", "text": "Supply Drop draws a card for every squadmate."}]},
+		{"id": "signals", "name": "Signals", "od": "slugcall", "keystone": "radiopack",
+		 "chain": {"name": "CALL IT IN", "text": "Designator, then any AIM card: a guaranteed headshot."},
+		 "perks": [{"id": "intelrep", "name": "Intel", "text": "Every turn the Jackal nearest Brass is Marked."},
+			{"id": "airsupport", "name": "Air Support", "text": "Every beacon anyone throws drops one more shell."},
+			{"id": "netcall", "name": "Net Call", "text": "When the Jackals move, every squadmate has at least 1 overwatch shot."}]},
+	],
+	"sable": [
+		{"id": "blinker", "name": "Blinker", "od": "phaseshift", "keystone": "phaseorgan",
+		 "chain": {"name": "NOW YOU SEE ME", "text": "Blink, then any attack card: double damage on an AIM card, +1 energy otherwise."},
+		 "perks": [{"id": "doubleblink", "name": "Double Blink", "text": "Blink costs 0."},
+			{"id": "decoy", "name": "Afterimage", "text": "Blink leaves Sable PREDATOR."},
+			{"id": "blinkstrike", "name": "Blink Strike", "text": "Blink claws the Jackal Sable lands behind for 8."}]},
+		{"id": "corroder", "name": "Corroder", "od": "acidrain", "keystone": "acidgland",
+		 "chain": {"name": "MELTDOWN", "text": "Acid Spit, then Tongue: the Tongue is free."},
+		 "perks": [{"id": "meltarmor", "name": "Melt Armor", "text": "Acid makes Jackals Toxic."},
+			{"id": "dissolve", "name": "Dissolve", "text": "Acid Spit eats the terrain where it lands."},
+			{"id": "potent", "name": "Potent", "text": "Acid puddles are 50% wider and last a turn longer."}]},
+		{"id": "mindlinker", "name": "Mindlink", "od": "hivemind", "keystone": "psicrown",
+		 "chain": {"name": "PUPPETEER", "text": "Mindlink, then Tongue: +1 energy."},
+		 "perks": [{"id": "biglink", "name": "Strong Mind", "text": "Mindlink takes anything but a boss."},
+			{"id": "longlink", "name": "Deep Link", "text": "Mindlink costs 1 less."},
+			{"id": "linkheal", "name": "Feedback", "text": "Sable heals 6 for every Mindlink."}]},
+		{"id": "wardenb", "name": "Warden", "od": "domefield", "keystone": "wardencore",
+		 "chain": {"name": "HOLD STILL", "text": "Gravity Grenade, then Acid Spit: the Acid Spit is free."},
+		 "perks": [{"id": "domeself", "name": "Carapace", "text": "Sable starts every turn with 3 armor."},
+			{"id": "domeshare", "name": "Shared Dome", "text": "Dome Projector reaches 80px farther."},
+			{"id": "wellsable", "name": "Gravity Gland", "text": "Gravity Grenade costs 0."}]},
+	],
 }
 const PERK_TIER := ["MINOR", "MAJOR", "CAPSTONE"]
 
 # Legendary keystone items live in ITEMS (one per archetype). Anyone can wear one, which makes hybrids.
-const KEYSTONE_IDS := ["tungsten", "varga", "claymore", "twinrev", "overcharger", "canister", "weathervane", "medrig", "howitzer", "lizard", "fuelpack", "detbox", "gauntlet", "riotshield", "ammobelt", "zantetsu", "turretcore", "rebar", "rivetdriver", "magnetglove", "chokechain", "treatbag", "k9vest", "hawkhood", "jumpjets", "treads", "ejectseat", "toolkit", "xrayscope", "radiohq", "remotedet", "luchamask"]
+const KEYSTONE_IDS := ["tungsten", "varga", "claymore", "twinrev", "overcharger", "canister", "weathervane", "medrig", "howitzer", "lizard", "fuelpack", "detbox", "gauntlet", "riotshield", "ammobelt", "zantetsu", "turretcore", "rebar", "rivetdriver", "magnetglove", "chokechain", "treatbag", "k9vest", "hawkhood", "jumpjets", "treads", "ejectseat", "toolkit", "xrayscope", "radiohq", "remotedet", "luchamask", "carabiner", "flaregun", "dronebay", "thermite", "mirrorblade", "shinobi", "climbclaws", "ancestral", "magboots", "gravcore", "teslacoil", "forcefield", "fieldphone", "officersword", "supplytag", "radiopack", "phaseorgan", "acidgland", "psicrown", "wardencore"]
 
 # Branching card upgrades (P3): the Gunsmith adds up to 2 mods per card. A cost cut is one option.
 const MAX_MODS := 2
@@ -718,6 +928,13 @@ const DUOS := [
 	{"pair": ["hex", "vee"], "card": "firestorm", "holder": "vee"},
 	{"pair": ["bolt", "rook"], "card": "buildcrew", "holder": "bolt"},
 	{"pair": ["bolt", "vee"], "card": "demoteam", "holder": "bolt"},
+	{"pair": ["finch", "moss"], "card": "paintedtarget", "holder": "finch"},
+	{"pair": ["finch", "vee"], "card": "payload", "holder": "finch"},
+	{"pair": ["kage", "moss"], "card": "mirrormatch", "holder": "kage"},
+	{"pair": ["vee", "volta"], "card": "delivery", "holder": "volta"},
+	{"pair": ["rook", "volta"], "card": "slingshot", "holder": "volta"},
+	{"pair": ["brass", "vee"], "card": "firemission", "holder": "brass"},
+	{"pair": ["sable", "vee"], "card": "bilebomb", "holder": "sable"},
 	{"pair": ["gears", "rook"], "card": "ridealong", "holder": "gears"},
 	{"pair": ["gears", "hex"], "card": "fieldrefit", "holder": "gears"},
 	{"pair": ["hex", "track"], "card": "meddog", "holder": "track"},
@@ -1411,6 +1628,8 @@ func card(inst) -> Dictionary:
 		base.sway = base.sway * Run.sway_mul
 	base["key"] = key
 	base["tier"] = tier
+	if inst is Dictionary and inst.get("nowind", false):
+		base["wind"] = 0.0
 	if inst is Dictionary and inst.get("mods", []).size():
 		var names: Array = []
 		for mid in inst.mods:
@@ -1473,7 +1692,7 @@ func stat_line(c: Dictionary) -> String:
 	return ""
 
 func is_attack(c: Dictionary) -> bool:
-	return c.type == "AIM" or c.type == "MELEE" or (c.type == "ARC" and not c.get("smoke", false) and not c.get("beacon", false)) or (c.type == "LINE" and not c.get("grapple", false) and not c.get("rush", false) and not c.get("jump", false) and c.get("dog", "bite") == "bite")
+	return c.type == "AIM" or c.type == "MELEE" or (c.type == "ARC" and not c.get("smoke", false) and not c.get("beacon", false)) or (c.type == "LINE" and not c.get("grapple", false) and not c.get("zipline", false) and not c.get("rush", false) and not c.get("jump", false) and c.get("dog", "bite") == "bite")
 
 func relic_text(id: String, t: int) -> String:
 	## Squad gear text at a given rarity tier.

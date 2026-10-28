@@ -109,7 +109,7 @@ var autopick := -1        # tests: pick this option index in every modal instead
 var theme := "dusk"
 var breach := false       # BREACH biome: the Vharr and the Jackals are at war with each other too
 var wells: Array = []     # Gravity Warden wells: {x, y, r, by}
-var acids: Array = []     # acid pools from burst Hive Pods: {x, y, r, turns}
+var acids: Array = []     # acid pools from burst Hive Pods: {x, y, r, turns}; Sable's (N8) also carry dmg and owner
 var ambush := {}          # E3 Drop Pod Ambush: {x, done}; pods rain down when the squad gets there
 var detour := {}          # the camp detour being played: {id, x0, x1, done, left, scav, mod}
 var th := {}              # the theme colors, with the biome's look laid over them
@@ -1293,6 +1293,459 @@ func walker_wreck(e: Unit) -> void:
 	if r != null:
 		float_at(r.x, r.y - 40, "WALKER UP FOR GRABS", Color("ffb23e"), true)
 
+# ---------------------------------------------------------------- N1 Finch, N4 Kage, N5 Volta, N6 Brass, N8 Sable
+func vis_foes() -> Array:
+	## Hostile Jackals and aliens on screen (not the ones Sable has taken over).
+	return units.filter(func(e): return e.team == "enemy" and not e.dead and not e.gone and not e.fl.has("mind") and not Data.ETYPES[e.type].get("static", false) and e.x > cam_x - 20 and e.x < cam_x + W + 20)
+
+func wind_of(u, c: Dictionary) -> float:
+	## Volta's throws (and anything she hands out) ignore the wind.
+	if u is Unit and u.team == "squad" and u.def.key == "volta":
+		return 0.0
+	return c.get("wind", 1.0)
+
+func temp_card(s: Unit, key: String, free := true, extra := {}) -> void:
+	var inst := {"id": -2, "key": key, "tier": Data.base_tier(key), "temp": true, "free": free}
+	inst.merge(extra)
+	s.hand.append(inst)
+
+func squad_of(key: String):
+	for s in squad_alive():
+		if s.def.key == key:
+			return s
+	return null
+
+func fling(o: Unit, dir: float, pw: float, by) -> void:
+	## Throws a body sideways; heavies and anchors barely budge.
+	if o.dead or o.gone or o.immovable or is_boss(o):
+		return
+	o.vx = dir * pw * (0.35 if o.heavy else 1.0) * kb(o)
+	o.vy = -3.5 - pw * 0.25
+	o.air = true; o.walk = null; o.bumped = null; o.last_hit_by = by
+
+func lightning(a: Vector2, b2: Vector2) -> void:
+	var prev := a
+	for k in range(1, 6):
+		var t := k / 5.0
+		var nxt := a.lerp(b2, t) + (Vector2(randf_range(-6, 6), randf_range(-6, 6)) if k < 5 else Vector2.ZERO)
+		tracer(prev.x, prev.y, nxt.x, nxt.y, Color("9fe8ff"))
+		prev = nxt
+
+# --- N1 Finch
+func zip_spot(u: Unit, c: Dictionary, p: Vector2) -> Dictionary:
+	var reach: float = c.reach * (1.5 if u.perk("longline") else 1.0)
+	var from := Vector2(u.x, u.y - u.h)
+	var to := from + (p - from).limit_length(reach)
+	var x := clampf(to.x, cam_x + 14, cam_x + W - 14)
+	var y = T.stand_y(x, to.y - 12)
+	if y == null:
+		return {"ok": false, "x": x, "y": to.y, "hx": from.x, "hy": from.y}
+	return {"ok": true, "x": x, "y": float(y), "hx": from.x, "hy": from.y}
+
+func _act_zip(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
+	c = spend_card(u, idx, c)
+	var zs := zip_spot(u, c, p)
+	var pull: float = c.pull + (70.0 if u.perk("longline") else 0.0)
+	var riders: Array = [u]
+	for s in squad_alive():
+		if s != u and s.mech == null and s.kind != "dog" and Vector2(s.x - u.x, s.y - u.y).length() <= pull:
+			riders.append(s)
+	Sfx.play("rocket")
+	var dir := 1.0 if zs.x >= u.x else -1.0
+	var starts: Array = riders.map(func(r): return Vector2(r.x, r.y))
+	var ends: Array = []
+	for i in riders.size():
+		var off: float = -dir * 20.0 * i
+		var ex: float = clampf(zs.x + off, cam_x + 14, cam_x + W - 14)
+		var ey = T.stand_y(ex, zs.y - 30)
+		ends.append(Vector2(ex, ey if ey != null else zs.y))
+	for f in 14:
+		tracer(zs.hx, zs.hy, zs.x, zs.y - 30, Color("e8dcc2"))
+		for i in riders.size():
+			var r: Unit = riders[i]
+			var pt: Vector2 = starts[i].lerp(ends[i], (f + 1) / 14.0)
+			r.x = pt.x; r.y = pt.y - sin((f + 1) / 14.0 * PI) * 16
+			r.vx = 0; r.vy = 0; r.air = false; r.walk = null; r.face = int(dir)
+		await wait(1)
+	for i in riders.size():
+		var r: Unit = riders[i]
+		r.x = ends[i].x; r.y = ends[i].y; r.air = false
+		if u.perk("groupride"):
+			r.move_left += 40
+	float_text(u, "ZIPLINE" if riders.size() == 1 else "ALL ABOARD x%d" % riders.size(), Color("e8dcc2"), true)
+	if u.perk("freefall"):
+		draw_cards(u, 1)
+	u.moved = true
+	await check_push(u)
+
+func flare_at(x: float, y: float, r: float, by) -> void:
+	for e in units:
+		if e.team == "enemy" and not e.dead and not e.gone and Vector2(e.x - x, e.y - e.h / 2.0 - y).length() < r + e.w / 2.0:
+			add_status(e, "flared", 2, by)
+			if by is Unit and by.perk("illum"):
+				add_status(e, "supp", 1, by)
+	for i in 14:
+		part({"x": x + randf_range(-r, r) * 0.4, "y": y - randf_range(0, 30), "vx": randf_range(-1, 1), "vy": -randf_range(0.2, 1.4), "life": 40, "max": 40, "c": Color("ffe36a"), "s": 3.0, "g": 0.0, "fire": true})
+	float_at(x, y - 30, "FLARE", Color("ffe36a"), true)
+	Sfx.play("power")
+
+func flare_bonus() -> int:
+	return 6 if squad_alive().any(func(s): return s.perk("spotcrit")) else 3
+
+func drone_runs(u: Unit, c: Dictionary) -> void:
+	var n: int = c.drone * (2 if u.perk("twindrone") else 1)
+	var reach := 2000.0 if c.get("od", false) else 420.0
+	var foes := vis_foes().filter(func(e): return absf(e.x - u.x) <= reach)
+	foes.sort_custom(func(a, b2): return absf(a.x - u.x) < absf(b2.x - u.x))
+	if foes.is_empty():
+		float_text(u, "NO TARGETS", Color("9aa2ae"))
+		return
+	Sfx.play("power")
+	float_text(u, "DRONE UP", Color("e8dcc2"), true)
+	for k in n:
+		var e: Unit = foes[k % foes.size()]
+		if e.dead:
+			continue
+		var dy: float = e.y - e.h - 60
+		if u.perk("dronegun"):
+			for s in 3:
+				tracer(e.x - 10, dy, e.x, e.y - e.h / 2.0, Color("fff4c0"))
+				damage(e, 3, u)
+				await wait(3)
+		if u.perk("dronemark") and not e.dead:
+			add_status(e, "flared", 2, u)
+		var r: float = c.get("radius", 32) * blast_scale(u)
+		projs.append(mk_proj({"kind": "bomb", "x": e.x, "y": dy, "vx": 0.0, "vy": 3.0, "r": r, "dmg": c.get("dmg", 9), "owner": u}))
+		Sfx.play("toss")
+		await wait(14)
+	await until(settled)
+
+func rig_all(u: Unit) -> void:
+	banner("RIGGED!", Color("ffb23e"))
+	for o in units.duplicate():
+		if o.gone or o.dead or o.x < cam_x - 20 or o.x > cam_x + W + 20:
+			continue
+		if o.kind == "barrel" or o.kind == "fuel":
+			damage(o, 1, u, {"blast": true})
+		elif o.kind == "mine" and not o.primed:
+			o.primed = true
+			booms.append({"t": 6, "x": o.x, "y": o.y - 3, "r": 38.0, "dmg": 15, "owner": u, "barrel": o})
+	await wait(20)
+	await until(settled)
+
+# --- N4 Kage
+func iaido_line(u: Unit, c: Dictionary, p: Vector2) -> Dictionary:
+	var from := Vector2(u.x, u.y - u.h / 2.0)
+	var to := from + (p - from).normalized() * float(c.reach)
+	var hit: Array = []
+	for o in units:
+		if o == u or o.dead or o.gone or o.team == "squad" or o.is_pickup() or o.kind in ["pow", "ride", "hulk", "sticky"]:
+			continue
+		var ctr := Vector2(o.x, o.y - o.h / 2.0)
+		var q := Geometry2D.get_closest_point_to_segment(ctr, from, to)
+		if q.distance_to(ctr) < o.w / 2.0 + 8:
+			hit.append(o)
+	return {"from": from, "to": to, "hit": hit}
+
+func _act_iaido(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
+	c = spend_card(u, idx, c)
+	u.attacked = true
+	var L := iaido_line(u, c, p)
+	u.face = 1 if p.x >= u.x else -1
+	u.pose = "throw"; u.pose_t = 16
+	Sfx.play("slash")
+	for f in 6:
+		tracer(L.from.x, L.from.y, L.to.x, L.to.y, Color("e0f4ff"))
+		await wait(1)
+	var n := int(L.from.distance_to(L.to) / 10.0)
+	for k in n:
+		var pt: Vector2 = L.from.lerp(L.to, k / float(maxi(1, n)))
+		if T.solid(pt.x, pt.y):
+			T.carve(pt.x, pt.y, 7, u)
+	for o in L.hit:
+		damage(o, c.iaido, u, {"melee": true})
+		fx.append({"kind": "slash", "x": o.x, "y": o.y - o.h / 2.0, "t": 0, "dur": 12, "sc": 1.6, "face": u.face})
+	float_text(u, "IAIDO", Color("e0f4ff"), true)
+	await wait(16)
+
+# --- N5 Volta
+func magnet_line(u: Unit, c: Dictionary, p: Vector2) -> Dictionary:
+	## The bodies a Magnet Gun, Repulsor or Tongue would grab, nearest first.
+	var reach: float = c.reach * (1.5 if c.magnet > 0 and u.perk("strongpush") else 1.0)
+	var from := hand_pos(u)
+	var dir := (p - from).normalized()
+	var hit: Array = []
+	var end := from + dir * reach
+	var d := 8.0
+	while d < reach:
+		var pt := from + dir * d
+		if T.hard(pt.x, pt.y):
+			end = pt
+			break
+		for o in units:
+			if o == u or o.dead or o.gone or hit.has(o) or o.is_pickup() or is_boss(o) or o.kind in ["pow", "ride", "hulk", "sticky", "slug", "sentry", "dog", "rivet"]:
+				continue
+			if o.team == "squad" and not c.get("tongue", false):
+				continue
+			if o.team == "enemy" and Data.ETYPES[o.type].get("static", false):
+				continue
+			if absf(pt.x - o.x) < o.w / 2.0 + 4 and pt.y > o.y - o.h - 4 and pt.y < o.y + 2:
+				hit.append(o)
+		if hit.size() and not u.perk("magstorm"):
+			end = pt
+			break
+		d += 6.0
+	return {"from": from, "to": end, "hit": hit}
+
+func _act_magnet(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
+	c = spend_card(u, idx, c)
+	var L := magnet_line(u, c, p)
+	u.face = 1 if p.x >= u.x else -1
+	Sfx.play("power")
+	for f in 6:
+		if c.get("tongue", false):
+			tracer(L.from.x, L.from.y, L.to.x, L.to.y, Color("d36ba0"))
+		else:
+			lightning(L.from, L.to)
+		await wait(1)
+	if L.hit.is_empty():
+		float_text(u, "NOTHING CAUGHT", Color("9aa2ae"))
+	var pw: float = 7.5 * (1.5 if u.perk("heavypull") else 1.0)
+	for o in L.hit:
+		var dir := signf(o.x - u.x) if c.magnet > 0 else signf(u.x - o.x)
+		if dir == 0:
+			dir = u.face
+		var d := absf(o.x - u.x)
+		fling(o, dir, pw if c.magnet > 0 else clampf(d / 26.0, 3.0, pw), u)
+		if o.team == "enemy":
+			u.attacked = true
+			if u.perk("kinimpact"):
+				damage(o, 6, u)
+			if u.perk("fieldlock"):
+				add_status(o, "supp", 1, u)
+	if c.magnet > 0 and u.perk("recoilshield"):
+		u.armor += 4
+		float_text(u, "+4 ARMOR", Color("9fb4c9"))
+	await wait(4)
+	await until(settled)
+
+func tesla_arc(u: Unit, c: Dictionary) -> void:
+	var n: int = c.tesla + (2 if u.perk("arcjump") else 0) + (2 if ks(u, "teslacoil") else 0)
+	var from := Vector2(u.x, u.y - u.h / 2.0)
+	var reach := 300.0
+	var hit: Array = []
+	for k in n:
+		var best = null
+		for e in vis_foes():
+			if hit.has(e):
+				continue
+			var dd := from.distance_to(Vector2(e.x, e.y - e.h / 2.0))
+			if dd <= reach and (best == null or dd < from.distance_to(Vector2(best.x, best.y - best.h / 2.0))):
+				best = e
+		if best == null:
+			break
+		hit.append(best)
+		var to := Vector2(best.x, best.y - best.h / 2.0)
+		Sfx.play("ping")
+		for f in 4:
+			lightning(from, to)
+			await wait(1)
+		var dm: int = ri(c.dmg[0], c.dmg[1]) + (3 if u.perk("overload") else 0)
+		damage(best, dm, u)
+		if c.get("tstun", false) or u.perk("stunbolt"):
+			add_status(best, "stun", 1, u)
+		from = to
+		reach = 220.0 if c.get("od", false) else 140.0
+	if hit.is_empty():
+		float_text(u, "NO TARGETS", Color("9aa2ae"))
+	else:
+		u.attacked = true
+	await wait(8)
+
+func singularity_at(x: float, y: float, r: float, crush: int, by) -> void:
+	var caught: Array = units.filter(func(o): return not o.dead and not o.gone and (o.team == "enemy" or o.kind == "barrel" or o.kind == "fuel") and not is_boss(o) and not o.immovable and not (o.team == "enemy" and Data.ETYPES[o.type].get("static", false)) and Vector2(o.x - x, o.y - o.h / 2.0 - y).length() < r + o.w / 2.0)
+	float_at(x, y - 30, "SINGULARITY", Color("c47bff"), true)
+	Sfx.play("power")
+	for f in 16:
+		for o in caught:
+			o.x = lerpf(o.x, x, 0.12)
+			o.walk = null
+		for k in 3:
+			var a := randf() * TAU
+			part({"x": x + cos(a) * r, "y": y + sin(a) * r * 0.5, "vx": -cos(a) * 3, "vy": -sin(a) * 1.5, "life": 20, "max": 20, "c": Color("c47bff"), "s": 2.0, "g": 0.0})
+		await wait(1)
+	shake += 4
+	for i in caught.size():
+		var o: Unit = caught[i]
+		if crush > 0 and o.team == "enemy":
+			damage(o, crush, by)
+		var dir := signf(o.x - x)
+		if dir == 0:
+			dir = 1.0 if i % 2 == 0 else -1.0
+		fling(o, dir, 7.0, by)
+	await wait(6)
+	await until(settled)
+
+func shockwave(u: Unit, r: float) -> void:
+	shake += 5
+	Sfx.play("thud")
+	part({"ring": true, "x": u.x, "y": u.y - u.h / 2.0, "r": 4.0, "max": r, "life": 16, "c": Color("9fe8ff")})
+	for o in units:
+		if o == u or o.dead or o.gone or o.team == "squad" or o.is_pickup() or o.kind in ["pow", "slug", "ride", "hulk", "sticky", "sentry", "dog"]:
+			continue
+		if o.team == "enemy" and Data.ETYPES[o.type].get("static", false):
+			continue
+		if Vector2(o.x - u.x, o.y - u.y).length() < r:
+			fling(o, signf(o.x - u.x) if o.x != u.x else float(u.face), 8.0, u)
+	u.attacked = true
+	await wait(6)
+	await until(settled)
+
+func slingshot(u: Unit) -> void:
+	var rk = squad_of("rook")
+	var foes := vis_foes().filter(func(e): return not e.heavy)
+	if rk == null or foes.is_empty():
+		float_text(u, "NO TARGETS", Color("9aa2ae"))
+		return
+	foes.sort_custom(func(a, b2): return absf(a.x - u.x) < absf(b2.x - u.x))
+	var e: Unit = foes[0]
+	var nx: float = rk.x + rk.face * (rk.w / 2.0 + e.w / 2.0 + 4)
+	var ny = T.stand_y(nx, rk.y - 40)
+	lightning(Vector2(u.x, u.y - 14), Vector2(e.x, e.y - e.h / 2.0))
+	e.x = nx; e.y = ny if ny != null else rk.y; e.vx = 0; e.vy = 0; e.walk = null
+	await wait(8)
+	rk.pose = "throw"; rk.pose_t = 16
+	Sfx.play("thud")
+	damage(e, 12, rk, {"melee": true})
+	fling(e, rk.face, 9.0, rk)
+	float_text(rk, "SLINGSHOT!", Color("ffb23e"), true)
+	await wait(8)
+	await until(settled)
+
+# --- N6 Brass
+func brass_supply(u: Unit, n: int) -> void:
+	for k in n:
+		var pool: Array = u.def.pool.filter(func(k2): return k2 != "supplydrop")
+		pool.shuffle()
+		var opts: Array = []
+		for i in mini(3, pool.size()):
+			opts.append({"kind": "card", "key": pool[i], "tier": Run.roll_card_tier(pool[i]), "u": u})
+		Sfx.play("coin")
+		var ch := await ask("supply", "SUPPLY DROP", "Pick a card for %s's hand. It's free this turn." % u.def.name, opts)
+		if ch >= 0:
+			u.hand.append({"id": -2, "key": opts[ch].key, "tier": opts[ch].tier, "temp": true, "free": true})
+			float_text(u, Data.CARDS[opts[ch].key].name.to_upper(), Color("62d26f"), true)
+	if u.perk("provisions"):
+		for s in squad_alive():
+			s.hp = mini(s.max_hp, s.hp + 6)
+			float_text(s, "+6 HP", Color("62d26f"))
+	if u.perk("stockpile"):
+		for s in squad_alive():
+			draw_cards(s, 1)
+	ui_dirty = true
+
+func beacon_bonus(u: Unit, c: Dictionary) -> int:
+	var n := 0
+	if c.get("key", "") == "designator":
+		n += (1 if u.perk("spotround") else 0) + (2 if ks(u, "fieldphone") else 0)
+	if u.perk("ffe"):
+		n += 2
+	if squad_alive().any(func(s): return s.perk("airsupport")):
+		n += 1
+	return n
+
+# --- N8 Sable
+func can_link(u: Unit, tg, c: Dictionary) -> bool:
+	if tg == null or tg.dead or tg.team != "enemy" or is_boss(tg) or tg.fl.has("mind") or Data.ETYPES[tg.type].get("static", false):
+		return false
+	if tg.hp > 30 and not u.perk("biglink"):
+		return false
+	return absf(tg.x - u.x) <= c.range and absf(tg.y - u.y) <= 140
+
+func mind_link(u: Unit, tg: Unit, turns: int) -> void:
+	tg.fl["mind"] = turns
+	tg.active = true
+	tg.st.erase("cloak")
+	lightning(Vector2(u.x, u.y - u.h), Vector2(tg.x, tg.y - tg.h))
+	float_text(tg, "MINDLINKED", Color("c47bff"), true)
+	Sfx.play("power")
+
+func brood_call(u: Unit, n: int) -> void:
+	banner("BROOD CALL!", Color("9df25c"))
+	for k in n:
+		var x: float = clampf(u.x + (k - (n - 1) / 2.0) * 30.0 + u.face * 30, cam_x + 20, cam_x + W - 20)
+		var y = T.stand_y(x, u.y - 50)
+		if y == null:
+			continue
+		var e := mk_enemy("skitter", x, y)
+		e.active = true
+		e.fl["mind"] = 1
+		e.fl["brood"] = true
+		units.append(e)
+		dust(x, y, Color("9df25c"), 8)
+	Sfx.play("splash")
+	await wait(12)
+
+func acid_puddle(x: float, y: float, r: float, by) -> void:
+	var potent: bool = by is Unit and by.perk("potent")
+	acids.append({"x": x, "y": y, "r": r * (1.5 if potent else 1.0), "turns": 4 if potent else 3, "dmg": 5 if ks(by, "acidgland") else 3, "owner": by})
+	if by is Unit and by.perk("dissolve"):
+		T.carve(x, y, 20, by)
+	Sfx.play("splash")
+
+func minds_tick() -> void:
+	## Linked Jackals come back to themselves after the enemy phase; the brood melts away.
+	for e in units:
+		if e.dead or not e.fl.has("mind"):
+			continue
+		e.fl.mind -= 1
+		if e.fl.mind <= 0:
+			e.fl.erase("mind")
+			if e.fl.get("brood", false):
+				e.gone = true
+				e.dead = true
+				dust(e.x, e.y, Color("9df25c"), 6)
+			else:
+				float_text(e, "LINK BROKEN", Color("9aa2ae"))
+
+func classes_enemy_end() -> void:
+	minds_tick()
+
+func classes_new_turn() -> void:
+	## Turn-start traits and perks of the five new classes.
+	for b2 in squad_alive():
+		match b2.def.key:
+			"brass":
+				var others := squad_alive().filter(func(s): return s != b2)
+				others.sort_custom(func(a, c2): return absf(a.x - b2.x) < absf(c2.x - b2.x))
+				for s in others.slice(0, 2 if b2.perk("inspire") else 1):
+					s.energy += 1
+					float_text(s, "CHAIN OF COMMAND +1", Color("ffb23e"))
+				if b2.perk("leadfront"):
+					for s in others:
+						if absf(s.x - b2.x) <= 140:
+							s.move_left += 40
+				if b2.perk("intelrep"):
+					var fs := vis_foes()
+					fs.sort_custom(func(a, c2): return absf(a.x - b2.x) < absf(c2.x - b2.x))
+					if fs.size():
+						add_status(fs[0], "mark", 2, b2)
+				if round_n == 1 and ks(b2, "radiopack"):
+					b2.hand.append({"id": -3, "key": "slugcall", "tier": Data.OD_TIER, "temp": true})
+			"kage":
+				if round_n == 1 and b2.perk("ambush"):
+					add_status(b2, "cloak", 2, b2)
+				if b2.perk("freerunning"):
+					b2.move_left += 60
+			"finch":
+				if b2.perk("freefall"):
+					b2.move_left += 60
+			"sable":
+				if b2.perk("domeself"):
+					b2.armor += 3
+				if ks(b2, "wardencore"):
+					b2.dome = maxi(b2.dome, 1)
+
 # ---------------------------------------------------------------- B1-B4: fifth branches for the original four
 func _act_handoff(u: Unit, idx: int, c: Dictionary, tg: Unit) -> void:
 	## Hand-Off: the card to the right of it (or the left, at the end of the hand) goes to a squadmate.
@@ -1919,6 +2372,8 @@ func add_status(u: Unit, k: String, turns: int, by = null) -> void:
 		return
 	if k == "stun" and (is_boss(u) or u.team == "squad"):
 		return
+	if k == "toxic" and u.team == "squad" and u.def.key == "sable":
+		return
 	if k == "burn" and ks(by, "fuelpack"):
 		turns = maxi(turns, 4)
 	var fresh := not u.has_st(k)
@@ -2003,6 +2458,51 @@ func chain_ready(u: Unit, inst: Dictionary) -> String:
 				return "COVERING FIRE"
 			if inst.key == "sandbags" and u.fl.get("bagged", false) and not u.fl.has("stacked"):
 				return "DOUBLE STACK"
+		"finch":
+			if last == "zipline" and c.type == "AIM":
+				return "ZIP AND SNIP"
+			if last == "flare" and c.type == "AIM":
+				return "LIGHT 'EM UP"
+			if last == "drone" and inst.key == "knives":
+				return "EYE IN THE SKY"
+			if last == "knives" and inst.key == "knives":
+				return "KNIFE PARTY"
+		"kage":
+			if last == "deflect" and inst.key == "katana":
+				return "RIPOSTE"
+			if last == "vanish" and inst.key == "katana":
+				return "FROM NOWHERE"
+			if last == "walljump" and inst.key == "katana":
+				return "AIR STRIKE"
+			if last == "katana" and inst.key == "katana":
+				return "DRAW CUT"
+		"volta":
+			if last == "magnet" and inst.key == "repulsor":
+				return "SLINGSHOT"
+			if last == "gravnade" and inst.key == "magnet":
+				return "EVENT HORIZON"
+			if last == "tesla" and inst.key == "tesla":
+				return "CONDUCTOR"
+			if last == "repulsor" and inst.key == "magnet":
+				return "NEWTON'S THIRD"
+		"brass":
+			if last == "designator" and inst.key == "designator":
+				return "BRACKET"
+			if last == "orders" and inst.key == "designator":
+				return "ON MY MARK"
+			if last == "supplydrop" and inst.key == "orders":
+				return "RESUPPLY"
+			if last == "designator" and c.type == "AIM":
+				return "CALL IT IN"
+		"sable":
+			if last == "blink" and Data.is_attack(c):
+				return "NOW YOU SEE ME"
+			if last == "acidspit" and inst.key == "tongue":
+				return "MELTDOWN"
+			if last == "mindlink" and inst.key == "tongue":
+				return "PUPPETEER"
+			if last == "gravnade" and inst.key == "acidspit":
+				return "HOLD STILL"
 		"rook":
 			if last == "grab" and inst.key == "bodythrow":
 				return "TAG OUT"
@@ -2055,7 +2555,7 @@ func tick_statuses(team: String) -> void:
 			damage(u, 2, u.st_by.get("toxic", null), {"status": true})
 			kill_how = ""
 			u.armor = a
-		for k in ["burn", "toxic", "mark", "berserk", "cloak", "flamegod", "vest", "roll"]:
+		for k in ["burn", "toxic", "mark", "berserk", "cloak", "flamegod", "vest", "roll", "flared"]:
 			if u.st.has(k):
 				u.st[k] -= 1
 				if u.st[k] <= 0:
@@ -2291,6 +2791,14 @@ func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: boo
 			d = maxi(1, int(round(d * 0.25)))
 			float_text(tg, "SHIELD", Color("c9d1da"))
 			sparks(hh.x, hh.y, 6)
+		if tg.team == "squad" and a.team == "enemy" and tg.fl.get("deflect", 0) > 0 and not a.dead:
+			# Kage's blade sends it back where it came from
+			tg.fl.deflect -= 1
+			tracer(hh.x, hh.y, a.x, a.y - a.h / 2.0, Color("e0f4ff"))
+			float_text(tg, "DEFLECTED", Color("e0f4ff"), true)
+			Sfx.play("ping")
+			damage(a, d * (2 if tg.perk("returnfire") else 1), tg)
+			continue
 		last_hit_head = hh.head
 		damage(tg, d, a, {"crit": hh.head})
 		last_hit_head = false
@@ -2464,6 +2972,8 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 		return
 	if tg.has_st("vest"):
 		amt = int(ceil(amt / 2.0))
+	if tg.team == "enemy" and tg.has_st("flared") and not o.get("status", false):
+		amt += flare_bonus()
 	if tg.team == "squad" and tg.mech != null:
 		mech_hit(tg, amt)  # N3/R1: the vehicle takes it
 		return
@@ -3225,6 +3735,12 @@ func detonate(p: Dictionary) -> void:
 	if pc.get("sticky", false):
 		plant_sticky(p.x, p.y, p.owner, p.dmg, p.r)
 		return
+	if pc.has("flare"):
+		flare_at(p.x, p.y - 10, pc.flare + (40.0 if p.owner is Unit and p.owner.perk("brightflare") else 0.0), p.owner)
+		return
+	if pc.has("singularity"):
+		singularity_at(p.x, p.y - 14, pc.singularity, pc.get("crushdmg", 0), p.owner)
+		return
 	if p.beacon and pc.get("rain", 0) > 0:
 		steel_rain(p.x, pc.rain, p.owner)
 		if pc.get("barrage", 0) <= 0:
@@ -3269,6 +3785,8 @@ func detonate(p: Dictionary) -> void:
 	if debug:
 		print("[proj r%d] %s owner %s dmg%d" % [round_n, p.kind, (p.owner.type if p.owner.team != "squad" else p.owner.def.key) if p.owner is Unit else "null", p.dmg])
 	explode(p.x, p.y, p.r, p.dmg, p.owner, pc.get("burnblast", false))
+	if pc.has("acid"):
+		acid_puddle(p.x, T.ground_at(p.x) if not T.solid(p.x, p.y + 4) else p.y, pc.acid, p.owner)
 	if pc.get("junk", false):
 		scrap_heap(p.x, p.y, p.owner)
 	if pc.has("carve"):
@@ -3506,6 +4024,15 @@ func card_cost(u: Unit, inst: Dictionary) -> int:
 		cost = 0
 	if is_build(c) and ks(u, "magnetglove") and not u.fl.get("built", false):
 		cost = 0
+	var zero := {"zipline": ks(u, "carabiner"), "flare": ks(u, "flaregun"), "drone": ks(u, "dronebay"), "deflect": ks(u, "mirrorblade"),
+		"vanish": u.perk("smokeghost"), "walljump": u.perk("springheel"), "magnet": ks(u, "magboots"), "gravnade": ks(u, "gravcore") or u.perk("wellsable"),
+		"designator": u.perk("rangefind"), "orders": ks(u, "officersword"), "supplydrop": ks(u, "supplytag"), "blink": u.perk("doubleblink") and u.def.key == "sable"}
+	if zero.get(inst.key, false):
+		cost = 0
+	if inst.key == "supplydrop" and u.perk("logistics"):
+		cost = maxi(0, cost - 1)
+	if inst.key == "mindlink" and u.perk("longlink"):
+		cost = maxi(0, cost - 1)
 	return cost
 
 func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
@@ -3599,6 +4126,21 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 			u.fl["broadside"] = true
 		"BAIL OUT":
 			u.energy += u.last_cost
+		"LIGHT 'EM UP", "CALL IT IN":
+			c["forcehead"] = true
+		"ZIP AND SNIP", "AIR STRIKE", "NEWTON'S THIRD", "ON MY MARK", "PUPPETEER":
+			u.energy += 1
+		"EYE IN THE SKY", "KNIFE PARTY", "DRAW CUT", "SLINGSHOT", "EVENT HORIZON", "CONDUCTOR", "BRACKET", "RESUPPLY", "MELTDOWN", "HOLD STILL":
+			u.energy += u.last_cost
+		"RIPOSTE":
+			c["stun"] = true
+		"FROM NOWHERE":
+			c.dmg = [c.dmg[0] * 2, c.dmg[1] * 2]
+		"NOW YOU SEE ME":
+			if c.type == "AIM":
+				c.dmg = [c.dmg[0] * 2, c.dmg[1] * 2]
+			else:
+				u.energy += 1
 	u.seq.append([inst.key, c.type])
 	if inst.key == "molotov":
 		u.fl["molotov"] = true
@@ -3622,6 +4164,27 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 		c["sweep"] = true
 	if is_build(c):
 		u.fl["built"] = true
+	if inst.key == "katana":
+		var kd := (3 if u.perk("keenedge") else 0) + (3 if ks(u, "ancestral") else 0) + (6 if u.perk("aerial") and u.air else 0)
+		c.dmg = [c.dmg[0] + kd, c.dmg[1] + kd]
+		if ks(u, "ancestral"):
+			c.range = c.range + 40
+		if u.perk("sweepcut"):
+			c["sweep"] = true
+		if u.perk("terraincut"):
+			c["cut"] = true
+		if u.perk("parry"):
+			u.fl["deflect"] = u.fl.get("deflect", 0) + 1
+	if inst.key == "knives" and u.perk("loaded"):
+		c.dmg = [c.dmg[0] + 2, c.dmg[1] + 2]
+	if inst.key == "knives" and ks(u, "thermite"):
+		c["burn"] = true
+	if inst.key == "walljump" and ks(u, "climbclaws"):
+		draw_cards(u, 1)
+	if inst.key == "blink" and ks(u, "phaseorgan"):
+		draw_cards(u, 1)
+	if inst.get("nowind", false) or (u.def.key == "volta" and c.type == "ARC"):
+		c["wind"] = 0.0
 	if inst.key == "pistol" and u.perk("cylinder"):
 		draw_cards(u, 1)
 	if c.get("echo", 0) > 0:
@@ -3832,6 +4395,19 @@ func commit_aim(p: Vector2) -> void:
 		if c.has("daisy"):
 			resolve(func(): await _act_daisy(u, idx, c, p))
 			return
+		if c.get("zipline", false):
+			if not zip_spot(u, c, p).ok:
+				float_text(u, "NOWHERE TO LAND", Color("ff7a3d"))
+				Sfx.play("deny")
+				return
+			resolve(func(): await _act_zip(u, idx, c, p))
+			return
+		if c.has("magnet"):
+			resolve(func(): await _act_magnet(u, idx, c, p))
+			return
+		if c.has("iaido"):
+			resolve(func(): await _act_iaido(u, idx, c, p))
+			return
 		if c.has("dog"):
 			var dt := dog_target(u, c, p)
 			if not dt.ok:
@@ -3976,6 +4552,8 @@ func _act_arc(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
 		c["fuse"] = 90
 	if c.get("beacon", false) and ks(u, "howitzer"):
 		c.bombs = c.get("bombs", 3) + 2
+	if c.get("beacon", false):
+		c.bombs = c.get("bombs", 3) + beacon_bonus(u, c)
 	u.attacked = true
 	var v := aim_vel(u, p)
 	u.face = v.f
@@ -3997,7 +4575,7 @@ func _act_arc(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
 		dmg_bonus = 2
 	var r: float = c.get("radius", 0) * (1.2 if sc else 1.0) * blast_scale(u)
 	projs.append(mk_proj({"kind": "smoke" if c.get("smoke", false) or c.get("gas", false) else ("beacon" if c.get("beacon", false) else ("frag" if fuse != null else "shell")),
-		"x": v.hx, "y": v.hy, "vx": v.vx, "vy": v.vy, "wind": c.get("wind", 1.0), "r": r,
+		"x": v.hx, "y": v.hy, "vx": v.vx, "vy": v.vy, "wind": wind_of(u, c), "r": r,
 		"dmg": int(round((c.get("dmg", 0) + dmg_bonus) * (1.25 if sc else 1.0))), "bounce": c.get("bounce", false), "fuse": fuse,
 		"smoke": c.get("smoke", false), "gas": c.get("gas", false), "srad": c.get("srad", 64.0), "sturns": c.get("sturns", 2), "bombs": c.get("bombs", 3),
 		"beacon": c.get("beacon", false), "cluster": c.get("cluster", 0), "owner": u, "trail": fuse == null, "card": c, "x0": u.x}))
@@ -4383,6 +4961,14 @@ func _act_melee(u: Unit, idx: int, c: Dictionary, tg: Unit, sc: bool) -> void:
 	if c.get("piledrive", false):
 		await _act_piledrive(u, c, tg)
 		return
+	if c.has("mindlink"):
+		u.attacked = false
+		mind_link(u, tg, 2 if ks(u, "psicrown") else 1)
+		if u.perk("linkheal"):
+			u.hp = mini(u.max_hp, u.hp + 6)
+			float_text(u, "+6 HP", Color("62d26f"))
+		await wait(14)
+		return
 	u.face = 1 if tg.x >= u.x else -1
 	u.pose = "throw"; u.pose_t = 16
 	Sfx.play("slash")
@@ -4391,6 +4977,11 @@ func _act_melee(u: Unit, idx: int, c: Dictionary, tg: Unit, sc: bool) -> void:
 	var d := ri(c.dmg[0], c.dmg[1])
 	if sc:
 		d = int(round(d * 1.25))
+	if c.get("key", "") == "katana" and u.perk("backstab") and tg.face == int(signf(tg.x - u.x)):
+		d *= 2
+		float_text(tg, "BACKSTAB", Color("e0f4ff"), true)
+	if c.get("cut", false):
+		T.carve(u.x + u.face * 30, u.y - 16, 14, u)
 	var victims: Array = [tg]
 	if (ks(u, "zantetsu") and c.key == "knife") or c.get("sweep", false):
 		# Zantetsu: one sweep cuts every body in reach and the terrain in front
@@ -4429,6 +5020,12 @@ func _act_ally(u: Unit, idx: int, c: Dictionary, tg: Unit) -> void:
 	if c.get("guard", false):
 		await rex_guard(u, tg)
 		u.fl["guarded"] = tg
+	if c.has("orders"):
+		var en: int = c.orders + (1 if u.perk("command") else 0)
+		tg.energy += en
+		draw_cards(tg, 1)
+		float_text(tg, "ORDERS: +%d ENERGY" % en, Color("ffb23e"), true)
+		Sfx.play("select")
 	if c.has("plate"):
 		tg.armor += c.plate
 		float_text(tg, "+%d ARMOR" % c.plate, Color("9fb4c9"), true)
@@ -4542,11 +5139,21 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 		field_refit(u, c.refit)
 	if c.has("blink"):
 		await vharr_blink(u, c.blink)
+		if u.perk("decoy"):
+			add_status(u, "cloak", 2, u)
+		if u.perk("blinkstrike"):
+			var fs2 := vis_foes()
+			fs2.sort_custom(func(a, b2): return absf(a.x - u.x) < absf(b2.x - u.x))
+			if fs2.size() and absf(fs2[0].x - u.x) < 60:
+				damage(fs2[0], 8, u, {"melee": true})
+				u.attacked = true
 	if c.has("gwell"):
-		await vharr_well(u, c.gwell)
+		await vharr_well(u, c.gwell + (40.0 if u.perk("widewell") else 0.0))
+		if u.perk("doublewell"):
+			await vharr_well(u, c.gwell + (40.0 if u.perk("widewell") else 0.0))
 	if c.has("domes"):
 		for s in squad_alive():
-			if s == u or absf(s.x - u.x) <= c.drange:
+			if s == u or absf(s.x - u.x) <= c.drange + (80.0 if u.perk("domeshare") else 0.0):
 				s.dome = maxi(s.dome, c.domes)
 				float_text(s, "DOME", Color("9df25c"))
 		Sfx.play("power")
@@ -4611,6 +5218,61 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 			if s.def.key == "moss":
 				s.hand.append({"id": -2, "key": "snipe", "tier": Data.base_tier("snipe"), "temp": true, "free": true})
 				float_text(s, "FREE LONG SHOT", Color("53d4e2"), true)
+	if c.has("squadenergy"):
+		for s in squad_alive():
+			s.energy += c.squadenergy
+			float_text(s, "+%d ENERGY" % c.squadenergy, Color("ffb23e"))
+	if c.has("drone"):
+		await drone_runs(u, c)
+	if c.get("rigged", false):
+		await rig_all(u)
+	if c.get("paint", false):
+		for e in vis_foes():
+			add_status(e, "flared", 2, u)
+		var ms = squad_of("moss")
+		if ms != null:
+			temp_card(ms, "snipe")
+			float_text(ms, "FREE LONG SHOT", Color("53d4e2"), true)
+	if c.has("deflect"):
+		u.fl["deflect"] = u.fl.get("deflect", 0) + c.deflect * (2 if u.perk("doubledeflect") else 1)
+		float_text(u, "DEFLECT", Color("e0f4ff"), true)
+		Sfx.play("ping")
+	if c.get("vanish", false):
+		add_status(u, "cloak", 2, u)
+		for k in 8:
+			puff(u.x + randf_range(-12, 12), u.y - randf_range(0, 30), 2.0)
+	if c.has("freekatana"):
+		for k in c.freekatana:
+			temp_card(u, "katana")
+	if c.has("freejump"):
+		for k in c.freejump:
+			temp_card(u, "walljump")
+	if c.get("mirror", false):
+		var ms2 = squad_of("moss")
+		if ms2 != null:
+			temp_card(ms2, "ricochet")
+			float_text(ms2, "FREE RICOCHET", Color("53d4e2"), true)
+	if c.has("tesla"):
+		await tesla_arc(u, c)
+	if c.has("shockwave"):
+		await shockwave(u, c.shockwave)
+	if c.get("delivery", false):
+		var vv = squad_of("vee")
+		if vv != null:
+			for k in 2:
+				temp_card(vv, "frag", true, {"nowind": true})
+			float_text(vv, "2 FREE FRAGS", Color("53d4e2"), true)
+	if c.get("slingshot", false):
+		await slingshot(u)
+	if c.has("supply"):
+		await brass_supply(u, c.supply)
+	if c.has("brood"):
+		await brood_call(u, c.brood)
+	if c.has("hivemind"):
+		var fs := vis_foes().filter(func(e): return e.hp <= 30 or u.perk("biglink"))
+		fs.sort_custom(func(a, b2): return absf(a.x - u.x) < absf(b2.x - u.x))
+		for e in fs.slice(0, c.hivemind):
+			mind_link(u, e, 2 if ks(u, "psicrown") else 1)
 	if c.get("surge", false):
 		Sfx.play("power")
 		for s in squad_alive():
@@ -4622,6 +5284,8 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 	await wait(14)
 
 func melee_valid(u: Unit, tg, c: Dictionary) -> bool:
+	if c.has("mindlink"):
+		return can_link(u, tg, c)
 	if (c.get("grab", false) or c.get("suplex", false) or c.get("piledrive", false)) and not can_grab(u, tg):
 		return false
 	return tg != null and not tg.dead and (tg.team == "enemy" or tg.is_prop()) and absf(tg.x - u.x) <= c.range + tg.w / 2.0 and absf(tg.y - u.y) <= 30
@@ -5661,6 +6325,10 @@ func vharr_well(u: Unit, r: float) -> void:
 	float_at(well.x, well.y - 40, "GRAVITY WELL", Color("c47bff"), true)
 	Sfx.play("power")
 	await pull_well(well)
+	if u.perk("crushwell"):
+		for e in vis_foes():
+			if absf(e.x - well.x) < r:
+				damage(e, 5, u)
 
 func relay_waves() -> void:
 	## O4: while a relay is being held, Jackals pour in from the right at the start of each enemy phase.
@@ -5780,6 +6448,7 @@ func start_player_turn() -> void:
 	refresh_duos()
 	refresh_mounts()
 	vehicles_new_turn()
+	classes_new_turn()
 	for s in squad_alive():
 		if s.perk("switcheroo") and not s.hand.any(func(h): return h.key == "switch"):
 			s.hand.append({"id": -9, "key": "switch", "tier": Data.base_tier("switch"), "temp": true})
@@ -6001,6 +6670,9 @@ func enemy_phase() -> void:
 		return
 	state = "enemy"
 	release_holds()
+	if squad_alive().any(func(h): return h.perk("netcall")):
+		for s in squad_alive():
+			s.overwatch = maxi(s.overwatch, 1)
 	busy = true
 	ui_dirty = true
 	banner("ENEMY PHASE", Color("ff4d3d"))
@@ -6176,6 +6848,7 @@ func enemy_phase() -> void:
 		banner("AIRSTRIKE INBOUND", Color("ff4d3d"), "MOVE OFF THE MARKERS")
 		Sfx.play("alarm")
 		await wait(40)
+	classes_enemy_end()
 	await leg_check()
 	if squad_alive().is_empty():
 		game_over()
@@ -6231,6 +6904,8 @@ func enemy_shoot(e: Unit, tg: Unit, spec: Dictionary) -> void:
 		await wait(7 if shots > 1 else 14)
 
 func overwatch_check(e: Unit) -> void:
+	if e.fl.has("mind"):
+		return
 	for s in squad_alive():
 		if s.overwatch <= 0 or e.dead:
 			continue
@@ -6460,6 +7135,12 @@ func hunted(u: Unit) -> bool:
 	return u.team == "squad" and (u.carry != "" or u.bow)
 
 func nearest_squad(e: Unit):
+	if e.fl.has("mind"):
+		var bt = null
+		for o in foes_of(e):
+			if bt == null or absf(o.x - e.x) < absf(bt.x - e.x):
+				bt = o
+		return bt
 	if taunter != null and not taunter.dead and absf(taunter.x - e.x) < 520:
 		return taunter
 	for s in squad_alive():
@@ -6483,7 +7164,7 @@ func faction(u: Unit) -> String:
 func foes_of(e: Unit) -> Array:
 	## Who an enemy fights: your squad, and in a BREACH biome the other faction's active units too.
 	## Spawners (Hive Pods, tunnels) stay out of it.
-	var out := squad_alive()
+	var out := [] if e.fl.has("mind") else squad_alive()
 	if e.team == "enemy":
 		for o in units:
 			if o.active and not o.dead and not o.gone and not o.sunk and at_war(e, o) and not Data.ETYPES[o.type].get("static", false) and not is_boss(o):
@@ -6492,7 +7173,11 @@ func foes_of(e: Unit) -> Array:
 
 func at_war(a: Unit, b2: Unit) -> bool:
 	## Two enemies that fight each other: the two factions in a BREACH, or Jackals that turned on the Vharr (E5).
-	if a.team != "enemy" or b2.team != "enemy" or faction(a) == faction(b2):
+	if a.team != "enemy" or b2.team != "enemy":
+		return false
+	if a.fl.has("mind") != b2.fl.has("mind"):
+		return true  # N8: Sable's linked Jackals and her brood fight their own side
+	if faction(a) == faction(b2):
 		return false
 	return breach or a.fl.get("turned", false) or b2.fl.get("turned", false)
 
@@ -7409,12 +8094,17 @@ func queen_act(e: Unit) -> void:
 func tick_acids() -> void:
 	## End of the enemy phase: anyone but the Vharr standing in Hive acid takes 3.
 	for a in acids:
+		var mine: bool = a.has("owner")  # Sable's spit only burns the other side
 		for u in units:
-			if u.dead or u.gone or u.sunk or u.is_prop() or u.is_pickup() or u.kind == "pow" or faction(u) == "vharr":
+			if u.dead or u.gone or u.sunk or u.is_prop() or u.is_pickup() or u.kind == "pow" or (faction(u) == "vharr" and not mine):
+				continue
+			if (mine and u.team != "enemy") or (u.team == "squad" and u.def.key == "sable"):
 				continue
 			if absf(u.x - a.x) < a.r and absf(u.y - a.y) < 20:
 				float_text(u, "ACID", Color("9df25c"))
-				damage(u, 3, null, {"status": true})
+				damage(u, a.get("dmg", 3), a.get("owner"), {"status": true})
+				if mine and a.owner is Unit and a.owner.perk("meltarmor"):
+					add_status(u, "toxic", 2, a.owner)
 		a.turns -= 1
 	acids = acids.filter(func(a): return a.turns > 0)
 
@@ -8288,7 +8978,7 @@ func physics(u: Unit) -> void:
 				collision_dmg(u, Data.ETYPES[u.type].get("crash", 5) if u.kind == "enemy" else 5, "CRASH")
 			if u.para:
 				u.para = false
-			elif imp > 6.5 and not u.rushing and not u.jumping and not u.leaping:
+			elif imp > 6.5 and not u.rushing and not u.jumping and not u.leaping and not (u.team == "squad" and u.def.key == "kage"):
 				collision_dmg(u, (imp - 6.5) * 2.5, "FALL")
 			if imp > 3:
 				Sfx.play("land", -8)
@@ -8353,6 +9043,8 @@ func prime_mine(m: Unit, owner, delay: int) -> void:
 
 func mine_under(u: Unit, x: float, y: float, pad: float = 0.0):
 	## The armed mine a soldier standing at (x, y) would set off, with pad px of margin, or null.
+	if u.team == "squad" and u.def.key == "finch":
+		return null  # Light Feet
 	for m in units:
 		if m.kind == "mine" and not m.primed and not m.gone and absf(x - m.x) < u.w / 2.0 + 5 + pad and absf(y - m.y) < 8:
 			return m
