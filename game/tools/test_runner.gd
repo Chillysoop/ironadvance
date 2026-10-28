@@ -776,6 +776,8 @@ func run() -> void:
 			await aliens6()
 		"aliens7":
 			await aliens7()
+		"aliens8":
+			await aliens8()
 		"playtest":
 			await playtest()
 		"straggler":
@@ -1648,7 +1650,7 @@ func aliens2() -> void:
 	Run.roll_dial()
 	check(Run.dial.all(func(id): return not Run.dial_breach[id]), "level 1 never rolls a BREACH")
 	var lv := Run.make_level("fortress", 1, true)
-	check(lv.breach and lv.encounter in ["swarm", "nest"], "a level 2 level carries its breach flag and an encounter (%s)" % lv.encounter)
+	check(lv.breach and lv.encounter in Data.ENCOUNTERS, "a level 2 level carries its breach flag and an encounter (%s)" % lv.encounter)
 	# the nest: three Hive Pods with staggered timers
 	lv.encounter = "nest"
 	Run.level = lv
@@ -1891,7 +1893,7 @@ func aliens5() -> void:
 	## Q2 Burrow Queen: the desert and mountain mini-boss encounter.
 	Run.new_run()
 	check(Run.make_level("desert", 1).encounter == "queen" and Run.make_level("mountain", 2).encounter == "queen", "desert and mountain levels from level 2 hold the Burrow Queen")
-	check(Run.make_level("desert", 0).encounter == "" and Run.make_level("jungle", 1).encounter in ["swarm", "nest"], "level 1 and other biomes don't")
+	check(Run.make_level("desert", 0).encounter == "" and Run.make_level("jungle", 1).encounter in Data.ENCOUNTERS, "level 1 and other biomes don't")
 	Run.level = Run.make_level("desert", 1)
 	var b: Battle = main.start_battle(1, Run.level)
 	await until(func(): return b.state == "player" and not b.busy)
@@ -2133,6 +2135,66 @@ func aliens7() -> void:
 		var gh := g.hp
 		b.crush(g, 5, s, 0, 0)
 		check(gh - g.hp == 15, "dropping something on it does triple (%d)" % (gh - g.hp))
+
+func aliens8() -> void:
+	## H7 Gate Trooper, F2 kill credit (TURNCOAT), F3 defectors.
+	Run.new_run()
+	Run.level = Run.make_level("jungle", 0)
+	var b: Battle = main.start_battle(0, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var types := b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
+	check(types.has("gatetrooper"), "level 1 has a Gate Trooper among the Jackals (%s)" % str(types))
+	b.speed = 2.0
+	var x0 := 600.0
+	flat_strip(b, x0 - 160, 700)
+	var s := alien_field(b, x0)
+	var gt := spawn_alien(b, "gatetrooper", x0 + 340)
+	check(gt.sheet == "en_grunt", "it wears the Jackal rifleman's sprite")
+	var hp0 := s.hp
+	await b.enemy_act(gt)
+	await until(func(): return b.settled(), 900)
+	await shot("alien8_trooper")
+	check(s.hp < hp0, "it walks in and fires the stolen ray (hp %d -> %d)" % [hp0, s.hp])
+	# F2: in a breach, a Jackal you hurt that a Vharr finishes off still pays you
+	s = alien_field(b, x0)
+	b.breach = true
+	var j := spawn_alien(b, "grunt", x0 + 200)
+	var sq := spawn_alien(b, "squid", x0 + 420)
+	j.last_hit_by = s
+	var xp0: int = s.s.xp
+	b.damage(j, 99, sq, {})
+	check(j.dead and s.s.xp > xp0, "a Vharr kill on a Jackal you set up gives you the XP (%d -> %d)" % [xp0, s.s.xp])
+	check(b.feed.size() and b.feed[-1].stamp.contains("TURNCOAT"), "the kill feed calls it a TURNCOAT kill")
+	# F3: a hurt Jackal alone next to a soldier gives up
+	s = alien_field(b, x0)
+	b.breach = true
+	var d := spawn_alien(b, "grunt", x0 + 120)
+	d.hp = 3
+	await b.enemy_act(d)
+	check(d.kind == "pow" and d.fl.get("defector", false) and d.team == "neutral", "a cornered Jackal surrenders in a breach")
+	var d2 := spawn_alien(b, "grunt", x0 + 140)
+	d2.hp = 3
+	await b.enemy_act(d2)
+	check(d2.kind == "enemy", "only one per level")
+	d2.dead = true; d2.gone = true
+	b.state = "player"; b.busy = false
+	s.x = d.x - 4
+	await frames_wait(20)
+	check(d.freed and b.pow_queue.size() == 1, "walk over him to bring him in")
+	if b.pow_queue.size():
+		b.sign_defector(b.pow_queue.pop_front().pow)
+	check(Run.defectors.size() == 1 and Run.defectors[0] == d.pow_name, "walked out, he joins the recruit pool (%s)" % str(Run.defectors))
+	Run.soldiers[3].alive = false
+	var off: Dictionary = Run.recruit_offers()[0]
+	check(off.trait.id == "defector" and off.name == d.pow_name, "and is the first recruit offered")
+	var hired := Run.hire(3, off)
+	check(hired.bonus.dodge >= 4 and Run.defectors.is_empty(), "hiring him uses up the defector")
+	b.breach = false
+	var d3 := spawn_alien(b, "grunt", x0 + 160)
+	d3.hp = 3
+	b.stats.erase("defectors")
+	await b.enemy_act(d3)
+	check(d3.kind == "enemy", "outside a breach nobody surrenders")
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.
