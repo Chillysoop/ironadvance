@@ -503,18 +503,25 @@ func gate_open() -> float:
 func _draw() -> void:
 	if sub != null and is_instance_valid(sub):
 		return
-	draw_texture_rect(bg("dusk_sky"), Rect2(0, 0, 960, 540), false)
+	# C3: the campaign's field HQ is a night camp on the front, not the quick run's gate yard at dusk
+	var camp := Run.campaign()
+	var th := "night" if camp else "dusk"
+	draw_texture_rect(bg(th + "_sky"), Rect2(0, 0, 960, 540), false)
+	if camp:
+		draw_searchlights()
 	for L in [["far", 300.0], ["mid", 360.0]]:
-		var tx: Texture2D = bg("dusk_%s" % L[0])
+		var tx: Texture2D = bg("%s_%s" % [th, L[0]])
 		var w := tx.get_width() * 2.0
 		var x := 0.0
 		while x < 960:
 			draw_texture_rect(tx, Rect2(x, L[1] + 40 - tx.get_height() * 2, w, tx.get_height() * 2), false)
 			x += w
 	# ground
-	draw_rect(Rect2(0, GROUND, 960, 110), Color("4a3a2c"))
-	draw_rect(Rect2(0, GROUND, 960, 4), Color("7cb042"))
-	draw_rect(Rect2(0, GROUND + 4, 960, 2), Color("3a5a24"))
+	draw_rect(Rect2(0, GROUND, 960, 110), Color("4a3a2c") if not camp else Color("2e2620"))
+	draw_rect(Rect2(0, GROUND, 960, 4), Color("7cb042") if not camp else Color("4e5a30"))
+	draw_rect(Rect2(0, GROUND + 4, 960, 2), Color("3a5a24") if not camp else Color("2a3420"))
+	if camp:
+		draw_sandbags()
 	if Run.hq("mess") >= 1:
 		draw_mess_hall()
 	if Run.hq("motor") >= 1:
@@ -528,12 +535,15 @@ func _draw() -> void:
 	draw_memorial()
 	draw_rank_pips(230, "barracks")
 	draw_rank_pips(600, "armory")
-	if not memorial_open and not upgrades_open and not doc_open:
+	if camp:
+		draw_war_table()
+	elif not memorial_open and not upgrades_open and not doc_open:
 		for k in Run.hq("gate"):
 			# Gate Control: a lit beacon on the ring for every rank
 			var a := -PI / 2 + (k - 1) * 0.5
 			draw_circle(GATE + Vector2(cos(a), sin(a)) * (GATE_R + 8), 4, Color("53d4e2"))
-	Art.draw_gate(self, GATE, GATE_R, t, 9 if gate_open() > 0 else 0, gate_open(), 1.0, t * 0.004)
+	if not camp:
+		Art.draw_gate(self, GATE, GATE_R, t, 9 if gate_open() > 0 else 0, gate_open(), 1.0, t * 0.004)
 	# the squad, stepping out of the gate when they just came home
 	var al: Array = Run.soldiers.filter(func(s): return s.alive)
 	for i in al.size():
@@ -758,6 +768,81 @@ func draw_doc_panel() -> void:
 		draw_rect(cr, Color("9df25c") if on.size() else Color("4a5a4a"), false, 1)
 		Art.text(self, S.name, Vector2(cr.position.x + 10, cr.position.y + 20), 16, Color("ffd23a") if r >= 1 else Color("8a8a6a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 		Art.text(self, "+ " + S.up, Vector2(cr.position.x + 10, cr.position.y + 38), 8, Color("62d26f") if r >= 1 else Color("6a7a6a"))
+
+# ---------------------------------------------------------------- C3: the campaign's night camp
+func draw_searchlights() -> void:
+	## Two lights behind the camp sweep the clouds.
+	for k in 2:
+		var o := Vector2(150.0 if k == 0 else 820.0, GROUND - 20)
+		var a := -PI / 2 + sin(t / (140.0 + k * 37) + k * 2.0) * 0.55
+		var d := Vector2(cos(a), sin(a))
+		var side := Vector2(-d.y, d.x)
+		var far := o + d * 520
+		draw_colored_polygon(PackedVector2Array([o - side * 3, o + side * 3, far + side * 46, far - side * 46]), Color(0.85, 0.9, 1.0, 0.1))
+		draw_colored_polygon(PackedVector2Array([o - side * 1, o + side * 1, far + side * 18, far - side * 18]), Color(0.85, 0.9, 1.0, 0.09))
+
+func draw_sandbags() -> void:
+	## A sandbag wall along the back of the camp, two rows, staggered.
+	var ink := Color(0.05, 0.035, 0.03)
+	for row in 2:
+		var y := GROUND - 10 - row * 9
+		var x := -10.0 + (row * 13)
+		while x < 960:
+			var r := Rect2(x, y, 24, 10)
+			draw_rect(r.grow(1), ink)
+			draw_rect(r, Color("8a7a52") if row == 0 else Color("7a6a46"))
+			draw_rect(Rect2(x + 2, y + 1, 20, 2), Color("a8966a"))
+			draw_rect(Rect2(x + 11, y + 2, 1, 7), Color("5e5236"))
+			x += 26
+
+func draw_war_table() -> void:
+	## In place of the gate: the command post's map board, showing this act's front as it stands.
+	var ink := Color(0.05, 0.035, 0.03)
+	var c := GATE + Vector2(0, -6)
+	# camo net strung over the post on two poles
+	for px in [c.x - 110, c.x + 110]:
+		draw_rect(Rect2(px - 2, c.y - 80, 4, GROUND - (c.y - 80)), ink)
+		draw_rect(Rect2(px - 1, c.y - 80, 2, GROUND - (c.y - 80)), Color("5a4a34"))
+	draw_colored_polygon(PackedVector2Array([Vector2(c.x - 128, c.y - 66), Vector2(c.x, c.y - 96), Vector2(c.x + 128, c.y - 66)]), Color("2e3a24"))
+	for i in 18:
+		var nx := c.x - 116 + i * 13.5
+		draw_rect(Rect2(nx, c.y - 70 - (1.0 - absf(nx - c.x) / 124.0) * 22 + (i % 3) * 2, 8, 5), Color("3e4a2c") if i % 2 == 0 else Color("4a3e28"))
+	# the hanging lamp and its warm pool of light
+	var sw := sin(t / 50.0) * 3
+	draw_line(Vector2(c.x, c.y - 90), Vector2(c.x + sw, c.y - 62), ink, 1.0)
+	draw_colored_polygon(PackedVector2Array([Vector2(c.x + sw - 4, c.y - 60), Vector2(c.x + sw + 4, c.y - 60), Vector2(c.x + 96, c.y + 40), Vector2(c.x - 96, c.y + 40)]), Color(1, 0.85, 0.5, 0.07))
+	draw_rect(Rect2(c.x + sw - 5, c.y - 64, 10, 6), ink)
+	draw_rect(Rect2(c.x + sw - 3, c.y - 60, 6, 3), Color("ffd27a"))
+	# the board on its easel
+	var board := Rect2(c.x - 84, c.y - 52, 168, 92)
+	draw_rect(Rect2(board.position.x + 10, board.end.y, 4, GROUND - board.end.y), ink)
+	draw_rect(Rect2(board.end.x - 14, board.end.y, 4, GROUND - board.end.y), ink)
+	draw_rect(board.grow(3), ink)
+	draw_rect(board.grow(2), Color("6b4a26"))
+	draw_rect(board, Color("c9b98a"))
+	for gy in range(int(board.position.y) + 6, int(board.end.y), 10):
+		draw_rect(Rect2(board.position.x, gy, board.size.x, 1), Color(0.3, 0.25, 0.15, 0.25))
+	var A: Dictionary = Run.act()
+	var to_board := func(at: Array) -> Vector2:
+		return board.position + Vector2((float(at[0]) - 16.0) / 664.0 * board.size.x, (float(at[1]) - 80.0) / 396.0 * board.size.y)
+	for sc in A.sectors:
+		for l in sc.links:
+			var o: Dictionary = Run.sector(l)
+			if o.is_empty():
+				continue
+			draw_line(to_board.call(sc.at), to_board.call(o.at), Color(0.3, 0.25, 0.15, 0.6), 1.0)
+	for sc in A.sectors:
+		var p: Vector2 = to_board.call(sc.at)
+		var col := Color("4a525c")
+		if Run.sector_held(sc.id):
+			col = Color("3a8a3e")
+		elif sc.get("stronghold", false):
+			col = Color("c0392b")
+		elif Run.sector_open(sc):
+			col = Color("d4a017") if t % 40 < 26 else Color("8a6a10")
+		draw_rect(Rect2(p - Vector2(4, 4), Vector2(8, 8)), ink)
+		draw_rect(Rect2(p - Vector2(3, 3), Vector2(6, 6)), col)
+	Art.text(self, "ACT %s  %s" % [A.roman, A.name], Vector2(c.x, board.position.y - 6), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_doc_lab() -> void:
 	## Doc's Lab: a back-row hut behind the Memorial with a green-lit window and a lightning rod.
