@@ -17,7 +17,7 @@ const CARD_Y := 148.0
 const SHELF_Y := 372.0
 const BARKS := [
 	"Cards up top go into one soldier's deck. Click a card, then the soldier. Or drag it onto them.",
-	"Squad gear helps everyone at once. Shelf items go to the stash; equip them from a soldier's Dossier.",
+	"Squad gear helps everyone at once. Shelf items go to the stash; equip them at the Armory or from a soldier's Dossier.",
 	"Want a card changed? Polish, mods, fusing and burning are next door at the Workshop.",
 ]
 
@@ -111,8 +111,7 @@ func build() -> void:
 		cv.position = Vector2(24 + i * (cw + 8), CARD_Y)
 		cv.price = o.price
 		cv.disabled = o.get("sold", false) or Run.scrip < o.price
-		if o.get("sold", false):
-			cv.label_top = "SOLD"
+		cv.sold = o.get("sold", false)
 		var idx := i
 		cv.pressed.connect(func(): buy_card(idx))
 		add_child(cv)
@@ -124,8 +123,7 @@ func build() -> void:
 		cv.position = Vector2(600 + i * (cw + 8), CARD_Y)
 		cv.price = o.price
 		cv.disabled = o.get("sold", false) or Run.scrip < o.price
-		if o.get("sold", false):
-			cv.label_top = "SOLD"
+		cv.sold = o.get("sold", false)
 		var idx := i
 		cv.pressed.connect(func(): buy_gear(idx))
 		add_child(cv)

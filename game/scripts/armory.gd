@@ -419,27 +419,30 @@ class ItemTile extends Control:
 			draw_rect(Rect2(-3, -3, w + 6, h + 6), Color("ffd23a"), false, 2.0)
 		if mystery:
 			Art.text(self, "?", Vector2(18, 30), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 1)
-			Art.text(self, "MYSTERY", Vector2(36, 18), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
-			Art.text(self, "Any rarity", Vector2(36, 32), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			Art.text(self, "MYSTERY", Vector2(36, 15), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			Art.text(self, "Any rarity", Vector2(36, 28), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		else:
 			var d: Dictionary = Data.ITEMS[item.id]
 			var icon: String = {"weapon": "ic_up", "armor": "ic_shield", "kit": "ic_star", "belt": "ic_heart"}.get(d.slot, "ic_card")
 			if d.slot == "weapon":
 				icon = "ic_card"
 			draw_texture_rect(Art.tex[icon], Rect2(5, 6, 16, 16), false)
-			Art.text(self, Data.SLOT_NAMES[d.slot].substr(0, 3), Vector2(13, 36), 8, rc, HORIZONTAL_ALIGNMENT_CENTER)
 			var nm: String = d.name
 			nm = ItemTile.fit(nm, w - 31)
-			Art.text(self, nm, Vector2(27, 17), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			Art.text(self, nm, Vector2(27, 15), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 			var sl: Array = Data.stat_lines(Data.item_stats(item))
 			var line: String = sl[0] if sl.size() else d.text
 			line = ItemTile.fit(line, w - 31)
-			Art.text(self, line, Vector2(27, 32), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			Art.text(self, line, Vector2(27, 28), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		# the full slot word along the bottom, clear of the icon and the price
+		if item != null:
+			var sn: String = Data.SLOT_NAMES[Data.ITEMS[item.id].slot]
+			Art.text(self, sn, Vector2(4, h - 3), 8, rc)
 		if black:
-			Art.text(self, "BLACK MKT", Vector2(27, h - 3), 8, Color("ff4d3d"))
+			Art.text(self, "BLACK MARKET", Vector2(w / 2, -3), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER, 1)
 		if sold:
 			draw_rect(Rect2(1, 1, w - 2, h - 2), Color(0, 0, 0, 0.6))
 			Art.text(self, "SOLD", Vector2(w / 2, h / 2 + 4), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 		elif price >= 0:
 			draw_rect(Rect2(w - 40, h - 12, 40, 12), ink)
-			Art.text(self, "%d$" % price, Vector2(w - 3, h - 2), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
+			Art.text(self, "%d$" % price, Vector2(w - 3, h - 2), 8, Color("ffd23a") if Run.scrip >= price else Color("8a7a40"), HORIZONTAL_ALIGNMENT_RIGHT)

@@ -226,7 +226,10 @@ func _draw() -> void:
 			var what: String = Data.SECTOR_PERKS[sc.perk].name if sc.has("perk") else hold_text(sc.hold)
 			Art.text(self, what, p + Vector2(0, sz / 2 + 30), 16, Color("62d26f") if st == "held" else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 	var need := int(A.need)
-	Art.text(self, "%d OF %d TAKEN" % [mini(Run.held_count(), need), need], Vector2(MAP.end.x - 12, MAP.position.y + 20), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
+	# C2: say what taking them unlocks
+	var fort: Array = A.sectors.filter(func(x): return x.get("stronghold", false))
+	var opens := ("  %s OPENS AT %d" % [fort[0].name, need]) if fort.size() and Run.held_count() < need else ""
+	Art.text(self, "%d OF %d TAKEN%s" % [mini(Run.held_count(), need), need, opens], Vector2(MAP.end.x - 12, MAP.position.y + 20), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
 	var lx := MAP.position.x + 12
 	for lg in [["HELD", Color("62d26f")], ["OPEN", Color("ffd23a")], ["NOT YET", Color("4a525c")], ["STRONGHOLD", Color("ff4d3d")]]:
 		draw_rect(Rect2(lx, MAP.position.y + 10, 10, 10), lg[1])
