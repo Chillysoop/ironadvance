@@ -1,0 +1,50 @@
+[
+ {
+  "op": "edit",
+  "prompt": "Make this riot Jackal a heavier Shield Wall trooper: thick dark grey armor plates on the chest and shoulders, a full-face riot visor pulled down, heavier boots. Keep the exact same pose, frame size, black outline, palette and proportions. Do not add any weapon, shield or arms.",
+  "refs": [
+   "en_shield idle 0"
+  ],
+  "size": null,
+  "outputs": [
+   "edit_0.png",
+   "edit_1.png"
+  ],
+  "asset_ids": [
+   "199617fa-8cd0-4414-941c-e1ca0d3f0983",
+   "88728907-6726-43fb-a239-a1015fa57646"
+  ]
+ },
+ {
+  "op": "manual",
+  "note": "still.png = edit_1.png (the edit comes back cropped to the body) pasted onto a 24x24 frame at the riot Jackal body offset (x 4, feet on the bottom row)"
+ },
+ {
+  "op": "animate",
+  "prompt": "Subtle idle: the armored trooper breathes, body bobs down one pixel and back, visor glint shifts. Feet stay planted, no arms or weapons appear. Seamless loop.",
+  "refs": [
+   "still.png"
+  ],
+  "size": null,
+  "outputs": [
+   "idle.png"
+  ],
+  "asset_ids": [
+   "29a4b635-4771-40d9-83e8-ac2bfc5f87a1"
+  ]
+ },
+ {
+  "op": "animate",
+  "prompt": "Side-view heavy armored march to the right: slow, weighty alternating strides, knees lift a little, body bobs one pixel, helmet and armor stay rigid, no arms or weapons appear. Seamless loop.",
+  "refs": [
+   "still.png"
+  ],
+  "size": null,
+  "outputs": [
+   "run.png"
+  ],
+  "asset_ids": [
+   "acd12792-f069-4e5a-98df-4a925cdce4f5"
+  ]
+ }
+]
