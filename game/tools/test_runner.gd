@@ -2638,7 +2638,7 @@ func aliens8() -> void:
 	flat_strip(b, x0 - 160, 700)
 	var s := alien_field(b, x0)
 	var gt := spawn_alien(b, "gatetrooper", x0 + 340)
-	check(gt.sheet == "en_grunt", "it wears the Jackal rifleman's sprite")
+	check(gt.sheet == "en_gatetrooper", "it wears its own Sprite Fusion body, not the rifleman's")
 	var hp0 := s.hp
 	await b.enemy_act(gt)
 	await until(func(): return b.settled(), 900)

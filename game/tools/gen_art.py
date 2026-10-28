@@ -490,6 +490,13 @@ GUNS = {
         "...kKKk.S..k........",
         "....KK..............",
     ], 1, 1),
+    'ray': ([
+        "...........cc....",
+        "SSuU.GGGGGGGGGgcc",
+        ".SSTwGGgggGGk.cc.",
+        "..TTT.SS.k.......",
+        "..TT.............",
+    ], 1, 1),
     'none': ([
         "SS.",
         ".SS",
@@ -573,6 +580,85 @@ def write_sheet(name, frames, gun):
         flash_white(gimg).save(os.path.join(OUT, 'sprites', name + '_gun_w.png'))
         meta['gun_pivot'] = [gpx, gpy]
     return meta
+
+# ---------------------------------------------------------------- Sprite Fusion characters
+# Bodies drawn by the Sprite Fusion generator (tools/sf_api.py, styled on our own frames) live in
+# tools/sf_src/<name>/ as still.png plus idle.png / run.png strips. They are cleaned here, so this
+# script still rebuilds every sheet with no network and no key: hard alpha, one shared palette per
+# character (the generator leaves hundreds of near-duplicate colours), our outline colour, feet on
+# the bottom row. The poses it doesn't animate are built from the still the way char_frames does.
+SF_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sf_src')
+
+def sf_strip(path, fw=FW):
+    im = Image.open(path).convert('RGBA')
+    return [im.crop((i * fw, 0, i * fw + fw, FH)) for i in range(im.width // fw)]
+
+def sf_clean(frames, colors=20):
+    arrs = [np.array(f.convert('RGBA')) for f in frames]
+    for a in arrs:
+        a[..., 3] = np.where(a[..., 3] >= 128, 255, 0)
+    # outline: anything near-black becomes our outline colour and stays out of the shared palette
+    for a in arrs:
+        dark = (a[..., 3] == 255) & (a[..., :3].astype(int).sum(-1) < 110)
+        a[dark] = OUTLINE
+    px = np.concatenate([a[(a[..., 3] == 255) & ~np.all(a == OUTLINE, -1)][:, :3] for a in arrs])
+    strip = Image.fromarray(px.reshape(1, -1, 3).astype(np.uint8), 'RGB')
+    pal = np.array(strip.quantize(colors, method=Image.Quantize.MEDIANCUT).convert('RGB')).reshape(-1, 3)
+    pal = np.unique(pal, axis=0).astype(int)
+    out = []
+    for a in arrs:
+        m = (a[..., 3] == 255) & ~np.all(a == OUTLINE, -1)
+        c = a[m][:, :3].astype(int)
+        a[m, :3] = pal[((c[:, None, :] - pal[None]) ** 2).sum(-1).argmin(1)]
+        img = Image.fromarray(a, 'RGBA')
+        bb = img.getbbox()
+        if bb and bb[3] != FH:
+            img = settle(img)
+        out.append(img)
+    return out
+
+def sf_char(name):
+    d = os.path.join(SF_SRC, name)
+    still = Image.open(os.path.join(d, 'still.png')).convert('RGBA').crop((0, 0, FW, FH))
+    idle = sf_strip(os.path.join(d, 'idle.png'))
+    run = sf_strip(os.path.join(d, 'run.png'))
+    clean = sf_clean([still] + idle + run)
+    still, idle, run = clean[0], clean[1:1 + len(idle)], clean[1 + len(idle):]
+    top0 = still.getbbox()[1]
+    sx, sy = SHOULDER
+    def sh(im, dx=0):
+        # the gun rides the shoulder: follow the body's bob from the head's top row
+        return (sx + dx, sy + im.getbbox()[1] - top0)
+    def lift(im, dy):
+        out = Image.new('RGBA', im.size, (0, 0, 0, 0))
+        out.paste(im, (0, dy))
+        return out
+    def lean(im, dx):
+        # shear the upper body by a pixel, feet stay planted
+        out = im.copy()
+        top = im.crop((0, 0, FW, 15))
+        out.paste((0, 0, 0, 0), (0, 0, FW, 15))
+        out.alpha_composite(top, (dx, 0))
+        return out
+    def crouch(im):
+        out = Image.new('RGBA', im.size, (0, 0, 0, 0))
+        out.alpha_composite(im.crop((0, 0, FW, 17)), (0, 2))
+        out.alpha_composite(im.crop((0, 19, FW, FH)), (0, 19))
+        return out
+    F = {}
+    F['idle'] = [(f, sh(f), True) for f in idle for _ in (0, 1)]
+    F['run'] = [(f, sh(f, 1), True) for f in run]
+    F['jump'] = [(lift(run[2], -1), (sx, sy - 1), True), (run[2], (sx, sy), True)]
+    hurt = lean(still, -1)
+    F['hurt'] = [(hurt, (sx - 1, sy), False), (lift(hurt, 1), (sx - 1, sy + 1), False)]
+    F['throw'] = [(lean(still, -1), (sx - 1, sy), False), (still, (sx, sy), False),
+                  (lean(still, 1), (sx + 1, sy), False), (still, (sx, sy), True)]
+    F['cheer'] = [(still, (sx, sy), False), (lift(still, -2), (sx, sy - 2), False)]
+    F['climb'] = [(run[1], sh(run[1]), False), (run[5 % len(run)], sh(run[5 % len(run)]), False)]
+    F['crouch'] = [(crouch(still), (sx, sy + 2), True)]
+    F['die'] = [(settle(hurt.rotate(ang, resample=Image.NEAREST, center=(12, 14)), up), (sx, sy), False)
+                for ang, up in ((8, 0), (30, 5), (62, 4), (90, 0), (96, 2), (90, 0))]
+    return F
 
 # ---------------------------------------------------------------- big pieces: brute, POW, boss, MG nest
 def brute_frames():
@@ -2119,6 +2205,9 @@ def main():
         fr = char_frames(key, pal)
         g = CHAR_STYLE[key]['gun']
         meta['en_' + key] = write_sheet('en_' + key, fr, gun_image(g, pal))
+    # the Gate Trooper's body comes from Sprite Fusion (tools/sf_src/gatetrooper), its stolen ray from here
+    ray = palette(dict(ENEMY_PAL['grunt'], G='#4a2a78', g='#9a6ae0', k='#24163c', c='#9cff6a', w='#6a4aa0', T='#3a2460'))
+    meta['en_gatetrooper'] = write_sheet('en_gatetrooper', sf_char('gatetrooper'), gun_image('ray', ray))
     meta['en_brute'] = brute_frames()
     meta.update(alien_frames())
     pow_frames()

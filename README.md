@@ -35,6 +35,8 @@ The launcher is unsigned: on Windows choose More info → Run anyway; on macOS r
   Missions are strings of level segments in `data.gd` (`SEGMENTS`): ridges, trenches and cliffs, multi-floor forts,
   collapsing bridges, piers, cranes, minefields, steel-grating catwalks and chain-link fences (bullets and grenades pass through both). `terrain.gd` builds them.
 - `game/tools/gen_art.py`, `gen_sfx.py` regenerate every sprite and sound (Python 3 + Pillow; gen_art.py also needs NumPy).
+- `game/tools/sf_api.py` asks the Sprite Fusion pixel art generator for new bodies, styled on our own frames (dev time only, needs `SPRITE_FUSION_API_KEY`; the key never goes in the repo or the game).
+  Results are committed raw under `game/tools/sf_src/<name>/` with a `manifest.json` of the prompts, and `gen_art.py` cleans them (hard alpha, one shared palette, our outline colour, feet on the bottom row) and builds the full sheet, so regenerating art needs no key. The Gate Trooper is the first one.
 - `game/tools/test_runner.gd` scripted tests and an autoplayer:
   `godot --path game -- --iatest --scenario=flow --out=/tmp/shots` (title, start, aim, arc, topple, level, shop, picker, flow, bot, campaign, alive).
   `--scenario=levels` photographs every screen of each mission and walks a soldier through to list blocked spots;

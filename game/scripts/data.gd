@@ -1232,7 +1232,7 @@ const ETYPES := {
 	# Vharr aliens. Like the Jackals they move and attack in the same enemy phase, and
 	# "weight" sets how physics moves them: light flies twice as far, hover holds altitude on a pod.
 	# H7: a Jackal carrying a stolen Squid ray, the pact in action on level 1
-	"gatetrooper": {"name": "Gate Trooper", "sheet": "en_grunt", "hp": 14, "dmg": 5, "range": 520, "speed": 100, "prefer": 300, "score": 175, "w": 16, "h": 34, "note": "A Jackal with a stolen Vharr ray. It goes through one thin wall and hits everything on the line, Jackals included."},
+	"gatetrooper": {"name": "Gate Trooper", "hp": 14, "dmg": 5, "range": 520, "speed": 100, "prefer": 300, "score": 175, "w": 16, "h": 34, "note": "A Jackal with a stolen Vharr ray. It goes through one thin wall and hits everything on the line, Jackals included."},
 	"skitter": {"name": "Skitter", "faction": "vharr", "weight": "light", "hp": 6, "dmg": 4, "leap": 240, "speed": 140, "climb": true, "pack": 3, "score": 60, "w": 28, "h": 18, "note": "Comes in packs. Scrambles up walls and pounces from 240px. Light: flies twice as far when knocked."},
 	"squid": {"name": "Squid Trooper", "faction": "vharr", "weight": "hover", "hp": 8, "pod": 8, "dmg": 4, "range": 520, "speed": 110, "prefer": 300, "alt": 110, "score": 150, "w": 36, "h": 46, "note": "Hovers on a saucer pod. Its ray goes through one thin wall and hits everything on the line. Break the pod and it drops."},
 	"blinker": {"name": "Blinker", "faction": "vharr", "hp": 10, "dmg": 7, "knock": 4.5, "speed": 60, "score": 175, "w": 22, "h": 60, "note": "Teleports behind the nearest soldier within 360px and claws them."},
