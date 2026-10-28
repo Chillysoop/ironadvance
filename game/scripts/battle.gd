@@ -3085,7 +3085,8 @@ func make_camp(c: Dictionary) -> void:
 			s.gone = false
 			s.alpha = 1.0
 			s.hp = int(ceil(s.max_hp / 2.0))
-			s.x = c.fire - 40 + i * 26
+			# by the fire, unless the screen has already scrolled past it: then at the near edge
+			s.x = maxf(c.fire - 40, cam_x + 16) + i * 26
 			var sy = T.stand_y(s.x, 0)
 			s.y = float(sy) if sy != null else s.y
 			s.vx = 0; s.vy = 0; s.air = false; s.walk = null
