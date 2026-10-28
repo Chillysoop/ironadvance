@@ -655,7 +655,7 @@ func draw_troop_card(s: Dictionary, x: float) -> void:
 	var r := Rect2(clampf(x - 110, 8, 732), GROUND - 150, 220, 70)
 	draw_rect(r, Color(0.05, 0.035, 0.03, 0.95))
 	draw_rect(r, Color("ffd23a"), false, 2.0)
-	Art.text(self, "%s  %s" % [s.def.name, s.def.cls.to_upper()], r.position + Vector2(8, 16), 8, Color.WHITE)
+	Art.text(self, "%s  %s" % [s.def.name, Run.title_of(s).to_upper()], r.position + Vector2(8, 16), 8, Color.WHITE)
 	Art.text(self, "HP %d/%d   DECK %d   LV%d" % [s.hp, Run.eff_max_hp(s), s.deck.size(), s.lvl], r.position + Vector2(8, 32), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 	var al := Services.alert(s)
 	var tip: String = {"FUSE": "3 copies ready to fuse", "EVOLVE": "a card can evolve", "HURT": "hurt: patch up at the Doc's Lab"}.get(al, "")

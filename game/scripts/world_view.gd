@@ -438,6 +438,13 @@ func draw_unit(u: Unit) -> void:
 			Art.draw_char(self, u.sheet, a[0], a[1], pos + kick + o, u.face, true, rot, u.alpha * rim.a, u.gun_angle, false, 1.0, Color(rim, 1.0))
 	var sc := 1.0 + 0.1 * maxi(0, u.fl.get("swell", 0)) if u.type == "bloater" else (1.9 if u.type == "queen" else 1.0)
 	Art.draw_char(self, u.sheet, a[0], a[1], pos + kick, u.face, white, rot, u.alpha, u.gun_angle, a[2], sc)
+	if u.team == "squad" and not u.dead and u.s.get("prestige", "") != "":
+		# P1: the prestige pin, a gold star on the headgear
+		var pp := pos + kick + Vector2(u.face * 2, -u.h - 6)
+		draw_rect(Rect2(pp.x - 2, pp.y - 3, 5, 7), C_DARK)
+		draw_rect(Rect2(pp.x - 3, pp.y - 1, 7, 3), C_DARK)
+		draw_rect(Rect2(pp.x - 1, pp.y - 2, 3, 5), Color("ffd23a"))
+		draw_rect(Rect2(pp.x - 2, pp.y, 5, 1), Color("ffd23a"))
 	if seat > 0:
 		pos.y += seat
 		draw_vehicle(u.mech.type, pos, u.face, white, u.walk != null or u.air, true, vcol)
@@ -1241,7 +1248,7 @@ func draw_targeting() -> void:
 				draw_rect(Rect2(to.x - gw / 2.0, to.y, gw, 8), Color(0.79, 0.82, 0.85, 0.45))
 			elif c.get("drill", false):
 				var d := b.drill_dir(u, m)
-				var reach: float = u.move_left + c.get("reach", 0)
+				var reach: float = u.move_left * b.drill_mul(u) + c.get("reach", 0)
 				var sim := b.sim_drill(u, d, b.drill_len(u, c, m))
 				var o := Vector2(u.x, u.y - u.h / 2.0)
 				draw_dashed_line(o, o + d * reach, Color(1, 0.82, 0.23, 0.35), 1.0, 4.0)

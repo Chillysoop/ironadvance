@@ -550,6 +550,10 @@ func make_recruit(o: Dictionary) -> Dictionary:
 			s.max_hp += 5
 			s.hp += 5
 		"slippery": s.bonus.dodge += 6
+		"excop": s.bonus.dodge += 4
+		"farmhand":
+			s.max_hp += 8
+			s.hp += 8
 		"defector":
 			s.max_hp += 3
 			s.hp += 3
@@ -560,6 +564,8 @@ func make_recruit(o: Dictionary) -> Dictionary:
 			var cands: Array = s.deck.filter(func(c): return c.key == dk and upgradable(c))
 			if cands.size():
 				raise_tier(cands[0])
+	if o.trait.has("card"):
+		s.deck.append(new_card(o.trait.card, -1, "start"))  # P2: the background's own card
 	if not o.legacy.is_empty():
 		s.perks.append(o.legacy.id)
 	if hq("barracks") >= 2:
@@ -704,9 +710,10 @@ func level_options(s: Dictionary) -> Array:
 	var out: Array = []
 	var d: Dictionary = s.def
 	var ban: Array = banished.get(d.key, [])
-	var pool: Array = d.pool.filter(func(k): return not ban.has(k))
+	var full: Array = d.pool + s.get("xtrain", [])  # P3: cross-trained cards join the offers
+	var pool: Array = full.filter(func(k): return not ban.has(k))
 	if pool.is_empty():
-		pool = d.pool.duplicate()
+		pool = full.duplicate()
 	pool.shuffle()
 	var ckey: String = pool[0]
 	out.append({"kind": "card", "key": ckey, "tier": roll_card_tier(ckey)})
@@ -760,6 +767,28 @@ func perk_offers(s: Dictionary) -> Array:
 			break
 	return out
 
+func prestige_from(s: Dictionary, perk_id: String) -> String:
+	## P1: a capstone renames the soldier's class, pins a gold star on their headgear and adds a small
+	## second trait. Returns the new title, or "" if this perk isn't a capstone.
+	var bs: Array = Data.BRANCHES.get(s.key, [])
+	for i in bs.size():
+		var b: Dictionary = bs[i]
+		if b.perks[2].id != perk_id or s.has("prestige"):
+			continue
+		s["prestige"] = b.id
+		var tr: Dictionary = Data.PRESTIGE_TRAITS[i % Data.PRESTIGE_TRAITS.size()]
+		s["ptrait"] = i % Data.PRESTIGE_TRAITS.size()
+		s.max_hp += tr.get("hp", 0)
+		s.hp += tr.get("hp", 0)
+		s.bonus.move += tr.get("move", 0)
+		s.bonus.dodge += tr.get("dodge", 0)
+		return title_of(s)
+	return ""
+
+func title_of(s: Dictionary) -> String:
+	## The class name shown for a soldier: their prestige title once they have one.
+	return Data.PRESTIGE.get(s.get("prestige", ""), s.def.cls)
+
 func od_key(s: Dictionary) -> String:
 	## P2: a capstone perk swaps the Overdrive for its archetype's.
 	for b in Data.BRANCHES[s.key]:
@@ -804,6 +833,9 @@ func apply_option(s: Dictionary, o: Dictionary) -> String:
 			return "%s added %s %s to the deck." % [s.def.name, Data.tier_name(Data.tier_of(c)).capitalize(), Data.card(c).name]
 		"perk":
 			s.perks.append(o.id)
+			var pr := prestige_from(s, o.id)
+			if pr != "":
+				return "%s unlocked %s and is now a %s." % [s.def.name, o.name, pr]
 			return "%s unlocked %s." % [s.def.name, o.name]
 		"stat":
 			match o.id:
