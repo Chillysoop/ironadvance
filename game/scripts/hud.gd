@@ -182,7 +182,8 @@ func refresh() -> void:
 		var c := Data.card(inst)
 		cv.cost = b.card_cost(u, inst)
 		cv.selected = b.card_idx == i
-		cv.disabled = not my_turn or u.energy < cv.cost
+		cv.no_move = b.out_of_move(u, c)
+		cv.disabled = not my_turn or u.energy < cv.cost or cv.no_move
 		cv.supercharged = u.adr >= 50 and not inst.get("od", false) and Data.is_attack(c)
 		cv.chain = b.chain_ready(u, inst) if my_turn else ""
 	overlay.queue_redraw()
@@ -281,7 +282,7 @@ func hint_text() -> String:
 		if c.get("beacon", false):
 			return "BEACON: lob it onto the Jackals. Three bombs land there when their phase starts."
 		if b.armed_fuse() != null:
-			return "GRENADE: aim the throw. The mouse wheel (or [ and ]) sets the fuse from 1 to 4 seconds; the trail shows every bounce and where it bursts."
+			return "GRENADE: aim the throw. The mouse wheel (or [ and ]) sets the fuse from 1 to 4 seconds; only the start of the throw is shown, so judge the bounces like in Worms."
 		return Data.TYPES[c.type].hint
 	if u.move_left > 1:
 		return "Click ground to move %s. Hold ALT for intel. Click a ladder top to climb. Ending in the push zone scrolls early and cuts the alert." % u.def.name
@@ -679,8 +680,10 @@ class PauseMenu extends Control:
 			Run.load_campaign(int(Run.camp.slot))
 		main.show_title()
 	func _input(ev: InputEvent) -> void:
-		if ev is InputEventKey and ev.pressed and not ev.echo:
-			if ev.keycode == KEY_ESCAPE:
+		# right-click backs out like Esc (the game is paused, so the main screen can't map it)
+		var back: bool = ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT
+		if back or (ev is InputEventKey and ev.pressed and not ev.echo):
+			if back or ev.keycode == KEY_ESCAPE:
 				if page == "menu":
 					resume()
 				else:
@@ -864,6 +867,40 @@ class Overlay extends Control:
 			draw_rect(Rect2(r.position.x + 4, my + 4, 38, 1), Color("b48cff"))
 		Art.text(self, "%d" % int(mv), Vector2(r.get_center().x, my + 21), 8, Color("62d26f") if mv > 1 else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 
+	func draw_boosts(b: Battle, y: float) -> float:
+		## Top left: every power-up and status on the selected soldier (Predator, Berserker, Burning...),
+		## with turns left and what it does. Returns the height used so the log moves under it.
+		var u: Unit = b.sel
+		if u == null or u.dead or u.team != "squad":
+			return 0.0
+		var rows: Array = []
+		for k in u.st:
+			if u.st[k] > 0 and Data.STATUS.has(k):
+				var S: Dictionary = Data.STATUS[k]
+				var left := "%d GRENADE%s" % [u.st[k], "" if u.st[k] == 1 else "S"] if k == "cluster" else ("%d TURN%s" % [u.st[k], "" if u.st[k] == 1 else "S"])
+				rows.append([S.name, left, S.text, S.c])
+		if rows.is_empty():
+			return 0.0
+		var ink := Color(0.05, 0.035, 0.03)
+		var w := 0.0
+		for r in rows:
+			w = maxf(w, Art.text_width(r[0] + "  " + r[1], 8) + 8 + Art.text_width(r[2], 16, true))
+		w = minf(w + 20, 520.0)
+		var hgt := 18.0 + rows.size() * 16
+		draw_rect(Rect2(5, y - 1, w + 2, hgt + 2), ink)
+		draw_rect(Rect2(6, y, w, hgt), Color(0.1, 0.11, 0.13, 0.92))
+		draw_rect(Rect2(6, y, w, 2), Color("b48cff"))
+		Art.text(self, "%s: POWER-UPS AND STATUS" % u.def.name, Vector2(12, y + 13), 8, Color("ffd23a"))
+		for i in rows.size():
+			var r: Array = rows[i]
+			var ry := y + 28 + i * 16
+			var head: String = r[0] + "  " + r[1]
+			var pulse: float = 0.75 + 0.25 * sin(b.t / 8.0)
+			draw_rect(Rect2(12, ry - 9, 4, 10), Color(r[3], pulse))
+			Art.text(self, head, Vector2(20, ry), 8, r[3])
+			Art.text(self, r[2], Vector2(28 + Art.text_width(head, 8), ry + 1), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		return hgt + 8
+
 	func _draw() -> void:
 		var b: Battle = hud.b
 		if b == null:
@@ -959,6 +996,7 @@ class Overlay extends Control:
 				draw_rect(Rect2(bx, 58, bw * minf(1, boss.plate / float(b.mission.plate)), 2), Color("9fb4c9"))
 		# log
 		var ly := 52.0 if boss == null or (not b.boss_active and boss.type != "queen") else 84.0
+		ly += draw_boosts(b, ly - 12)
 		for i in b.log_lines.size():
 			var a := 0.55 + 0.45 * float(i + 1) / b.log_lines.size()
 			Art.text(self, b.log_lines[i], Vector2(10, ly + i * 14), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true)

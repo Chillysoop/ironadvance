@@ -1524,7 +1524,7 @@ const TUT_LINES := [
 	["Listen up, recruits. This is a drill: nothing here counts.", "Click the ground to walk. Move anyone a few steps forward."],
 	["Target Jackal ahead. Click RIFLE SHOT, or press its number key.", "Aim at him with the mouse and click to fire. Right-click cancels. SHIFT steadies your aim."],
 	["Supply crate up ahead. Shoot it open.", "Loot you leave lying around is collected when the screen moves on."],
-	["Two Jackals bunched up ahead. Arm the FRAG GRENADE and lob it at their feet.", "The dotted trail shows every bounce. The mouse wheel sets the fuse."],
+	["Two Jackals bunched up ahead. Arm the FRAG GRENADE and lob it at their feet.", "Only the start of the throw is shown, so judge the bounces yourself. The mouse wheel sets the fuse."],
 	["Each soldier gets 3 ENERGY a turn. NEXT (SPACE) picks who can still act. END TURN (ENTER) ends it.", "Now push. Walk someone into the PUSH ZONE on the right and the screen moves on."],
 	["These ones shoot back. After your turn, every enemy moves and fires.", "Use cover, knock them off ledges, finish them. Go."],
 ]
@@ -1813,12 +1813,26 @@ func relic_text(id: String, t: int) -> String:
 		"overclock": return "+1 energy for everyone %s." % ("every round" if t >= 3 else "on odd rounds")
 	return gear(id).get("text", "")
 
-func offer_keys() -> Array:
-	## Cards that can show up in level-ups, supply drops and the shop.
+func offer_keys(squad: Array = []) -> Array:
+	## Cards that can show up in level-ups, supply drops and the shop. A class card (one only a
+	## specialist's pool has, like Whistle or Vulcan) only shows up when that class is in the squad.
 	var out: Array = []
 	for k in CARDS:
 		if not CARDS[k].get("od", false) and CARDS[k].get("pool", true):
-			out.append(k)
+			var cls := card_classes(k)
+			if cls.is_empty() or cls.any(func(x): return squad.has(x)):
+				out.append(k)
+	return out
+
+func card_classes(key: String) -> Array:
+	## The specialist classes a card belongs to, or [] when any soldier can use it
+	## (it is in a base class's pool, or in nobody's).
+	var out: Array = []
+	for d in SQUAD_DEFS:
+		if d.pool.has(key) or d.deck.has(key):
+			if BASE_CLASSES.has(d.key):
+				return []
+			out.append(d.key)
 	return out
 
 func item_stats(it: Dictionary) -> Dictionary:

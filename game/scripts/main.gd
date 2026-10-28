@@ -44,6 +44,58 @@ func clear() -> void:
 		hud.queue_free()
 		hud = null
 
+const BACK_WORDS := ["BACK", "DONE", "CLOSE", "CANCEL", "STAY"]
+
+func _input(ev: InputEvent) -> void:
+	## Right-click is always cancel / back: outside battle (and over the battle's deck viewer or
+	## a field Dossier) it does exactly what Esc does. In the field the battle keeps it for
+	## cancelling an armed card.
+	if not (ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT):
+		return
+	if battle != null and is_instance_valid(battle) and not field_overlay():
+		return
+	get_viewport().set_input_as_handled()
+	for down in [true, false]:
+		var k := InputEventKey.new()
+		k.keycode = KEY_ESCAPE
+		k.physical_keycode = KEY_ESCAPE
+		k.pressed = down
+		Input.parse_input_event(k)
+
+func field_overlay() -> bool:
+	## The deck viewer or a read-only Dossier is open over the battle.
+	if hud == null or not is_instance_valid(hud):
+		return false
+	if hud.deck_open:
+		return true
+	return hud.get_children().any(func(c): return c is Control and c.get("readonly") != null)
+
+func _unhandled_input(ev: InputEvent) -> void:
+	## Esc that no screen used goes back: it presses the screen's BACK / DONE / CLOSE / CANCEL
+	## (or << ...) button, the topmost one that's showing.
+	if not (ev is InputEventKey and ev.pressed and not ev.echo and ev.keycode == KEY_ESCAPE) or battle != null:
+		return
+	var bt = back_button(ui_layer)
+	if bt != null:
+		get_viewport().set_input_as_handled()
+		Sfx.play("click")
+		bt.pressed.emit()
+
+func back_button(n: Node):
+	## The last (topmost) visible, enabled back button under n.
+	var found = null
+	for c in n.get_children():
+		if c is CanvasItem and not c.visible:
+			continue
+		var sub = back_button(c)
+		if sub != null:
+			found = sub
+		elif c is Control and c.has_signal("pressed") and c.get("text") is String and not c.get("disabled"):
+			var t: String = c.text
+			if t.begins_with("<<") or BACK_WORDS.has(t):
+				found = c
+	return found
+
 func _notification(what: int) -> void:
 	## Closing the window between ops keeps the campaign; mid-op it rolls back to the last HQ save.
 	if what == NOTIFICATION_WM_CLOSE_REQUEST and Run.campaign() and battle == null:

@@ -74,6 +74,7 @@ func _input(ev: InputEvent) -> void:
 		return
 	match ev.keycode:
 		KEY_ESCAPE:
+			get_viewport().set_input_as_handled()
 			Sfx.play("click")
 			done.emit()
 		KEY_Q, KEY_LEFT:
