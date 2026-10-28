@@ -2,7 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## warmap, company, ops (campaign mode),
+## warmap, company, ops, story (campaign mode),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -774,6 +774,8 @@ func run() -> void:
 			await company()
 		"ops":
 			await ops()
+		"story":
+			await story()
 		"aliens6":
 			await aliens6()
 		"aliens7":
@@ -4490,6 +4492,147 @@ func ops() -> void:
 	Run.meta.salvage = keep.salvage
 	Run.meta.hq = keep.hq
 	Run.meta.bio = keep.bio
+	Run.save_meta()
+
+func story() -> void:
+	## Campaign step 4: radio briefings, the villains, per-soldier implants, Comms and Hangar,
+	## the Jackal Defector class and deserters, and Colonel Varga's op.
+	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate(), "bio": Run.meta.get("bio", 0), "implants": Run.meta.get("implants", {}).duplicate(true), "mem": Run.meta.get("memorial", []).size()}
+	Run.delete_campaign(2)
+	Run.new_campaign(2)
+	# S2: the act's opening plays once, then job lines
+	Run.start_op(Run.sector("d1"))
+	var first := Run.radio_before()
+	check(first.size() >= 3 and first.any(func(l): return l.who == "varga"), "the first brief opens Act I with Command and Varga (%d lines)" % first.size())
+	check(first.all(func(l): return not l.text.contains("{")), "squad lines name real soldiers")
+	var again := Run.radio_before()
+	check(not again.any(func(l): return Data.RADIO_ACT[0].any(func(r): return r[1] == l.text)), "the act opening plays only once")
+	check(again.size() >= 1 and again[0].who == "cmd", "later briefs open with Command's word on the job")
+	var called := [false]
+	main.show_radio(first, func(): called[0] = true)
+	await frames_wait(30)
+	await shot("st_radio")
+	for k in 12:
+		main.screen.advance()
+	await frames_wait(2)
+	check(called[0], "clicking through the radio moves on")
+	called[0] = false
+	main.show_radio(first, func(): called[0] = true)
+	await frames_wait(5)
+	main.screen.finish()
+	check(called[0], "SKIP jumps past it")
+	var after := Run.radio_after({"won": true, "op": {"act_done": "LANDFALL"}})
+	check(after.any(func(l): return l.who == "varga" and l.text.contains("Boar")), "beating the Boar's Den gets a word from Varga")
+	check(Run.radio_after({"won": false}).size() == 1, "a lost op gets one line from Command")
+
+	# B3: implants go on a person in the campaign
+	Run.meta.hq = {"doc": 2}
+	Run.meta.bio = 20
+	Run.meta.salvage = 40
+	var a: Dictionary = Run.soldiers[0]
+	var b2: Dictionary = Run.soldiers[1]
+	check(Run.operate("cybereye", a), "the Doc operates on one soldier")
+	check(Run.implanted(a, "cybereye") and not Run.implanted(b2, "cybereye"), "the implant is on that soldier only")
+	check(Run.implants(a.key).is_empty(), "the class-wide implant list is untouched")
+	check(Run.surgery_block("cybereye", a) == "INSTALLED", "the Doc knows it's in")
+	main.show_hq(false)
+	await frames_wait(20)
+	main.screen.open_doc()
+	await frames_wait(20)
+	await shot("st_doc")
+
+	# B4: Comms and Hangar open with Act II
+	check(not Run.hq_buildings().any(func(B): return B.id == "comms"), "no Comms in Act I")
+	Run.camp.act = 1
+	var ids: Array = Run.hq_buildings().map(func(B): return B.id)
+	check(ids.has("comms") and ids.has("hangar") and not ids.has("gate"), "Act II opens Comms and the Hangar (%s)" % [ids])
+	Run.meta.hq = {"comms": 3, "hangar": 3}
+	main.show_hq(false)
+	await frames_wait(10)
+	main.screen.open_upgrades()
+	await frames_wait(10)
+	await shot("st_upgrades")
+	Run.start_op(Run.sector("s1"))
+	check(Run.op_roster(Run.level) != "", "Comms lists the sector's enemies (%s)" % Run.op_roster(Run.level))
+	main.show_brief()
+	await frames_wait(20)
+	await shot("st_brief_comms")
+	var bt: Battle = main.start_battle(1, Run.level)
+	bt.mission_over.disconnect(main._on_mission_over)
+	await until(func(): return bt.state == "player" and not bt.busy)
+	check(bt.units.any(func(u): return u.kind == "slug" and not u.gone), "the Hangar rolls the Slug out with the squad")
+	var s0: Unit = bt.squad_alive()[0]
+	check(s0.hand.any(func(c): return c.key == "slugcall"), "Hangar 3: the Slug can be called back")
+	var e := bt.mk_enemy("grunt", s0.x + 200, bt.T.stand_y(s0.x + 200, 0))
+	e.hp = 60; e.max_hp = 60; e.elite = "veteran"
+	bt.units.append(e)
+	bt.damage(e, 10, s0)
+	var h1: int = e.hp
+	bt.damage(e, 10, s0)
+	check(h1 == 45 and e.hp == 35, "Comms 2: the first hit on an elite lands marked (%d, %d)" % [h1, e.hp])
+	main.clear()
+
+	# C7 + S4: a deserter joins as a Jackal Defector in Act III
+	Run.camp.act = 2
+	Run.level = Run.make_op(Run.sector("r1"))
+	var n0 := Run.roster.size()
+	var line := ""
+	for k in 40:
+		line = Run.deserter({"won": true})
+		if line != "":
+			break
+	check(line.contains("Jackal Defector") and Run.roster.size() == n0 + 1, "a won Act III op can bring a deserter (%s)" % line)
+	var dv: Dictionary = Run.roster.back()
+	check(dv.get("spec", "") == "defector" and dv.def.cls == "Jackal Defector" and dv.deck.any(func(c): return c.key == "haymaker"), "the Defector is a class of their own")
+	Run.camp.act = 0
+	check(Run.deserter({"won": true}) == "", "no deserters outside Act III")
+	Run.camp.act = 2
+
+	# S3: Varga fights alongside the company at Garrison Gate
+	Run.start_op(Run.sector("f3"))
+	check(Run.level.get("guest", "") == "varga", "Garrison Gate brings Colonel Varga")
+	var squad_n := Run.soldiers.size()
+	bt = main.start_battle(2, Run.level)
+	bt.mission_over.disconnect(main._on_mission_over)
+	await until(func(): return bt.state == "player" and not bt.busy)
+	var vg: Array = bt.squad().filter(func(u): return u.s.has("guest"))
+	check(vg.size() == 1 and bt.squad().size() == squad_n + 1, "Varga deploys as a fifth soldier")
+	check(not Run.soldiers.has(vg[0].s) and not Run.roster.has(vg[0].s), "he is not part of the company")
+	await frames_wait(20)
+	await shot("st_varga")
+	# the Defector's Turncoat: an up-close kill steals the Jackal's gun
+	var du: Unit = bt.squad_alive()[0]
+	du.s["spec"] = "defector"
+	var j := bt.mk_enemy("grunt", du.x + 30, du.y)
+	bt.units.append(j)
+	var hn := du.hand.size()
+	bt.damage(j, 999, du)
+	check(du.hand.size() == hn + 1 and du.hand.back().get("temp", false), "Turncoat: a close kill hands over the Jackal's gun")
+	var j2 := bt.mk_enemy("grunt", du.x + 30, du.y)
+	bt.units.append(j2)
+	bt.damage(j2, 999, du)
+	check(du.hand.size() == hn + 1, "only once a turn")
+	du.s.erase("spec")
+	var mem: int = Run.meta.memorial.size()
+	vg[0].dead = true
+	bt.sync_back()
+	check(Run.meta.memorial.size() == mem, "Varga never goes on the Memorial")
+	main.clear()
+
+	# saved and loaded, implants and the Defector come back
+	Run.save_campaign()
+	main.show_title()
+	await frames_wait(3)
+	Run.load_campaign(2)
+	check(Run.implanted(Run.soldiers[0], "cybereye"), "per-soldier implants survive a save")
+	check(Run.roster.any(func(s): return s.get("spec", "") == "defector"), "the Defector survives a save")
+	main.show_title()
+	await frames_wait(3)
+	Run.delete_campaign(2)
+	Run.meta.salvage = keep.salvage
+	Run.meta.hq = keep.hq
+	Run.meta.bio = keep.bio
+	Run.meta.implants = keep.implants
 	Run.save_meta()
 
 func hoverwedge() -> void:

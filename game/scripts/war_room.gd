@@ -496,3 +496,99 @@ class PickQueue extends Control:
 				y += 16
 		if log_line != "":
 			Art.text(self, log_line, Vector2(480, 500), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+
+class RadioScreen extends Control:
+	## S2: a few lines of radio chatter with a portrait. Click to go on, SKIP to jump past it all.
+	signal done
+	var lines: Array = []
+	var i := 0
+	var t := 0
+	var shown := 0
+	func _ready() -> void:
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		var sk = load("res://scripts/hud.gd").PixButton.new()
+		sk.text = "SKIP"
+		sk.color = Color("9aa2ae")
+		sk.small = true
+		sk.size = Vector2(90, 28)
+		sk.position = Vector2(850, 16)
+		sk.pressed.connect(finish)
+		add_child(sk)
+		if lines.is_empty():
+			finish.call_deferred()
+	func finish() -> void:
+		if i < 0:
+			return
+		i = -1
+		done.emit()
+	func advance() -> void:
+		if i < 0:
+			return
+		var full: int = lines[i].text.length()
+		if shown < full:
+			shown = full
+			return
+		i += 1
+		shown = 0
+		Sfx.play("tick")
+		if i >= lines.size():
+			finish()
+	func _gui_input(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			advance()
+	func _unhandled_input(ev: InputEvent) -> void:
+		if ev is InputEventKey and ev.pressed and (ev.keycode == KEY_ENTER or ev.keycode == KEY_SPACE):
+			advance()
+		elif ev is InputEventKey and ev.pressed and ev.keycode == KEY_ESCAPE:
+			finish()
+	func _process(_d: float) -> void:
+		t += 1
+		if i >= 0 and i < lines.size():
+			shown = mini(shown + 2, lines[i].text.length())
+		queue_redraw()
+	func portrait(L: Dictionary, r: Rect2) -> void:
+		## The speaker in a lit frame: a soldier in their kit, or the officer behind the voice.
+		draw_rect(r, Color(0.05, 0.035, 0.03))
+		draw_rect(r.grow(-2), L.col.darkened(0.75))
+		for y in range(int(r.position.y) + 4, int(r.end.y) - 2, 4):
+			draw_rect(Rect2(r.position.x + 2, y, r.size.x - 4, 1), Color(0, 0, 0, 0.25))
+		var sheet: String = {"cmd": "sq_moss_beret", "varga": "en_radio", "prime": "en_overseer"}.get(L.who, "")
+		if L.who == "sq":
+			sheet = Art.look_sheet(L.s)
+		if Art.meta.has(sheet):
+			var fh: float = Art.meta[sheet].frame[1]
+			var sc := minf(3.0, (r.size.y - 14) / fh)
+			Art.draw_char(self, sheet, "idle", (t / 14) % 2, Vector2(r.get_center().x, r.end.y - 6), 1, false, 0, 1.0, 0, L.who == "sq", sc)
+		draw_rect(r, L.col, false, 2)
+	func _draw() -> void:
+		draw_rect(Rect2(0, 0, 960, 540), Color("0c1013"))
+		for y in range(0, 540, 3):
+			draw_rect(Rect2(0, y, 960, 1), Color(1, 1, 1, 0.02))
+		Art.text(self, "RADIO", Vector2(40, 40), 16, Color("62d26f") if t % 50 < 35 else Color("2c5a33"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+		Art.text(self, "CLICK TO GO ON   ESC SKIPS", Vector2(480, 40), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_CENTER)
+		# earlier lines stay up the screen, faded
+		var y := 90.0
+		for k in mini(i, lines.size()) if i >= 0 else 0:
+			var P: Dictionary = lines[k]
+			Art.text(self, P.name + ":", Vector2(70, y), 8, P.col.darkened(0.3))
+			Art.text(self, P.text, Vector2(70, y + 16), 16, Color(0.6, 0.6, 0.6), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+			y += 44
+		if i < 0 or i >= lines.size():
+			return
+		var L: Dictionary = lines[i]
+		var box := Rect2(40, 330, 880, 170)
+		draw_rect(box, Color(0.05, 0.035, 0.03))
+		draw_rect(box.grow(-2), Color("161b20"))
+		draw_rect(box, L.col, false, 2)
+		portrait(L, Rect2(56, 346, 138, 138))
+		Art.text(self, L.name, Vector2(214, 370), 16, L.col, HORIZONTAL_ALIGNMENT_LEFT, 2)
+		Art.text(self, L.role, Vector2(214, 388), 8, Color("9aa2ae"))
+		var ty := 420.0
+		for ln in CardView.wrap_text(L.text.substr(0, shown), 680, 16):
+			Art.text(self, ln, Vector2(214, ty), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+			ty += 18
+		if shown >= L.text.length() and t % 40 < 26:
+			Art.text(self, ">>", Vector2(896, 488), 8, L.col, HORIZONTAL_ALIGNMENT_RIGHT)
+		Art.text(self, "%d / %d" % [i + 1, lines.size()], Vector2(896, 352), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)

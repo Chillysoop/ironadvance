@@ -569,6 +569,11 @@ const HQ_BUILDINGS := [
 	{"id": "doc", "name": "DOC'S LAB", "ranks": ["Opens surgery: 1 implant slot per class.", "2 implant slots per class.", "3 implant slots per class."]},
 	{"id": "motor", "name": "MOTOR POOL", "ranks": ["The SV-001 Slug is on call once per level.", "The Slug stays for 2 rounds.", "The Slug is on call twice per level."]},
 ]
+# B4: campaign-only buildings, each opening with an act (index into ACTS)
+const CAMP_BUILDINGS := [
+	{"id": "comms", "name": "COMMS", "act": 1, "ranks": ["The brief lists every enemy type waiting in the sector.", "Your first hit on each elite is a marked hit (+50%).", "Everyone draws 1 extra card on the first turn of an op."]},
+	{"id": "hangar", "name": "HANGAR", "act": 1, "ranks": ["The Slug rolls out with the squad at the start of every op.", "It stays in the fight 1 round longer.", "The Slug can also be called back once per op."]},
+]
 const HQ_COST := [10, 20, 30]   # Salvage for rank 1, 2, 3
 const BOSS_SALVAGE := 5         # every Boar you beat pays this much Salvage
 const BOSS_BIO := 1             # ...and a Bio-part for the Doc
@@ -915,6 +920,62 @@ const SECTOR_PERKS := {
 	"supply": {"name": "SUPPLY DUMP", "text": "Quartermaster prices are 10% lower this act."},
 	"airfield": {"name": "AIRSTRIP", "text": "Twice the crates on the map on every op this act."},
 }
+# C7: a campaign-only class. Deserters come over as Jackal Defectors on the Vanguard's kit.
+const DEFECTOR_CLASS := {"base": "rook", "cls": "Jackal Defector", "deck_add": ["haymaker"],
+	"text": "Turncoat: a kill within arm's reach steals the Jackal's gun as a one-shot card, once a turn."}
+const DESERTER_CHANCE := 0.5   # S4: odds a won Act III op ends with a Jackal deserter asking to join
+
+# S2/S3: radio chatter before and after ops. Speakers: "cmd" Command, "varga" the Jackal colonel,
+# "prime" the Vharr Overseer Prime, "sq" a soldier from the squad ({name}, {rank}, {mate} filled in).
+const RADIO_CAST := {
+	"cmd": {"name": "MAJ. HALE", "role": "COMMAND", "col": Color("62d26f")},
+	"varga": {"name": "COL. VARGA", "role": "JACKAL ARMY", "col": Color("ff7a3d")},
+	"prime": {"name": "OVERSEER PRIME", "role": "VHARR", "col": Color("c47bff")},
+}
+const RADIO_ACT := [
+	[["cmd", "Iron Company, this is Hale. The Jackals hold the whole delta. Take it back one sector at a time."],
+	 ["varga", "Colonel Varga, Jackal Army. You picked the wrong beach, little company."],
+	 ["sq", "{mate}, you hear that? He knows our name already."]],
+	[["cmd", "Bad news. The Jackals dug up a gate in the desert, and something came through it."],
+	 ["prime", "THE GATE IS OPEN. YOUR KIND WILL MAKE USEFUL HOSTS."],
+	 ["varga", "Our new friends are... persuasive. Stay out of the sand."]],
+	[["cmd", "Comms picked up Jackal units shooting at Vharr. Their pact is cracking. Use it."],
+	 ["varga", "They took my men for hosts. I am done with them. We may need to talk, Iron Company."],
+	 ["sq", "Trust a Jackal? {mate}, tell me you're not buying this."]],
+	[["cmd", "A Hive Ship is parked over the coast. Nests everywhere. This is the big one."],
+	 ["prime", "THE TIDE RISES. THE HIVE REMEMBERS EVERY ONE OF YOU."],
+	 ["sq", "Big ship, big target. Right, {mate}?"]],
+	[["cmd", "Last push. The gate is in Iron Harbor. Shut it and this war is over."],
+	 ["prime", "YOU CANNOT CLOSE WHAT YOU DO NOT UNDERSTAND."],
+	 ["sq", "Watch me. Iron Company, let's go home."]],
+]
+const RADIO_JOB := {
+	"push": [["cmd", "Push through to the far end and knock out their armor."], ["cmd", "Straight fight. Break their line and keep moving east."]],
+	"rescue": [["cmd", "Three of ours are held in there. Bring them home."], ["cmd", "Prisoners spotted. Walk up and cut them loose, they'll do the rest."]],
+	"demolish": [["cmd", "Three supply dumps. Blow them and the Jackals starve."], ["cmd", "Bring explosives. Those dumps go up nicely."]],
+	"hold": [["cmd", "Take the far end and hold it. They'll come from both sides."], ["cmd", "We need that ground held for five turns. Dig in."]],
+	"escort": [["cmd", "A supply truck is coming through. Keep the road clear and keep it alive."], ["cmd", "The truck can't fight. You can. Clear the road ahead of it."]],
+	"hunt": [["cmd", "One of their officers is in that sector. Find them, drop them."], ["cmd", "High value target. They carry good kit, so take it off them."]],
+}
+const RADIO_TAUNT := [
+	[["varga", "Every sector you take, I take two back. Eventually."], ["varga", "My rifles are older than you, and they still shoot straight."]],
+	[["varga", "The sand eats armies. Ask the last one."], ["prime", "WE HAVE COUNTED YOUR SOLDIERS. THERE ARE NOT ENOUGH."]],
+	[["varga", "Shoot the purple ones first. Then we can go back to shooting each other."], ["prime", "THE JACKALS BETRAY. ALL HOSTS BETRAY. IT DOES NOT MATTER."]],
+	[["prime", "EVERY NEST IS A MOUTH. EVERY MOUTH IS HUNGRY."], ["prime", "THE SHIP SEES YOU, SMALL ONES."]],
+	[["prime", "THE GATE HAS STOOD FOR TEN THOUSAND YEARS."], ["prime", "TURN BACK, AND WE WILL TAKE YOU LAST."]],
+]
+const RADIO_WON := [["cmd", "Good work. That sector is ours."], ["cmd", "Clean op. Get some rest, Iron Company."], ["cmd", "Command confirms: sector secure. The map is turning green."]]
+const RADIO_LOST := [["cmd", "Fall back, fall back. We'll hit them again when you're ready."], ["cmd", "That one got away from us. Regroup and try again."]]
+const RADIO_SQ_WON := ["Drinks are on {mate}.", "{mate}, did you see that? Tell me you saw that.", "That's how the {rank} does it.", "Another one for the wall map."]
+const RADIO_ACT_DONE := [
+	[["varga", "The Boar was my favorite tank. You will pay for that, Iron Company."]],
+	[["varga", "The Queen is dead? Good. Maybe now the Vharr will listen to reason."], ["prime", "THE QUEEN WAS ONE OF MANY."]],
+	[["varga", "The works are clear. Fine. My men will not fight you anymore. We fight them."]],
+	[["prime", "THE SHIP FALLS. THE GATE DOES NOT."]],
+	[["cmd", "The gate is shut. It's over. Iron Company, come home."]],
+]
+const RADIO_VARGA_OP := [["varga", "Iron Company. I'll go in with you this once. Don't make me regret it."], ["sq", "Colonel Varga on our side. Write that down, {mate}."]]
+
 # O1-O6: what an op on the war map asks of the squad. Strongholds are always a push to the boss.
 const JOBS := {
 	"push": {"name": "PUSH", "goal": "BREAK THROUGH", "text": "Fight to the far end and knock out the sector's armor."},
@@ -962,7 +1023,7 @@ const ACTS := [
 		{"id": "r3", "name": "TANK FARM", "biome": "refinery", "job": "escort", "at": [450, 140], "links": ["r2", "boss"], "hold": {"scrip": 30}},
 		{"id": "f1", "name": "MARKET STREET", "biome": "fortress", "job": "rescue", "at": [220, 390], "links": ["r1", "f2"], "perk": "supply"},
 		{"id": "f2", "name": "OLD CITADEL", "biome": "fortress", "job": "hunt", "at": [370, 330], "links": ["f1", "f3"], "hold": {"bio": 2}},
-		{"id": "f3", "name": "GARRISON GATE", "biome": "fortress", "job": "push", "at": [500, 400], "links": ["f2", "boss"], "perk": "aid"},
+		{"id": "f3", "name": "GARRISON GATE", "biome": "fortress", "job": "push", "varga": true, "at": [500, 400], "links": ["f2", "boss"], "perk": "aid"},
 		{"id": "boss", "name": "THE INFESTED WORKS", "biome": "refinery", "at": [590, 270], "links": ["r3", "f3"], "stronghold": true}]},
 	{"id": "hive", "name": "HIVE TIDE", "roman": "IV", "tier": 2, "hp_mul": 1.45, "boss_hp": 240, "plate": 66, "need": 3, "breach": 0.5,
 	 "text": "The palace and the night harbor. A Hive Ship parks over the coast and seeds nests everywhere.",
