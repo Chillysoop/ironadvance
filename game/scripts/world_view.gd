@@ -1425,18 +1425,17 @@ func draw_shipplate(u: Unit, pos: Vector2, white: bool) -> void:
 	for k in 4:
 		draw_rect(Rect2(pos.x - w / 2 + 4 + k * 12, pos.y - 6, 2, 2), Color("3a3f46"))
 
+func draw_vharr(k: String, pos: Vector2, white: bool, sc: float, a := 1.0) -> void:
+	## G3: a Sprite Fusion Vharr structure (gen_art.py sf_vharr), feet on pos, sc world units per art pixel
+	var vt: Texture2D = Art.tex["vh_" + k + ("_w" if white else "")]
+	var sz := Vector2(vt.get_width(), vt.get_height()) * sc
+	draw_texture_rect(vt, Rect2(pos.x - sz.x / 2.0, pos.y - sz.y, sz.x, sz.y), false, Color(1, 1, 1, a))
+
 func draw_vgate(u: Unit, pos: Vector2, white: bool) -> void:
 	## E6: two ribbed violet pillars with a slow portal swirl between them.
 	var a := u.alpha
-	var rock := Color.WHITE if white else Color("4a1f6e")
-	for k in [-1, 1]:
-		draw_rect(Rect2(pos.x + k * 18 - 6, pos.y - 64, 12, 64), Color(C_DARK, a))
-		draw_rect(Rect2(pos.x + k * 18 - 5, pos.y - 63, 10, 63), Color(rock, a))
-		for r in 4:
-			draw_rect(Rect2(pos.x + k * 18 - 5, pos.y - 56 + r * 14, 10, 2), Color(Color("2a0d3a"), a))
-	draw_rect(Rect2(pos.x - 24, pos.y - 68, 48, 8), Color(C_DARK, a))
-	draw_rect(Rect2(pos.x - 23, pos.y - 67, 46, 6), Color(Color("7d3cb0") if not white else Color.WHITE, a))
-	var c := pos + Vector2(0, -30)
+	draw_vharr("vgate", pos, white, Art.PX, a)
+	var c := pos + Vector2(0, -26)
 	draw_circle(c, 13, Color(0.48, 0.24, 0.69, 0.35 * a))
 	for k in 3:
 		var a0: float = b.t / 12.0 + k * TAU / 3
@@ -1447,11 +1446,7 @@ func draw_droppod(pos: Vector2, white: bool, falling: bool) -> void:
 	if falling:
 		for k in 3:
 			draw_circle(pos + Vector2(0, -30 - k * 8 - (b.t % 4)), 5 - k, Color(Color("c47bff"), 0.5 - k * 0.12))
-	draw_rect(Rect2(pos.x - 11, pos.y - 26, 22, 26), C_DARK)
-	draw_rect(Rect2(pos.x - 10, pos.y - 25, 20, 24), Color.WHITE if white else Color("4a1f6e"))
-	draw_rect(Rect2(pos.x - 7, pos.y - 28, 14, 4), C_DARK)
-	draw_rect(Rect2(pos.x - 1, pos.y - 24, 2, 22), Color(C_OOZE, 0.6 + 0.3 * sin(b.t / 5.0)))
-	draw_rect(Rect2(pos.x - 8, pos.y - 22, 3, 3), Color("b06ae0"))
+	draw_vharr("droppod", pos, white, 1.0)
 	if not falling and b.t % 14 == 0:
 		b.puff(pos.x + randf_range(-8, 8), pos.y - 24, 0.6)
 
@@ -1462,24 +1457,14 @@ func draw_hive(u: Unit, pos: Vector2, white: bool) -> void:
 		a *= 0.6
 	var n: int = u.fl.get("hatch", Data.ETYPES.hive.hatch)
 	var beat := 0.5 + 0.5 * sin(b.t / (4.0 if n <= 1 else 10.0))
-	var body := Color.WHITE if white else Color("7d3cb0")
-	draw_circle(pos + Vector2(0, -12), 15, Color(C_DARK, a))
-	draw_circle(pos + Vector2(0, -12), 13, Color(body, a))
-	draw_circle(pos + Vector2(-4, -15), 7, Color(Color("b06ae0"), a))
-	for k in 3:
-		draw_line(pos + Vector2(-10 + k * 10, -2), pos + Vector2(-6 + k * 6, -23), Color(Color("4a1f6e"), a), 2.0)
-	if not u.dead:
-		draw_circle(pos + Vector2(3, -10), 4 + beat * 2, Color(C_OOZE, 0.5 + 0.4 * beat))
-		draw_circle(pos + Vector2(-5, -6), 2 + beat, Color(C_OOZE, 0.4 + 0.4 * beat))
-	draw_rect(Rect2(pos.x - 14, pos.y - 2, 28, 3), Color(Color("4a1f6e"), a))
+	draw_vharr("hive", pos, white, 1.0, a)
+	if not u.dead and not white:
+		# the brood stirring inside: a pulse that quickens as the hatch timer runs down
+		draw_circle(pos + Vector2(0, -11), 5 + beat * 3, Color(C_OOZE, 0.15 + 0.25 * beat))
 
 func draw_burrow(u: Unit, pos: Vector2, white: bool) -> void:
 	## Skitter tunnel: a dirt mound around a dark hole, glowing eyes inside while waves are left.
-	var dirt := Color.WHITE if white else Color("8c6a46")
-	draw_rect(Rect2(pos.x - 17, pos.y - 9, 34, 9), C_DARK)
-	draw_rect(Rect2(pos.x - 16, pos.y - 8, 32, 8), dirt)
-	draw_rect(Rect2(pos.x - 11, pos.y - 13, 22, 5), dirt)
-	draw_rect(Rect2(pos.x - 8, pos.y - 10, 16, 8), C_DARK)
+	draw_vharr("burrow", pos, white, 1.0)
 	if not u.dead and u.fl.get("wave", 0) < Data.ETYPES.burrow.waves.size():
 		for k in 3:
 			if (b.t / 20 + k) % 3 != 0:

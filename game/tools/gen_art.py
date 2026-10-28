@@ -684,6 +684,15 @@ def sf_vehicles():
                     px[x, y] = (int(r2 * 255), int(g2 * 255), int(b2 * 255), 255)
         sq.save(os.path.join(OUT, 'sprites', 'veh_%s_sq.png' % k))
 
+def sf_vharr():
+    """Vharr structures from Sprite Fusion (tools/sf_src/vharr): hive pod, drop pod, gate, Skitter tunnel.
+    world_view draws them with its own glow, swirl and smoke on top."""
+    for k in ('hive', 'droppod', 'vgate', 'burrow'):
+        im = sf_clean([Image.open(os.path.join(SF_SRC, 'vharr', k + '.png')).convert('RGBA')], 20)[0]
+        im = im.crop(im.getbbox())
+        im.save(os.path.join(OUT, 'sprites', 'vh_%s.png' % k))
+        flash_white(im).save(os.path.join(OUT, 'sprites', 'vh_%s_w.png' % k))
+
 # ---------------------------------------------------------------- big pieces: brute, POW, boss, MG nest
 def brute_frames():
     pal = palette(ENEMY_PAL['brute'])
@@ -2235,6 +2244,7 @@ def main():
     # Shield Wall: a Sprite Fusion edit of the riot Jackal into heavy plate (tools/sf_src/wallshield)
     meta['en_wallshield'] = write_sheet('en_wallshield', sf_char('wallshield'), gun_image('pistol', palette(ENEMY_PAL['shield'])))
     sf_vehicles()
+    sf_vharr()
     meta['en_brute'] = brute_frames()
     meta.update(alien_frames())
     pow_frames()
