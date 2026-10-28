@@ -203,19 +203,25 @@ func setup(idx: int, custom := {}) -> void:
 		if type == "grunt" or type == "nade":
 			type = cast_foot(foot)
 			foot += 1
+		if type == "boss" and mission.get("boss", "") == "hiveship":
+			type = "hiveship"
 		var E: Dictionary = Data.ETYPES[type]
 		var y = T.stand_y(x, 0) if (opt.has("hold") or opt.has("top")) and not opt.has("inside") else T.stand_y(x, T.ground_at(x) - 40)
 		if opt.has("up"):
 			y = T.stand_y(x, T.ground_at(x) - opt.up)
 		var u := mk_enemy(type, x, y)
 		u.hold = opt.has("hold")
-		if type == "boss":
+		if type == "boss" or type == "hiveship":
 			var bm := 1.4 if Run.threat_on(5) else 1.0
-			u.hp = int(mission.boss_hp * bm); u.max_hp = u.hp; u.plate = int(mission.plate * bm)
+			u.hp = int(mission.boss_hp * bm); u.max_hp = u.hp; u.plate = int(mission.plate * bm) if type == "boss" else 0
+			if type == "boss" and mission.get("finale", false):
+				u.fl["vharr"] = true  # Q3: the flagship comes refit with Vharr tech
 		elif randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
 			make_elite(u, pick_elite(faction(u) == "vharr"))
 		units.append(u)
 		place_alien(u)
+		if type == "hiveship":
+			hang_plates(u)
 		for k in range(1, E.get("pack", 1)):
 			var px := x + k * 18.0
 			var mate := mk_enemy(type, px, T.stand_y(px, (y if y != null else 0.0) - 40))
@@ -732,7 +738,7 @@ func add_status(u: Unit, k: String, turns: int, by = null) -> void:
 	## C5 statuses. Props, pickups and POWs ignore them; the boss shrugs off stun.
 	if u == null or u.dead or u.gone or u.is_prop() or u.is_pickup() or u.kind == "pow":
 		return
-	if k == "stun" and (u.type == "boss" or u.team == "squad"):
+	if k == "stun" and (is_boss(u) or u.team == "squad"):
 		return
 	if k == "burn" and ks(by, "fuelpack"):
 		turns = maxi(turns, 4)
@@ -1308,6 +1314,19 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 			if own != null:
 				give_xp(own, 4)
 		return
+	if tg.dome > 0 and not o.get("melee", false) and not o.get("impact", false) and not o.get("status", false):
+		float_text(tg, "DOME", Color("9df25c"))
+		sparks(tg.x, tg.y - tg.h / 2.0, 3)
+		return
+	if tg.type == "hiveship":
+		if ship_plated(tg):
+			if o.get("blast", false):
+				float_text(tg, "BELLY HIT!", Color("ffd23a"))
+			else:
+				amt = maxi(1, int(round(amt * 0.4)))
+				float_text(tg, "ARMOR", Color("9fb4c9"))
+		else:
+			amt = int(round(amt * 1.3))
 	if tg.type == "boss":
 		if tg.plate > 0:
 			var raw := amt
@@ -1319,10 +1338,6 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 				float_text(tg, "ARMOR", Color("9fb4c9"))
 		else:
 			amt = int(round(amt * 1.3))
-	if tg.dome > 0 and not o.get("melee", false) and not o.get("impact", false) and not o.get("status", false):
-		float_text(tg, "DOME", Color("9df25c"))
-		sparks(tg.x, tg.y - tg.h / 2.0, 3)
-		return
 	if tg.weight == "buried" and o.get("blast", false):
 		amt = maxi(1, amt / 2)  # the ground above takes half of it
 	if tg.pod > 0 and tg.weight == "hover":
@@ -1386,7 +1401,7 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 			give_xp(own, maxi(1, int(amt / 3)))
 		if tg.hp <= 0:
 			# R2: overkill by half its health or more and the Jackal bursts into helmet, boots and smoke
-			pop_next = tg.kind == "enemy" and tg.type != "boss" and -tg.hp >= maxi(6, tg.max_hp / 2)
+			pop_next = tg.kind == "enemy" and not is_boss(tg) and not tg.type in ["shipplate", "droppod"] and -tg.hp >= maxi(6, tg.max_hp / 2)
 			kill(tg, src)
 			pop_next = false
 	ui_dirty = true
@@ -1446,9 +1461,15 @@ func kill(tg: Unit, src) -> void:
 		tg.bow = false
 		drop_loot(tg.x, tg.y - 14, {"type": "bow"}, 0.4)
 	feed_kill(tg, src)
-	if pop_next and tg.kind == "enemy":
+	if tg.type == "shipplate":
+		drop_plate(tg, src)
+	elif tg.type == "droppod":
+		tg.gone = true
+		for i in 8:
+			debris(tg.x + randf_range(-10, 10), tg.y - randf_range(4, 22), 2)
+	elif pop_next and tg.kind == "enemy":
 		overkill_pop(tg)
-	elif tg.kind == "enemy" and tg.type != "boss":
+	elif tg.kind == "enemy" and not is_boss(tg):
 		# the body stays where it drops: it stops one bullet, and blasts throw it like a sandbag
 		tg.soak = 1
 		tg.w = 26
@@ -1547,7 +1568,13 @@ func kill(tg: Unit, src) -> void:
 				float_text(tg, "VOLATILE!", Color("ff7a3d"), true)
 			if src is Unit and src.team == "squad" and randf() < 0.3:
 				bark(src, pick(Data.BARKS.kill))
-		if tg.type == "boss":
+		if tg.type == "hiveship":
+			for o in units:
+				if o.type == "shipplate" and o.fl.get("ship") == tg and not o.dead:
+					kill(o, src)  # its plates come down with it
+			tg.gone = true
+			banner("HIVE SHIP DOWN!", Color("9df25c"), "THE SKY IS CLEAR")
+		if is_boss(tg):
 			boss_dead = true
 			drop_loot(tg.x, tg.y - 40, {"type": "item", "item": Run.roll_item(Data.TIER_MAX)}, 1.4)
 			var part_name: String = Data.TROPHIES[mini(mission_idx, Data.TROPHIES.size() - 1)]
@@ -1821,6 +1848,10 @@ func unit_hit(p: Dictionary):
 
 func detonate(p: Dictionary) -> void:
 	p.dead = true
+	if p.kind == "droppod":
+		explode(p.x, p.y, p.r, p.dmg, p.owner)
+		land_pod(p.x, p.y, p.get("cargo", ["skitter"]))
+		return
 	var pc: Dictionary = p.card
 	if p.smoke and pc.get("multi", 0) > 1:
 		for k in pc.multi:
@@ -3425,11 +3456,20 @@ func activate_enemies() -> void:
 				banner("WARNING!!", Color("c47bff"), "THE BURROW QUEEN STIRS")
 				Sfx.play("alarm")
 				log_msg("Something huge is moving under the sand. Only blasts reach her down there: hit her when she surfaces, and bring the ruins down on her head.")
+			if e.type == "hiveship" and not boss_active:
+				boss_active = true
+				banner("WARNING!!", Color("c47bff"), "HIVE SHIP OVERHEAD")
+				Sfx.play("alarm")
+				log_msg("A Vharr HIVE SHIP blots out the sky. Shoot its hull plates off the tethers and drop them on whatever is under it. Blasts in its belly always hurt.")
 			if e.type == "boss" and not boss_active:
 				boss_active = true
-				banner("WARNING!!", Color("ff4d3d"), "IRON BOAR APPROACHING")
+				if e.fl.get("vharr", false):
+					banner("WARNING!!", Color("c47bff"), "VHARR BOAR APPROACHING")
+					log_msg("The flagship BOAR rolls in refit with Vharr tech: a dome over the turret and a tongue. Crushing and melee go through the dome.")
+				else:
+					banner("WARNING!!", Color("ff4d3d"), "IRON BOAR APPROACHING")
+					log_msg("The IRON BOAR rolls in. Something heavy is hanging over it...")
 				Sfx.play("alarm")
-				log_msg("The IRON BOAR rolls in. Something heavy is hanging over it...")
 
 # ---------------------------------------------------------------- rewards & level-ups
 func ask(kind: String, title: String, sub: String, opts: Array, who = null) -> int:
@@ -3888,7 +3928,7 @@ func check_pads() -> void:
 		if not p.loot.ready or p.gone or p.sunk:
 			continue
 		for u in units:
-			if u.dead or u.gone or u.sunk or u.air or not (u.kind == "soldier" or u.kind == "enemy") or u.type == "boss":
+			if u.dead or u.gone or u.sunk or u.air or not (u.kind == "soldier" or u.kind == "enemy") or is_boss(u):
 				continue
 			if absf(u.x - p.x) < 15 and absf(u.y - p.y) < 20:
 				grant_bonus(p, u)
@@ -4441,6 +4481,10 @@ func nearest_squad(e: Unit):
 			best = s
 	return best
 
+func is_boss(u: Unit) -> bool:
+	## The level's end boss: the Iron Boar, or the Hive Ship over the delta and the harbor.
+	return u.type == "boss" or u.type == "hiveship"
+
 func faction(u: Unit) -> String:
 	return Data.ETYPES[u.type].get("faction", "jackal") if u.team == "enemy" else ""
 
@@ -4451,7 +4495,7 @@ func foes_of(e: Unit) -> Array:
 	if breach and e.team == "enemy":
 		var f := faction(e)
 		for o in units:
-			if o.team == "enemy" and o.active and not o.dead and not o.gone and not o.sunk and faction(o) != f and not Data.ETYPES[o.type].get("static", false) and o.type != "boss":
+			if o.team == "enemy" and o.active and not o.dead and not o.gone and not o.sunk and faction(o) != f and not Data.ETYPES[o.type].get("static", false) and not is_boss(o):
 				out.append(o)
 	return out
 
@@ -4495,6 +4539,14 @@ func enemy_act(e: Unit) -> void:
 		return
 	if e.type == "boss":
 		await boss_act(e)
+		return
+	if e.type == "hiveship":
+		await hiveship_act(e)
+		return
+	if e.type == "shipplate":
+		return
+	if e.type == "droppod":
+		await droppod_act(e)
 		return
 	if await jackal_nade(e):
 		return
@@ -4799,17 +4851,17 @@ func skitter_act(e: Unit) -> void:
 			fx.append({"kind": "slash", "x": o.x, "y": o.y - o.h / 2.0, "t": 0, "dur": 10, "sc": 1.0, "face": e.face})
 			damage(o, E.dmg, e, {})
 
-func beam_path(e: Unit, ang: float) -> Dictionary:
+func beam_path(e: Unit, ang: float, rng := -1.0, from = null) -> Dictionary:
 	## The squid ray: a straight line that passes through one wall up to 28px thick.
 	## Returns {end: Vector2, hits: [Unit]}; everything on the line is hit, Jackals included.
-	var E: Dictionary = Data.ETYPES.squid
-	var o := e.center()
+	var R: float = Data.ETYPES.squid.range if rng < 0 else rng
+	var o: Vector2 = e.center() if from == null else from
 	var dv := Vector2(cos(ang), sin(ang))
 	var walls := 0
 	var thick := 0.0
 	var hits: Array = []
 	var d := 8.0
-	while d < E.range:
+	while d < R:
 		var p := o + dv * d
 		if p.y > WATER_Y or p.y < -40:
 			break
@@ -4821,12 +4873,12 @@ func beam_path(e: Unit, ang: float) -> Dictionary:
 			walls += 1
 			thick = 0
 		for u in units:
-			if u == e or u.dead or u.gone or u.sunk or u.is_pickup() or u.kind == "pow" or hits.has(u):
+			if u == e or u.dead or u.gone or u.sunk or u.is_pickup() or u.kind == "pow" or hits.has(u) or u.fl.get("ship") == e:
 				continue
 			if absf(u.x - p.x) < u.w / 2.0 + 1 and p.y > u.y - u.h and p.y < u.y + 1:
 				hits.append(u)
 		d += 3
-	return {"end": o + dv * E.range, "hits": hits}
+	return {"end": o + dv * R, "hits": hits}
 
 func fire_beam(e: Unit, ang: float) -> void:
 	var E: Dictionary = Data.ETYPES.squid
@@ -5040,7 +5092,7 @@ func weaver_act(e: Unit) -> void:
 		return
 	var best = null
 	for o in units:
-		if o == e or o.team != "enemy" or o.dead or not o.active or o.dome > 0 or o.type == "boss" or Data.ETYPES[o.type].get("static", false):
+		if o == e or o.team != "enemy" or o.dead or not o.active or o.dome > 0 or is_boss(o) or Data.ETYPES[o.type].get("static", false):
 			continue
 		if absf(o.x - e.x) > 260:
 			continue
@@ -5343,6 +5395,180 @@ func burrow_act(e: Unit) -> void:
 	e.fl["wave"] = i + 1
 	await wait(10)
 
+# ---------------------------------------------------------------- Q1 Hive Ship and drop pods
+func hang_plates(sh: Unit) -> void:
+	## Two hull plates hang on tethers under the ship's belly.
+	for dx in [-48.0, 48.0]:
+		var p := mk_enemy("shipplate", sh.x + dx, sh.y + 16)
+		p.fl["ship"] = sh
+		p.fl["dx"] = dx
+		p.immovable = true
+		units.append(p)
+
+func ship_plated(sh: Unit) -> bool:
+	return units.any(func(o): return o.type == "shipplate" and not o.dead and o.fl.get("ship") == sh)
+
+func drop_plate(p: Unit, src) -> void:
+	## A plate shot off its tethers falls like a girder and crushes whatever is under it.
+	p.gone = true
+	Sfx.play("thud")
+	float_text(p, "PLATE FALLS!", Color("ffd23a"), true)
+	var cells: Array = []
+	var cx0 := int(floor((p.x - p.w / 2.0) / CELL))
+	var cy0 := int(floor((p.y - p.h) / CELL))
+	for ry in int(p.h / CELL):
+		for rx in int(p.w / CELL):
+			cells.append([cx0 + rx, cy0 + ry, 2, 0])
+	var c = T.chunk_from_cells(cells, src if src is Unit and src.team == "squad" else null)
+	if c != null and p.fl.get("ship") != null:
+		c.hit[p.fl.ship.id] = true
+	var sh = p.fl.get("ship")
+	if sh != null and not sh.dead and not ship_plated(sh):
+		banner("HULL EXPOSED!", Color("ffb23e"), "THE HIVE SHIP TAKES +30% DAMAGE")
+
+func hiveship_act(e: Unit) -> void:
+	## Glide over the squad, sweep the ray across the ground under the nearest soldier, then drop
+	## a pod of Vharr (two when it's below half health).
+	var E: Dictionary = Data.ETYPES.hiveship
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	var want: float = tg.x + (70.0 if e.x >= tg.x else -70.0)
+	if absf(want - e.x) > 20:
+		await hover_move(e, want, E.speed)
+	if e.dead:
+		return
+	tg = nearest_squad(e)
+	if tg != null:
+		await ship_sweep(e, tg)
+	var n := 2 if e.hp < e.max_hp / 2 else 1
+	for k in n:
+		if e.dead or squad_alive().is_empty():
+			return
+		var vh := units.filter(func(o): return o.team == "enemy" and not o.dead and faction(o) == "vharr" and not Data.ETYPES[o.type].get("static", false) and not is_boss(o) and absf(o.x - e.x) < 700)
+		if vh.size() >= 8:
+			break  # the arena is full; it holds the rest back
+		await ship_pod(e, pick(squad_alive()))
+
+func ship_sweep(e: Unit, tg: Unit) -> void:
+	## The ray drags across the ground from one side of the target to the other. It goes through
+	## one thin wall like the Squid's, and hits each body on its path once.
+	var E: Dictionary = Data.ETYPES.hiveship
+	var o := Vector2(e.x, e.y - 4)
+	var dir := 1.0 if tg.x >= e.x else -1.0
+	var x0: float = tg.x - dir * E.sweep / 2.0
+	var hit := {}
+	var dmg := int(round(E.beam * (1 + alert * 0.06)))
+	Sfx.play("snipe")
+	for k in 9:
+		var gx: float = x0 + dir * E.sweep * k / 8.0
+		var gy = T.stand_y(gx, o.y + 20)
+		var ang := atan2((gy if gy != null else float(WATER_Y)) - 6 - o.y, gx - o.x)
+		var bp := beam_path(e, ang, E.beam_range, o)
+		for j in 3:
+			tracers.append({"x1": o.x, "y1": o.y + j - 1, "x2": bp.end.x, "y2": bp.end.y + j - 1, "c": Color("c47bff") if j != 1 else Color("9df25c"), "t": 8})
+		sparks(bp.end.x, bp.end.y, 2)
+		for u in bp.hits:
+			if not hit.has(u.id):
+				hit[u.id] = true
+				damage(u, dmg, e, {})
+		await wait(4)
+	await wait(10)
+
+func ship_pod(e: Unit, tg: Unit) -> void:
+	## A drop pod falls from the belly toward a soldier, crashes in with a blast and lands full of Vharr.
+	var E: Dictionary = Data.ETYPES.hiveship
+	var pool: Array = Data.BIOME_ALIENS.get(mission.get("biome", ""), ALIENS).filter(func(k): return Data.ETYPES[k].get("weight", "") != "hover")
+	var cargo: Array = ["skitter", "skitter"] if randf() < 0.5 or pool.is_empty() else [pick(pool)]
+	var sx := e.x + randf_range(-20, 20)
+	var sy := e.y + 4
+	var tf := sqrt(2.0 * maxf(20.0, tg.y - sy) / grav)
+	var vx := clampf((tg.x + randf_range(-30, 30) - sx) / tf, -4.0, 4.0)
+	float_text(e, "POD DROP!", Color("c47bff"), true)
+	Sfx.play("toss")
+	projs.append(mk_proj({"kind": "droppod", "x": sx, "y": sy, "vx": vx, "vy": 0.0, "r": 30.0, "dmg": int(round(E.pod_dmg * (1 + alert * 0.06))), "owner": e, "cargo": cargo}))
+	await until(settled)
+	await wait(8)
+
+func land_pod(x: float, y: float, cargo: Array) -> void:
+	## Where a drop pod comes to rest, closed. Over water it sinks with everything inside.
+	var gy = T.stand_y(x, y - 30)
+	if gy == null or gy >= WATER_Y - 4:
+		splash(x)
+		return
+	var u := mk_enemy("droppod", x, gy)
+	u.active = true
+	u.fl["cargo"] = cargo
+	units.append(u)
+
+func droppod_act(e: Unit) -> void:
+	## The pod opens and what's inside comes out swinging, all in this same phase.
+	var cargo: Array = e.fl.get("cargo", ["skitter"])
+	float_text(e, "POD OPENS!", Color("9df25c"), true)
+	Sfx.play("splash")
+	e.dead = true
+	e.gone = true
+	for i in 6:
+		part({"x": e.x + (i - 3) * 4, "y": e.y - 14, "vx": (i - 3) * 0.7, "vy": -2.0, "life": 40, "max": 40, "c": Color("9df25c"), "s": 2.0, "g": 0.12})
+	var out: Array = []
+	for k in cargo.size():
+		var cx: float = e.x + (0.0 if cargo.size() == 1 else (k * 2 - 1) * 14.0)
+		var cy = T.stand_y(cx, e.y - 30)
+		var c := mk_enemy(cargo[k], cx, cy if cy != null else e.y)
+		c.active = true
+		units.append(c)
+		place_alien(c)
+		out.append(c)
+	await wait(14)
+	for c in out:
+		if not c.dead and not squad_alive().is_empty():
+			await enemy_act(c)
+			await until(settled)
+
+# ---------------------------------------------------------------- Q3 Vharr Boar
+func vboar_tricks(bo: Unit) -> void:
+	## The finale BOAR's Vharr refit: a dome over the turret every third turn, and a tongue that
+	## yanks the nearest soldier in a clear line up to the tracks.
+	var cd: int = bo.fl.get("dome_cd", 0)
+	if bo.dome <= 0 and cd <= 0:
+		bo.dome = 1
+		bo.fl["dome_cd"] = 2
+		float_text(bo, "DOME UP!", Color("9df25c"), true)
+		Sfx.play("power")
+		await wait(14)
+	elif bo.dome <= 0:
+		bo.fl["dome_cd"] = cd - 1
+	var mouth := Vector2(bo.x - 56, bo.y - 26)
+	var tg = null
+	for o in squad_alive():
+		if absf(o.x - bo.x) > 400 or o.heavy or o.immovable:
+			continue
+		if not ray_clear(mouth.x, mouth.y, o.x, o.y - o.h / 2.0):
+			continue
+		if tg == null or absf(o.x - bo.x) < absf(tg.x - bo.x):
+			tg = o
+	if tg == null:
+		return
+	Sfx.play("slash")
+	ropes.append({"x": mouth.x, "y": mouth.y, "u": tg, "t": 40, "c": Color("e05a8a")})
+	await wait(12)
+	var dir := signf(bo.x - tg.x) if tg.x != bo.x else -1.0
+	var gap: float = absf(tg.x - bo.x) - (bo.w + tg.w) / 2.0
+	var pull := minf(220.0, maxf(0.0, gap))
+	if pull > 8:
+		tg.vx = dir * pull / 36.0
+		tg.vy = -3.5
+		tg.air = true
+		tg.walk = null
+		tg.bumped = {bo.id: true}
+		tg.last_hit_by = bo
+		float_text(tg, "YANKED!", Color("e05a8a"), true)
+		await until(func(): return not tg.air or tg.dead or tg.sunk)
+	if not tg.dead and absf(tg.x - bo.x) < bo.w / 2.0 + 30:
+		Sfx.play("slash")
+		damage(tg, int(round(6 * (1 + alert * 0.06))), bo, {"melee": true})
+	await until(settled)
+
 func alpha_near(e: Unit) -> bool:
 	## ALPHA elite: others of its kind within 160px act twice.
 	return units.any(func(o): return o != e and o.elite == "alpha" and o.type == e.type and not o.dead and absf(o.x - e.x) <= 160)
@@ -5408,6 +5634,10 @@ func boss_act(bo: Unit) -> void:
 			var y = T.stand_y(x, bo.y - 40)
 			pts.append([x, y if y != null else bo.y, false])
 		await walk_along(bo, pts)
+	if bo.fl.get("vharr", false):
+		await vboar_tricks(bo)
+		if bo.dead or squad_alive().is_empty():
+			return
 	var shells := 2 if bo.hp < bo.max_hp / 2 else 1
 	for i in shells:
 		var sq := squad_alive()
@@ -5811,6 +6041,16 @@ func body_collisions(u: Unit) -> void:
 
 func physics(u: Unit) -> void:
 	if u.walk != null or (u.kind == "pow" and u.freed):
+		return
+	if u.type == "shipplate" and not u.dead:
+		# a hull plate hangs on its tethers under the Hive Ship and goes where the ship goes
+		var sh = u.fl.get("ship")
+		if sh != null and not sh.dead and not sh.gone:
+			u.x = sh.x + u.fl.dx
+			u.y = sh.y + 16
+		u.air = false
+		u.vx = 0
+		u.vy = 0
 		return
 	if u.hang:
 		# J4: hanging at the top of the arc until the shot; anything that pushes them lets go
