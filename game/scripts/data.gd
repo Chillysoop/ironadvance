@@ -111,6 +111,16 @@ const CARDS := {
 	"flameshot": {"name": "Flame Shot", "type": "AIM", "cost": 1, "dmg": [2, 3], "pellets": 7, "range": FULL_RANGE, "gun": "shotgun", "bounce": 0, "sway": 0.02, "spread": 0.12, "knock": 2, "chip": 7, "burn": true, "text": "A gout of fire. Chews wood.", "rarity": 2, "pool": false},
 	"lasergun": {"name": "Laser Gun", "type": "AIM", "cost": 1, "dmg": [9, 11], "range": FULL_RANGE, "gun": "sniper", "bounce": 3, "sway": 0.0, "pierce": true, "chip": 2, "text": "Pierces and bounces. No sway.", "rarity": 2, "pool": false},
 	"chaser": {"name": "Enemy Chaser", "type": "LINE", "cost": 1, "radius": 26, "dmg": 10, "speed": 6.5, "homing": true, "text": "A rocket that hunts the nearest Jackal.", "rarity": 2, "pool": false},
+	# mid and late letters: only turn up from level 2 (D, T) and level 3 (Z, G) on, see LETTER_FROM
+	"dropshot": {"name": "Drop Shot", "type": "ARC", "cost": 1, "radius": 38, "dmg": 14, "fuse": 200, "bounce": true, "wind": 0.3, "text": "A heavy bomb that bounces along the ground, then blows.", "rarity": 2, "pool": false},
+	"thundershot": {"name": "Thunder Shot", "type": "LINE", "cost": 1, "radius": 40, "dmg": 18, "speed": 7.0, "homing": true, "text": "A big rocket that hunts the nearest enemy.", "rarity": 3, "pool": false},
+	"zantetsu": {"name": "Zantetsu Slash", "type": "MELEE", "cost": 1, "dmg": [16, 20], "range": 56, "knock": 9, "sweep": true, "text": "One sweep cuts every body in reach and the ground in front.", "rarity": 3, "pool": false},
+	"superhmg": {"name": "Super HMG", "type": "AIM", "cost": 1, "dmg": [4, 5], "shots": 8, "range": FULL_RANGE, "gun": "mg", "bounce": 0, "sway": 0.03, "spread": 0.05, "pierce": true, "chip": 4, "text": "Eight piercing heavy rounds.", "rarity": 3, "pool": false},
+	# mid and late weapon cards: only come from the guns of the same name (ITEMS "from")
+	"bullpup": {"name": "Bullpup Burst", "type": "AIM", "cost": 1, "dmg": [5, 6], "shots": 2, "range": FULL_RANGE, "gun": "rifle", "bounce": 1, "sway": 0.03, "spread": 0.03, "text": "Two accurate rifle rounds.", "rarity": 1, "pool": false, "up": {"shots": 3}},
+	"m79": {"name": "M79 Shell", "type": "ARC", "cost": 1, "radius": 36, "dmg": 12, "wind": 0.5, "text": "Explodes on impact. Barely drifts.", "rarity": 1, "pool": false, "up": {"dmg": 15, "radius": 42}},
+	"railshot": {"name": "Rail Slug", "type": "AIM", "cost": 2, "dmg": [22, 28], "range": FULL_RANGE, "gun": "sniper", "bounce": 0, "sway": 0.0, "pierce": true, "phase": true, "text": "No sway. Passes through walls and every body in the line.", "rarity": 2, "pool": false, "up": {"dmg": [27, 34]}},
+	"minigun": {"name": "Mini-Gun", "type": "AIM", "cost": 2, "dmg": [3, 4], "shots": 10, "range": FULL_RANGE, "gun": "mg", "bounce": 0, "sway": 0.04, "spread": 0.07, "chip": 3, "text": "Ten rounds. Shreds wood and cover.", "rarity": 2, "pool": false, "up": {"shots": 13}},
 	# overdrives: unlocked by full adrenaline, free, single use
 	"ricochet": {"name": "Ricochet Round", "type": "AIM", "cost": 0, "od": true, "dmg": [16, 20], "range": FULL_RANGE, "gun": "sniper", "bounce": 5, "sway": 0.0, "pierce": true, "chip": 5, "text": "Five bounces. Pierces every body it meets.", "rarity": 5},
 	"surge": {"name": "Adrenal Surge", "type": "SELF", "cost": 0, "od": true, "surge": true, "range": 240, "text": "Squad within 240px: heal 10, +1 energy, +80 move.", "rarity": 5},
@@ -192,7 +202,10 @@ const FAB_PRICE := 70
 
 const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush"}
 # Metal Slug letter drops: 3 temporary cards in the collector's hand for the rest of the mission.
-const LETTERS := {"H": "hmg", "R": "bazooka", "F": "flameshot", "S": "shotgun", "L": "lasergun", "C": "chaser"}
+const LETTERS := {"H": "hmg", "R": "bazooka", "F": "flameshot", "S": "shotgun", "L": "lasergun", "C": "chaser",
+	"D": "dropshot", "T": "thundershot", "Z": "zantetsu", "G": "superhmg"}
+# Letters that only drop from a given point in the run on (Run.mission: 1 = level 2, 2 = level 3 and the finale).
+const LETTER_FROM := {"D": 1, "T": 1, "Z": 2, "G": 2}
 
 # ---------------------------------------------------------------- gear (G1-G6)
 # Four slots per soldier plus a squad stash and a 3-slot consumable belt.
@@ -256,6 +269,21 @@ const ITEMS := {
 	"zippo": {"name": "Zippo", "slot": "kit", "stats": {"blast": 0.06, "kill_adr": 4}, "locked": true, "text": "Never leave home without it."},
 	"medalcase": {"name": "Medal Case", "slot": "kit", "stats": {"luck": 2}, "locked": true, "text": "Polished every night."},
 	"antimat": {"name": "Anti-Materiel Rifle", "slot": "weapon", "cards": ["snipe", "snipe"], "stats": {"laser_step": 1, "aim_dmg": 1, "heavy": 15}, "locked": true, "text": "Adds 2 Long Shot cards."},
+	# Mid and late game finds (G7): "from" is the first Run.mission they drop in, 1 = level 2,
+	# 2 = level 3 and the finale. Crates, the shop and every drop roll them; none has a downside.
+	"bullpupgun": {"name": "Bullpup Rifle", "slot": "weapon", "from": 1, "cards": ["bullpup", "bullpup"], "stats": {"aim_dmg": 1}, "text": "Adds 2 Bullpup Burst cards."},
+	"m79gun": {"name": "M79 Launcher", "slot": "weapon", "from": 1, "cards": ["m79", "m79"], "stats": {"blast": 0.08}, "text": "Adds 2 M79 Shell cards."},
+	"ceramic": {"name": "Ceramic Plate", "slot": "armor", "from": 1, "stats": {"hp": 6, "armor_turn": 1}, "text": "Light, hard, and a lot of it."},
+	"exolegs": {"name": "Exo Legs", "slot": "armor", "from": 1, "stats": {"move": 40, "fall_half": 1}, "text": "Hydraulic knees. Half damage from falls and slams."},
+	"tracers": {"name": "Tracer Rounds", "slot": "kit", "from": 1, "stats": {"aim_dmg": 2}, "text": "Every round finds its mark a little harder."},
+	"battlecomp": {"name": "Battle Computer", "slot": "kit", "from": 1, "stats": {"laser_step": 1, "sway": 0.3}, "text": "Aim laser a step further, much less sway."},
+	"railgun": {"name": "Rail Gun", "slot": "weapon", "from": 2, "cards": ["railshot", "railshot"], "stats": {"laser_step": 1}, "text": "Adds 2 Rail Slug cards."},
+	"minigungun": {"name": "Mini-Gun", "slot": "weapon", "from": 2, "cards": ["minigun", "minigun"], "stats": {"hp": 4}, "text": "Adds 2 Mini-Gun cards."},
+	"juggernaut": {"name": "Juggernaut Suit", "slot": "armor", "from": 2, "stats": {"hp": 10, "armor_turn": 3}, "text": "Bomb-disposal armor, rebuilt for the front."},
+	"vharrheart": {"name": "Vharr Heart", "slot": "kit", "from": 2, "stats": {"regen": 3, "kill_adr": 12}, "text": "Still beating. Heals you and feeds on every kill."},
+	"hkchip": {"name": "Hunter-Killer Chip", "slot": "kit", "from": 2, "stats": {"kill_draw": 1, "aim_dmg": 1}, "text": "ON KILL: draw a card (once a turn). +1 AIM damage."},
+	"b_stim": {"name": "Combat Stim", "slot": "belt", "from": 1, "use": "stim", "n": 12, "text": "Heal 12 and +1 energy. No card or energy needed."},
+	"b_adr": {"name": "Rage Shot", "slot": "belt", "from": 2, "use": "adr", "n": 50, "text": "+50 adrenaline right now."},
 	"b_medkit": {"name": "Medkit", "slot": "belt", "use": "heal", "n": 10, "text": "Heal 10. No card or energy needed."},
 	"b_smoke": {"name": "Smoke Pot", "slot": "belt", "use": "smoke", "text": "Smoke at your feet."},
 	"b_ration": {"name": "Ration", "slot": "belt", "use": "ration", "n": 5, "text": "Heal 5 and find 15 scrip."},
