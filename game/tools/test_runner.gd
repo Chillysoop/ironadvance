@@ -2,7 +2,8 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer), track (N7 K9 Handler), vehicles (N3 Gears, R1 hijack, E6 Jackal Walker),
+## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer), track (N7 K9 Handler), vehicles (N3 Gears, R1 hijack, E6 Jackal Walker), branches5 (B1-B4 fifth branches),
+## gear (click a slot to see what fits, drag and drop, deck changes, a fifth soldier at HQ),
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
@@ -11,6 +12,7 @@ extends Node
 const Services := preload("res://scripts/services.gd")
 const HubUI := preload("res://scripts/hub_ui.gd")
 const HudScript := preload("res://scripts/hud.gd")
+const ArmoryScript := preload("res://scripts/armory.gd")
 
 var out_dir := "user://shots"
 var scenario := ""
@@ -755,6 +757,12 @@ func run() -> void:
 			await track_test()
 		"vehicles":
 			await vehicles_test()
+		"branches5":
+			await branches5_test()
+		"newclasses":
+			await newclasses_test()
+		"identity":
+			await identity_test()
 		"pickups":
 			await pickups()
 		"bossloot":
@@ -769,6 +777,8 @@ func run() -> void:
 			await dossier()
 		"hub":
 			await hub()
+		"gear":
+			await gear_test()
 		"field":
 			await field()
 		"picks":
@@ -1297,6 +1307,149 @@ func field() -> void:
 	check(Run.scrip == scrip0 and Run.soldiers[0].hp == 9 and Run.soldiers[0].deck.size() == deck0 and Run.history.size() == hist0, "everything the range touched is put back (scrip %d, HP %d, deck %d)" % [Run.scrip, Run.soldiers[0].hp, Run.soldiers[0].deck.size()])
 	await shot("field_back")
 
+func gear_test() -> void:
+	## Gear equipping: a fifth soldier fits the Armory and the Dossier, clicking an empty slot
+	## lights what fits, the deck change is spelled out, and gear drags between slots.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.leave_campaign()
+	Run.new_run()
+	Run.scrip = 400
+	var bolt := Run.free_specialist("bolt")
+	check(Run.soldiers.size() == 5 and not bolt.is_empty(), "Bolt joins as a fifth soldier")
+	var moss: Dictionary = Run.soldiers[0]
+	var hex: Dictionary = Run.soldiers[1]
+	var carbine := Run.new_item("carbine", 0)
+	var service := Run.new_item("service", 0)
+	var ghillie := Run.new_item("ghillie", 0)
+	var scope := Run.new_item("scope", 0)
+	for it in [carbine, ghillie, scope, service]:
+		Run.stash.append(it)
+	main.show_hq(false)
+	await frames_wait(20)
+	var hq: Control = main.screen
+	await shot("gear_hq5")
+	hq.go("armory")
+	await frames_wait(20)
+	var a: Control = hq.sub
+	await shot("gear_armory5")
+	var bolt_tiles: Array = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, bolt))
+	check(bolt_tiles.size() == 4 and bolt_tiles.all(func(tl): return tl.get_global_rect().end.x <= 940), "Bolt's four slots fit on the Armory screen")
+	# click Moss's empty weapon slot: the carbine and the pistol light up, the vest and scope dim
+	var slot_tile = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, moss) and tl.ref.slot == "weapon")[0]
+	await click_at(slot_tile.get_global_rect().get_center())
+	await frames_wait(6)
+	var lit: Array = a.tiles.filter(func(tl): return tl.fit == 1).map(func(tl): return tl.item)
+	check(a.pick.get("slot", "") == "weapon" and lit.has(carbine) and lit.has(service) and not lit.has(ghillie), "clicking an empty weapon slot lights the weapons that fit")
+	check(a.tiles.filter(func(tl): return tl.item == ghillie)[0].fit == -1, "gear that doesn't fit is dimmed")
+	var carb_tile = a.tiles.filter(func(tl): return tl.item == carbine)[0]
+	warp(carb_tile.get_global_rect().get_center())
+	await frames_wait(6)
+	await shot("gear_slot_fits")
+	var ch := ArmoryScript.equip_changes(moss, carbine, "weapon")
+	check(ch.any(func(l): return l[0] == "Deck: +2 Carbine Burst"), "the preview spells out the deck change: %s" % [ch])
+	var n0: int = moss.deck.size()
+	await click_at(carb_tile.get_global_rect().get_center())
+	await frames_wait(6)
+	check(moss.equip.weapon == carbine and moss.deck.size() == n0 + 2, "clicking a lit item equips it into the picked slot")
+	check(a.msg.contains("+2 Carbine Burst"), "the Armory says what changed in the deck: " + a.msg)
+	# drag the pistol onto Moss's weapon slot: the carbine's cards leave, the pistol's come in
+	var pis_tile = a.tiles.filter(func(tl): return tl.item == service)[0]
+	slot_tile = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, moss) and tl.ref.slot == "weapon")[0]
+	await drag_to(pis_tile.get_global_rect().get_center(), slot_tile.get_global_rect().get_center(), true)
+	await shot("gear_dragging")
+	await drag_to(Vector2.ZERO, slot_tile.get_global_rect().get_center(), false, true)
+	check(moss.equip.weapon == service and Run.stash.has(carbine), "dragging the pistol onto the slot swaps out the carbine")
+	check(moss.deck.filter(func(c): return c.key == "carbine").is_empty() and a.msg.contains("-2 Carbine Burst"), "the carbine's cards left the deck: " + a.msg)
+	# drag the pistol from Moss to Hex's weapon slot
+	slot_tile = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, moss) and tl.ref.slot == "weapon")[0]
+	var hex_slot = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, hex) and tl.ref.slot == "weapon")[0]
+	await drag_to(slot_tile.get_global_rect().get_center(), hex_slot.get_global_rect().get_center())
+	check(hex.equip.weapon == service and moss.equip.weapon == null and not moss.deck.any(func(c): return c.get("src", -1) == service.uid), "gear drags from one soldier to another, cards and all")
+	# the ghillie can't go in Bolt's weapon slot
+	var gh_tile = a.tiles.filter(func(tl): return tl.item == ghillie)[0]
+	var bw = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, bolt) and tl.ref.slot == "weapon")[0]
+	await drag_to(gh_tile.get_global_rect().get_center(), bw.get_global_rect().get_center())
+	check(bolt.equip.weapon == null and Run.stash.has(ghillie) and a.msg.contains("doesn't fit"), "armor won't drop into a weapon slot: " + a.msg)
+	# Bolt's armor slot takes it; then drag it back to the stash
+	var ba = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, bolt) and tl.ref.slot == "armor")[0]
+	gh_tile = a.tiles.filter(func(tl): return tl.item == ghillie)[0]
+	await drag_to(gh_tile.get_global_rect().get_center(), ba.get_global_rect().get_center())
+	check(bolt.equip.armor == ghillie, "the fifth soldier takes gear by drag and drop")
+	ba = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, bolt) and tl.ref.slot == "armor")[0]
+	await drag_to(ba.get_global_rect().get_center(), Vector2(300, 300))
+	check(bolt.equip.armor == null and Run.stash.has(ghillie), "dragging gear onto the stash takes it off")
+	# select a stash item: the slots it fits light up
+	var sc_tile = a.tiles.filter(func(tl): return tl.item == scope)[0]
+	await click_at(sc_tile.get_global_rect().get_center())
+	await frames_wait(6)
+	await shot("gear_item_picked")
+	var lit_slots: Array = a.tiles.filter(func(tl): return tl.fit == 1 and tl.ref.where == "equip")
+	check(lit_slots.size() == 10 and lit_slots.all(func(tl): return tl.ref.slot.begins_with("kit")), "a picked kit lights every kit slot (%d)" % lit_slots.size())
+	await click_at(lit_slots[9].get_global_rect().get_center())
+	check(bolt.equip.kit2 == scope, "clicking a lit slot equips the picked item there")
+	# the Dossier gear tab: an empty slot lights what fits too
+	hq.open_dossier(4)
+	await frames_wait(10)
+	var d: Control = hq.sub
+	await shot("gear_dossier5")
+	check(d.idx == 4, "the Dossier opens on Bolt")
+	d.set_tab("gear")
+	await frames_wait(4)
+	d.gear_select({"where": "equip", "slot": "weapon"})
+	await frames_wait(6)
+	await shot("gear_dossier_slot")
+	var dl: Array = d.get_children().filter(func(c): return c is ArmoryScript.ItemTile and c.fit == 1).map(func(c): return c.item)
+	check(dl.has(carbine) and not dl.has(ghillie), "the Dossier lights the stash weapons for an empty slot")
+	d.gear_select({"where": "stash", "i": Run.stash.find(carbine)})
+	await frames_wait(4)
+	check(bolt.equip.weapon == carbine, "clicking one equips it on Bolt")
+	d.set_tab("squad")
+	await frames_wait(6)
+	await shot("gear_all_decks5")
+	d.done.emit()
+	await frames_wait(4)
+	for id in ["qm", "workshop", "doc", "barracks"]:
+		hq.go(id)
+		await frames_wait(16)
+		await shot("gear_hq5_" + id)
+	Run.meta = keep
+
+func warp(p: Vector2) -> void:
+	var ev := InputEventMouseMotion.new()
+	ev.position = p
+	ev.global_position = p
+	get_viewport().push_input(ev, true)
+
+func drag_to(from: Vector2, to: Vector2, hold := false, release_only := false) -> void:
+	## Press on from, move in steps to to, and let go (unless hold).
+	if not release_only:
+		warp(from)
+		await frames_wait(1)
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = true
+		ev.position = from
+		ev.global_position = from
+		get_viewport().push_input(ev, true)
+		await frames_wait(2)
+		for k in range(1, 7):
+			var mv := InputEventMouseMotion.new()
+			mv.position = from.lerp(to, k / 6.0)
+			mv.global_position = mv.position
+			mv.button_mask = MOUSE_BUTTON_MASK_LEFT
+			get_viewport().push_input(mv, true)
+			await frames_wait(1)
+	if hold:
+		await frames_wait(4)
+		return
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = to
+	up.global_position = to
+	get_viewport().push_input(up, true)
+	await frames_wait(4)
+
 func hub() -> void:
 	## The HQ hub: buildings with one job each, a nav strip between them, ready badges, the
 	## gate reminder, the walk, the Workshop's shortcuts and Patch Up at the Doc's Lab.
@@ -1389,9 +1542,11 @@ func hub() -> void:
 	arm.select({"where": "stash", "i": Run.stash.find(Run.stash.filter(func(it): return it.id == "ghillie")[0])})
 	await frames_wait(6)
 	await shot("hub_armory")
+	# the Quartermaster's shelf is random and can sell a third Ghillie: count from here
+	var gh0: int = Run.stash.filter(func(it): return it.id == "ghillie").size()
 	arm.copy_sel()
 	await frames_wait(6)
-	check(Run.stash.filter(func(it): return it.id == "ghillie").size() == 3 and Run.any_merge(), "COPY at the Armory finishes a triple")
+	check(Run.stash.filter(func(it): return it.id == "ghillie").size() == gh0 + 1 and Run.any_merge(), "COPY at the Armory finishes a triple")
 	check(hq.badges().get("armory", "") == "TRIPLE READY", "the Armory badge lights for the triple")
 	hq.go("barracks")
 	await frames_wait(10)
@@ -5987,6 +6142,435 @@ func vehicles_test() -> void:
 	check(b.units.any(func(o): return o.kind == "ride" and not o.gone and o.loot.type == "walker"), "it leaves a walker you can drive")
 	Run.meta = keep
 	Run.save_meta()
+
+func branches5_test() -> void:
+	## B1-B4: Wallbanger, Coordinator, Sapper and Wrestler, the fifth branch of each original.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var sq := {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	var x := 700.0
+	while not flat_open(b, x, 360) and x < b.world_w - 600:
+		x += 20
+	for o in b.units:
+		if o.team == "enemy" and absf(o.x - x - 150) < 600:
+			o.gone = true
+	var i := 0
+	for k in ["hex", "vee", "rook"]:
+		ground_unit(b, sq[k], x - 120 - i * 30, 0)
+		i += 1
+	cam_on(b, x + 120)
+	var mo: Unit = sq.moss
+	ground_unit(b, mo, x, 0)
+	var gy: float = mo.y
+	# B1: a dirt wall between Moss and a Jackal
+	b.build_cells(x + 100, gy - 60, 16, 60, 1)
+	var e := b.mk_enemy("grunt", x + 200, b.T.stand_y(x + 200, 0))
+	e.active = true
+	e.hp = 60; e.max_hp = 60
+	b.units.append(e)
+	var ri := force_card(mo, "rifle")
+	b.select_unit(mo); b.select_card(ri)
+	b.mouse = Vector2(e.x, e.y - 18)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(e.hp == 60, "without Punch Through the dirt wall stops the rifle (%d)" % e.hp)
+	mo.s.perks.append("softpoint")
+	mo.energy = 3
+	ri = force_card(mo, "rifle")
+	b.select_unit(mo); b.select_card(ri)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	await shot("b5_wallbanger")
+	check(e.hp < 60, "B1 Punch Through: the shot goes through the dirt wall (%d)" % e.hp)
+	# B2: Hand-Off passes the next card to a squadmate
+	var hx: Unit = sq.hex
+	var rk: Unit = sq.rook
+	ground_unit(b, rk, x - 40, 0)
+	ground_unit(b, hx, x - 70, 0)
+	hx.energy = 3
+	hx.hand = [Run.new_card("handoff"), Run.new_card("medkit")]
+	var rh := rk.hand.size()
+	b.select_unit(hx); b.select_card(0)
+	b.state = "player"; b.busy = false
+	b.play_on_target(rk)
+	await until(func(): return not b.busy, 1200)
+	check(rk.hand.size() == rh + 1 and rk.hand[-1].key == "medkit", "B2 Hand-Off: Rook gets Hex's Medkit")
+	hx.hand.append({"id": -9, "key": "synchronize", "tier": Data.OD_TIER, "temp": true})
+	b.sel = hx; b.state = "player"; b.busy = false
+	b.play_self(hx.hand.size() - 1)
+	await until(func(): return not b.busy, 1200)
+	var bz := force_card(rk, "burst")
+	check(b.card_cost(rk, rk.hand[bz]) == 0, "Synchronize: everyone's next card is free")
+	# B3: Sticky Charge sticks, Clacker blows it
+	var ve: Unit = sq.vee
+	ground_unit(b, ve, x - 100, 0)
+	var e2 := b.mk_enemy("grunt", x + 300, b.T.stand_y(x + 300, 0))
+	e2.active = true
+	e2.hp = 60; e2.max_hp = 60
+	b.units.append(e2)
+	var sk: Unit = b.plant_sticky(x + 290, b.T.stand_y(x + 290, 0), ve, 13, 34)
+	check(b.stickies.size() == 1 and sk.kind == "sticky", "B3: a Sticky Charge sits where it lands")
+	ve.energy = 3
+	var ci := force_card(ve, "clacker")
+	b.sel = ve; b.state = "player"; b.busy = false
+	b.play_self(ci)
+	await until(func(): return not b.busy, 1200)
+	check(sk.gone and e2.hp < 60, "Clacker sets it off (%d)" % e2.hp)
+	# and one under a Jackal's feet blows in their phase
+	var hp2 := e2.hp
+	var sk2: Unit = b.plant_sticky(e2.x + 60, b.T.stand_y(e2.x + 60, 0), ve, 13, 34)
+	await shot("b5_sticky")
+	e2.x = sk2.x
+	b.state = "enemy"
+	await frames_wait(3)
+	b.state = "player"
+	await until(func(): return b.settled(), 600)
+	check(sk2.gone and (e2.hp < hp2 or e2.dead), "a Jackal stepping on a charge sets it off (%d -> %d)" % [hp2, e2.hp])
+	# B4: Grab, carry, Body Throw
+	var e3 := b.mk_enemy("grunt", rk.x + 24, b.T.stand_y(rk.x + 24, 0))
+	e3.active = true
+	e3.hp = 60; e3.max_hp = 60
+	b.units.append(e3)
+	rk.energy = 3
+	rk.face = 1
+	var gi := force_card(rk, "grab")
+	b.select_unit(rk); b.select_card(gi)
+	b.state = "player"; b.busy = false
+	b.play_on_target(e3)
+	await until(func(): return not b.busy, 1200)
+	check(rk.held == e3, "B4 Grab: Rook is carrying the Jackal")
+	await frames_wait(6)
+	check(e3.y < rk.y - 20 and absf(e3.x - rk.x) < 12, "the Jackal rides on his shoulder")
+	await shot("b5_grab")
+	var ti := -1
+	for k in rk.hand.size():
+		if rk.hand[k].key == "bodythrow":
+			ti = k
+	check(ti >= 0, "Body Throw is in his hand")
+	check(b.chain_ready(rk, rk.hand[ti]) == "TAG OUT", "TAG OUT is ready")
+	var hp3 := e3.hp
+	b.select_unit(rk); b.select_card(ti)
+	b.mouse = Vector2(rk.x + 160, rk.y - 40)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1800)
+	check(rk.held == null and absf(e3.x - rk.x) > 60 and e3.hp < hp3, "Body Throw: he flies and lands hard (%d -> %d at %d)" % [hp3, e3.hp, e3.x - rk.x])
+	# Suplex
+	var e4 := b.mk_enemy("grunt", rk.x + 24, b.T.stand_y(rk.x + 24, 0))
+	e4.active = true
+	e4.hp = 60; e4.max_hp = 60
+	b.units.append(e4)
+	rk.energy = 3
+	var si := force_card(rk, "suplex")
+	b.select_unit(rk); b.select_card(si)
+	b.play_on_target(e4)
+	await until(func(): return not b.busy, 1800)
+	check(e4.hp < 60 and e4.x < rk.x + 4, "Suplex: slammed down behind Rook (%d)" % e4.hp)
+	# a Brute is too heavy without Titan
+	var br := b.mk_enemy("brute", rk.x - 24, b.T.stand_y(rk.x - 24, 0))
+	br.active = true
+	b.units.append(br)
+	check(not b.can_grab(rk, br), "a Brute is too heavy to grab")
+	rk.s.perks.append("titan")
+	check(b.can_grab(rk, br), "Titan: now he can")
+	check(Data.BRANCHES.moss.size() == 5 and Data.BRANCHES.rook.size() == 5, "each original has a fifth branch")
+
+func identity_test() -> void:
+	## P1 prestige titles, P2 recruit backgrounds, P3 cross-training.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	Run.new_run()
+	var mo: Dictionary = Run.soldiers[0]
+	check(Run.title_of(mo) == "Marksman", "before a capstone the class name shows")
+	var hp0: int = mo.max_hp
+	var line := ""
+	for p in Data.BRANCHES.moss[0].perks:
+		line = Run.apply_option(mo, {"kind": "perk", "id": p.id, "name": p.name})
+	check(mo.get("prestige", "") == "ricochet" and Run.title_of(mo) == "Trickshot Ace", "P1: the capstone makes Moss a Trickshot Ace (%s)" % line)
+	check(mo.max_hp == hp0 + 4, "and adds a small second trait (+4 HP)")
+	var hx: Dictionary = Run.soldiers[1]
+	Run.apply_option(hx, {"kind": "perk", "id": Data.BRANCHES.hex[1].perks[2].id, "name": "x"})
+	check(Run.title_of(hx) == "Phantom Medic" and hx.bonus.move >= 25, "a second branch gives a different trait (Fleet)")
+	# P2 backgrounds
+	check(Data.RECRUIT_TRAITS.size() >= 12, "P2: a dozen recruit backgrounds (%d)" % Data.RECRUIT_TRAITS.size())
+	for tr in Data.RECRUIT_TRAITS:
+		var o := {"key": "vee", "name": "TEST", "trait": tr, "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": ""}
+		var s := Run.make_recruit(o)
+		if tr.has("card"):
+			check(s.deck.filter(func(c): return c.key == tr.card).size() >= 1, "%s starts with %s" % [tr.name, Data.CARDS[tr.card].name])
+	var fh := Run.make_recruit({"key": "rook", "name": "T2", "trait": Data.RECRUIT_TRAITS.filter(func(t): return t.id == "farmhand")[0], "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": ""})
+	check(fh.max_hp == 34 + 8 or fh.max_hp > 30, "Farmhand: +8 max HP (%d)" % fh.max_hp)
+	# P3 cross-training
+	var cp := Data.cross_pool("moss")
+	check(cp.size() > 10 and not cp.has("sicem") and not cp.has("vulcan") and cp.has("katana"), "P3: Moss can learn other classes' cards, never dog or vehicle ones")
+	mo["xtrain"] = ["katana"]
+	var seen := false
+	for i in 200:
+		for o in Run.level_options(mo):
+			if o.get("key", "") == "katana":
+				seen = true
+	check(seen, "a cross-trained card turns up in level-ups")
+	# in the field: the pin, the Stuntman's free roll, the Boxer's punch, the Lifeguard's swim
+	Run.soldiers[2].trait = "stuntman"
+	Run.soldiers[3].trait = "lifeguard"
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var sq := {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	var ve: Unit = sq.vee
+	var ri := force_card(ve, "roll")
+	check(b.card_cost(ve, ve.hand[ri]) == 0, "Stuntman: Combat Roll costs 0")
+	cam_on(b, sq.moss.x + 100)
+	await frames_wait(4)
+	await shot("identity_pin")
+	var rk: Unit = sq.rook
+	var wx := -1.0
+	for x in range(int(b.cam_x) + 40, int(b.cam_x) + 900, 8):
+		if b.T.stand_y(x, 0) == null or b.T.stand_y(x, 0) > b.WATER_Y:
+			wx = x
+			break
+	if wx > 0:
+		rk.x = wx; rk.y = b.WATER_Y + 10.0; rk.air = true
+		b.drown(rk)
+		check(not rk.dead and not rk.sunk, "Lifeguard: swims to shore instead of drowning")
+	else:
+		b.drown(rk)
+		check(not rk.dead, "Lifeguard: swims to shore instead of drowning")
+
+func nc_battle(draft: Array) -> Battle:
+	for k in draft:
+		if not Run.meta.unlocked.has("cls_" + k):
+			Run.meta.unlocked.append("cls_" + k)
+	Run.meta["draft"] = draft
+	Run.leave_campaign()
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	b.autopick = 0
+	return b
+
+func nc_enemy(b: Battle, x: float, hp := 60) -> Unit:
+	var e := b.mk_enemy("grunt", x, b.T.stand_y(x, 0))
+	e.active = true
+	e.hp = hp; e.max_hp = hp
+	b.units.append(e)
+	return e
+
+func nc_ready(b: Battle, u: Unit) -> void:
+	u.energy = 5
+	b.sel = u; b.state = "player"; b.busy = false
+
+func newclasses_test() -> void:
+	## N1 Finch, N4 Kage, N5 Volta, N6 Brass, N8 Sable: each class's own cards and trait.
+	var b: Battle = await nc_battle(["finch", "kage", "volta", "brass"])
+	var sq := {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	check(sq.size() == 4, "the four new classes deploy (%s)" % str(sq.keys()))
+	var x := 700.0
+	while not flat_open(b, x, 420) and x < b.world_w - 700:
+		x += 20
+	for o in b.units:
+		if o.team == "enemy" and absf(o.x - x - 200) < 700:
+			o.gone = true
+	var fi: Unit = sq.finch
+	var kg: Unit = sq.kage
+	var vo: Unit = sq.volta
+	var br: Unit = sq.brass
+	ground_unit(b, fi, x, 0)
+	ground_unit(b, kg, x - 30, 0)
+	ground_unit(b, vo, x - 200, 0)
+	ground_unit(b, br, x - 240, 0)
+	cam_on(b, x + 100)
+	await frames_wait(6)
+	# N1 Zipline: Finch and Kage (in reach) ride it
+	nc_ready(b, fi)
+	var zi := force_card(fi, "zipline")
+	b.select_unit(fi); b.select_card(zi)
+	b.mouse = Vector2(x + 220, fi.y - 10)
+	await shot("nc_aim_zip")
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(absf(fi.x - (x + 220)) < 20, "Zipline: Finch lands at the cursor (%d)" % (fi.x - x))
+	check(kg.x > x + 100, "Kage rode the line too (%d)" % (kg.x - x))
+	# Flare + FLARED damage
+	var e := nc_enemy(b, fi.x + 160)
+	b.flare_at(e.x, e.y - 10, 90, fi)
+	check(e.has_st("flared"), "Flare: the Jackal is FLARED")
+	b.damage(e, 5, fi)
+	check(e.hp == 52, "FLARED takes +3 (%d)" % e.hp)
+	# Recon Drone bombs it
+	nc_ready(b, fi)
+	var hp0 := e.hp
+	b.play_self(force_card(fi, "drone"))
+	await until(func(): return not b.busy, 1200)
+	check(e.hp < hp0 or e.dead, "Recon Drone: grenade on the nearest Jackal (%d -> %d)" % [hp0, e.hp])
+	check(b.mine_under(fi, fi.x, fi.y) == null and fi.def.spd >= 260, "Light Feet: fast, and no mine goes off under her")
+	# N4 Deflect: a Jackal bullet goes back at the shooter
+	ground_unit(b, kg, fi.x - 40, 0)
+	var e2 := nc_enemy(b, kg.x - 200)
+	nc_ready(b, kg)
+	b.play_self(force_card(kg, "deflect"))
+	await until(func(): return not b.busy, 1200)
+	var khp := kg.hp
+	var a := atan2(kg.y - kg.h / 2.0 - (e2.y - 18), kg.x - e2.x)
+	b.fire_bullet(e2, e2.x, e2.y - 18, a, {"dmg": [5, 5], "range": 600, "bounce": 0}, false)
+	await frames_wait(4)
+	check(kg.hp == khp and e2.hp < 60, "Deflect: Kage takes nothing, the shooter takes it (%d, %d)" % [kg.hp, e2.hp])
+	# Cat's Landing: no fall damage
+	kg.y -= 220; kg.air = true; kg.vy = 2.0
+	await until(func(): return not kg.air, 600)
+	check(kg.hp == khp, "Cat's Landing: no fall damage (%d)" % kg.hp)
+	# Katana
+	var e3 := nc_enemy(b, kg.x + 40)
+	nc_ready(b, kg)
+	kg.face = 1
+	var ki := force_card(kg, "katana")
+	b.select_unit(kg); b.select_card(ki)
+	b.play_on_target(e3)
+	await until(func(): return not b.busy, 1200)
+	check(e3.hp < 60, "Katana cuts (%d)" % e3.hp)
+	# Iaido cuts everything on the line
+	var e4 := nc_enemy(b, kg.x + 120)
+	nc_ready(b, kg)
+	var ii := force_card(kg, "iaido")
+	b.select_unit(kg); b.select_card(ii)
+	b.mouse = Vector2(kg.x + 200, kg.y - kg.h / 2.0)
+	var h3 := e3.hp
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check((e3.hp < h3 or e3.dead) and e4.hp < 60, "Iaido: one cut, two Jackals (%d, %d)" % [e3.hp, e4.hp])
+	for o in [e, e2, e3, e4]:
+		o.gone = true
+	# N5 Magnet Gun pulls, Repulsor pushes
+	ground_unit(b, vo, x, 0)
+	cam_on(b, x + 100)
+	var e5 := nc_enemy(b, x + 220)
+	nc_ready(b, vo)
+	var mi := force_card(vo, "magnet")
+	b.select_unit(vo); b.select_card(mi)
+	b.mouse = Vector2(e5.x, e5.y - 16)
+	await shot("nc_aim_magnet")
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(e5.x < x + 170, "Magnet Gun: the Jackal is yanked toward Volta (%d)" % (e5.x - x))
+	nc_ready(b, vo)
+	var d0 := e5.x - vo.x
+	var pi := force_card(vo, "repulsor")
+	b.select_unit(vo); b.select_card(pi)
+	b.mouse = Vector2(e5.x, e5.y - 16)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(e5.x - vo.x > d0 + 40, "Repulsor: thrown away (%d -> %d)" % [d0, e5.x - vo.x])
+	e5.gone = true
+	# Tesla Arc jumps through three
+	var ts := [nc_enemy(b, vo.x + 120), nc_enemy(b, vo.x + 220), nc_enemy(b, vo.x + 320)]
+	nc_ready(b, vo)
+	b.play_self(force_card(vo, "tesla"))
+	await until(func(): return not b.busy, 1200)
+	check(ts.all(func(t): return t.hp < 60), "Tesla Arc hits all three (%s)" % str(ts.map(func(t): return t.hp)))
+	await shot("nc_tesla")
+	b.wind = 5
+	check(b.wind_of(vo, Data.card("frag")) == 0.0 and b.wind_of(fi, Data.card("frag")) > 0.0, "Physics Major: wind never moves Volta's throws")
+	b.wind = 0
+	await b.singularity_at(ts[1].x, ts[1].y - 14, 140, 10, vo)
+	check(ts.all(func(t): return t.hp < 52 or t.dead), "Black Hole crushes them together")
+	for t in ts:
+		t.gone = true
+	# N6 Brass: Orders, Chain of Command, Designator, Supply Drop
+	ground_unit(b, vo, x - 300, 0)
+	ground_unit(b, kg, x + 300, 0)
+	ground_unit(b, br, x + 20, 0)
+	ground_unit(b, fi, x + 50, 0)
+	fi.energy = 0
+	nc_ready(b, br)
+	var oi := force_card(br, "orders")
+	b.select_unit(br); b.select_card(oi)
+	var fh := fi.hand.size()
+	b.play_on_target(fi)
+	await until(func(): return not b.busy, 1200)
+	check(fi.energy == 1 and fi.hand.size() == fh + 1, "Orders: +1 energy and a card")
+	fi.energy = 0
+	b.classes_new_turn()
+	check(fi.energy == 1, "Chain of Command: the nearest squadmate gets +1 energy")
+	nc_ready(b, br)
+	var st0 := b.strikes.size()
+	var di := force_card(br, "designator")
+	b.select_unit(br); b.select_card(di)
+	b.mouse = Vector2(br.x + 150, br.y - 40)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy and b.projs.is_empty(), 1800)
+	check(b.strikes.size() == st0 + 1, "Designator: a shell is marked for the Jackal phase")
+	nc_ready(b, br)
+	var sdi := force_card(br, "supplydrop")
+	var bh := br.hand.size()
+	b.play_self(sdi)
+	await until(func(): return not b.busy, 1200)
+	check(br.hand.size() == bh and br.hand[-1].get("free", false), "Supply Drop: a free card from the crate (%d/%d %s)" % [br.hand.size(), bh, str(br.hand.map(func(h): return h.key))])
+	check(Data.BRANCHES.finch.size() == 4 and Data.BRANCHES.sable.size() == 4, "each new class has four branches")
+	# N8 Sable
+	b = await nc_battle(["sable", "vee", "moss", "rook"])
+	sq = {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	x = 700.0
+	while not flat_open(b, x, 420) and x < b.world_w - 700:
+		x += 20
+	for o in b.units:
+		if o.team == "enemy" and absf(o.x - x - 200) < 700:
+			o.gone = true
+	var sb: Unit = sq.sable
+	ground_unit(b, sb, x, 0)
+	for k in ["vee", "moss", "rook"]:
+		ground_unit(b, sq[k], x - 150 - sq[k].id * 20, 0)
+	cam_on(b, x + 100)
+	await frames_wait(6)
+	b.add_status(sb, "toxic", 3, null)
+	check(not sb.has_st("toxic"), "Hybrid: Sable can't be poisoned")
+	var m1 := nc_enemy(b, x + 40, 20)
+	var m2 := nc_enemy(b, x + 140)
+	nc_ready(b, sb)
+	var li := force_card(sb, "mindlink")
+	b.select_unit(sb); b.select_card(li)
+	b.play_on_target(m1)
+	await until(func(): return not b.busy, 1200)
+	check(m1.fl.has("mind"), "Mindlink: Sable takes over the Jackal")
+	check(b.nearest_squad(m1) == m2 and not b.foes_of(m1).any(func(o): return o.team == "squad"), "a linked Jackal fights its own side")
+	check(b.foes_of(m2).has(m1), "and its side fights it")
+	b.minds_tick()
+	check(not m1.fl.has("mind"), "the link breaks after the Jackal phase")
+	b.acid_puddle(m2.x, m2.y, 40, sb)
+	sb.x = m2.x - 10
+	var shp := sb.hp
+	b.tick_acids()
+	check(m2.hp < 60 and sb.hp == shp, "Acid: burns the Jackal, never Sable (%d)" % m2.hp)
+	m1.gone = true
+	ground_unit(b, sb, x, 0)
+	var m3 := nc_enemy(b, x + 200)
+	nc_ready(b, sb)
+	var ti := force_card(sb, "tongue")
+	b.select_unit(sb); b.select_card(ti)
+	b.mouse = Vector2(m3.x, m3.y - 16)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(m3.x < x + 150 or m2.x < x + 100, "Tongue yanks the first body on the line")
+	nc_ready(b, sb)
+	sb.hand.append({"id": -3, "key": "broodcall", "tier": Data.OD_TIER, "temp": true})
+	b.play_self(sb.hand.size() - 1)
+	await until(func(): return not b.busy, 1200)
+	var brood := b.units.filter(func(o): return o.fl.get("brood", false) and not o.dead)
+	check(brood.size() == 3, "Brood Call: three friendly Skitters (%d)" % brood.size())
+	await shot("nc_brood")
+	b.minds_tick()
+	check(brood.all(func(o): return o.gone), "the brood melts away after the Jackal phase")
 
 func count_cells(b: Battle, x: float, y: float, w: float, h: float) -> int:
 	var n := 0

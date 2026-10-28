@@ -194,6 +194,13 @@ func back_button() -> Control:
 	go.pressed.connect(func(): Sfx.play("click"); done.emit())
 	return go
 
+func looks_step() -> float:
+	## U3 look boxes share the row left of the back button, so a fifth soldier still fits.
+	return minf(180.0, 720.0 / maxi(1, Run.soldiers.size()))
+
+func looks_x(i: int) -> float:
+	return 24.0 + i * looks_step()
+
 func build_barracks() -> void:
 	var fallen := Run.fallen_slots()
 	var rp := price(recruit_price())
@@ -212,6 +219,9 @@ func build_barracks() -> void:
 		var n := Run.company().size()
 		tiles[0] = ["RECRUIT", rp, "Hire a new soldier into the company (%d of %d). Pick from %d recruits.%s" % [n, Data.COMPANY_MAX, 3 if Run.hq("barracks") >= 1 else 2, " They inherit %s's best cards." % Run.legacy_deck().name if not Run.legacy_deck().is_empty() else ""], recruit,
 			"The company is full." if not Run.company_room() else Services.short(rp), Run.company_room() and Run.scrip >= rp]
+	var xp := price(Data.XTRAIN_PRICE)
+	tiles.append(["CROSS-TRAIN", xp, "A soldier learns a card from another class: it joins their deck and turns up in their level-ups from now on.", cross_train,
+		Services.short(xp), Run.scrip >= xp])
 	if trainee.size():
 		tiles.append(["TRAINING", 0, "%s's free level from Barracks 2. Pick it like a level-up." % trainee[0].def.name, func(): train(trainee[0]), "", true])
 	for i in tiles.size():
@@ -224,19 +234,21 @@ func build_barracks() -> void:
 		tile.ok = sv[5]
 		tile.color = Color("62d26f")
 		tile.size = Vector2(300, 74)
-		tile.position = Vector2(24 + i * 312, 150)
+		tile.position = Vector2(24 + (i % 3) * 312, 150 + (i / 3) * 84)
 		tile.pressed.connect(sv[3])
 		add_child(tile)
 	# U3: change any soldier's headgear and kit colors, free
 	for i in Run.soldiers.size():
 		if not Run.soldiers[i].alive:
 			continue
+		var x := looks_x(i)
+		var stacked := looks_step() < 180  # five soldiers: narrower boxes, buttons one above the other
 		for j in 2:
 			var lb := HudScript.PixButton.new()
 			lb.text = ["HEADGEAR", "COLORS"][j]
 			lb.color = Color("53d4e2")
-			lb.size = Vector2(82, 20)
-			lb.position = Vector2(24 + i * 180 + j * 90, 470)
+			lb.size = Vector2(looks_step() - 8, 18) if stacked else Vector2(82, 20)
+			lb.position = Vector2(x, 466 + j * 22) if stacked else Vector2(x + j * 90, 470)
 			lb.tooltip_text = "Free. Cycle this soldier's headgear." if j == 0 else "Free. Roll new colors for hat, shirt and pants."
 			var si := i
 			lb.pressed.connect(func(): restyle(si, j == 0))
@@ -300,10 +312,11 @@ func _draw() -> void:
 		Art.text(self, "SQUAD LOOKS: FREE", Vector2(24, 352), 8, Color("53d4e2"))
 		for i in Run.soldiers.size():
 			var s: Dictionary = Run.soldiers[i]
-			var x := 24.0 + i * 180
-			draw_rect(Rect2(x, 362, 172, 100), Color(0.05, 0.035, 0.03))
-			draw_rect(Rect2(x + 1, 363, 170, 98), Color("2a2e34"))
-			Art.draw_char(self, Art.look_sheet(s), "idle" if s.alive else "die", (t / 12 + i) % 4 if s.alive else 5, Vector2(x + 86, 450), 1, false, 0, 1.0, 0, true, 1.6)
+			var x := looks_x(i)
+			var bw := looks_step() - 8
+			draw_rect(Rect2(x, 362, bw, 100), Color(0.05, 0.035, 0.03))
+			draw_rect(Rect2(x + 1, 363, bw - 2, 98), Color("2a2e34"))
+			Art.draw_char(self, Art.look_sheet(s), "idle" if s.alive else "die", (t / 12 + i) % 4 if s.alive else 5, Vector2(x + bw / 2, 450), 1, false, 0, 1.0, 0, true, 1.6)
 			Art.text(self, s.def.name, Vector2(x + 8, 378), 8, Color.WHITE if s.alive else Color("8a7a7a"))
 	if msg_t > 0 and not chooser is TilePicker:
 		var w := Art.text_width(msg, 16, true) + 20
@@ -497,6 +510,31 @@ func enlist() -> void:
 		return
 	var s := Run.enlist(offers[i])
 	say("%s joins the company as a %s. Put them in the squad from the War Room." % [s.def.name, s.def.cls])
+	build()
+
+func cross_train() -> void:
+	## P3: one card from another class's pool, picked from three.
+	if Run.scrip < price(Data.XTRAIN_PRICE):
+		Sfx.play("deny")
+		return
+	var s := await choose_soldier("WHO CROSS-TRAINS?")
+	if s.is_empty():
+		return
+	var pool: Array = Data.cross_pool(s.key).filter(func(k): return not s.get("xtrain", []).has(k))
+	pool.shuffle()
+	var opts: Array = pool.slice(0, 3).map(func(k): return {"kind": "card", "key": k, "tier": Data.base_tier(k)})
+	if opts.is_empty():
+		say("%s has learned everything the others can teach." % s.def.name)
+		return
+	var i := await choose("%s LEARNS..." % s.def.name, opts, Vector2(132, 176))
+	if i < 0 or not pay(price(Data.XTRAIN_PRICE)):
+		return
+	var k: String = opts[i].key
+	s.deck.append(Run.new_card(k, -1, "level"))
+	if not s.has("xtrain"):
+		s["xtrain"] = []
+	s.xtrain.append(k)
+	say("%s cross-trained in %s. It can turn up in their level-ups now." % [s.def.name, Data.CARDS[k].name])
 	build()
 
 func train(s: Dictionary) -> void:

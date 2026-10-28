@@ -217,6 +217,13 @@ func draw_unit(u: Unit) -> void:
 		"dog":
 			draw_dog(u, pos, white)
 			return
+		"sticky":
+			# B3: a putty charge stuck to the ground, its light blinking
+			draw_rect(Rect2(pos.x - 5, pos.y - 5, 10, 5), C_DARK)
+			draw_rect(Rect2(pos.x - 4, pos.y - 4, 8, 3), Color.WHITE if white else Color("c9b38a"))
+			if b.t % 40 < 20:
+				draw_rect(Rect2(pos.x - 1, pos.y - 7, 2, 2), Color("ff4d3d"))
+			return
 		"ride", "hulk":
 			# R1: a parked Jackal vehicle anyone can climb into; N3: an ejected one charging to blow
 			var vc := Color("bca064")
@@ -431,6 +438,13 @@ func draw_unit(u: Unit) -> void:
 			Art.draw_char(self, u.sheet, a[0], a[1], pos + kick + o, u.face, true, rot, u.alpha * rim.a, u.gun_angle, false, 1.0, Color(rim, 1.0))
 	var sc := 1.0 + 0.1 * maxi(0, u.fl.get("swell", 0)) if u.type == "bloater" else (1.9 if u.type == "queen" else 1.0)
 	Art.draw_char(self, u.sheet, a[0], a[1], pos + kick, u.face, white, rot, u.alpha, u.gun_angle, a[2], sc)
+	if u.team == "squad" and not u.dead and u.s.get("prestige", "") != "":
+		# P1: the prestige pin, a gold star on the headgear
+		var pp := pos + kick + Vector2(u.face * 2, -u.h - 6)
+		draw_rect(Rect2(pp.x - 2, pp.y - 3, 5, 7), C_DARK)
+		draw_rect(Rect2(pp.x - 3, pp.y - 1, 7, 3), C_DARK)
+		draw_rect(Rect2(pp.x - 1, pp.y - 2, 3, 5), Color("ffd23a"))
+		draw_rect(Rect2(pp.x - 2, pp.y, 5, 1), Color("ffd23a"))
 	if seat > 0:
 		pos.y += seat
 		draw_vehicle(u.mech.type, pos, u.face, white, u.walk != null or u.air, true, vcol)
@@ -811,7 +825,7 @@ func draw_wreck(u: Unit, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog", "ride", "hulk"] or b.is_boss(u) or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog", "ride", "hulk", "sticky"] or b.is_boss(u) or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -894,6 +908,8 @@ func draw_statuses(u: Unit, x: float, y: float) -> void:
 	var tags: Array = []
 	if u.team == "enemy" and u.air and not u.para and u.last_hit_by is Unit and u.last_hit_by.team == "squad":
 		tags.append(["AIR", Color("9fe3f0")])
+	if u.fl.has("mind"):
+		tags.append(["BROOD" if u.fl.get("brood", false) else "LINKED", Color("c47bff")])
 	for k in u.st:
 		if u.st[k] > 0:
 			tags.append([Data.STATUS[k].short, Data.STATUS[k].c])
@@ -1170,7 +1186,7 @@ func draw_targeting() -> void:
 				# grenades are skill shots, like Worms: the same short arc as any lob, never the bounces or the burst
 				var eff: int = int(fz / 2) if u.perk("shortfuse") else fz
 				Art.text(self, "FUSE %.1fs  [WHEEL]" % (eff / 60.0), Vector2(m.x + 12, m.y + 22), 8, Color("ffd23a"))
-			var sim := b.sim_arc(v.hx, v.hy, v.vx, v.vy, c.get("wind", 1.0), 40)
+			var sim := b.sim_arc(v.hx, v.hy, v.vx, v.vy, b.wind_of(u, c), 40)
 			for i in sim.pts.size():
 				if i % 2 == 0:
 					var p: Vector2 = sim.pts[i]
@@ -1202,6 +1218,13 @@ func draw_targeting() -> void:
 				elif dt.tg != null:
 					draw_arc(Vector2(dt.tg.x, dt.tg.y - dt.tg.h / 2.0), dt.tg.h * 0.7, 0, TAU, 24, Color("ffd23a"), 2.0)
 					Art.text(self, "SIC 'EM!" if c.dog == "bite" else "FETCH!", Vector2(dt.tg.x, dt.tg.y - dt.tg.h - 12), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif c.has("daisy"):
+				var dir := 1.0 if m.x >= u.x else -1.0
+				for k in c.daisy:
+					var gx: float = u.x + dir * (40.0 + k * 36.0)
+					var gy = b.T.stand_y(gx, u.y - 60)
+					if gy != null:
+						draw_rect(Rect2(gx - 4, gy - 4, 8, 4), Color(0.79, 0.7, 0.54, 0.6))
 			elif c.get("girder", false):
 				var from := Vector2(u.x, u.y - 22)
 				var reach: float = c.reach * (2.0 if u.perk("longspan") else 1.0)
@@ -1211,7 +1234,7 @@ func draw_targeting() -> void:
 				draw_rect(Rect2(to.x - gw / 2.0, to.y, gw, 8), Color(0.79, 0.82, 0.85, 0.45))
 			elif c.get("drill", false):
 				var d := b.drill_dir(u, m)
-				var reach: float = u.move_left + c.get("reach", 0)
+				var reach: float = u.move_left * b.drill_mul(u) + c.get("reach", 0)
 				var sim := b.sim_drill(u, d, b.drill_len(u, c, m))
 				var o := Vector2(u.x, u.y - u.h / 2.0)
 				draw_dashed_line(o, o + d * reach, Color(1, 0.82, 0.23, 0.35), 1.0, 4.0)
@@ -1231,6 +1254,26 @@ func draw_targeting() -> void:
 					Art.text(self, "ROLL %dpx" % int(absf(sim.x - u.x)), Vector2(sim.x, sim.y - u.h - 8), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 				else:
 					Art.text(self, "NO ROOM TO ROLL", Vector2(u.x, u.y - u.h - 8), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif c.get("zipline", false):
+				var zs: Dictionary = b.zip_spot(u, c, m)
+				draw_dashed_line(Vector2(zs.hx, zs.hy), Vector2(zs.x, zs.y - 30), Color("e8dcc2") if zs.ok else Color("ff4d3d"), 1.0, 4.0)
+				if zs.ok:
+					Art.draw_char(self, u.sheet, "idle", 0, Vector2(zs.x, zs.y), 1 if zs.x >= u.x else -1, false, 0, 0.5)
+					var pull: float = c.pull + (70.0 if u.perk("longline") else 0.0)
+					for s in b.squad_alive():
+						if s != u and s.mech == null and Vector2(s.x - u.x, s.y - u.y).length() <= pull:
+							draw_brackets(Rect2(s.x - s.w / 2 - 4, s.y - s.h - 4, s.w + 8, s.h + 8), Color("e8dcc2"))
+				else:
+					Art.text(self, "NOWHERE TO LAND", Vector2(zs.x, zs.y - 40), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif c.has("magnet") or c.has("iaido"):
+				var L: Dictionary = b.magnet_line(u, c, m) if c.has("magnet") else b.iaido_line(u, c, m)
+				draw_dashed_line(L.from, L.to, Color("c47bff") if c.has("magnet") else Color("e0f4ff"), 1.0, 4.0)
+				for o in L.hit:
+					draw_brackets(Rect2(o.x - o.w / 2 - 4, o.y - o.h - 4, o.w + 8, o.h + 8), Color("c47bff") if c.has("magnet") else Color("ff4d3d"))
+				if L.hit.is_empty():
+					Art.text(self, "NOTHING ON THE LINE", L.to + Vector2(0, -12), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+				else:
+					Art.text(self, "PULL" if c.has("magnet") and c.magnet < 0 else ("PUSH" if c.has("magnet") else "CUT x%d" % L.hit.size()), L.to + Vector2(0, -12), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.get("jump", false) or c.get("rush", false) or c.get("eject", false):
 				var v := b.jump_vel(u, m, c.get("jpow", 1.0)) if c.get("jump", false) else b.rush_vel(u, m)
 				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50)
@@ -1491,6 +1534,8 @@ func draw_hover() -> void:
 			lines.append("THE HUNT: kill it for Epic gear and Bio-parts.")
 		if h.fl.get("turned", false):
 			lines.append("TURNED: this Jackal fights the Vharr now, and still you.")
+		if h.fl.has("mind"):
+			lines.append("LINKED BY SABLE: it fights its own side until the Jackal phase ends.")
 		if h.type == "hiveship":
 			lines.append("HULL PLATES UP: shots do 40%" if b.ship_plated(h) else "HULL EXPOSED: TAKES +30%")
 		if h.elite != "":
@@ -1527,6 +1572,8 @@ func draw_hover() -> void:
 		lines = ["FUEL BARREL", "Explodes when hit. Blast 44."]
 	elif h.kind == "sentry":
 		lines = ["SENTRY GUN  HP %d/%d" % [h.hp, h.max_hp], "Shoots the nearest enemy along its laser", "at the end of your turn. Your shots pass it."]
+	elif h.kind == "sticky":
+		lines = ["STICKY CHARGE  BLAST %d" % int(h.loot.r), "A Clacker sets it off. So does a Jackal", "stepping on it in their phase."]
 	elif h.kind == "ride":
 		var V: Dictionary = Data.VEHICLES[h.loot.type]
 		lines = ["PARKED JACKAL " + V.name, "Walk onto it to drive it. It soaks every hit", "until it breaks, and its guns go in your hand."]

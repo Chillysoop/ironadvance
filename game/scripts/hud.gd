@@ -253,12 +253,28 @@ func hint_text() -> String:
 			return "OVERDRIVE: aim the launch. Anyone in the way gets smashed into the scenery."
 		if c.get("drill", false):
 			return "DRILL: aim through the terrain in your way. It bores until your movement runs out; click, SPACE or ESC stops it early."
+		if c.get("bodythrow", false):
+			return "BODY THROW: aim the arc. The Jackal you're holding takes the landing, and so does anyone he hits."
+		if c.has("daisy"):
+			return "DAISY CHAIN: click left or right. Six Sticky Charges go down in a line."
 		if c.get("eject", false):
 			return "EJECT: aim the empty vehicle. It charges at the cursor and explodes; the driver pops out."
 		if c.get("dog", "") == "bite":
 			return "SIC 'EM: click a Jackal inside the ring around Rex. He leaps over and bites."
 		if c.get("dog", "") == "fetch":
 			return "FETCH: click loot, a crate or a POW inside the ring around Rex. He grabs it and brings it back."
+		if c.get("zipline", false):
+			return "ZIPLINE: click where to land. Squadmates in the brackets ride along."
+		if c.has("magnet"):
+			return ("TONGUE" if c.get("tongue", false) else ("MAGNET GUN" if c.magnet < 0 else "REPULSOR")) + ": aim the line. The first body it touches gets " + ("yanked to you." if c.magnet < 0 else "thrown away.")
+		if c.has("iaido"):
+			return "IAIDO: aim the cut. Everything on the line takes it, terrain too."
+		if c.has("mindlink"):
+			return "MINDLINK: click a Jackal (30 HP or less) in the ring. It fights its own side this Jackal phase."
+		if c.has("flare"):
+			return "FLARE: lob it. Jackals in the light take +3 from every hit for 2 turns."
+		if c.get("beacon", false) and c.get("bombs", 3) != 3:
+			return "%s: lob it onto the Jackals. %d shells land there when their phase starts." % [c.name.to_upper(), c.bombs]
 		if c.get("girder", false):
 			return "GIRDER: click where the beam goes, even in mid-air. Shoot its bolt later to drop it."
 		if c.get("jump", false):
@@ -397,7 +413,7 @@ func show_deck() -> void:
 	for c in modal.get_children():
 		c.queue_free()
 	var bg := ModalBG.new()
-	bg.title = "%s  LV%d  %s" % [u.def.name, u.s.lvl, u.def.cls.to_upper()]
+	bg.title = "%s  LV%d  %s" % [u.def.name, u.s.lvl, Run.title_of(u.s).to_upper()]
 	var perks: Array = u.s.perks.map(func(p): return Data.perk(u.def.key, p).name)
 	var arch: Array = Run.archetypes(u.s).map(func(a): return "%s %s" % [a[0], ["I", "II", "III"][a[1] - 1]])
 	bg.sub = "%s: %s   Abilities: %s%s" % [u.def.trait[0], u.def.trait[1], ", ".join(perks) if perks.size() else "none yet", ("   (" + ", ".join(arch) + ")") if arch.size() else ""]
