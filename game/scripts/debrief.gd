@@ -118,8 +118,8 @@ func _process(_d: float) -> void:
 				var cv := CardView.new()
 				cv.opt = Run.item_opt(c.item)
 				var r := crate_rect(i)
-				cv.size = Vector2(124, 170)
-				cv.position = Vector2(r.get_center().x - 62, 180)
+				cv.size = Vector2(136, 210)
+				cv.position = Vector2(r.get_center().x - 68, 172)
 				cv.mouse_filter = Control.MOUSE_FILTER_IGNORE
 				add_child(cv)
 		if not c.shown:
@@ -144,7 +144,7 @@ func _draw() -> void:
 	Art.text(self, "SUPPLY CRATES", Vector2(480, 62), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 	if unlock != "":
 		Art.text(self, "ARMORY UNLOCK: %s CAN NOW DROP" % unlock.to_upper(), Vector2(480, 452), 8, Color("b48cff"), HORIZONTAL_ALIGNMENT_CENTER)
-	Art.text(self, "Click a crate to open it. Everything goes to the stash; equip it at the Armory.", Vector2(480, 88), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+	Art.text(self, "Click a crate to open it. Everything goes to the stash; equip it at the Armory or from a soldier's Dossier.", Vector2(480, 88), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 	var y := 116.0
 	if medals.is_empty():
 		Art.text(self, "NO MEDALS THIS TIME. THE WIN STILL EARNS ONE CRATE.", Vector2(480, y + 8), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)

@@ -213,6 +213,8 @@ func open_doc() -> void:
 				else:
 					Sfx.play("deny"))
 			add_child(bt)
+	if Run.hq("doc") < 1:
+		add_child(DocLock.new())
 	var hurt: Array = Run.soldiers.filter(func(s): return s.alive and s.hp < Run.eff_max_hp(s))
 	var pp := Services.price(Services.PATCH)
 	var patch := HubUI.ActionTile.new()
@@ -747,8 +749,8 @@ func draw_doc_panel() -> void:
 		var on: Array = doc_targets().filter(func(w): return (Run.implants_of(w) if w is Dictionary else Run.implants(w)).has(ids[i]))
 		draw_rect(cr, Color(0.06, 0.08, 0.06, 0.9))
 		draw_rect(cr, Color("9df25c") if on.size() else Color("4a5a4a"), false, 1)
-		Art.text(self, S.name, Vector2(cr.position.x + 10, cr.position.y + 20), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
-		Art.text(self, "+ " + S.up, Vector2(cr.position.x + 10, cr.position.y + 38), 8, Color("62d26f"))
+		Art.text(self, S.name, Vector2(cr.position.x + 10, cr.position.y + 20), 16, Color("ffd23a") if r >= 1 else Color("8a8a6a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+		Art.text(self, "+ " + S.up, Vector2(cr.position.x + 10, cr.position.y + 38), 8, Color("62d26f") if r >= 1 else Color("6a7a6a"))
 
 func draw_doc_lab() -> void:
 	## Doc's Lab: a back-row hut behind the Memorial with a green-lit window and a lightning rod.
@@ -812,3 +814,15 @@ func draw_memorial_panel() -> void:
 		Art.draw_tags(self, Vector2(x, y - 10), 1, 1.0, 1)
 		Art.text(self, e.name, Vector2(x + 16, y - 2), 8, Color.WHITE)
 		Art.text(self, "%s  LV%d  FELL ON MISSION %d" % [e.cls.to_upper(), int(e.lvl), int(e.mission)], Vector2(x + 16, y + 12), 8, Color("9aa2ae"))
+
+class DocLock extends Control:
+	## H5: before the lab is built, a lock banner sits over the surgery list so it doesn't read as open.
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		position = Vector2(230, 236)
+		size = Vector2(500, 64)
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.05, 0.035, 0.03, 0.95))
+		draw_rect(Rect2(Vector2.ZERO, size), Color("ffd23a"), false, 2)
+		Art.text(self, "LOCKED", Vector2(size.x / 2, 26), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+		Art.text(self, "Build the Doc's Lab on the UPGRADE HQ board (salvage) to install these.", Vector2(size.x / 2, 48), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)

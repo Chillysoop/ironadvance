@@ -13,6 +13,7 @@ var supercharged := false
 var hand_mode := false       # cards in hand peek up from the bottom edge and rise on hover
 var label_top := ""          # small caption above the card (e.g. "TO MOSS'S DECK")
 var price := -1
+var sold := false            # shop only: greyed out with a SOLD stamp
 var hotkey := ""
 var hover := false
 var ghost := false           # hand only: a card is armed, so the hand sinks out of the way of the aim
@@ -112,7 +113,8 @@ func _draw() -> void:
 	var w := size.x
 	var h := size.y
 	var col := type_color()
-	var dim := disabled and hand_mode
+	# a priced card you can't buy greys out like an unplayable hand card
+	var dim := disabled and (hand_mode or price >= 0 or sold)
 	# frame
 	draw_rect(Rect2(1, 2, w - 2, h - 2), Color(0, 0, 0, 0.45))
 	draw_rect(Rect2(0, 0, w, h - 2), INK)
@@ -186,11 +188,20 @@ func _draw() -> void:
 			Art.text(self, sl, Vector2(w / 2.0, y + 6), 16, Color("7a2a14") if not dim else Color("4a4030"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
 			y += 12
 		y += 4
-	for line in wrap_text(body, w - 10, 16):
-		if y > h - (22 if price >= 0 else 8):
+	# a long body packs its lines tighter before anything is cut off
+	var bl := wrap_text(body, w - 10, 16)
+	var bottom := h - (22 if price >= 0 else 8)
+	var lh := 12.0
+	if bl.size() > 1 and y + (bl.size() - 1) * lh > bottom:
+		lh = maxf(10.0, floorf((bottom - y) / (bl.size() - 1)))
+	for i in bl.size():
+		if y > bottom:
 			break
+		var line: String = bl[i]
+		if i < bl.size() - 1 and y + lh > bottom:
+			line += "..."
 		Art.text(self, line, Vector2(w / 2.0, y + 2), 16, Color("3a3024") if not dim else Color("4a4030"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
-		y += 12
+		y += lh
 	if supercharged and not dim:
 		var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 150.0)
 		draw_rect(Rect2(0, 0, w, h - 2), Color(1, 0.48, 0.24, pulse), false, 2.0)
@@ -225,6 +236,16 @@ func _draw() -> void:
 		Art.text(self, badge, Vector2(w + 4 - bw / 2.0, 4), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 1)
 	if label_top != "":
 		Art.text(self, label_top, Vector2(w / 2.0, -6), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+	if sold:
+		draw_rect(Rect2(1, 1, w - 2, h - 4), Color(0.08, 0.06, 0.05, 0.55))
+		draw_rect(Rect2(8, h / 2.0 - 12, w - 16, 22), INK)
+		draw_rect(Rect2(10, h / 2.0 - 10, w - 20, 18), Color("8a3a2a"))
+		Art.text(self, "SOLD", Vector2(w / 2.0, h / 2.0 + 4), 16, Color("e4d6b0"), HORIZONTAL_ALIGNMENT_CENTER, 1)
+	elif disabled and price >= 0 and hover and Run.scrip < price:
+		var sh := "SHORT BY %d" % (price - Run.scrip)
+		var sw := Art.text_width(sh, 8) + 10
+		draw_rect(Rect2(w / 2.0 - sw / 2.0, h - 30, sw, 13), INK)
+		Art.text(self, sh, Vector2(w / 2.0, h - 20), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_CENTER, 0)
 
 func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 	var mod := Color(1, 1, 1, 0.45 if dim else 1.0)
