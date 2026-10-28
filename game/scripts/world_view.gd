@@ -955,6 +955,28 @@ func draw_targeting() -> void:
 				acc += sl
 				if acc >= L:
 					break
+			var back := false
+			# the first ricochet always shows, even past the sight, and turns red when it comes back into the squad
+			if tr.pings.size() > 0 and tr.segs.size() > 1:
+				var d0: float = tr.ping_d[0]
+				var d1: float = tr.ping_d[1] if tr.pings.size() > 1 else INF
+				var mate: Unit = null
+				for hh in tr.hits:
+					if hh.d > d0 and hh.d <= d1 and hh.u.team == "squad" and not hh.u.dead:
+						mate = hh.u
+						break
+				var s1: Array = tr.segs[1]
+				var p0: Vector2 = tr.pings[0]
+				if d0 > L:
+					draw_dashed_line(tip, p0, Color(1, 0.35, 0.35, 0.35), 1.0, 5.0)
+				if mate != null:
+					back = true
+					draw_line(p0, Vector2(s1[2], s1[3]), Color("ff2020"), 2.0)
+					draw_brackets(Rect2(mate.x - mate.w / 2 - 4, mate.y - mate.h - 4, mate.w + 8, mate.h + 8), Color("ff2020"))
+					Art.text(self, "RICOCHET HITS YOU!" if mate == u else "RICOCHET HITS %s!" % mate.def.name.to_upper(), Vector2(mate.x, mate.y - mate.h - 22), 8, Color("ff2020"), HORIZONTAL_ALIGNMENT_CENTER)
+				elif d0 + p0.distance_to(Vector2(s1[2], s1[3])) > L:
+					draw_dashed_line(p0, Vector2(s1[2], s1[3]), Color(1, 0.35, 0.35, 0.35), 1.0, 5.0)
+				draw_rect(Rect2(p0.x - 2, p0.y - 2, 4, 4), Color.WHITE)
 			var cut_short: bool = tr.len > L
 			if cut_short:
 				draw_circle(tip, 2.0, Color(1, 0.35, 0.35, 0.5 + 0.3 * sin(b.t / 6.0)))
@@ -966,7 +988,7 @@ func draw_targeting() -> void:
 				var sp := minf(L, 400.0)
 				for d in [-c.spread, c.spread]:
 					draw_line(Vector2(aa.mx, aa.my), Vector2(aa.mx + cos(aa.a + d) * sp, aa.my + sin(aa.a + d) * sp), Color(1, 0.35, 0.35, 0.35), 1.0)
-			var seen: Array = tr.hits.filter(func(hh): return hh.d <= L)
+			var seen: Array = tr.hits.filter(func(hh): return hh.d <= L and hh.u != u)  # a round back into the shooter has its own warning
 			for hh in seen:
 				var tg: Unit = hh.u
 				var col := Color("ffb23e") if hh.head else Color("ff4d3d")
@@ -984,7 +1006,7 @@ func draw_targeting() -> void:
 				elif tg.type == "hiveship" and b.ship_plated(tg): lab = "ARMOR: HIT THE PLATES"
 				elif tg.type == "shipplate": lab = "DROP IT"
 				Art.text(self, lab, Vector2(tg.x, tg.y - tg.h - 22), 16 if hh.head else 8, col, HORIZONTAL_ALIGNMENT_CENTER)
-			if seen.is_empty() and not cut_short:
+			if seen.is_empty() and not cut_short and not back:
 				var ls: Array = tr.segs[-1]
 				var em: int = tr.end.m if tr.end != null else 0
 				var lab := "MISS"
