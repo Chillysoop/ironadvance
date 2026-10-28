@@ -51,6 +51,7 @@ var card_idx := -1
 var mouse := Vector2(200, 300)
 var log_lines: Array = []
 var pow_queue: Array = []
+var job_st := {}   # O4: {"on", "left"} while holding the far end
 var lvl_queue: Array = []
 var dummies: Array = []       # practice range: [type, x] of each dummy, to stand them back up
 var boss_active := false
@@ -231,6 +232,7 @@ func setup(idx: int, custom := {}) -> void:
 			mate.hold = u.hold
 			units.append(mate)
 	place_encounter(mission.get("encounter", ""))
+	place_job()
 	spawn_map_loot()
 	sel = null
 	for u in units:
@@ -923,7 +925,7 @@ func unit_at_point(x: float, y: float, shooter, travelled: float, skip: Dictiona
 			continue
 		if shooter != null and u != shooter and u.team != "" and u.team == shooter.team and not at_war(u, shooter):
 			continue  # bullets slip past teammates, explosions don't (in a BREACH the two factions aren't teammates)
-		if u.kind == "slug":
+		if u.kind == "slug" or (u.kind == "truck" and shooter != null and shooter.team == "squad"):
 			continue
 		if x >= u.x - u.w / 2.0 and x <= u.x + u.w / 2.0 and y >= u.y - u.h and y <= u.y:
 			return u
@@ -1317,6 +1319,33 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 		if not tg.primed:
 			prime_mine(tg, own, 4)
 		return
+	if tg.kind == "dump":
+		# O3: a supply dump, twice as soft to blasts
+		tg.hp -= amt * (2 if o.get("blast", false) else 1)
+		tg.flash = 8
+		sparks(tg.x, tg.y - 14, 4)
+		if tg.hp <= 0:
+			tg.dead = true
+			tg.gone = true
+			booms.append({"t": 4, "x": tg.x, "y": tg.y - 12, "r": 40.0, "dmg": 6, "owner": own, "barrel": tg})
+			var left := units.filter(func(d): return d.kind == "dump" and not d.dead).size()
+			float_text(tg, "DUMP DESTROYED" + (" %d LEFT" % left if left else ""), Color("62d26f"), true)
+			Sfx.play("coin")
+			if own != null:
+				give_xp(own, 6)
+		return
+	if tg.kind == "truck":
+		# O5: the squad's fire never touches the truck; Jackal fire does
+		if own != null:
+			return
+		tg.hp -= amt
+		tg.flash = 8
+		sparks(tg.x, tg.y - 16, 3)
+		float_text(tg, "-%d" % amt, Color("ff4d3d"))
+		if tg.hp <= 0:
+			tg.dead = true
+			booms.append({"t": 4, "x": tg.x, "y": tg.y - 14, "r": 50.0, "dmg": 6, "owner": null, "barrel": tg})
+		return
 	if tg.kind == "charge":
 		if tg.primed:
 			return
@@ -1498,7 +1527,7 @@ func kill(tg: Unit, src) -> void:
 		stats.kills += 1
 		credit_card(src)
 		if src is Unit and src.team == "squad":
-			src.fl["kills"] = int(src.fl.get("kills", 0)) + 1  # C5: the service record
+			src.kills += 1  # C5: the service record
 		var base: int = Data.ETYPES[tg.type].score
 		if state == "player":
 			combo += 1
@@ -3704,6 +3733,9 @@ func post_action() -> void:
 		await until(settled)
 		victory()
 		return
+	if await job_ends():
+		return
+	start_hold()
 	var active := units.filter(func(e): return e.team == "enemy" and not e.dead and e.active)
 	if active.is_empty():
 		var rest := units.filter(func(e): return e.team == "enemy" and not e.dead)
@@ -3795,6 +3827,216 @@ func hold_relay(r: Unit, s: Unit) -> void:
 	banner("RELAY LOCKED: " + bf.name + " x2", Color("53d4e2"), "HELD FOR %d TURNS" % Data.RELAY_HOLD)
 	Sfx.play("levelup")
 	log_msg("%s held the relay for %d turns: its buff doubles." % [s.def.name, Data.RELAY_HOLD])
+
+# ---------------------------------------------------------------- O2-O6: campaign op jobs
+func job() -> String:
+	return mission.get("job", "push")
+
+func job_spot(x: float) -> float:
+	## Nearest dry, pit-free ground to x, for a prisoner, a dump or the truck.
+	for k in 40:
+		for sx in [x + k * 16.0, x - k * 16.0]:
+			if sx > 160 and sx < world_w - 60 and T.stand_y(sx, T.ground_at(sx) - 40) != null and not T.pits.any(func(p): return sx > p[0] - 24 and sx < p[1] + 24):
+				return sx
+	return x
+
+func place_job() -> void:
+	## Lays out the op's objective: prisoners, supply dumps, the truck or the marked officer.
+	match job():
+		"rescue":
+			for f in [0.45, 0.7, 0.9]:
+				var x := job_spot(world_w * f)
+				var u := mk_unit(); u.team = "neutral"; u.kind = "pow"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.face = -1
+				u.pow_name = Data.POW_NAMES[randi() % Data.POW_NAMES.size()]
+				u.fl["job"] = true
+				stats.pows_total += 1
+				units.append(u)
+		"demolish":
+			for f in [0.4, 0.65, 0.9]:
+				var x := job_spot(world_w * f)
+				var u := mk_unit(); u.team = "neutral"; u.kind = "dump"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.w = 30; u.h = 24
+				u.hp = Data.TARGET_HP; u.max_hp = u.hp; u.heavy = true; u.immovable = true
+				units.append(u)
+		"escort":
+			var x := job_spot(70.0)
+			var u := mk_unit(); u.team = "neutral"; u.kind = "truck"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.w = 56; u.h = 32; u.face = 1
+			u.hp = Data.TRUCK_HP; u.max_hp = u.hp; u.heavy = true; u.immovable = true
+			units.append(u)
+		"hunt":
+			var foes := units.filter(func(e): return e.team == "enemy" and not e.dead and e.type != "boss" and e.type != "hiveship" and e.type != "queen")
+			foes.sort_custom(func(a, b): return a.x > b.x)
+			if foes.is_empty():
+				return
+			var q: Unit = foes[0]
+			if q.elite == "":
+				make_elite(q, pick_elite(faction(q) == "vharr"))
+			q.hp *= 2
+			q.max_hp = q.hp
+			q.fl["quarry"] = Data.QUARRY_NAMES[randi() % Data.QUARRY_NAMES.size()]
+		"hold":
+			job_st = {"on": false, "left": Data.HOLD_PHASES}
+
+func truck():
+	for u in units:
+		if u.kind == "truck":
+			return u
+	return null
+
+func job_left() -> String:
+	## The HUD line for the op's objective, or "" on a push.
+	match job():
+		"rescue":
+			var n := units.filter(func(p): return p.fl.get("job", false) and p.freed).size()
+			return "RESCUE: %d OF 3 PRISONERS FREE" % n
+		"demolish":
+			return "DEMOLISH: %d OF 3 DUMPS DOWN" % (3 - units.filter(func(d): return d.kind == "dump" and not d.dead).size())
+		"hold":
+			if job_st.get("on", false):
+				return "HOLD: %d MORE ENEMY PHASE%s" % [int(job_st.left), "" if int(job_st.left) == 1 else "S"]
+			return "HOLD: REACH THE FAR END"
+		"escort":
+			var tr = truck()
+			if tr == null:
+				return ""
+			return "ESCORT: TRUCK %d/%d HP, %d%% OF THE WAY" % [maxi(0, tr.hp), tr.max_hp, int(clampf(tr.x / (world_w - 150.0), 0, 1) * 100)]
+		"hunt":
+			for e in units:
+				if e.fl.has("quarry"):
+					return "HUNT: %s %s" % [e.fl.quarry, "IS DOWN" if e.dead else ("SPOTTED" if e.active else "IS OUT THERE")]
+	return ""
+
+func job_done() -> bool:
+	match job():
+		"rescue":
+			return not units.any(func(p): return p.fl.get("job", false) and p.kind == "pow" and not p.freed)
+		"demolish":
+			return not units.any(func(d): return d.kind == "dump" and not d.dead)
+		"hold":
+			return job_st.get("on", false) and int(job_st.left) <= 0
+		"escort":
+			var tr = truck()
+			return tr != null and not tr.dead and tr.x >= world_w - 150
+		"hunt":
+			return not units.any(func(e): return e.fl.has("quarry") and not e.dead)
+	return false
+
+func job_ends() -> bool:
+	## Wins the op when its job is done, or fails it when the truck is lost. True if the battle is over.
+	if job() == "push" or won or lost:
+		return false
+	var tr = truck()
+	if tr != null and tr.dead:
+		lost = true
+		state = "over"
+		busy = true
+		banner("THE TRUCK IS GONE", Color("ff4d3d"), "OP FAILED. THE SQUAD FALLS BACK")
+		Sfx.play("bad")
+		sync_back()
+		await wait(110)
+		mission_over.emit(false)
+		return true
+	if job_done():
+		await until(settled)
+		victory()
+		return true
+	return false
+
+func start_hold() -> void:
+	## O4: the hold starts once the squad stands at the far end of the map.
+	if job() != "hold" or job_st.get("on", false) or cam_x < world_w - W - 2:
+		return
+	if not squad_alive().any(func(s): return s.x > world_w - W * 0.6):
+		return
+	job_st.on = true
+	banner("HOLD THE LINE!", Color("ffd23a"), "SURVIVE %d ENEMY PHASES. THEY COME FROM BOTH SIDES" % int(job_st.left))
+	Sfx.play("alarm")
+
+func hold_waves() -> void:
+	## O4: while holding, Jackals come in from both edges at the start of every enemy phase.
+	if job() != "hold" or not job_st.get("on", false) or int(job_st.left) <= 0:
+		return
+	var xs := [minf(world_w - 20.0, cam_x + W - 30), minf(world_w - 42.0, cam_x + W - 52), cam_x + 30]
+	for i in xs.size():
+		var px: float = xs[i]
+		var y = T.stand_y(px, T.ground_at(px) - 40)
+		if y == null:
+			continue
+		var e := mk_enemy("nade" if i == 1 and mission_idx >= 2 else "grunt", px, y)
+		e.active = true
+		units.append(e)
+	float_at(cam_x + W / 2.0, 90, "THEY'RE COMING!", Color("ff7a3d"), true)
+
+func job_round() -> void:
+	## After each enemy phase: the hold clock ticks, and the truck takes fire and rolls on.
+	match job():
+		"hold":
+			if job_st.get("on", false) and int(job_st.left) > 0:
+				job_st.left = int(job_st.left) - 1
+				if int(job_st.left) > 0:
+					banner("HOLDING", Color("ffd23a"), "%d MORE ENEMY PHASE%s" % [int(job_st.left), "" if int(job_st.left) == 1 else "S"])
+					await wait(30)
+		"escort":
+			var tr = truck()
+			if tr == null or tr.dead:
+				return
+			# Jackals right next to the truck shoot it up
+			for e in units.filter(func(e): return e.team == "enemy" and not e.dead and e.active and absf(e.x - tr.x) < 90).slice(0, 3):
+				damage(tr, 4, e)
+			if tr.dead:
+				return
+			if units.any(func(e): return e.team == "enemy" and not e.dead and e.x > tr.x and e.x - tr.x < 260 and e.x < cam_x + W + 40):
+				float_text(tr, "BLOCKED: CLEAR THE ROAD", Color("ffb23e"), true)
+				await wait(20)
+				return
+			var nx := minf(tr.x + Data.TRUCK_STEP, minf(cam_x + W - 70, world_w - 60.0))
+			while nx < world_w - 60 and not truck_road(nx, tr.y):
+				nx += 16  # rolls over a hole or open water to the far side
+			if nx <= tr.x + 4 or nx > cam_x + W - 30:
+				float_text(tr, "WAITING FOR THE SQUAD", Color("9fb4c9"))
+				await wait(20)
+				return
+			float_text(tr, "ROLLING", Color("62d26f"))
+			var x0: float = tr.x
+			for i in 20:
+				tr.x = lerpf(x0, nx, (i + 1) / 20.0)
+				var y = T.stand_y(tr.x, T.ground_at(tr.x) - 40)
+				if y != null:
+					tr.y = y
+				tr.anim += 1
+				await wait(1)
+
+func truck_road(x: float, from_y: float) -> bool:
+	## Somewhere the truck can stand: dry, and not down in a hole well below where it is now.
+	var y = T.stand_y(x, T.ground_at(x) - 40)
+	return y != null and y < from_y + 40
+
+func job_reward() -> void:
+	## A finished job pays on top of the usual: scrip, plus a recruit, a crate or a trophy.
+	var j := job()
+	if j == "push":
+		return
+	Run.scrip += Data.JOB_PAY
+	stats.scrip += Data.JOB_PAY
+	stats["job_pay"] = Data.JOB_PAY
+	match j:
+		"rescue":
+			if Run.campaign() and Run.company_room():
+				var s := Run.enlist(Run.recruit_offers(1)[0])
+				stats["job_note"] = "%s, one of the freed prisoners, joins the company." % s.def.name
+		"hunt":
+			for e in units:
+				if e.fl.has("quarry"):
+					drop_loot(e.x, e.y - 20, {"type": "item", "item": Run.roll_item(3)})
+					stats["job_note"] = "%s carried Epic gear." % e.fl.quarry
+		"escort":
+			Run.meta.salvage = int(Run.meta.get("salvage", 0)) + 2
+			stats["salvage"] = int(stats.get("salvage", 0)) + 2
+			stats["job_note"] = "The truck brought 2 salvage home."
+		"demolish", "hold":
+			var tk := Data.ELITE_BIO
+			Run.meta.bio = int(Run.meta.get("bio", 0)) + tk
+			stats["bio"] = int(stats.get("bio", 0)) + tk
+			stats["job_note"] = "%d Bio-parts from the field." % tk
 
 func relay_waves() -> void:
 	## O4: while a relay is being held, Jackals pour in from the right at the start of each enemy phase.
@@ -4102,6 +4344,7 @@ func enemy_phase() -> void:
 	banner("ENEMY PHASE", Color("ff4d3d"))
 	await wait(45)
 	relay_waves()
+	hold_waves()
 	for m in units.filter(func(e): return e.elite == "medic" and not e.dead and e.active):
 		for e in units:
 			if e.team == "enemy" and not e.dead and e != m and e.hp < e.max_hp and absf(e.x - m.x) < 140:
@@ -4175,12 +4418,15 @@ func enemy_phase() -> void:
 		stats.pows += 1
 	await check_detour()
 	await detour_round()
+	await job_round()
 	if squad_alive().is_empty():
 		game_over()
 		return
 	if boss_dead:
 		await until(settled)
 		victory()
+		return
+	if await job_ends():
 		return
 	for s in smokes:
 		s.turns -= 1
@@ -5928,6 +6174,7 @@ func victory() -> void:
 	stats["pay"] = pay
 	stats["alert_bonus"] = ab
 	stats["surv_bonus"] = sb
+	job_reward()
 	sweep_loot(INF)
 	sync_back()
 	if boss_dead and not mission.get("outpost", false):
