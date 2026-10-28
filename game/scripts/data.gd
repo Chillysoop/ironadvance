@@ -196,6 +196,18 @@ const CARDS := {
 	"convoy": {"name": "Convoy", "type": "SELF", "cost": 0, "od": true, "slug": true, "slugturns": 3, "squadarmor": 6, "text": "The SV-001 rolls in for three rounds and everyone gets 6 armor.", "rarity": 5},
 	"ridealong": {"name": "Ride Along", "type": "SELF", "cost": 0, "od": true, "duo": true, "ridealong": true, "text": "Rook jumps onto the walker: 6 armor each, a free Vulcan for Gears and a free Burst Fire for Rook.", "rarity": 5},
 	"fieldrefit": {"name": "Field Refit", "type": "SELF", "cost": 0, "od": true, "duo": true, "refit": 10, "text": "Hex patches the walker to full and heals everyone 10.", "rarity": 5},
+	# B1-B4: fifth branches for the original four
+	"xray": {"name": "X-Ray", "type": "AIM", "cost": 0, "od": true, "dmg": [16, 20], "range": FULL_RANGE, "gun": "sniper", "bounce": 0, "sway": 0.0, "pierce": true, "phase": true, "text": "One round through the whole screen: every wall and every body on the line.", "rarity": 5},
+	"handoff": {"name": "Hand-Off", "type": "ALLY", "cost": 1, "handoff": true, "range": 260, "text": "Pass the card to the right of this one to a squadmate.", "rarity": 1, "up": {"range": 400}},
+	"switch": {"name": "Switcheroo", "type": "ALLY", "cost": 0, "switch": true, "range": 600, "text": "Swap places with a squadmate.", "rarity": 5, "pool": false},
+	"synchronize": {"name": "Synchronize", "type": "SELF", "cost": 0, "od": true, "sync": true, "text": "Everyone's next card this turn is free.", "rarity": 5},
+	"stickycharge": {"name": "Sticky Charge", "type": "ARC", "cost": 1, "sticky": true, "radius": 34, "dmg": 13, "wind": 0.6, "text": "Sticks where it lands. Blows when you play a Clacker, or when a Jackal steps on it.", "rarity": 0, "up": {"dmg": 17}},
+	"clacker": {"name": "Clacker", "type": "SELF", "cost": 0, "clacker": true, "text": "Set off your oldest Sticky Charge.", "rarity": 0},
+	"daisychain": {"name": "Daisy Chain", "type": "LINE", "cost": 0, "od": true, "daisy": 6, "text": "Lay six Sticky Charges in a line toward the cursor.", "rarity": 5},
+	"grab": {"name": "Grab", "type": "MELEE", "cost": 1, "dmg": [2, 3], "range": 34, "grab": true, "text": "Pick a Jackal up and carry him. Body Throw goes in your hand. He breaks free when the Jackals move.", "rarity": 0},
+	"bodythrow": {"name": "Body Throw", "type": "ARC", "cost": 0, "bodythrow": true, "dmg": 8, "wind": 0.2, "text": "Throw the Jackal you're holding. He takes the fall, and so does whatever he lands on.", "rarity": 5, "pool": false},
+	"suplex": {"name": "Suplex", "type": "MELEE", "cost": 1, "dmg": [8, 10], "range": 34, "suplex": true, "text": "Lift a Jackal over your head and drive him into the ground behind you.", "rarity": 1, "up": {"dmg": [11, 13]}},
+	"piledrive": {"name": "Piledriver", "type": "MELEE", "cost": 0, "od": true, "dmg": [22, 26], "range": 40, "piledrive": true, "text": "Leap up with a Jackal and slam down: a crater, and everything around it is Stunned.", "rarity": 5},
 }
 # Vehicles (N3, R1, E6). seat: how far the driver sits above the ground; cards: what a hijacker
 # gets in hand while driving. A soldier's own HP is safe until the vehicle breaks.
@@ -315,6 +327,10 @@ const ITEMS := {
 	"rebar": {"name": "Rebar Spool", "slot": "armor", "keystone": "bolt", "stats": {"hp": 4}, "text": "KEYSTONE: your walls are twice as big."},
 	"rivetdriver": {"name": "Rivet Driver", "slot": "weapon", "keystone": "bolt", "cards": ["girder", "girder"], "text": "KEYSTONE: adds 2 Girders. Girders cost 0."},
 	"magnetglove": {"name": "Magnet Glove", "slot": "kit", "keystone": "bolt", "stats": {"luck": 1}, "text": "KEYSTONE: your first build each turn refunds its energy."},
+	"xrayscope": {"name": "X-Ray Scope", "slot": "weapon", "keystone": "moss", "stats": {"aim_dmg": 1}, "text": "KEYSTONE: AIM shots that pass through a wall deal +4 damage."},
+	"radiohq": {"name": "Field Radio", "slot": "kit", "keystone": "hex", "stats": {"luck": 1}, "text": "KEYSTONE: Hand-Off also gives the receiver +1 energy."},
+	"remotedet": {"name": "Remote Detonator", "slot": "kit", "keystone": "vee", "cards": ["stickycharge"], "text": "KEYSTONE: adds a Sticky Charge. Every turn starts with a free Clacker in hand."},
+	"luchamask": {"name": "Luchador Mask", "slot": "armor", "keystone": "rook", "stats": {"hp": 4}, "text": "KEYSTONE: Suplex and Body Throw deal +6 and Stun."},
 	"jumpjets": {"name": "Jump Jets", "slot": "kit", "keystone": "gears", "stats": {"move": 30}, "text": "KEYSTONE: Gears' walker has +20 HP and Stomp costs 0."},
 	"treads": {"name": "Tank Treads", "slot": "armor", "keystone": "gears", "stats": {"hp": 4}, "cards": ["tankshell"], "text": "KEYSTONE: Gears deploys in a tank instead of a walker. Tank Shell joins his deck."},
 	"ejectseat": {"name": "Ejector Seat", "slot": "kit", "keystone": "gears", "stats": {"luck": 1}, "text": "KEYSTONE: Eject! draws 2 cards and Gears lands with +1 energy."},
@@ -439,15 +455,15 @@ const SQUAD_DEFS := [
 	 "trait": ["Eagle Eye", "Headshots deal 2x damage instead of 1.5x."], "bio": "Former game warden. Counts every round twice."},
 	{"key": "hex", "name": "HEX", "cls": "Field Medic", "hp": 24, "dodge": 14, "spd": 210,
 	 "deck": ["medkit", "medkit", "stim", "pistol", "pistol", "smoke", "sprint", "frag", "drill"],
-	 "pool": ["medkit", "stim", "smoke", "pistol", "sprint", "roll", "rally", "frag", "adrenal", "digin", "shotgun", "gasnade", "hotshot", "flashbang", "dartpistol", "defib"],
+	 "pool": ["medkit", "stim", "smoke", "pistol", "sprint", "roll", "rally", "frag", "adrenal", "digin", "shotgun", "gasnade", "hotshot", "flashbang", "dartpistol", "defib", "handoff"],
 	 "trait": ["Bedside Manner", "Heals restore +3 HP."], "bio": "Patched up three wars. Still hates the sight of blood."},
 	{"key": "vee", "name": "VEE", "cls": "Demolitions", "hp": 27, "dodge": 6, "spd": 185,
 	 "deck": ["frag", "frag", "bazooka", "bazooka", "mortar", "pistol", "jumppack", "sprint", "drill"],
-	 "pool": ["frag", "mortar", "bazooka", "rocket", "clusterfrag", "beacon", "jumppack", "roll", "shotgun", "smoke", "gasnade", "rocketjump", "molotov", "shapedcharge"],
+	 "pool": ["frag", "mortar", "bazooka", "rocket", "clusterfrag", "beacon", "jumppack", "roll", "shotgun", "smoke", "gasnade", "rocketjump", "molotov", "shapedcharge", "stickycharge", "clacker"],
 	 "trait": ["Pyromaniac", "Explosions deal +3 damage. Her own blasts hurt her for 40%."], "bio": "Measures distance in fuse-seconds."},
 	{"key": "rook", "name": "ROOK", "cls": "Vanguard", "hp": 32, "dodge": 8, "spd": 200,
 	 "deck": ["rifle", "rifle", "rifle", "burst", "sprint", "knife", "frag", "grapple", "drill"],
-	 "pool": ["rifle", "burst", "shotgun", "hmg", "knife", "digin", "grapple", "sprint", "roll", "rally", "adrenal", "tagshot", "haymaker", "taunt", "suppress"],
+	 "pool": ["rifle", "burst", "shotgun", "hmg", "knife", "digin", "grapple", "sprint", "roll", "rally", "adrenal", "tagshot", "haymaker", "taunt", "suppress", "grab", "suplex"],
 	 "trait": ["Thick Skull", "Takes half damage from falls, slams and crushing debris."], "bio": "First through every door. Usually the wrong one."},
 	# N2: unlocked by freeing him as a specialist POW (X2)
 	{"key": "bolt", "name": "BOLT", "cls": "Combat Engineer", "hp": 26, "dodge": 8, "spd": 190,
@@ -501,6 +517,11 @@ const BRANCHES := {
 		 "perks": [{"id": "doubletap", "name": "Double Tap", "text": "The first AIM card each turn costs 1 less."},
 			{"id": "cylinder", "name": "Spin the Cylinder", "text": "Playing a Sidearm draws a card."},
 			{"id": "highnoon", "name": "High Noon", "text": "Momentum pays out every 2 cards instead of 3."}]},
+		{"id": "wallbanger", "name": "Wallbanger", "od": "xray", "keystone": "xrayscope",
+		 "chain": {"name": "KNOCK KNOCK", "text": "Dig In, then any AIM card: the shot goes through every wall of wood and dirt."},
+		 "perks": [{"id": "softpoint", "name": "Punch Through", "text": "Moss's AIM shots go through one wall of wood or dirt."},
+			{"id": "overpen", "name": "Over-Penetration", "text": "Moss's AIM shots also go through one body."},
+			{"id": "fullmetal", "name": "Full Metal", "text": "Moss's AIM shots go through all wood and dirt."}]},
 	],
 	"hex": [
 		{"id": "juicer", "name": "Juicer", "od": "surge", "keystone": "overcharger",
@@ -523,6 +544,11 @@ const BRANCHES := {
 		 "perks": [{"id": "triage", "name": "Triage", "text": "Heals restore +4 more HP."},
 			{"id": "hardplates", "name": "Hard Plates", "text": "Healing past max HP becomes armor."},
 			{"id": "lazarus", "name": "Lazarus", "text": "Once a mission, a squadmate who drops gets back up at 30% HP."}]},
+		{"id": "coordinator", "name": "Coordinator", "od": "synchronize", "keystone": "radiohq",
+		 "chain": {"name": "TEAMWORK", "text": "Hand-Off, then Medkit: the Medkit is free."},
+		 "perks": [{"id": "quickpass", "name": "Quick Pass", "text": "Hand-Offs cost 0."},
+			{"id": "assist", "name": "Assist", "text": "Whoever gets a Hand-Off also draws a card."},
+			{"id": "switcheroo", "name": "Switcheroo", "text": "Every turn Hex gets a free Switcheroo: swap places with any squadmate."}]},
 	],
 	"vee": [
 		{"id": "artillerist", "name": "Artillerist", "od": "barrage", "keystone": "howitzer",
@@ -545,6 +571,11 @@ const BRANCHES := {
 		 "perks": [{"id": "chain", "name": "Chain Reaction", "text": "Barrels and fuel tanks Vee sets off hit twice as hard."},
 			{"id": "weakpoints", "name": "Weak Points", "text": "Vee's blasts tear 35% more terrain."},
 			{"id": "democrew", "name": "Demolition Crew", "text": "Debris Vee brings down crushes for double damage."}]},
+		{"id": "sapper", "name": "Sapper", "od": "daisychain", "keystone": "remotedet",
+		 "chain": {"name": "SET AND FORGET", "text": "Sticky Charge, then Clacker: the blast is 50% bigger."},
+		 "perks": [{"id": "bigcharge", "name": "Shaped Charges", "text": "Sticky Charges blast +10 wider."},
+			{"id": "tripwire", "name": "Tripwire", "text": "Sticky Charges blow when a Jackal comes within 50px, not just on top."},
+			{"id": "chainreact", "name": "Chain Reaction", "text": "Clacker sets off every Sticky Charge at once, each +4 damage."}]},
 	],
 	"rook": [
 		{"id": "bowler", "name": "Bowler", "od": "rush", "keystone": "gauntlet",
@@ -567,6 +598,11 @@ const BRANCHES := {
 		 "perks": [{"id": "charge", "name": "Charge!", "text": "+60 movement every turn."},
 			{"id": "hookshot", "name": "Hookshot", "text": "Grappling next to a Jackal yanks it off its feet toward Rook."},
 			{"id": "blitz", "name": "Blitz", "text": "Every push puts a free Knife in Rook's hand."}]},
+		{"id": "wrestler", "name": "Wrestler", "od": "piledrive", "keystone": "luchamask",
+		 "chain": {"name": "TAG OUT", "text": "Grab, then Body Throw: refund 1 energy."},
+		 "perks": [{"id": "grip", "name": "Iron Grip", "text": "Grab costs 0."},
+			{"id": "bodyslam", "name": "Body Slam", "text": "Thrown and suplexed Jackals take +6 damage."},
+			{"id": "titan", "name": "Titan", "text": "Rook can grab and suplex Brutes and heavy aliens too."}]},
 	],
 	"bolt": [
 		{"id": "turrettech", "name": "Turret Tech", "od": "sentrynest", "keystone": "turretcore",
@@ -638,7 +674,7 @@ const BRANCHES := {
 const PERK_TIER := ["MINOR", "MAJOR", "CAPSTONE"]
 
 # Legendary keystone items live in ITEMS (one per archetype). Anyone can wear one, which makes hybrids.
-const KEYSTONE_IDS := ["tungsten", "varga", "claymore", "twinrev", "overcharger", "canister", "weathervane", "medrig", "howitzer", "lizard", "fuelpack", "detbox", "gauntlet", "riotshield", "ammobelt", "zantetsu", "turretcore", "rebar", "rivetdriver", "magnetglove", "chokechain", "treatbag", "k9vest", "hawkhood", "jumpjets", "treads", "ejectseat", "toolkit"]
+const KEYSTONE_IDS := ["tungsten", "varga", "claymore", "twinrev", "overcharger", "canister", "weathervane", "medrig", "howitzer", "lizard", "fuelpack", "detbox", "gauntlet", "riotshield", "ammobelt", "zantetsu", "turretcore", "rebar", "rivetdriver", "magnetglove", "chokechain", "treatbag", "k9vest", "hawkhood", "jumpjets", "treads", "ejectseat", "toolkit", "xrayscope", "radiohq", "remotedet", "luchamask"]
 
 # Branching card upgrades (P3): the Gunsmith adds up to 2 mods per card. A cost cut is one option.
 const MAX_MODS := 2
@@ -1407,7 +1443,7 @@ func stat_line(c: Dictionary) -> String:
 	if c.has("radius"):
 		return "DMG %d%s BLAST %d" % [c.dmg, (" x%d" % c.count) if c.has("count") else "", c.radius]
 	if c.has("dmg"):
-		return "DMG %d-%d" % [c.dmg[0], c.dmg[1]]
+		return ("DMG %d-%d" % [c.dmg[0], c.dmg[1]]) if c.dmg is Array else "DMG %d" % c.dmg
 	if c.has("heal"):
 		return "HEAL %d  RNG %d" % [c.heal, c.range]
 	if c.get("grapple", false):

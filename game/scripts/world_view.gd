@@ -217,6 +217,13 @@ func draw_unit(u: Unit) -> void:
 		"dog":
 			draw_dog(u, pos, white)
 			return
+		"sticky":
+			# B3: a putty charge stuck to the ground, its light blinking
+			draw_rect(Rect2(pos.x - 5, pos.y - 5, 10, 5), C_DARK)
+			draw_rect(Rect2(pos.x - 4, pos.y - 4, 8, 3), Color.WHITE if white else Color("c9b38a"))
+			if b.t % 40 < 20:
+				draw_rect(Rect2(pos.x - 1, pos.y - 7, 2, 2), Color("ff4d3d"))
+			return
 		"ride", "hulk":
 			# R1: a parked Jackal vehicle anyone can climb into; N3: an ejected one charging to blow
 			var vc := Color("bca064")
@@ -811,7 +818,7 @@ func draw_wreck(u: Unit, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog", "ride", "hulk"] or b.is_boss(u) or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog", "ride", "hulk", "sticky"] or b.is_boss(u) or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -1216,6 +1223,13 @@ func draw_targeting() -> void:
 				elif dt.tg != null:
 					draw_arc(Vector2(dt.tg.x, dt.tg.y - dt.tg.h / 2.0), dt.tg.h * 0.7, 0, TAU, 24, Color("ffd23a"), 2.0)
 					Art.text(self, "SIC 'EM!" if c.dog == "bite" else "FETCH!", Vector2(dt.tg.x, dt.tg.y - dt.tg.h - 12), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif c.has("daisy"):
+				var dir := 1.0 if m.x >= u.x else -1.0
+				for k in c.daisy:
+					var gx: float = u.x + dir * (40.0 + k * 36.0)
+					var gy = b.T.stand_y(gx, u.y - 60)
+					if gy != null:
+						draw_rect(Rect2(gx - 4, gy - 4, 8, 4), Color(0.79, 0.7, 0.54, 0.6))
 			elif c.get("girder", false):
 				var from := Vector2(u.x, u.y - 22)
 				var reach: float = c.reach * (2.0 if u.perk("longspan") else 1.0)
@@ -1553,6 +1567,8 @@ func draw_hover() -> void:
 		lines = ["FUEL BARREL", "Explodes when hit. Blast 44."]
 	elif h.kind == "sentry":
 		lines = ["SENTRY GUN  HP %d/%d" % [h.hp, h.max_hp], "Shoots the nearest enemy along its laser", "at the end of your turn. Your shots pass it."]
+	elif h.kind == "sticky":
+		lines = ["STICKY CHARGE  BLAST %d" % int(h.loot.r), "A Clacker sets it off. So does a Jackal", "stepping on it in their phase."]
 	elif h.kind == "ride":
 		var V: Dictionary = Data.VEHICLES[h.loot.type]
 		lines = ["PARKED JACKAL " + V.name, "Walk onto it to drive it. It soaks every hit", "until it breaks, and its guns go in your hand."]
