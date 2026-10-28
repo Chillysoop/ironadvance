@@ -33,6 +33,13 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if arrived:
 		Sfx.play("power")
+	if news.is_empty() and not Run.campaign() and Run.history.is_empty() and Run.tips_on() and not Run.meta.get("hq_welcome", false):
+		# N2: the first HQ a new player sees says what is urgent (nothing) and what can wait
+		Run.meta["hq_welcome"] = true
+		Run.save_meta()
+		news = ["WELCOME TO HQ. You can DIAL THE GATE right away: level 1 is built for a fresh squad.",
+			"The buildings are for between missions: scrip buys cards at the Quartermaster, salvage upgrades HQ.",
+			"Hover a soldier to size them up; click one to open their Dossier."]
 	build()
 
 func build() -> void:
