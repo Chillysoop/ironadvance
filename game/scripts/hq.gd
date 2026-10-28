@@ -22,6 +22,7 @@ var sub: Control = null     # the building screen that is open, if any
 var memorial_open := false
 var upgrades_open := false
 var doc_open := false
+var lab_open := false        # B5: the Alien Lab board (campaign)
 var held := {}              # textures must stay referenced until the frame renders
 var hover_troop := -1       # the soldier in the scene under the mouse
 var walk := {}              # H4: the squad trotting over to a building: {id, x, t}
@@ -101,6 +102,77 @@ func build() -> void:
 	doc.position = Vector2(750, 486)
 	doc.pressed.connect(func(): walk_to("doc"))
 	add_child(doc)
+	if Run.campaign() and Run.hq("lab") >= 1:
+		var lab := HudScript.PixButton.new()
+		lab.text = "ALIEN LAB"
+		lab.sub = "VHARR TECH"
+		lab.color = Color("c47bff")
+		lab.small = true
+		lab.size = Vector2(170, 36)
+		lab.position = Vector2(405, 438)
+		lab.pressed.connect(func(): go("lab"))
+		add_child(lab)
+
+func lab_row(i: int) -> Rect2:
+	return Rect2(32, 110 + i * 82, 896, 74)
+
+func open_lab() -> void:
+	## B5: the Alien Lab turns kills into Vharr tech, paid in Bio-parts and Salvage.
+	Sfx.play("click")
+	lab_open = true
+	for c in get_children():
+		c.queue_free()
+	sub = null
+	for i in Data.VHARR_TECH.size():
+		var id: String = Data.VHARR_TECH[i].id
+		var why := Run.tech_block(id)
+		var r := lab_row(i)
+		var bt := HudScript.PixButton.new()
+		bt.small = true
+		bt.size = Vector2(170, 30)
+		bt.position = Vector2(r.end.x - 182, r.position.y + 22)
+		bt.text = "BUILD" if why == "" else why
+		bt.color = Color("c47bff")
+		bt.disabled = why != ""
+		bt.pressed.connect(func():
+			var it := Run.build_tech(id)
+			if it.is_empty():
+				Sfx.play("deny")
+			else:
+				Sfx.play("power")
+				open_lab())
+		add_child(bt)
+	var close := HudScript.PixButton.new()
+	close.text = "BACK TO HQ"
+	close.color = Color("9aa2ae")
+	close.size = Vector2(150, 30)
+	close.position = Vector2(405, 494)
+	close.pressed.connect(func(): lab_open = false; build())
+	add_child(close)
+
+func draw_lab_panel() -> void:
+	draw_rect(Rect2(0, 0, 960, 540), Color(0.04, 0.02, 0.06, 0.97))
+	Art.text(self, "ALIEN LAB", Vector2(40, 58), 16, Color("c47bff"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+	Art.text(self, "Kill %d of an alien and the Lab can copy its tech. Built gear goes to the stash, and runs can find it from then on." % Run.tech_need(), Vector2(40, 80), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+	Art.text(self, "%d BIO-PARTS   %d SALVAGE" % [int(Run.meta.get("bio", 0)), int(Run.meta.get("salvage", 0))], Vector2(920, 58), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
+	for i in Data.VHARR_TECH.size():
+		var T: Dictionary = Data.VHARR_TECH[i]
+		var I: Dictionary = Data.ITEMS[T.id]
+		var r := lab_row(i)
+		var n: int = Run.tech_kills(T.alien)
+		var need: int = Run.tech_need()
+		draw_rect(r, Color(0.08, 0.05, 0.1, 0.9))
+		draw_rect(r, Color("c47bff") if n >= need else Color("4a3f55"), false, 1)
+		var sheet: String = "en_" + T.alien
+		if Art.meta.has(sheet):
+			Art.draw_char(self, sheet, "idle", (t / 14) % 2, Vector2(r.position.x + 40, r.end.y - 6), 1, false, 0, 1.0, 0, false, minf(1.0, 62.0 / float(Art.meta[sheet].frame[1])))
+		Art.text(self, I.name.to_upper(), Vector2(r.position.x + 84, r.position.y + 22), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+		Art.text(self, I.text, Vector2(r.position.x + 84, r.position.y + 42), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		var bx := r.position.x + 84
+		var bw := 300.0
+		draw_rect(Rect2(bx, r.position.y + 54, bw, 8), Color(0.05, 0.035, 0.03))
+		draw_rect(Rect2(bx + 1, r.position.y + 55, (bw - 2) * minf(1.0, float(n) / need), 6), Color("c47bff"))
+		Art.text(self, "%s KILLS %d / %d   COST %d BIO + %d SALVAGE" % [Data.ETYPES[T.alien].name.to_upper(), mini(n, need), need, Data.TECH_BIO, Data.TECH_SALVAGE], Vector2(bx + bw + 12, r.position.y + 63), 8, Color("9aa2ae"))
 
 func doc_cell(i: int) -> Rect2:
 	## Surgery i on the lab board: two columns of cards.
@@ -180,7 +252,7 @@ func open_upgrades() -> void:
 		var bt := HudScript.PixButton.new()
 		bt.small = true
 		bt.size = Vector2(170, 30)
-		bt.position = Vector2(750, 108 + i * 56)
+		bt.position = Vector2(750, 108 + i * upgrade_step())
 		if r >= Data.HQ_COST.size():
 			bt.text = "FULLY BUILT"
 			bt.disabled = true
@@ -217,7 +289,7 @@ func open_dossier(i: int, tb := "deck") -> void:
 
 func idle() -> bool:
 	## True when the HQ scene itself is showing (no building screen or board open).
-	return (sub == null or not is_instance_valid(sub)) and not memorial_open and not upgrades_open and not doc_open
+	return (sub == null or not is_instance_valid(sub)) and not memorial_open and not upgrades_open and not doc_open and not lab_open
 
 func troop_x(i: int) -> float:
 	var n: int = Run.soldiers.filter(func(s): return s.alive).size()
@@ -282,6 +354,7 @@ func go(id: String) -> void:
 	memorial_open = false
 	upgrades_open = false
 	doc_open = false
+	lab_open = false
 	build()
 	match id:
 		"qm": open_shop("shop")
@@ -291,6 +364,7 @@ func go(id: String) -> void:
 		"doc": open_doc()
 		"memorial": open_memorial()
 		"upgrades": open_upgrades()
+		"lab": open_lab()
 
 func walk_to(id: String) -> void:
 	## H4: the squad trots over to the building, then it opens.
@@ -502,6 +576,8 @@ func _draw() -> void:
 		draw_upgrades_panel()
 	elif doc_open:
 		draw_doc_panel()
+	elif lab_open:
+		draw_lab_panel()
 
 func draw_news() -> void:
 	## Campaign: the after-op report, fading out after a few seconds.
@@ -635,9 +711,9 @@ func draw_upgrades_panel() -> void:
 	for i in blds.size():
 		var B: Dictionary = blds[i]
 		var r := Run.hq(B.id)
-		var y := 100.0 + i * 56
-		draw_rect(Rect2(32, y, 896, 50), Color(0.08, 0.07, 0.06, 0.9))
-		draw_rect(Rect2(32, y, 896, 50), Color("53d4e2") if r > 0 else Color("4a505a"), false, 1)
+		var y := 100.0 + i * upgrade_step()
+		draw_rect(Rect2(32, y, 896, upgrade_step() - 4), Color(0.08, 0.07, 0.06, 0.9))
+		draw_rect(Rect2(32, y, 896, upgrade_step() - 4), Color("53d4e2") if r > 0 else Color("4a505a"), false, 1)
 		Art.text(self, B.name, Vector2(44, y + 18), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 		for k in 3:
 			draw_rect(Rect2(44 + k * 16, y + 28, 12, 12), Color(0.05, 0.035, 0.03))
@@ -646,7 +722,12 @@ func draw_upgrades_panel() -> void:
 			var col := Color("62d26f") if k < r else (Color("e8dcc2") if k == r else Color("6c7480"))
 			var mark := "OK " if k < r else ("NEXT " if k == r else "")
 			Art.text(self, "%d  %s%s" % [k + 1, mark, B.ranks[k]], Vector2(262, y + 13 + k * 14), 8, col)
-	Art.text(self, "MEMORIAL is free: the fallen hang their tags there.", Vector2(480, 452), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+	if blds.size() <= 6:
+		Art.text(self, "MEMORIAL is free: the fallen hang their tags there.", Vector2(480, 452), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+
+func upgrade_step() -> float:
+	## Rows close up once the campaign's story buildings join the board.
+	return 56.0 if Run.hq_buildings().size() <= 6 else 49.0
 
 func draw_doc_panel() -> void:
 	draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.03, 0.02, 0.97))

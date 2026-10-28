@@ -80,6 +80,11 @@ func build() -> void:
 	elif Run.sector_open(sc):
 		go.text = "ASSAULT" if sc.get("stronghold", false) else "ATTACK"
 		go.pressed.connect(func(): Sfx.play("start"); attack.emit(sc, false))
+	elif Run.sector_held(sc.id) and Run.bonus_at(sc) != "":
+		go.text = "BONUS OP"
+		go.sub = "PAYS EPIC GEAR"
+		go.color = Color("c47bff")
+		go.pressed.connect(func(): Sfx.play("start"); attack.emit(sc, false))
 	elif Run.sector_held(sc.id):
 		go.text = "PATROL"
 		go.sub = "HALF PAY, NOBODY DIES"
@@ -208,6 +213,12 @@ func _draw() -> void:
 		draw_rect(r.grow(-2), col)
 		if sc.id == sel:
 			draw_rect(r.grow(3), Color.WHITE, false, 2)
+		if Run.bonus_at(sc) != "":
+			# P2: a bonus op waiting on this sector
+			var bp := p + Vector2(sz / 2 + 4, -sz / 2 - 4)
+			draw_circle(bp, 9 + (1 if (t / 15) % 2 == 0 else 0), Color(0.05, 0.035, 0.03))
+			draw_circle(bp, 7 + (1 if (t / 15) % 2 == 0 else 0), Color("c47bff"))
+			Art.text(self, "!", bp + Vector2(0, 4), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
 		var tag: String = "FORT" if big else sc.id.to_upper()
 		Art.text(self, tag, p + Vector2(0, 5), 8, Color(0.05, 0.035, 0.03) if st != "locked" or big else Color("c9ccd1"), HORIZONTAL_ALIGNMENT_CENTER, 0)
 		Art.text(self, sc.name, p + Vector2(0, sz / 2 + 14), 8, Color.WHITE if st != "locked" else Color("8a929c"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -280,7 +291,7 @@ func draw_side() -> void:
 	var st := state(sc)
 	var rows: Array = []
 	rows.append(["STATUS", {"held": "HELD", "open": "OPEN", "locked": "NOT REACHABLE"}[st]])
-	var jb := Run.op_job(sc)
+	var jb: String = Run.op_job(sc) if Run.bonus_at(sc) == "" else str(Data.BONUS_OPS[Run.bonus_at(sc)].job)
 	rows.append(["JOB", "STRONGHOLD" if sc.get("stronghold", false) else ("PUSH TO THE BOSS" if jb == "push" else Data.JOBS[jb].goal)])
 	rows.append(["BIOME", bm.name])
 	var a: Dictionary = Run.act()
@@ -290,7 +301,15 @@ func draw_side() -> void:
 		Art.text(self, r[1], Vector2(SIDE.end.x - 12, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
 		y += 18
 	y += 4
-	if sc.has("hold"):
+	if Run.bonus_at(sc) != "":
+		var B: Dictionary = Data.BONUS_OPS[Run.bonus_at(sc)]
+		Art.text(self, "BONUS: " + B.name, Vector2(x, y), 8, Color("c47bff"))
+		y += 6
+		for line in CardView.wrap_text(B.text + " %d ops left." % int(Run.camp.bonus.left), SIDE.size.x - 24, 16):
+			y += 16
+			Art.text(self, line, Vector2(x, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		y += 18
+	elif sc.has("hold"):
 		Art.text(self, "HOLDING IT", Vector2(x, y), 8, Color("62d26f"))
 		y += 6
 		for line in CardView.wrap_text(hold_text(sc.hold) + " for the rest of the war.", SIDE.size.x - 24, 16):

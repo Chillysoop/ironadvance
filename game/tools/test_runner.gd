@@ -2,7 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## warmap, company, ops, story (campaign mode),
+## warmap, company, ops, story, lab (campaign mode),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -778,6 +778,8 @@ func run() -> void:
 			await ops()
 		"story":
 			await story()
+		"lab":
+			await lab()
 		"aliens6":
 			await aliens6()
 		"aliens7":
@@ -4527,8 +4529,8 @@ func story() -> void:
 	## Campaign step 4: radio briefings, the villains, per-soldier implants, Comms and Hangar,
 	## the Jackal Defector class and deserters, and Colonel Varga's op.
 	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate(), "bio": Run.meta.get("bio", 0), "implants": Run.meta.get("implants", {}).duplicate(true), "mem": Run.meta.get("memorial", []).size()}
-	Run.delete_campaign(2)
-	Run.new_campaign(2)
+	Run.delete_campaign(3)
+	Run.new_campaign(3)
 	# S2: the act's opening plays once, then job lines
 	Run.start_op(Run.sector("d1"))
 	var first := Run.radio_before()
@@ -4652,16 +4654,174 @@ func story() -> void:
 	Run.save_campaign()
 	main.show_title()
 	await frames_wait(3)
-	Run.load_campaign(2)
+	Run.load_campaign(3)
 	check(Run.implanted(Run.soldiers[0], "cybereye"), "per-soldier implants survive a save")
 	check(Run.roster.any(func(s): return s.get("spec", "") == "defector"), "the Defector survives a save")
 	main.show_title()
 	await frames_wait(3)
-	Run.delete_campaign(2)
+	Run.delete_campaign(3)
 	Run.meta.salvage = keep.salvage
 	Run.meta.hq = keep.hq
 	Run.meta.bio = keep.bio
 	Run.meta.implants = keep.implants
+	Run.save_meta()
+
+func lab() -> void:
+	## Campaign step 5: the Alien Lab and Vharr tech, the Gate Engineer, bonus ops, and campaign
+	## milestones that unlock run content.
+	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate(), "bio": Run.meta.get("bio", 0), "unlocked": Run.meta.unlocked.duplicate()}
+	Run.delete_campaign(4)
+	Run.new_campaign(4)
+	check(not Run.hq_buildings().any(func(B): return B.id == "lab"), "no Alien Lab before Act III")
+	Run.camp.act = 2
+	check(Run.hq_buildings().any(func(B): return B.id == "lab"), "Act III opens the Alien Lab")
+	main.show_hq(false)
+	await frames_wait(10)
+	main.screen.open_upgrades()
+	await frames_wait(10)
+	await shot("lab_upgrades")
+	check(Run.tech_block("blinkpack") == "BUILD THE ALIEN LAB", "the Lab has to be built first")
+	Run.meta.hq = {"lab": 1}
+	check(Run.tech_block("blinkpack") == "KILL 15 MORE", "tech waits on kills (%s)" % Run.tech_block("blinkpack"))
+	Run.after_op({"kinds": {"blinker": 9, "warden": 4}})
+	Run.after_op({"kinds": {"blinker": 6}})
+	check(Run.tech_kills("blinker") == 15 and Run.tech_kills("warden") == 4, "every op's alien kills add up (%d, %d)" % [Run.tech_kills("blinker"), Run.tech_kills("warden")])
+	Run.meta.bio = 10
+	Run.meta.salvage = 20
+	check(Run.tech_block("blinkpack") == "", "15 Blinkers and the parts: Blink Pack can be built")
+	Run.meta.unlocked.erase("blinkpack")
+	var it := Run.build_tech("blinkpack")
+	check(not it.is_empty() and Run.stash.has(it) and int(Run.meta.bio) == 10 - Data.TECH_BIO, "the Blink Pack goes to the stash for its price")
+	check(Run.meta.unlocked.has("blinkpack") and Run.unlocked("blinkpack"), "built once, runs can find it too")
+	Run.meta.hq.lab = 2
+	check(Run.tech_need() == 10, "Lab 2: tech needs 10 kills")
+	Run.meta.hq.lab = 3
+	Run.camp.kills["prism"] = 10
+	var pp := Run.build_tech("prismplate")
+	check(int(pp.get("tier", 0)) == 3, "Lab 3: tech comes out Epic")
+	main.show_hq(false)
+	await frames_wait(10)
+	main.screen.go("lab")
+	await frames_wait(20)
+	await shot("lab_board")
+
+	# the tech in a fight
+	Run.camp.act = 3
+	var eng_line := Run.engineer_joins()
+	var eng: Dictionary = Run.roster.back()
+	check(eng_line.contains("Gate Engineer") and eng.get("spec", "") == "engineer" and eng.def.cls == "Gate Engineer", "Act IV brings a Gate Engineer (%s)" % eng_line)
+	check(eng.deck.any(func(c): return c.key == "blink") and eng.deck.any(func(c): return c.key == "domeup"), "the Engineer carries a Blink and a Dome Projector")
+	check(Run.engineer_joins() == "", "only one Engineer reports")
+	Run.toggle_squad(eng)
+	check(Run.soldiers.has(eng), "the Engineer can deploy")
+	var mo: Dictionary = Run.soldiers[0]
+	Run.equip(mo, pp)
+	Run.camp.act = 2
+	Run.level = Run.make_op(Run.sector("r1"))
+	var b: Battle = main.start_battle(2, Run.level)
+	b.mission_over.disconnect(main._on_mission_over)
+	await until(func(): return b.state == "player" and not b.busy)
+	var eu: Array = b.squad().filter(func(u): return u.s == eng)
+	check(eu.size() == 1 and eu[0].dome > 0, "the Engineer deploys under a dome")
+	for e in b.units:
+		if e.team == "enemy":
+			e.dead = true; e.gone = true
+	var u: Unit = b.squad_alive().filter(func(x): return x.s == mo)[0]
+	var gx: float = u.x + 220
+	var foe := b.mk_enemy("grunt", gx, b.T.stand_y(gx, b.T.ground_at(gx) - 40))
+	foe.active = true
+	b.units.append(foe)
+	var hp0 := u.hp
+	var fh := foe.hp
+	b.damage(u, 5, foe)
+	check(u.hp == hp0 and foe.hp == fh - 5, "Prism Plate sends the first shot back (%d, %d)" % [u.hp, foe.hp])
+	b.damage(u, 5, foe)
+	check(u.hp == hp0 - 5, "only the first shot each turn")
+	foe.hp = 99; foe.max_hp = 99
+	await b.vharr_blink(u, 360)
+	check(absf(u.x - foe.x) < 60 and u.face == (1 if foe.x > u.x else -1), "Blink lands right behind the enemy, facing it (%d vs %d)" % [int(u.x), int(foe.x)])
+	await frames_wait(10)
+	await shot("lab_blink")
+	# a spread-out group gets pulled together
+	var grp: Array = []
+	for k in 3:
+		var px: float = u.x + 120 + k * 50
+		var g := b.mk_enemy("grunt", px, b.T.stand_y(px, b.T.ground_at(px) - 40))
+		g.active = true
+		b.units.append(g)
+		grp.append(g)
+	var spread0: float = grp[2].x - grp[0].x
+	var ux := u.x
+	await b.vharr_well(u, 140)
+	await until(func(): return b.settled(), 600)
+	check(absf(grp[2].x - grp[0].x) < spread0, "the Gravity Grenade pulls a group together (%d -> %d)" % [int(spread0), int(grp[2].x - grp[0].x)])
+	check(absf(u.x - ux) < 1, "and leaves the thrower where they are")
+	var inst := {"id": -9, "key": "domeup", "tier": 0}
+	u.hand.append(inst)
+	u.energy = 3
+	for s in b.squad_alive():
+		s.dome = 0
+	await b._act_self(u, u.hand.size() - 1, Data.card(inst))
+	check(u.dome == 2, "the Dome Projector domes its user")
+	main.clear()
+
+	# P2 bonus ops
+	Run.camp.act = 0
+	Run.camp.held = [Run.sec_key("d1"), Run.sec_key("d2")]
+	Run.camp.bonus = {}
+	var bl := ""
+	for k in 40:
+		bl = Run.roll_bonus()
+		if bl != "":
+			break
+	check(bl.begins_with("Bonus op at") and not Run.camp.bonus.is_empty(), "a bonus op turns up on a held sector (%s)" % bl)
+	var bsc: Dictionary = Run.act().sectors.filter(func(sc): return Run.bonus_at(sc) != "")[0]
+	main.show_war_room()
+	await frames_wait(10)
+	main.screen.sel = bsc.id
+	main.screen.build()
+	await frames_wait(10)
+	await shot("lab_bonus_room")
+	check(main.screen.go_btn.text == "BONUS OP", "the War Room offers the bonus op")
+	Run.start_op(bsc)
+	check(Run.level.bonus != "" and Run.level.banner == "BONUS OP" and Run.level.job in ["escort", "hunt"], "a bonus op is a convoy escort or a scout hunt (%s)" % Run.level.job)
+	var res := Run.op_over(true)
+	check(res.has("bonus") and Run.camp.bonus.is_empty() and Run.sector_held(bsc.id), "winning it pays and clears it; the sector stays held")
+	Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": "convoy", "left": 2}
+	Run.roll_bonus()
+	check(not Run.camp.bonus.is_empty(), "a bonus op waits a couple of ops")
+	check(Run.roll_bonus().contains("moved on") and Run.camp.bonus.is_empty(), "then it moves on, costing nothing")
+
+	# L3: beating Act III unlocks the Defector for runs; shutting the Gate unlocks a gate finale
+	Run.meta.unlocked.erase("cls_defector")
+	Run.camp.act = 2
+	Run.camp.held = Run.act().sectors.filter(func(sc): return not sc.get("stronghold", false)).map(func(sc): return Run.sec_key(sc.id))
+	Run.start_op(Run.sector("boss"))
+	res = Run.op_over(true)
+	check(res.get("unlock", "") == "cls_defector" and Run.meta.unlocked.has("cls_defector"), "clearing Act III unlocks the Defector for runs")
+	main.show_title()
+	await frames_wait(3)
+	Run.new_run()
+	var got := {}
+	for k in 60:
+		for o in Run.recruit_offers(3):
+			if o.get("spec", "") == "defector":
+				got = o
+		if not got.is_empty():
+			break
+	check(not got.is_empty(), "run recruits sometimes include a Jackal Defector")
+	if not got.is_empty():
+		var rs := Run.make_recruit(got)
+		check(rs.get("spec", "") == "defector" and rs.def.cls == "Jackal Defector", "and they come as the campaign class")
+	Run.meta.unlocked.append("gatefinale")
+	Run.start_finale()
+	check(Run.level.get("encounter", "") == "gate", "after the war, the run's finale has a gate siege")
+	Run.level = {}
+	Run.delete_campaign(4)
+	Run.meta.salvage = keep.salvage
+	Run.meta.hq = keep.hq
+	Run.meta.bio = keep.bio
+	Run.meta.unlocked = keep.unlocked
 	Run.save_meta()
 
 func hoverwedge() -> void:
