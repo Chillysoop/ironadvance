@@ -160,6 +160,8 @@ func setup(idx: int, custom := {}) -> void:
 		u.draw = deck
 		if Run.implanted(s, "adrenal"):
 			u.adr = 25
+		if Run.campaign() and Run.soldiers.any(func(x): return x.alive and Run.rank(x) >= Data.RANKS.size() - 1):
+			u.dodge += Data.CAPTAIN_DODGE  # C3: a Captain in the squad steadies everyone
 		units.append(u)
 		i += 1
 	var pi := randi() % Data.POW_NAMES.size()
@@ -1492,6 +1494,8 @@ func kill(tg: Unit, src) -> void:
 	if tg.team == "enemy":
 		stats.kills += 1
 		credit_card(src)
+		if src is Unit and src.team == "squad":
+			src.fl["kills"] = int(src.fl.get("kills", 0)) + 1  # C5: the service record
 		var base: int = Data.ETYPES[tg.type].score
 		if state == "player":
 			combo += 1
@@ -3325,6 +3329,8 @@ func check_detour() -> void:
 			log_msg("The outpost is ours: an Epic crate and %d Bio-parts for the Doc." % Data.ELITE_BIO)
 		"pow":
 			var slots := Run.fallen_slots()
+			if Run.campaign():
+				slots = [-1] if Run.company_room() else []
 			if slots.size():
 				var o: Dictionary = Run.recruit_offers(1)[0]
 				var s := Run.hire(slots[0], o)

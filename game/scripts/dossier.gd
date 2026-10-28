@@ -517,7 +517,7 @@ func stats() -> Array:
 		["HAND", "%d cards" % hand],
 		["ENERGY", "3 a turn" + (" +%d first" % e1 if e1 > 0 else "")],
 		["XP", "%d / %d" % [me.xp, Run.xp_for_next(me)]],
-	]
+	] + ([["RANK", Data.RANKS[Run.rank(me)].name], ["OPS / KILLS", "%d / %d" % [int(Run.svc(me).ops), int(Run.svc(me).kills)]]] if Run.campaign() else [])
 
 func trait_line() -> Array:
 	return s().def.trait
@@ -763,6 +763,14 @@ func draw_sheet(me: Dictionary) -> void:
 		head("RECRUIT", Vector2(x, y))
 		Art.text(self, "%s: %s" % [rt.name, rt.text], Vector2(x + 90, y + 1), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		y += 16
+	if Run.campaign():
+		# C5: the service record instead of the bio
+		var sv := Run.svc(me)
+		head("SERVICE", Vector2(x, y + 4))
+		var med: Array = sv.medals.map(func(m): return "%s (%s)" % [Data.MEDALS[m].name.capitalize(), Data.MEDALS[m].up])
+		para("%s. %d ops, %d kills, down %d times. %s%s" % [Data.RANKS[Run.rank(me)].name.capitalize(), int(sv.ops), int(sv.kills), int(sv.downs),
+			("Medals: " + ", ".join(med) + ". ") if med.size() else "No medals yet. ", ("Carries %s's cards." % me.legacy_from) if me.has("legacy_from") else ""], Vector2(x + 90, y + 4), MID.size.x - 90, Color("e8dcc2"), 3)
+		return
 	para(me.def.bio, Vector2(x, y + 4), MID.size.x, Color("9aa2ae"), 2)
 
 func draw_deck(me: Dictionary) -> void:
