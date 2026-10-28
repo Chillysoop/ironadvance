@@ -765,6 +765,8 @@ func run() -> void:
 			await identity_test()
 		"jackals2":
 			await jackals2_test()
+		"biomes2":
+			await biomes2_test()
 		"pickups":
 			await pickups()
 		"bossloot":
@@ -6737,3 +6739,179 @@ func count_cells(b: Battle, x: float, y: float, w: float, h: float) -> int:
 			if b.T.grid[cy * b.T.cols + cx] != 0:
 				n += 1
 	return n
+
+func m_battle(id: String, segs: Array) -> Battle:
+	## A short level of one biome: the start, the given segments, a camp and the arena.
+	var bm: Dictionary = Data.BIOMES[id]
+	var lvl := {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "segments": ["start"] + segs + ["camp", "arena"],
+		"boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": bm.text, "encounter": "", "boss": "hiveship" if id == "hive" else "boar", "walker": false, "miniboss": "jwalker"}
+	Run.new_run()
+	var b: Battle = main.start_battle(0, lvl)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	return b
+
+func m_clear(b: Battle) -> void:
+	for o in b.units:
+		if o.team == "enemy" or o.team == "neutral":
+			o.gone = true
+
+func biomes2_test() -> void:
+	## M1-M7: Frozen Lake, Armored Train, Ruined City, Deep Mine, Volcano, Vharr Hive, Carrier Deck.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	for id in ["lake", "train", "city", "mine", "volcano", "hive", "carrier"]:
+		var lv := Run.make_level(id, 2)
+		check(lv.segments.size() == 7 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)) and Data.LEVELS[2].pool.has(id), "%s builds a full level and is in the last level's pool" % id)
+	check(Run.make_level("hive", 2).boss == "hiveship" and not Run.make_level("hive", 2).walker, "the Hive ends at the Hive Ship and has no Jackal Walker")
+	check(range(30).all(func(_i): return Run.make_level("mine", 2).miniboss != "gunship" and Run.make_level("mine", 2).encounter != "droppods"), "no gunship and no drop pods under the mine's ceiling")
+	# M1 Frozen Lake: the crust holds soldiers, breaks under a Brute, and drops him in the lake
+	var b: Battle = await m_battle("lake", ["lake"])
+	m_clear(b)
+	var sq := {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	var mo: Unit = sq.moss
+	check(b.T.lakes.size() == 1 and b.T.mat(880, b.T.ground_at(880) + 2) == Terrain.ICE and not b.T.solid(880, b.T.ground_at(880) + 14), "M1: a crust of ice over open water")
+	ground_unit(b, mo, 820, 0)
+	cam_on(b, 880)
+	b.ice_crack(mo)
+	check(b.T.solid(820, mo.y + 2), "a soldier standing on it doesn't break it")
+	var br := j2_enemy(b, "brute", 940)
+	await frames_wait(4)
+	await shot("m1_lake")
+	b.ice_crack(br)
+	await until(func(): return br.dead or br.sunk, 400)
+	check(br.dead or br.sunk, "a Brute breaks through and goes under")
+	await shot("m1_crack")
+	# M2 Armored Train: cars, couplers, and the tunnel on a count
+	b = await m_battle("train", ["traincars"])
+	m_clear(b)
+	sq = {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	mo = sq.moss
+	check(b.T.cars.size() == 3 and b.sweeps.size() == 1 and b.sweeps[0].left == 3, "M2: three cars and a tunnel 3 rounds out")
+	var car: Dictionary = b.T.cars[1]
+	ground_unit(b, mo, car.x + 100, car.roof - 10)
+	ground_unit(b, sq.hex, car.x + 140, car.roof + 20)
+	check(absf(mo.y - car.roof) < 1 and sq.hex.y > car.roof + 40, "Moss is up on the roof, Hex inside the car")
+	var gx: float = car.x + car.w + 20
+	check(b.T.solid(gx, b.T.ground_at(car.x) + 1) and not b.T.solid(gx, b.T.ground_at(car.x) + 20), "a coupler to walk across the open gap")
+	cam_on(b, car.x + 150)
+	var hits: Array = b.sweep_hits(b.sweeps[0])
+	check(hits.has(mo) and not hits.has(sq.hex), "the tunnel would hit Moss on the roof, not Hex inside")
+	var hp0 := mo.hp
+	var hh0: int = sq.hex.hp
+	await b.biome_round()
+	await b.biome_round()
+	check(mo.hp == hp0 and b.sweeps[0].left == 1, "two rounds: the count is down to 1")
+	await shot("m2_count")
+	await b.biome_round()
+	check(mo.hp < hp0 and sq.hex.hp == hh0 and b.sweeps[0].left == 3, "third round: the tunnel hits the roof only (%d -> %d) and resets" % [hp0, mo.hp])
+	# M3 Ruined City: four- and five-storey forts
+	b = await m_battle("city", ["ruins", "highrise"])
+	var tall: Array = b.T.structs.filter(func(s): return s.t == "fort" and s.floors >= 4)
+	check(tall.size() >= 2 and tall.all(func(s): return s.top < 200), "M3: high-rises four and five floors tall")
+	cam_on(b, tall[1].x + 200)
+	await frames_wait(6)
+	await shot("m3_city")
+	# M4 Deep Mine: the ceiling, no wind, cave-ins and carts
+	b = await m_battle("mine", ["shaft"])
+	m_clear(b)
+	sq = {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	mo = sq.moss
+	check(b.T.ceiling and b.wind == 0 and range(0, b.world_w, 40).all(func(x): return b.T.solid(x, 40)), "M4: rock overhead everywhere and no wind")
+	var prop: Dictionary = b.T.structs.filter(func(s): return s.t == "prop")[0]
+	check(absf(b.T.stand_y(prop.x + 20, 0) - b.T.ground_at(prop.x + 20)) < 9, "nothing stands in the crack over a slab")
+	var under := j2_enemy(b, "grunt", prop.x + 30)
+	under.hp = 40; under.max_hp = 40
+	cam_on(b, prop.x + 100)
+	await frames_wait(4)
+	await shot("m4_mine")
+	var g: float = b.T.ground_at(prop.post)
+	b.T.carve(prop.post, g - 8, 6, mo)  # cut low, or the slab comes to rest on the stump
+	await until(func(): return b.T.chunks.is_empty() and b.settled(), 600)
+	check(not b.T.solid(prop.x + 40, prop.top + 8) and under.hp < 40, "shoot the beam and the slab comes down on the Jackal (%d)" % under.hp)
+	await shot("m4_cavein")
+	var cart: Unit = null
+	for x in [prop.x + prop.w + 60.0]:
+		cart = b.mk_unit(); cart.team = "neutral"; cart.kind = "cart"; cart.x = x; cart.y = b.T.stand_y(x, b.T.ground_at(x) - 40); cart.w = 26; cart.h = 18; cart.hp = 999; cart.max_hp = 999
+		b.units.append(cart)
+	var tg := j2_enemy(b, "grunt", cart.x + 160)
+	tg.hp = 40; tg.max_hp = 40
+	ground_unit(b, mo, cart.x - 50, 0)
+	b.damage(cart, 3, mo)
+	check(cart.slide > 0, "a hit sends the cart rolling away from the shooter")
+	await until(func(): return cart.slide == 0 and b.settled(), 600)
+	check(tg.hp <= 22, "it runs over the Jackal down the line (%d; cart %d,%d tg %d,%d gone %s)" % [tg.hp, cart.x, cart.y, tg.x, tg.y, cart.gone])
+	await shot("m4_cart")
+	# M5 Volcano: lava climbs a marked step a round, burns what it reaches, drains on a push
+	b = await m_battle("volcano", ["caldera"])
+	m_clear(b)
+	sq = {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	var low := 460.0 + 330.0
+	var lo := j2_enemy(b, "grunt", low)
+	ground_unit(b, sq.moss, 460 + 150, 0)
+	cam_on(b, low)
+	var gy: float = lo.y
+	b.T.fill_r(low - 12, gy, 24, 8, 3)
+	var n := int(ceil((b.WATER_Y - gy + 3) / 10.0))
+	check(b.lava_k == 0 and n <= Battle.LAVA_MAX, "M5: the basin floor sits within the lava's reach (%d)" % int(gy))
+	for i in n:
+		await b.biome_round()
+	check(b.lava_k == n and lo.dead and not sq.moss.dead, "%d rounds: the lava reaches the basin and burns the Jackal up, the high ground is safe" % n)
+	check(not b.T.solid(low, gy + 4), "and it ate the planks in the basin")
+	await shot("m5_lava")
+	await b.scroll_to(b.cam_x + 200, "push", sq.moss)
+	check(b.lava_k == 0, "an aggressive push drains it")
+	# M6 Vharr Hive: only Vharr, standing acid, and the walls grow back
+	b = await m_battle("hive", ["hivecore", "broodpit"])
+	var foes: Array = b.units.filter(func(o): return o.team == "enemy" and not o.gone)
+	check(foes.size() > 6 and foes.all(func(o): return b.faction(o) == "vharr"), "M6: every enemy in the Hive is Vharr (%s)" % str(foes.filter(func(o): return b.faction(o) != "vharr").map(func(o): return o.type)))
+	check(b.acids.filter(func(a): return a.turns > 100).size() >= 3, "standing acid pools that never dry")
+	cam_on(b, 900)
+	var hx := 1000.0
+	var hy: float = b.T.ground_at(hx)
+	b.T.carve(hx, hy + 10, 22, null)
+	var holes := 0
+	for cy in range(int((hy - 20) / 4), int((hy + 40) / 4)):
+		for cx in range(int((hx - 30) / 4), int((hx + 30) / 4)):
+			if b.T.grid[cy * b.T.cols + cx] == 0 and b.T.orig[cy * b.T.cols + cx] != 0:
+				holes += 1
+	var grew: int = b.regrow(60)
+	check(holes > 40 and grew >= 40 and grew <= 60, "the Hive regrows %d blocks of a %d-block crater in one round (60 at most)" % [grew, holes])
+	await frames_wait(4)
+	await shot("m6_hive")
+	# M7 Carrier Deck: steel, a lift, a jet down the lane
+	b = await m_battle("carrier", ["flightdeck"])
+	m_clear(b)
+	sq = {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	mo = sq.moss
+	check(b.T.mat(600, b.T.ground_at(600) + 2) == Terrain.STEEL and b.T.lifts.size() == 1, "M7: a steel deck and an elevator")
+	var l: Dictionary = b.T.lifts[0]
+	ground_unit(b, mo, (l.x0 + l.x1) / 2.0, 0)
+	var y0 := mo.y
+	b.move_lift(l)
+	check(not l.up and absf(mo.y - y0 - 64) < 1, "the lift drops a storey with Moss on it")
+	cam_on(b, 900)
+	await frames_wait(4)
+	await shot("m7_lift")
+	b.move_lift(l)
+	check(l.up and absf(mo.y - y0) < 1, "and brings her back up")
+	var lane: Dictionary = b.sweeps.filter(func(s): return s.k == "plane")[0]
+	var jg := j2_enemy(b, "grunt", lane.x0 + 60)
+	jg.hp = 40; jg.max_hp = 40
+	ground_unit(b, sq.hex, 460 + 860, 0)
+	var hx0: int = sq.hex.hp
+	cam_on(b, lane.x0 + 300)
+	lane.left = 1
+	await b.biome_round()
+	check(jg.hp < 40 and sq.hex.hp == hx0, "the jet hits the Jackal in its lane, not Hex up the tower (%d)" % jg.hp)
+	await shot("m7_jet")

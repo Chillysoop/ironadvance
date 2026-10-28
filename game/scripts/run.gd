@@ -181,15 +181,16 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	var nd := 4 if hq("mess") >= 3 else 3
 	# from level 2 on, one stretch after the mid camp holds a Vharr encounter: E1 Swarm, E2 Nest,
 	# E3 Drop Pod Ambush, E4 The Hunt, E5 Thrall Outbreak or E6 Gate Siege
-	var enc: String = "" if tier < 1 else Data.ENCOUNTERS[randi() % Data.ENCOUNTERS.size()]
+	var encs: Array = Data.ENCOUNTERS.filter(func(k): return k != "droppods" or not bm.rules.get("ceiling", false))  # M4: no pods through rock
+	var enc: String = "" if tier < 1 else encs[randi() % encs.size()]
 	if tier >= 1 and (id == "desert" or id == "mountain"):
 		enc = "queen"  # Q2: the Burrow Queen owns the sand and the scree
 	# Q1: from level 2 the Hive Ship hangs over the delta and the harbor instead of a BOAR
-	var boss := "hiveship" if tier >= 1 and (id == "delta" or id == "harbor") else "boar"
+	var boss := "hiveship" if (tier >= 1 and (id == "delta" or id == "harbor")) or id == "hive" else "boar"
 	# E6: a Jackal Walker holds the first stretch on half of the first levels and every later one
-	var walker := tier >= 1 or randf() < 0.5
+	var walker: bool = (tier >= 1 or randf() < 0.5) and not bm.rules.get("aliens", false)  # M6: no Jackals in the Hive
 	# E7, E8: or a Jackal Gunship or a Di-Cokka tank in its place
-	var minis := ["jwalker", "gunship", "dicokka"]
+	var minis := ["jwalker", "dicokka"] if bm.rules.get("ceiling", false) else ["jwalker", "gunship", "dicokka"]
 	var miniboss: String = minis[randi() % minis.size()]
 	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "breach": breach, "encounter": enc, "boss": boss, "walker": walker, "miniboss": miniboss,
 		"segments": ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")],

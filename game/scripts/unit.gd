@@ -113,7 +113,7 @@ func center() -> Vector2:
 	return Vector2(x, y - h / 2.0)
 
 func is_prop() -> bool:
-	return kind == "barrel" or kind == "fuel" or kind == "charge" or kind == "crate" or kind == "strongbox" or kind == "mine"
+	return kind == "barrel" or kind == "fuel" or kind == "charge" or kind == "crate" or kind == "strongbox" or kind == "mine" or kind == "cart"
 
 func is_pickup() -> bool:
 	## Loot on the ground and buried caches: bullets and blasts pass through them.

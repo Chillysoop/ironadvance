@@ -1346,6 +1346,74 @@ const SEGMENTS := {
 	# B6: a sandbagged M2 anyone standing at can fire, held by a Jackal gunner
 	"m2nest": {"w": 720, "sandbags": [300, 560], "pits": [], "structs": [],
 		"spawns": [["m2", 330], ["grunt", 352, {"hold": 1}], ["barrel", 420], ["grunt", 470], ["shield", 520], ["m2", 590], ["nade", 640, {"hold": 1}], ["radio", 690]]},
+	# M1 Frozen Lake: a crust of lake ice over open water. Heavies and blasts break it
+	"lake": {"w": 900, "sandbags": [140], "pits": [],
+		"structs": [{"t": "crust", "x0": 240, "x1": 620}],
+		"spawns": [["grunt", 300], ["brute", 380], ["shield", 450], ["nade", 520], ["grunt", 580], ["barrel", 700], ["grunt", 750], ["radio", 820]]},
+	"floes": {"w": 860, "sandbags": [], "pits": [],
+		"structs": [{"t": "crust", "x0": 160, "x1": 340}, {"t": "ledge", "x": 380, "w": 80, "dy": 70, "post": 440}, {"t": "crust", "x0": 480, "x1": 690}],
+		"spawns": [["pow", 100], ["grunt", 250], ["brute", 300], ["nade", 410, {"hold": 1, "up": 80}], ["shield", 560], ["grunt", 620], ["mg", 760], ["radio", 800]]},
+	# M2 Armored Train: steel cars with open gaps between them and couplers to walk across.
+	# The tunnel sweeps every roof on a count you can see
+	"traincars": {"w": 1000, "sandbags": [], "pits": [], "gaps": [[290, 330], [640, 680]],
+		"structs": [{"t": "car", "x": 10, "w": 280, "h": 64}, {"t": "coupler", "x0": 290, "x1": 330}, {"t": "car", "x": 330, "w": 310, "h": 64},
+			{"t": "coupler", "x0": 640, "x1": 680}, {"t": "car", "x": 680, "w": 300, "h": 64}],
+		"spawns": [["grunt", 150], ["grunt", 220, {"hold": 1, "up": 70}], ["shield", 420], ["nade", 500, {"hold": 1, "up": 70}], ["brute", 560], ["grunt", 760], ["grunt", 840, {"hold": 1, "up": 70}], ["radio", 920]]},
+	"flatcars": {"w": 960, "sandbags": [], "pits": [], "gaps": [[300, 340], [620, 660]],
+		"structs": [{"t": "car", "x": 20, "w": 280, "h": 14}, {"t": "coupler", "x0": 300, "x1": 340}, {"t": "car", "x": 340, "w": 280, "h": 64},
+			{"t": "coupler", "x0": 620, "x1": 660}, {"t": "car", "x": 660, "w": 290, "h": 14}],
+		"spawns": [["pow", 90], ["fuel", 180], ["grunt", 240], ["grunt", 420, {"hold": 1, "up": 70}], ["mg", 480], ["nade", 560, {"hold": 1, "up": 70}], ["m2", 740], ["grunt", 770, {"hold": 1}], ["radio", 900]]},
+	"guncar": {"w": 900, "sandbags": [], "pits": [], "gaps": [[400, 440]],
+		"structs": [{"t": "car", "x": 20, "w": 380, "h": 64}, {"t": "coupler", "x0": 400, "x1": 440}, {"t": "car", "x": 440, "w": 440, "h": 64}],
+		"spawns": [["grunt", 120], ["barrel", 200], ["mortarcrew", 300, {"hold": 1, "up": 70}], ["shield", 520], ["grunt", 600, {"hold": 1, "up": 70}], ["brute", 700], ["nade", 780, {"hold": 1, "up": 70}], ["radio", 840]]},
+	# M3 Ruined City: gutted high-rises and a crane, the most vertical fights in the war
+	"ruins": {"w": 880, "sandbags": [120], "pits": [],
+		"structs": [{"t": "fort", "x": 220, "w": 150, "floors": 4, "fh": 54}, {"t": "crane", "x": 790, "h": 210, "jib": 520, "hook": 580, "rope": 60, "cw": 48, "ch": 24}],
+		"spawns": [["grunt", 180], ["grunt", 330, {"hold": 1, "up": 10}], ["nade", 300, {"hold": 1, "up": 74}], ["pow", 320, {"up": 128}],
+			["grunt", 340, {"hold": 1, "up": 182}], ["grunt", 300, {"hold": 1, "up": 236}], ["brute", 480], ["shield", 600], ["radio", 820]]},
+	"highrise": {"w": 920, "sandbags": [], "pits": [],
+		"structs": [{"t": "fort", "x": 140, "w": 130, "floors": 5, "fh": 50}, {"t": "fort", "x": 540, "w": 160, "floors": 3, "fh": 56}],
+		"spawns": [["grunt", 100], ["grunt", 220, {"hold": 1, "up": 66}], ["nade", 200, {"hold": 1, "up": 166}], ["grunt", 230, {"hold": 1, "up": 256}],
+			["shield", 420], ["mg", 600], ["grunt", 620, {"hold": 1, "up": 78}], ["nade", 640, {"hold": 1, "up": 190}], ["brute", 780], ["radio", 860]]},
+	"plaza": {"w": 840, "sandbags": [130], "pits": [],
+		"structs": [{"t": "tower", "x": 220, "h": 110}, {"t": "over", "px": 380, "x0": 380, "x1": 520, "h": 80}, {"t": "fort", "x": 620, "w": 140, "floors": 2, "fh": 60}],
+		"spawns": [["grunt", 220, {"hold": 1}], ["shield", 330], ["grunt", 450], ["nade", 480, {"hold": 1}], ["fuel", 560], ["grunt", 680, {"hold": 1, "up": 80}], ["brute", 700], ["radio", 790]]},
+	# M4 Deep Mine: a rock ceiling, slabs propped on single beams, and carts on the rails
+	"shaft": {"w": 880, "sandbags": [], "pits": [],
+		"structs": [{"t": "prop", "x": 200, "w": 150, "post": 268}, {"t": "prop", "x": 560, "w": 140, "post": 622}],
+		"spawns": [["cart", 120], ["grunt", 240], ["grunt", 300], ["nade", 420], ["brute", 600], ["grunt", 650], ["cart", 520], ["radio", 820]]},
+	"tunnels": {"w": 840, "sandbags": [170], "pits": [],
+		"ground": [{"x0": 420, "x1": 560, "dh": -24, "ramp": 30}],
+		"structs": [{"t": "prop", "x": 250, "w": 130, "post": 312}, {"t": "bunker", "x": 640, "w": 84, "h": 48}],
+		"spawns": [["cart", 90], ["grunt", 280], ["shield", 340], ["nade", 480], ["fuel", 520], ["mg", 682], ["grunt", 682, {"hold": 1, "inside": 1}], ["radio", 790]]},
+	"drift": {"w": 860, "sandbags": [], "pits": [],
+		"structs": [{"t": "prop", "x": 160, "w": 170, "post": 240}, {"t": "ledge", "x": 420, "w": 100, "dy": 80, "post": 500}, {"t": "prop", "x": 600, "w": 150, "post": 676}],
+		"spawns": [["pow", 60], ["cart", 110], ["grunt", 220], ["sapper", 300], ["nade", 450, {"hold": 1, "up": 90}], ["grunt", 640], ["brute", 700], ["radio", 800]]},
+	# M5 Volcano: low basins where the lava climbs first
+	"caldera": {"w": 900, "sandbags": [130], "pits": [],
+		"ground": [{"x0": 240, "x1": 420, "dh": -60, "ramp": 60}, {"x0": 560, "x1": 700, "dh": 40, "ramp": 50}],
+		"structs": [{"t": "tower", "x": 630, "h": 70}],
+		"spawns": [["grunt", 220], ["fuel", 330], ["grunt", 380], ["nade", 500], ["grunt", 630, {"hold": 1}], ["brute", 740], ["radio", 820]]},
+	"flows": {"w": 860, "sandbags": [], "pits": [],
+		"ground": [{"x0": 180, "x1": 300, "dh": -50, "ramp": 50}, {"x0": 520, "x1": 660, "dh": -56, "ramp": 50}],
+		"structs": [{"t": "bridge", "x0": 360, "x1": 470, "posts": [415]}, {"t": "ledge", "x": 700, "w": 90, "dy": 90, "post": 780}],
+		"spawns": [["pow", 90], ["grunt", 240], ["shield", 420], ["nade", 590], ["grunt", 730, {"hold": 1, "up": 100}], ["brute", 640], ["radio", 820]]},
+	# M6 Vharr Hive: organic tunnels with Hive Pods and standing acid. The walls grow back
+	"hivecore": {"w": 880, "sandbags": [], "pits": [],
+		"ground": [{"x0": 300, "x1": 520, "dh": 40, "ramp": 60}],
+		"structs": [{"t": "over", "px": 200, "x0": 200, "x1": 340, "h": 70}, {"t": "ledge", "x": 600, "w": 110, "dy": 90, "post": 690}],
+		"spawns": [["acid", 150], ["grunt", 260], ["hive", 400], ["grunt", 460], ["nade", 560], ["acid", 600], ["grunt", 650, {"hold": 1, "up": 100}], ["hive", 780], ["radio", 820]]},
+	"broodpit": {"w": 840, "sandbags": [], "pits": [],
+		"ground": [{"x0": 200, "x1": 380, "dh": -40, "ramp": 40}, {"x0": 520, "x1": 700, "dh": 50, "ramp": 0}],
+		"structs": [],
+		"spawns": [["pow", 100], ["acid", 290], ["hive", 300], ["grunt", 360], ["grunt", 560, {"hold": 1}], ["nade", 620], ["hive", 680], ["grunt", 760], ["radio", 800]]},
+	# M7 Carrier Deck: a flat steel deck, open sea off the edges, elevators and a taxi lane
+	"flightdeck": {"w": 960, "sandbags": [], "pits": [], "gaps": [[700, 760]],
+		"structs": [{"t": "runway", "x0": 120, "x1": 680}, {"t": "lift", "x0": 300, "x1": 380, "drop": 64}, {"t": "tower", "x": 860, "h": 120}],
+		"spawns": [["grunt", 200], ["shield", 260], ["grunt", 340], ["nade", 450], ["barrel", 520], ["brute", 600], ["grunt", 860, {"hold": 1}], ["radio", 900]]},
+	"hangar": {"w": 900, "sandbags": [], "pits": [], "gaps": [[120, 170]],
+		"structs": [{"t": "fort", "x": 260, "w": 200, "floors": 2, "fh": 62}, {"t": "lift", "x0": 560, "x1": 640, "drop": 64}, {"t": "runway", "x0": 500, "x1": 880}],
+		"spawns": [["pow", 60], ["grunt", 300], ["mg", 340], ["fuel", 420], ["nade", 380, {"hold": 1, "up": 80}], ["grunt", 600], ["shield", 700], ["grunt", 780], ["radio", 850]]},
 	# a safe camp inside the level: a fire, two tents and a supply crate, no Jackals
 	# D5: the HQ practice range. Dummies on the flat, one up the tower, one behind a shield
 	"range": {"w": 820, "sandbags": [], "pits": [], "structs": [{"t": "tower", "x": 440, "h": 96}],
@@ -1384,6 +1452,9 @@ const MISSIONS := [
 #   amp: how hilly the ground is   wet: fire does 1 damage and won't spread
 #   fuel / mines: extra fuel barrels / mines on the map   elite: extra chance a Jackal is elite
 #   ice / tarps / wires: sheets of ice, rubber tarps and live wires on the map
+#   lake: crust breaks under heavies   tunnel: rounds between roof sweeps   ceiling: underground
+#   lava: px the lava climbs a round   aliens: only Vharr   regrow: blocks the Hive regrows a round
+#   deck: steel ground   planes: rounds between jets down each taxi lane
 # "look" tints the level: tint and grass go to the terrain, sky modulates the backdrop.
 const STYLES := {"long": "LONG GUNS", "close": "CLOSE QUARTERS", "arc": "EXPLOSIVES"}
 const BIOMES := {
@@ -1427,6 +1498,41 @@ const BIOMES := {
 		"look": {"tint": Color(0.86, 0.62, 0.7), "grass": Color("5a4a6a"), "sky": Color(1.0, 0.7, 0.8)},
 		"segments": ["fort", "overhang", "gauntlet", "warehouse"],
 		"text": "Paper walls and shadows. Jackals see 40% less far, but more of them are elite. Aimed shots sway 60% more."},
+	"lake": {"name": "FROZEN LAKE", "theme": "night", "favor": "arc", "rough": "long",
+		"rules": {"lake": true, "ice": 3, "wind": 1.3, "sway": 0.9},
+		"look": {"tint": Color(0.94, 1.0, 1.12), "grass": Color("dfeef6"), "sky": Color(0.86, 0.94, 1.08), "water": [Color("0c2a40"), Color("6fb6d6")]},
+		"segments": ["lake", "floes", "ridge", "trenches", "towers", "fenceline"],
+		"text": "Lake ice over black water. A heavy Jackal or a vehicle that walks onto it breaks through, and any blast punches a hole in it. Sheets of ice on the shore too."},
+	"train": {"name": "ARMORED TRAIN", "theme": "dusk", "favor": "close", "rough": "long",
+		"rules": {"train": true, "tunnel": 3, "amp": 0.0, "wind": 2.0},
+		"look": {"tint": Color(1.02, 0.96, 0.9), "grass": Color("8a7a5a"), "sky": Color(1.0, 0.86, 0.74), "water": [Color("2e2824"), Color("6a5a48")]},
+		"segments": ["traincars", "flatcars", "guncar"],
+		"text": "Fight car to car along a moving train. Every 3 rounds a tunnel sweeps the roofs: the count is over every car. Anyone up there takes 12 and gets thrown back. Fall between the cars and you go under the wheels."},
+	"city": {"name": "RUINED CITY", "theme": "dusk", "favor": "long", "rough": "close",
+		"rules": {"sight": 1.2, "sway": 0.8, "amp": 0.3, "wind": 1.2},
+		"look": {"tint": Color(0.94, 0.92, 0.9), "grass": Color("8a8a7a"), "sky": Color(0.9, 0.86, 0.84)},
+		"segments": ["ruins", "highrise", "plaza", "fort", "warehouse", "towers"],
+		"text": "Gutted high-rises four and five floors tall, and a crane. The most vertical fights in the war: blow a floor out and everyone on it drops. Aimed shots sway 20% less, but Jackals see 20% farther."},
+	"mine": {"name": "DEEP MINE", "theme": "night", "favor": "arc", "rough": "long",
+		"rules": {"ceiling": true, "wind": 0.0, "sight": 0.8, "fuel": 1},
+		"look": {"tint": Color(1.04, 0.9, 0.76), "grass": Color("6a5a48"), "sky": Color(0.36, 0.3, 0.28)},
+		"segments": ["shaft", "tunnels", "drift", "bunker"],
+		"text": "Underground under a rock ceiling, with no wind. Slabs of rock hang on single wooden beams: shoot the beam and the slab comes down on whoever is under it. Hit a mine cart and it rolls away from you along the floor, running over the first Jackal in its path."},
+	"volcano": {"name": "VOLCANO", "theme": "dusk", "favor": "long", "rough": "close",
+		"rules": {"lava": 10.0, "amp": 1.5, "fuel": 2, "wind": 0.6},
+		"look": {"tint": Color(1.1, 0.88, 0.8), "grass": Color("4a3a36"), "sky": Color(1.0, 0.7, 0.56), "water": [Color("8a1a08"), Color("ff7a1e")]},
+		"segments": ["caldera", "flows", "ridge", "boulder", "trenches"],
+		"text": "Lava sits low and rises one marked step every round the squad holds still. Push the screen forward or make camp and it drains. Lava burns up anyone it reaches, Jackal or soldier, and eats wood."},
+	"hive": {"name": "VHARR HIVE", "theme": "night", "favor": "arc", "rough": "long",
+		"rules": {"aliens": true, "regrow": 60, "sight": 0.8, "amp": 1.2},
+		"look": {"tint": Color(0.96, 0.8, 1.06), "grass": Color("8a4aa0"), "sky": Color(0.8, 0.6, 0.9), "water": [Color("1e1430"), Color("7a4a9a")]},
+		"segments": ["hivecore", "broodpit", "overhang", "boulder", "ridge"],
+		"text": "Inside the Hive: only Vharr, Hive Pods and standing acid. The tunnels grow back: every enemy phase the Hive regrows up to 60 blocks of what you blew away."},
+	"carrier": {"name": "CARRIER DECK", "theme": "dusk", "favor": "long", "rough": "arc",
+		"rules": {"deck": true, "planes": 3, "amp": 0.0, "wind": 1.8, "sight": 1.1},
+		"look": {"tint": Color(0.96, 0.98, 1.04), "grass": Color("8a9096"), "sky": Color(0.9, 0.94, 1.04)},
+		"segments": ["flightdeck", "hangar", "m2nest", "catwalks"],
+		"text": "A steel deck at sea: blasts barely dent it, and the edges drop into the water. Elevators drop a storey and come back up every 2 rounds. Every 3 rounds a jet taxis down the painted lane: anyone on it takes 14 and is thrown."},
 }
 # Each level of a run has its own pool. Played and burned biomes never come back.
 # Which Vharr fill the rifleman slots in each biome (Z on the alien page).
@@ -1440,12 +1546,19 @@ const BIOME_ALIENS := {
 	"mountain": ["squid", "burrower", "blinker", "warden"],
 	"harbor": ["squid", "grappler", "bloater", "prism"],
 	"palace": ["stalker", "weaver", "skitter", "blinker"],
+	"lake": ["squid", "skitter", "blinker", "warden"],
+	"train": ["skitter", "grappler", "blinker", "stalker"],
+	"city": ["squid", "prism", "weaver", "blinker"],
+	"mine": ["burrower", "skitter", "grappler", "bloater"],
+	"volcano": ["bloater", "squid", "warden", "prism"],
+	"hive": ["skitter", "blinker", "weaver", "stalker", "grappler", "bloater"],
+	"carrier": ["squid", "prism", "grappler", "skitter"],
 }
 
 const LEVELS := [
-	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain"], "hp_mul": 1.0, "boss_hp": 120, "plate": 36},
-	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "harbor", "palace"], "hp_mul": 1.15, "boss_hp": 160, "plate": 46},
-	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "harbor", "palace"], "hp_mul": 1.3, "boss_hp": 210, "plate": 60},
+	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "lake", "city", "mine"], "hp_mul": 1.0, "boss_hp": 120, "plate": 36},
+	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "harbor", "palace", "lake", "city", "mine", "train", "volcano", "carrier"], "hp_mul": 1.15, "boss_hp": 160, "plate": 46},
+	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "harbor", "palace", "lake", "city", "mine", "train", "volcano", "carrier", "hive"], "hp_mul": 1.3, "boss_hp": 210, "plate": 60},
 ]
 # After the third level: one fixed fight against the Jackal flagship.
 const FINALE := {"name": "IRON HARBOR", "theme": "night", "segments": ["start", "docks", "pier"], "finale": true,
