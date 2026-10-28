@@ -3264,7 +3264,7 @@ func check_detour() -> void:
 				var o: Dictionary = Run.recruit_offers(1)[0]
 				var s := Run.hire(slots[0], o)
 				banner("ALL PRISONERS FREE!", Color("62d26f"), "%s JOINS THE SQUAD AT HQ" % s.def.name)
-				log_msg("%s, a freed %s, signs up. They will be waiting at HQ." % [s.def.name, s.def.cls])
+				log_msg("%s, a freed %s, signs up. They will be waiting at HQ%s." % [s.def.name, s.def.cls, ", with a training pick at the Barracks" if s.get("train", false) else ""])
 			else:
 				var need: Array = squad_alive().filter(func(u): return u.s.tags < Data.DOG_TAGS)
 				need.sort_custom(func(a, b): return a.s.tags < b.s.tags)

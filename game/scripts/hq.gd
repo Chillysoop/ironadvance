@@ -316,7 +316,9 @@ func badges() -> Dictionary:
 		out["doc"] = "HURT"
 	elif Run.hq("doc") >= 1 and Data.SURGERIES.keys().any(func(id): return Data.SQUAD_DEFS.any(func(d): return Run.surgery_block(id, d.key) == "")):
 		out["doc"] = "CAN OPERATE"
-	if not Run.fallen_slots().is_empty() and Run.scrip >= Services.price(Data.RECRUIT_PRICE / (2 if Run.hq("barracks") >= 3 else 1)):
+	if al.any(func(s): return s.get("train", false)):
+		out["barracks"] = "TRAINING"
+	elif not Run.fallen_slots().is_empty() and Run.scrip >= Services.price(Data.RECRUIT_PRICE / (2 if Run.hq("barracks") >= 3 else 1)):
 		out["barracks"] = "RECRUIT"
 	elif al.any(func(s): return s.tags < Data.DOG_TAGS) and Run.scrip >= Services.price(Data.TAG_PRICE):
 		out["barracks"] = "DOG TAG"
