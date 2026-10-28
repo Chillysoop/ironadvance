@@ -688,6 +688,9 @@ class Overlay extends Control:
 		Art.text(self, str(n) if n else "CALM", Vector2(wx + 150, 28), 8, Color("53d4e2") if n <= 4 else Color("ff7a3d"))
 		Art.text(self, "RND", Vector2(912, 14), 8, Color("e8dcc2"))
 		Art.text(self, str(b.round_n), Vector2(912, 28), 8, Color.WHITE)
+		var jl: String = b.job_left()
+		if jl != "":
+			Art.text(self, jl, Vector2(480, 52), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		# boss bar
 		var boss = null
 		for u in b.units:

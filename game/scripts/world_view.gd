@@ -211,6 +211,44 @@ func draw_unit(u: Unit) -> void:
 		"slug":
 			draw_slug(u, pos, white)
 			return
+		"dump":
+			# O3: a tarp-covered stack of ammo crates with a red demolition mark
+			var dc := Color.WHITE if white else Color("6b5a3a")
+			draw_rect(Rect2(pos.x - 15, pos.y - 14, 30, 14), C_DARK)
+			draw_rect(Rect2(pos.x - 14, pos.y - 13, 13, 12), dc)
+			draw_rect(Rect2(pos.x + 1, pos.y - 13, 13, 12), dc)
+			draw_rect(Rect2(pos.x - 9, pos.y - 25, 18, 12), C_DARK)
+			draw_rect(Rect2(pos.x - 8, pos.y - 24, 16, 10), Color.WHITE if white else Color("4f5a3a"))
+			draw_line(pos + Vector2(-5, -22), pos + Vector2(5, -16), Color("ff4d3d"), 2.0)
+			draw_line(pos + Vector2(5, -22), pos + Vector2(-5, -16), Color("ff4d3d"), 2.0)
+			draw_rect(Rect2(pos.x - 13, pos.y - 34, 26, 4), C_DARK)
+			draw_rect(Rect2(pos.x - 12, pos.y - 33, 24.0 * u.hp / u.max_hp, 2), Color("ff7a3d"))
+			if b.t % 60 < 40:
+				Art.text(self, "TARGET", pos + Vector2(0, -38), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			return
+		"truck":
+			# O5: the supply truck, olive cab on the right, canvas box behind
+			var f := u.face
+			var tc := Color.WHITE if white else (Color("3a3d33") if u.dead else Color("5d6b3a"))
+			draw_rect(Rect2(pos.x - 28, pos.y - 30, 38, 22), C_DARK)
+			draw_rect(Rect2(pos.x - 27, pos.y - 29, 36, 20), Color.WHITE if white else (Color("3a3d33") if u.dead else Color("8a8a64")))
+			draw_rect(Rect2(pos.x + 9, pos.y - 24, 19, 16), C_DARK)
+			draw_rect(Rect2(pos.x + 10, pos.y - 23, 17, 14), tc)
+			draw_rect(Rect2(pos.x + 18, pos.y - 21, 7, 5), Color("9fd6ff") if not u.dead else C_DARK)
+			draw_rect(Rect2(pos.x - 28, pos.y - 9, 56, 3), C_DARK)
+			for wx in [-18, 0, 18]:
+				var spin: float = u.anim * 0.6
+				draw_circle(pos + Vector2(wx, -5), 5, C_DARK)
+				draw_circle(pos + Vector2(wx, -5), 2, Color("6a6a6a"))
+				draw_line(pos + Vector2(wx, -5), pos + Vector2(wx + cos(spin) * 4, -5 + sin(spin) * 4), Color("9a9a9a"), 1.0)
+			if u.dead:
+				if b.t % 6 == 0:
+					b.part({"x": u.x + randf_range(-20, 20), "y": u.y - 30, "vx": 0.0, "vy": -0.8, "life": 40, "max": 40, "c": Color("3a3a3a"), "s": 4.0, "g": -0.01})
+				return
+			draw_rect(Rect2(pos.x - 20, pos.y - 40, 40, 4), C_DARK)
+			draw_rect(Rect2(pos.x - 19, pos.y - 39, 38.0 * u.hp / u.max_hp, 2), Color("62d26f"))
+			Art.text(self, "TRUCK", pos + Vector2(0, -44), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+			return
 		"cache":
 			# a glint in the dirt every couple of seconds
 			var gy: float = b.T.ground_at(u.x)
@@ -639,7 +677,9 @@ func draw_plate(u: Unit) -> void:
 	if u.elite != "":
 		draw_rect(Rect2(x - w / 2 - 2, y - 2, w + 4, 7), Color("ffd23a"), false, 1.0)
 		Art.text(self, Data.ELITES[u.elite].name, Vector2(x, y - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
-	draw_statuses(u, x, y - (14 if u.elite != "" else 4))
+		if u.fl.has("quarry"):
+			Art.text(self, "WANTED: " + u.fl.quarry, Vector2(x, y - 14), 8, Color("ff4d3d") if b.t % 40 < 28 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+	draw_statuses(u, x, y - (24 if u.fl.has("quarry") else (14 if u.elite != "" else 4)))
 	if u.type == "radio" and b.radio_t != null and u.active:
 		var col := Color("ff4d3d") if b.radio_t <= 1 else Color("ffd23a")
 		draw_texture_rect(Art.tex.ic_radio, Rect2(clampf(x, b.cam_x + 44, b.cam_x + 916) - 34, y - 16, 16, 16), false)

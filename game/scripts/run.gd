@@ -1119,7 +1119,12 @@ func make_op(sc: Dictionary, patrol := false) -> Dictionary:
 	lv.plate = a.plate
 	lv.name = sc.name
 	var segs: Array = lv.segments
-	if not sc.get("stronghold", false):
+	var job := op_job(sc, patrol)
+	if job != "push":
+		# O2-O6: no boss at the end, one more fighting stretch instead
+		var bm: Dictionary = Data.BIOMES[sc.biome]
+		lv.segments = ["start", segs[1], "camp", "yard", segs[4], bm.segments[randi() % bm.segments.size()]]
+	elif not sc.get("stronghold", false):
 		lv.segments = ["start", segs[1], "camp", "yard", segs[4], segs[6]]
 	else:
 		lv.boss_hp = int(a.boss_hp * 1.2)
@@ -1127,10 +1132,24 @@ func make_op(sc: Dictionary, patrol := false) -> Dictionary:
 	if sc.get("queen", false):
 		lv.encounter = "queen"
 	lv["op"] = sc.id
+	lv["job"] = job
 	lv["patrol"] = patrol
 	lv["stronghold"] = sc.get("stronghold", false) and not patrol
 	lv["banner"] = "PATROL" if patrol else ("STRONGHOLD ASSAULT" if lv.stronghold else "OP %d START!" % (int(camp.ops) + 1))
 	return lv
+
+func op_job(sc: Dictionary, patrol := false) -> String:
+	## A stronghold is always a push. A patrol picks any job at random, for variety.
+	if sc.get("stronghold", false) and not patrol:
+		return "push"
+	if patrol:
+		var ks: Array = Data.JOBS.keys()
+		return ks[randi() % ks.size()]
+	return sc.get("job", "push")
+
+func job_text(job: String) -> String:
+	var tx: String = Data.JOBS[job].text
+	return tx % Data.HOLD_PHASES if job == "hold" else tx
 
 func start_op(sc: Dictionary, patrol := false) -> void:
 	mission = int(camp.ops)   # the Quartermaster restocks after every op

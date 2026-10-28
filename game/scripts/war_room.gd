@@ -280,7 +280,8 @@ func draw_side() -> void:
 	var st := state(sc)
 	var rows: Array = []
 	rows.append(["STATUS", {"held": "HELD", "open": "OPEN", "locked": "NOT REACHABLE"}[st]])
-	rows.append(["JOB", "STRONGHOLD" if sc.get("stronghold", false) else "PUSH TO THE BOSS"])
+	var jb := Run.op_job(sc)
+	rows.append(["JOB", "STRONGHOLD" if sc.get("stronghold", false) else ("PUSH TO THE BOSS" if jb == "push" else Data.JOBS[jb].goal)])
 	rows.append(["BIOME", bm.name])
 	var a: Dictionary = Run.act()
 	rows.append(["ENEMY", ["JACKALS", "JACKALS + VHARR", "VHARR"][int(a.tier)] + (" + BREACH" if float(a.breach) >= 0.5 else "")])
