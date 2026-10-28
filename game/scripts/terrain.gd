@@ -10,6 +10,7 @@ const FENCE := 6   # chain-link: stops soldiers and Jackals, not bullets, rocket
 const ICE := 7     # sheet ice: anything that lands on it keeps sliding
 const RUBBER := 8  # rubber tarp: soldiers and grenades bounce off it, no fall damage
 const FLOOD_LIMIT := 5000
+const WATER_ROW := Data.WATER_Y / CELL  # first row of cells under the water
 
 var b  # the Battle that owns this terrain
 var cols := 0
@@ -242,7 +243,8 @@ func build(mission: Dictionary) -> void:
 			continue
 		var top := int(round(heights[cx] / CELL))
 		var deep := top + 16 + int(hash2(cx, 7) * 4)
-		for cy in range(top, ROWS):
+		# the ground stops at the waterline like Worms: dig through it and there is only water
+		for cy in range(top, WATER_ROW):
 			set_cell(cx, cy, 4 if cy > deep else 1)
 		for r in ice_runs:
 			if cxx >= r[0] and cxx < r[1]:
@@ -579,8 +581,8 @@ func flood(start: int, cause) -> void:
 		head += 1
 		var cy := i / cols
 		var cx := i - cy * cols
-		if cy >= ROWS - 1:
-			anchored = true
+		if cy >= WATER_ROW - 1:
+			anchored = true  # the seabed holds up anything still joined to the bottom row of ground
 			break
 		for k in 4:
 			var nb := -1

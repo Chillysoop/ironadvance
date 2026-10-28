@@ -2413,6 +2413,32 @@ func jump_vel(u: Unit, p: Vector2, mul := 1.0) -> Dictionary:
 	var pw := clampf(minf(d, reach) / reach * 10.5 * mul, 3, 10.5 * mul)
 	return {"vx": dx / d * pw, "vy": minf(-2.5, dy / d * pw), "hx": hp_.x, "hy": hp_.y}
 
+func pit_rim(u: Unit, dir: float):
+	## The lip of the hole a soldier stands in, on the dir side: the highest ground within 64px
+	## that side, if it is well above their feet. null when they are not down in a hole.
+	var rim = null
+	var x := u.x + dir * 10
+	while absf(x - u.x) <= 64:
+		var y = T.stand_y(x, u.y - 240)
+		if y != null and y < u.y - 30 and (rim == null or y < rim.y):
+			rim = Vector2(x, y)
+		x += dir * 4
+	return rim
+
+func hop_out(u: Unit, v: Dictionary) -> Dictionary:
+	## A Hop from the bottom of a hole always clears its lip, however deep it was dug, so a soldier
+	## is never stuck down there without a Drill. Straight up the shaft, then over onto the lip.
+	var dir := 1.0 if v.vx >= 0 else -1.0
+	var rim = pit_rim(u, dir)
+	if rim == null:
+		return v
+	var vy := -sqrt(2.0 * GRAV * (u.y - rim.y + 28))
+	if vy >= v.vy:
+		return v  # the hop as aimed already gets there
+	# about 22 frames from passing the lip to landing on it
+	u.vault = {"y": rim.y - 14, "vx": dir * clampf((absf(rim.x - u.x) + 8) / 22.0, 1.5, 4.0)}
+	return {"vx": 0.0, "vy": vy, "hx": v.hx, "hy": v.hy}
+
 func rush_vel(u: Unit, p: Vector2) -> Dictionary:
 	var hp_ := hand_pos(u)
 	var a := atan2(p.y - hp_.y, p.x - hp_.x)
@@ -2682,7 +2708,10 @@ func _act_jump(u: Unit, idx: int, p: Vector2) -> void:
 		explode(u.x, u.y - 4, 30, 6, u)
 		await wait(2)
 	var v := jump_vel(u, p, c.get("jpow", 1.0))
-	u.face = 1 if v.vx >= 0 else -1
+	var dir := 1 if v.vx >= 0 else -1
+	if c.get("hop", false):
+		v = hop_out(u, v)
+	u.face = dir
 	u.vx = v.vx; u.vy = v.vy; u.air = true; u.jumping = true; u.walk = null
 	Sfx.play("rocket")
 	for i in 10:
@@ -6297,7 +6326,7 @@ func boss_act(bo: Unit) -> void:
 			shake += 4
 			for j in 4:
 				puff(m.x, m.y, 2.0)
-			projs.append(mk_proj({"kind": "shell", "x": m.x, "y": m.y, "vx": sol.vx * k, "vy": sol.vy * k, "wind": 1.0, "r": 44.0, "dmg": int(round(13 * (1 + alert * 0.06))), "owner": bo, "trail": true}))
+			projs.append(mk_proj({"kind": "shell", "x": m.x, "y": m.y, "vx": sol.vx * k, "vy": sol.vy * k, "wind": 1.0, "r": 44.0, "dmg": int(round(10.5 * (1 + alert * 0.06))), "owner": bo, "trail": true}))
 			await until(settled)
 			await wait(12)
 	var best = best_shot(bo, squad_alive(), Data.ETYPES.boss.range)
@@ -6706,6 +6735,9 @@ func physics(u: Unit) -> void:
 		hover_physics(u)
 		return
 	if not u.air:
+		if u.y > WATER_Y + 2:
+			drown(u)  # standing on anything below the waterline is standing in the water
+			return
 		if not T.solid(u.x, u.y):
 			u.air = true
 			u.vy = maxf(u.vy, 0)
@@ -6803,11 +6835,15 @@ func physics(u: Unit) -> void:
 		else:
 			u.y = ny
 	if u.y > WATER_Y + 2:
-		splash(u.x)
-		u.sunk = true
-		if not u.dead:
-			float_at(u.x, WATER_Y - 30, (u.def.name + " DROWNED") if u.team == "squad" else "SPLASH!", Color("9fe3f0"), true)
-			kill(u, u.last_hit_by if u.last_hit_by != null and u.last_hit_by is Unit and u.last_hit_by.team == "squad" else null)
+		drown(u)
+
+func drown(u: Unit) -> void:
+	## Worms rules: anything that ends up in the water goes under for good.
+	splash(u.x)
+	u.sunk = true
+	if not u.dead:
+		float_at(u.x, WATER_Y - 30, (u.def.name + " DROWNED") if u.team == "squad" else "SPLASH!", Color("9fe3f0"), true)
+		kill(u, u.last_hit_by if u.last_hit_by != null and u.last_hit_by is Unit and u.last_hit_by.team == "squad" else null)
 
 func ice_step(u: Unit, x: float, y: float, v: float) -> Dictionary:
 	## One frame of a skid across ice: follow the surface a step up or down, stop at a wall,
