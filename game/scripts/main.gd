@@ -263,10 +263,10 @@ func _on_mission_over(won: bool) -> void:
 		return
 	if not won or Run.alive_count() == 0:
 		s.mode = "lost"
-		s.buttons = [["NEW CAMPAIGN", func(): start_run()], ["TITLE", func(): show_title()]]
+		s.buttons = [["NEW RUN", func(): start_run()], ["TITLE", func(): show_title()]]
 	elif Run.is_final_mission():
 		s.mode = "final"
-		s.buttons = [["NEW CAMPAIGN", func(): start_run()]]
+		s.buttons = [["NEW RUN", func(): start_run()], ["TITLE", func(): show_title()]]
 		Run.meta.wins = int(Run.meta.wins) + 1
 		Run.meta.threat_max = maxi(int(Run.meta.threat_max), mini(Run.threat + 1, Data.THREATS.size()))
 		Run.save_meta()
@@ -321,7 +321,7 @@ class Screen extends Control:
 	var unlock := ""
 	var t := 0
 	func _ready() -> void:
-		set_anchors_preset(Control.PRESET_FULL_RECT)
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		var n := buttons.size()
 		var widths: Array = []
 		var total := 0.0
@@ -600,7 +600,7 @@ class Screen extends Control:
 		if stats.get("fallen", []).size():
 			rows.append(["KILLED IN ACTION", ", ".join(stats.fallen)])
 		if mode == "final" or mode == "lost":
-			rows.append(["CAMPAIGN SCORE", str(Run.total_score)])
+			rows.append(["RUN SCORE", str(Run.total_score)])
 		for i in rows.size():
 			Art.text(self, rows[i][0], Vector2(330, 160 + i * 20), 8, Color("e8dcc2"))
 			Art.text(self, rows[i][1], Vector2(630, 160 + i * 20), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)

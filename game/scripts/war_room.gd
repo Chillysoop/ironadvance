@@ -21,7 +21,7 @@ var company_open := false  # C1: the roster overlay where you pick who deploys
 var msg := ""
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for sc in Run.act().sectors:
 		if Run.sector_open(sc) and (sel == "" or sc.get("stronghold", false)):
 			sel = sc.id
@@ -360,7 +360,7 @@ class SlotPicker extends Control:
 	var t := 0
 	var confirm := -1   # the slot whose START OVER was clicked once
 	func _ready() -> void:
-		set_anchors_preset(Control.PRESET_FULL_RECT)
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		build()
 	func card(i: int) -> Rect2:
 		return Rect2(60 + i * 290, 120, 260, 300)
@@ -440,7 +440,7 @@ class PickQueue extends Control:
 	var opts: Array = []
 	var log_line := ""
 	func _ready() -> void:
-		set_anchors_preset(Control.PRESET_FULL_RECT)
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		next()
 	func next() -> void:
 		for c in get_children():
@@ -524,7 +524,7 @@ class RadioScreen extends Control:
 	var t := 0
 	var shown := 0
 	func _ready() -> void:
-		set_anchors_preset(Control.PRESET_FULL_RECT)
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		var sk = load("res://scripts/hud.gd").PixButton.new()
 		sk.text = "SKIP"
@@ -620,7 +620,7 @@ class EndingScreen extends Control:
 	var t := 0
 	var pick := -1
 	func _ready() -> void:
-		set_anchors_preset(Control.PRESET_FULL_RECT)
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		build()
 	func build() -> void:
 		for c in get_children():

@@ -35,7 +35,7 @@ var msg_t := 0
 var t := 0
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	build()
 
@@ -375,7 +375,7 @@ class Overlay extends Control:
 	var arrow_x := 450.0
 	var confirm = null
 	func _ready() -> void:
-		set_anchors_preset(Control.PRESET_FULL_RECT)
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		mouse_filter = Control.MOUSE_FILTER_STOP
 	func _gui_input(ev: InputEvent) -> void:
 		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT:
