@@ -364,6 +364,14 @@ func use_belt(i: int) -> void:
 		"energy":
 			u.energy += 1
 			float_text(u, "+1 ENERGY", Color("ffd23a"), true)
+		"stim":
+			var h := mini(d.n, u.max_hp - u.hp)
+			u.hp += h
+			u.energy += 1
+			float_text(u, "+%d HP  +1 ENERGY" % h, Color("62d26f"), true)
+		"adr":
+			gain_adr(u, d.n)
+			float_text(u, "+%d ADRENALINE" % d.n, Color("ff7a3d"), true)
 	Sfx.play("power")
 	log_msg("%s used a %s." % [u.def.name, d.name])
 	ui_dirty = true
@@ -434,7 +442,8 @@ func crate_payload(min_tier := 0) -> Dictionary:
 		crate_bump = 0
 		return {"type": "item", "item": Run.roll_item(mini(Data.TIER_MAX, min_tier + 1))}
 	if r < 0.18:
-		return {"type": "letter", "key": Data.LETTERS.keys()[randi() % Data.LETTERS.size()]}
+		var keys: Array = Data.LETTERS.keys().filter(func(k): return Data.LETTER_FROM.get(k, 0) <= Run.mission)
+		return {"type": "letter", "key": keys[randi() % keys.size()]}
 	if r < 0.36:
 		return {"type": "item", "item": Run.new_item(Run.random_item_id(["belt"]))}
 	if r < 0.5 and min_tier == 0:
@@ -461,7 +470,7 @@ func open_crate(c: Unit, loud: bool) -> void:
 		if randf() < 0.5:
 			drop_loot(c.x, c.y - 10, {"type": "scrip", "n": ri(15, 35)})
 	else:
-		drop_loot(c.x, c.y - 8, crate_payload())
+		drop_loot(c.x, c.y - 8, crate_payload(1 if Run.mission >= 2 else 0))
 	ui_dirty = true
 
 func mk_unit() -> Unit:
@@ -2842,7 +2851,7 @@ func _act_melee(u: Unit, idx: int, c: Dictionary, tg: Unit, sc: bool) -> void:
 	if sc:
 		d = int(round(d * 1.25))
 	var victims: Array = [tg]
-	if ks(u, "zantetsu") and c.key == "knife":
+	if (ks(u, "zantetsu") and c.key == "knife") or c.get("sweep", false):
 		# Zantetsu: one sweep cuts every body in reach and the terrain in front
 		for o2 in units:
 			if o2 != tg and not o2.dead and not o2.gone and o2.team != "squad" and not o2.is_pickup() and o2.kind != "pow" and signf(o2.x - u.x) == u.face and absf(o2.x - u.x) <= c.range + 24 and absf(o2.y - u.y) < 40:

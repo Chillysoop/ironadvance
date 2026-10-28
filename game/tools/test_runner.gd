@@ -739,6 +739,8 @@ func run() -> void:
 			await soldat6()
 		"drill":
 			await drill()
+		"pickups":
+			await pickups()
 		"detours":
 			await detours()
 		"hq":
@@ -3901,6 +3903,123 @@ func pinball() -> void:
 		print("[pinball] gap ", gap, " squad hp lost ", hp0 - hp1, " per soldier ", sq.map(func(x): return x.hp))
 		main.clear()
 		await frames_wait(5)
+
+func pickups() -> void:
+	## G7: mid and late game finds. They only drop once the run reaches them, every new card
+	## plays, the new belt items work, and the guns put their cards in the deck.
+	Run.new_run()
+	for m in 3:
+		Run.mission = m
+		var seen := {}
+		for i in 800:
+			seen[Run.random_item_id()] = true
+		var early: Array = seen.keys().filter(func(k): return Data.ITEMS[k].get("from", 0) > m)
+		var fresh: Array = Data.ITEMS.keys().filter(func(k): return Data.ITEMS[k].get("from", -1) == m and Data.ITEMS[k].slot != "belt")
+		check(early.is_empty(), "level %d rolls nothing from later in the run %s" % [m + 1, early])
+		check(fresh.all(func(k): return seen.has(k)), "level %d rolls every item that starts there (%d)" % [m + 1, fresh.size()])
+		var belts := {}
+		for i in 300:
+			belts[Run.random_item_id(["belt"])] = true
+		check(belts.has("b_stim") == (m >= 1) and belts.has("b_adr") == (m >= 2), "level %d belt finds %s" % [m + 1, belts.keys()])
+	Run.new_run()
+	Run.mission = 2
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	playtest_debug = true
+	cur_b = b
+	b.debug = true
+	for m in 3:
+		Run.mission = m
+		var letters := {}
+		for i in 500:
+			var p := b.crate_payload()
+			if p.type == "letter":
+				letters[p.key] = true
+		var late: Array = letters.keys().filter(func(k): return Data.LETTER_FROM.get(k, 0) > m)
+		check(late.is_empty() and letters.size() == Data.LETTERS.keys().filter(func(k): return Data.LETTER_FROM.get(k, 0) <= m).size(), "level %d letters %s" % [m + 1, letters.keys()])
+	Run.mission = 2
+	# show the new finds lying in the field
+	var u: Unit = b.sel
+	var x0 := u.x + 50
+	for i in 6:
+		var id: String = ["railgun", "juggernaut", "vharrheart", "bullpupgun", "exolegs", "b_stim"][i]
+		b.drop_loot(x0 + i * 26, u.y - 10, {"type": "item", "item": Run.new_item(id, 3 if i < 3 else 1)}, 0.0)
+	for i in 4:
+		b.drop_loot(x0 + 170 + i * 26, u.y - 10, {"type": "letter", "key": ["D", "T", "Z", "G"][i]}, 0.0)
+	await frames_wait(40)
+	await shot("pickups_field")
+	for o in b.units:
+		if o.kind == "loot":
+			o.gone = true
+	# every new card plays and hurts something
+	for key in ["bullpup", "m79", "railshot", "minigun", "dropshot", "thundershot", "superhmg", "zantetsu"]:
+		var e := nearest_enemy(b, u)
+		if e == null:
+			break
+		if key == "zantetsu":
+			ground_unit(b, e, u.x + 34 * u.face)
+			e.hp = 200; e.max_hp = 200
+			await frames_wait(4)
+		var hp0 := e.hp
+		b.select_unit(u)
+		u.energy = 3
+		var idx := force_card(u, key)
+		b.select_card(idx)
+		var c := Data.card(u.hand[idx])
+		b.mouse = Vector2(e.x, e.y - e.h * 0.6) if c.type != "ARC" else Vector2(e.x, e.y - 160)
+		if c.type == "ARC":
+			b.mouse = Vector2((u.x + e.x) / 2.0, minf(u.y, e.y) - 140)
+		await frames_wait(4)
+		if key == "railshot":
+			await shot("pickups_rail_aim")
+		if c.type == "MELEE":
+			b.play_on_target(e)
+		else:
+			b.commit_aim(b.mouse)
+		var ok := await settle_picking(b)
+		var hurt := 0
+		for o in b.units:
+			if o.team == "enemy":
+				hurt += 1 if o.dead or o.hp < o.max_hp else 0
+		check(ok, "%s plays and settles (target hp %d -> %d, %d enemies hurt)" % [Data.CARDS[key].name, hp0, e.hp, hurt])
+		if key == "zantetsu":
+			check(e.hp < hp0, "Zantetsu Slash cuts the Jackal beside you (%d -> %d)" % [hp0, e.hp])
+		if b.state != "player":
+			break
+	# belt items: no card, no energy
+	u = b.squad_alive()[0]
+	b.select_unit(u)
+	u.hp = 5; u.energy = 0; u.adr = 0
+	Run.belt = [Run.new_item("b_stim"), Run.new_item("b_adr")]
+	b.use_belt(0)
+	check(u.hp == mini(u.max_hp, 17) and u.energy == 1, "Combat Stim heals 12 and gives 1 energy (hp %d, energy %d)" % [u.hp, u.energy])
+	b.use_belt(0)
+	check(u.adr == 50, "Rage Shot gives 50 adrenaline (%d)" % u.adr)
+	# guns put their cards in the deck mid-mission
+	var rg := Run.new_item("railgun", 2)
+	Run.equip(u.s, rg, "weapon")
+	b.refresh_unit_gear(u)
+	var n := 0
+	for pile in [u.draw, u.hand, u.disc]:
+		n += pile.filter(func(c): return c.key == "railshot").size()
+	check(n == 2, "the Rail Gun adds 2 Rail Slugs (%d)" % n)
+	var jg := Run.new_item("juggernaut", 4)
+	var hp_before := u.max_hp
+	Run.equip(u.s, jg, "armor")
+	b.refresh_unit_gear(u)
+	check(u.max_hp >= hp_before + 15, "a Legendary Juggernaut Suit adds 25 max HP (%d -> %d)" % [hp_before, u.max_hp])
+	await shot("pickups_after")
+
+func settle_picking(b: Battle) -> bool:
+	## Waits for an action to finish, taking the first option on any level-up or loot prompt it opens.
+	for i in 3200:
+		if not b.busy:
+			return true
+		if modal_title(b) != "":
+			b.hud.picked.emit(0)
+			await frames_wait(10)
+		await get_tree().process_frame
+	return false
 
 func tuning() -> void:
 	## The playtest tuning: one bonk per pair of squadmates per blast, a slower stall clock, shorter levels, one Shield per drop.

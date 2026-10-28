@@ -684,7 +684,12 @@ func roll_affixes(it: Dictionary) -> void:
 	it.affixes = pool.slice(0, Data.AFFIX_COUNT[it.tier])
 
 func random_item_id(slots := ["weapon", "armor", "kit"]) -> String:
-	var ids: Array = Data.ITEMS.keys().filter(func(k): return Data.ITEMS[k].slot in slots and not Data.ITEMS[k].has("keystone") and unlocked(k))
+	## Mid and late game items (G7) only drop once the run reaches them, and then they make up
+	## a good share of every roll so the second half of a run feels like new kit.
+	var ids: Array = Data.ITEMS.keys().filter(func(k): return Data.ITEMS[k].slot in slots and not Data.ITEMS[k].has("keystone") and unlocked(k) and Data.ITEMS[k].get("from", 0) <= mission)
+	var fresh: Array = ids.filter(func(k): return Data.ITEMS[k].get("from", 0) > 0)
+	if not fresh.is_empty() and randf() < 0.4:
+		return fresh[randi() % fresh.size()]
 	return ids[randi() % ids.size()]
 
 func roll_item(min_tier := 0, slots := ["weapon", "armor", "kit"]) -> Dictionary:
