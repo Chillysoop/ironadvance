@@ -8,6 +8,7 @@ const DebriefScript := preload("res://scripts/debrief.gd")
 const HqScript := preload("res://scripts/hq.gd")
 const WarRoomScript := preload("res://scripts/war_room.gd")
 const OperatorCall := preload("res://scripts/operator_call.gd")
+const DraftScript := preload("res://scripts/draft.gd")
 
 var battle: Battle = null
 var hud: CanvasLayer = null
@@ -74,7 +75,7 @@ func show_title() -> void:
 	s.mode = "title"
 	# N4: each mode says what it is
 	s.buttons = [["CAMPAIGN", func(): show_slots(), "5 ACTS  COMPANY OF %d  SAVED" % Data.COMPANY_MAX],
-		["QUICK RUN", func(): start_run(), "%d LEVELS AND A FINALE" % Data.LEVELS.size()]]
+		["QUICK RUN", func(): show_draft() if Run.class_keys().size() > 4 else start_run(), "%d LEVELS AND A FINALE" % Data.LEVELS.size()]]
 	var tmax := mini(int(Run.meta.threat_max), Data.THREATS.size())
 	if tmax > 0:
 		# W5: every campaign win opens the next threat level
@@ -83,6 +84,14 @@ func show_title() -> void:
 			Sfx.play("click")
 			show_title()])
 	open(s)
+
+func show_draft() -> void:
+	## X1: more than four classes unlocked, so the run starts with picking the squad.
+	clear()
+	var d: Control = DraftScript.new()
+	d.go.connect(start_run)
+	d.back.connect(show_title)
+	open(d)
 
 func start_run() -> void:
 	Run.leave_campaign()
@@ -537,6 +546,10 @@ class Screen extends Control:
 				Art.text(self, ros[k], Vector2(480, 440 + k * 15), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 		if Run.threat > 0:
 			Art.text(self, "THREAT %d: %s" % [Run.threat, ", ".join(Data.THREATS.slice(0, Run.threat).map(func(x): return x.name))], Vector2(480, y + 72), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
+		if m.get("specialist", "") != "":
+			# X2: a specialist is held somewhere in this level
+			var D: Dictionary = Run.class_def(m.specialist)
+			Art.text(self, "SPECIALIST POW: %s THE %s IS HELD HERE. FREE THEM TO UNLOCK THE CLASS." % [D.name, D.cls.to_upper()], Vector2(480, y + 86), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		draw_texture_rect(Art.tex.ic_coin, Rect2(410, y + 30, 10, 10), false)
 		Art.text(self, "%d SCRIP" % Run.scrip, Vector2(426, y + 40), 8, Color("ffd23a"))
 		squad_line(370, "idle")

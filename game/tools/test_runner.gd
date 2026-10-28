@@ -2,6 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
+## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer),
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), operator (tablet call-ins),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
@@ -742,6 +743,10 @@ func run() -> void:
 			await soldat6()
 		"drill":
 			await drill()
+		"draft":
+			await draft_test()
+		"bolt":
+			await bolt_test()
 		"pickups":
 			await pickups()
 		"bossloot":
@@ -5376,3 +5381,180 @@ func tuning() -> void:
 		var drop: Array = b.units.slice(before).filter(func(o): return o.para)
 		worst = maxi(worst, drop.filter(func(o): return o.type == "shield").size())
 	check(worst <= 1, "a paradrop brings at most one Shield (most seen %d)" % worst)
+
+
+func draft_test() -> void:
+	## X1/X2: the squad draft, specialist POWs on levels 1 and 2, freeing one unlocks the class and
+	## puts them in the squad for the rest of the run.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.meta.unlocked = Run.meta.unlocked.filter(func(k): return not str(k).begins_with("cls_"))
+	Run.meta.erase("draft")
+	check(Run.class_keys() == Data.BASE_CLASSES, "with nothing freed only the four originals can be drafted")
+	check(Run.draft() == Data.BASE_CLASSES, "the default draft is the four originals")
+	Run.leave_campaign()
+	Run.new_run()
+	Run.roll_dial()
+	Run.pick_biome(Run.dial[0])
+	check(Run.level.get("specialist", "") == "bolt", "level 1 holds the first locked specialist (got '%s')" % Run.level.get("specialist", ""))
+	main.show_brief()
+	await frames_wait(8)
+	await shot("draft_brief")
+	var b: Battle = main.start_battle(Run.mission, Run.current_mission())
+	await until(func(): return b.state == "player" and not b.busy)
+	var pows: Array = b.units.filter(func(p): return p.kind == "pow" and p.fl.has("specialist"))
+	check(pows.size() == 1, "exactly one specialist POW on the map (%d)" % pows.size())
+	if pows.size():
+		var pw: Unit = pows[0]
+		check(pw.pow_name == Data.SPECIALISTS.bolt.pow, "the POW is named for the specialist (%s)" % pw.pow_name)
+		var s: Unit = b.squad_alive()[0]
+		cam_on(b, pw.x)
+		ground_unit(b, s, pw.x - 10, pw.y - 40)
+		b.pow_queue.append({"pow": pw, "u": s})
+		b.state = "player"; b.busy = false
+		b.resolve(func(): await b.wait(1))
+		await settle_picking(b)
+		await frames_wait(20)
+		await shot("draft_freed")
+		check(Run.meta.unlocked.has("cls_bolt"), "freeing the specialist unlocks the class for good")
+		check(Run.soldiers.size() == 5 and Run.soldiers[4].key == "bolt", "the specialist joins the squad as a fifth soldier")
+		check(b.squad().any(func(u): return u.def.key == "bolt"), "and is on the field right away")
+	Run.mission = 1
+	Run.level = {}
+	Run.roll_dial()
+	Run.pick_biome(Run.dial[0])
+	check(Run.level.get("specialist", "") == "", "no second specialist once every specialist class is freed")
+	Run.mission = 2
+	Run.spec_seen = []
+	Run.meta.unlocked.erase("cls_bolt")
+	Run.soldiers.resize(4)
+	Run.roll_dial()
+	Run.pick_biome(Run.dial[0])
+	check(Run.level.get("specialist", "") == "", "level 3 never holds a specialist (1-2 unlocks per run)")
+	Run.meta.unlocked.append("cls_bolt")
+	main.show_draft()
+	await frames_wait(12)
+	await shot("draft_screen")
+	var d = main.get_children().filter(func(c): return c.get_script() == load("res://scripts/draft.gd"))
+	if d.is_empty():
+		for c in main.get_children():
+			for c2 in c.get_children():
+				if c2.get_script() == load("res://scripts/draft.gd"):
+					d.append(c2)
+	check(d.size() == 1, "QUICK RUN with a specialist unlocked opens the squad draft")
+	if d.size():
+		d[0].toggle("rook")
+		d[0].toggle("bolt")
+		await frames_wait(4)
+		await shot("draft_picked")
+		check(d[0].picked == ["moss", "hex", "vee", "bolt"], "swap Rook for Bolt (%s)" % [d[0].picked])
+		Run.set_draft(d[0].picked)
+	Run.new_run()
+	check(Run.soldiers.map(func(x): return x.key) == ["moss", "hex", "vee", "bolt"], "the run starts with the drafted squad")
+	check(Run.recruit_classes().all(func(k): return Run.class_keys().has(k)), "recruits only come from unlocked classes")
+	Run.meta = keep
+	Run.save_meta()
+
+func bolt_test() -> void:
+	## N2 Bolt: sandbags, sentry gun, girders that drop when their bolt is shot, jump pads, Fortify.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	if not Run.meta.unlocked.has("cls_bolt"):
+		Run.meta.unlocked.append("cls_bolt")
+	Run.meta["draft"] = ["moss", "hex", "vee", "bolt"]
+	Run.leave_campaign()
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var bo: Unit = b.squad().filter(func(u): return u.def.key == "bolt")[0]
+	var x := 700.0
+	while not flat_open(b, x, 300) and x < b.world_w - 600:
+		x += 20
+	for o in b.units:
+		if o.team == "enemy" and absf(o.x - x - 150) < 420:
+			o.gone = true
+	for o in b.squad():
+		if o != bo:
+			ground_unit(b, o, x - 160 - o.id * 3, 0)
+	cam_on(b, x + 100)
+	ground_unit(b, bo, x, 0)
+	var gy: float = bo.y
+	# sandbags: a wall where the pack lands, 50% bigger for Bolt
+	var n0 := count_cells(b, x + 80, gy - 60, 60, 60)
+	b.build_at(b.mk_proj({"x": x + 110, "y": gy - 2, "owner": bo, "card": Data.card(Run.new_card("sandbags"))}))
+	var n1 := count_cells(b, x + 80, gy - 60, 60, 60)
+	check(n1 - n0 >= 40, "Sandbags builds a wall (%d cells)" % (n1 - n0))
+	check(b.walls.size() == 1, "the wall is remembered for Hunker Down")
+	# a real throw
+	bo.energy = 3
+	var si := force_card(bo, "sandbags")
+	b.select_unit(bo); b.select_card(si)
+	b.mouse = Vector2(x + 60, gy - 60)
+	await frames_wait(4)
+	await shot("bolt_aim_sandbags")
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(b.walls.size() == 2, "a thrown Sandbags builds where it lands")
+	# Double Stack: the second Sandbags this turn is free
+	var si2 := force_card(bo, "sandbags")
+	check(b.card_cost(bo, bo.hand[si2]) == 0, "DOUBLE STACK: the second Sandbags in a turn costs 0")
+	# a sentry, and it shoots the nearest Jackal at the end of the turn
+	var e := b.mk_enemy("grunt", x + 380, b.T.stand_y(x + 380, 0))
+	e.active = true
+	b.units.append(e)
+	b.build_at(b.mk_proj({"x": x + 160, "y": gy - 2, "owner": bo, "card": Data.card(Run.new_card("sentry"))}))
+	var sts: Array = b.units.filter(func(o): return o.kind == "sentry")
+	check(sts.size() == 1 and sts[0].max_hp == 21, "Sentry Gun deploys a turret with Toolbelt HP (%s)" % [sts.map(func(o): return o.max_hp)])
+	await frames_wait(10)
+	await shot("bolt_sentry")
+	var hp0 := e.hp
+	b.state = "player"; b.busy = false
+	b.resolve(func(): await b.sentries_fire())
+	await until(func(): return not b.busy, 1200)
+	check(e.hp < hp0 or e.dead, "the sentry shoots the nearest Jackal (%d -> %d)" % [hp0, e.hp])
+	# a girder in mid-air over a Jackal, then shoot its bolt
+	var e2 := b.mk_enemy("grunt", x + 260, b.T.stand_y(x + 260, 0))
+	e2.active = true
+	e2.hp = 40; e2.max_hp = 40
+	b.units.append(e2)
+	bo.energy = 3
+	var gi := force_card(bo, "girder")
+	b.select_unit(bo); b.select_card(gi)
+	b.mouse = Vector2(x + 260, gy - 110)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	var rv: Array = b.units.filter(func(o): return o.kind == "rivet" and not o.dead)
+	check(rv.size() == 1, "Girder bolts a beam in mid-air")
+	await frames_wait(30)
+	await shot("bolt_girder")
+	check(b.T.chunks.is_empty() and count_cells(b, x + 210, gy - 125, 100, 30) > 10, "the beam hangs on its bolt instead of falling")
+	if rv.size():
+		var hp1 := e2.hp
+		b.damage(rv[0], 1, bo)
+		await frames_wait(4)
+		await shot("bolt_girder_drop")
+		await until(func(): return b.settled(), 1200)
+		check(e2.hp < hp1 or e2.dead, "shooting the bolt drops the girder on the Jackal below (%d -> %d)" % [hp1, e2.hp])
+		check(bo.energy >= 3, "CUT LOOSE: dropping it the same turn refunds the energy (%d)" % bo.energy)
+	# jump pad
+	b.build_at(b.mk_proj({"x": x - 60, "y": gy - 2, "owner": bo, "card": Data.card(Run.new_card("jumppad"))}))
+	check(b.T.mat(x - 60, gy + 1) == Terrain.RUBBER, "Jump Pad lays rubber on the ground")
+	# Fortify Overdrive
+	var arm0: int = b.squad_alive().map(func(u): return u.armor).max()
+	bo.hand.append({"id": -9, "key": "fortify", "tier": Data.OD_TIER, "temp": true})
+	b.state = "player"; b.busy = false
+	b.sel = bo
+	b.play_self(bo.hand.size() - 1)
+	await until(func(): return not b.busy, 1200)
+	check(bo.armor >= 8 and bo.armor > arm0 - 1, "Fortify gives armor (%d)" % bo.armor)
+	await frames_wait(10)
+	await shot("bolt_fortify")
+	Run.meta = keep
+	Run.save_meta()
+
+func count_cells(b: Battle, x: float, y: float, w: float, h: float) -> int:
+	var n := 0
+	for cy in range(int(y / 4), int((y + h) / 4)):
+		for cx in range(int(x / 4), int((x + w) / 4)):
+			if b.T.grid[cy * b.T.cols + cx] != 0:
+				n += 1
+	return n

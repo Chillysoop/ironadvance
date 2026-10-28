@@ -211,6 +211,17 @@ func draw_unit(u: Unit) -> void:
 		"slug":
 			draw_slug(u, pos, white)
 			return
+		"sentry":
+			draw_sentry(u, pos, white)
+			return
+		"rivet":
+			# N2: the bolt a girder hangs from. Shoot it and the beam drops.
+			draw_rect(Rect2(pos.x - 4, pos.y - 9, 8, 8), C_DARK)
+			draw_rect(Rect2(pos.x - 3, pos.y - 8, 6, 6), Color.WHITE if white else Color("ffd23a"))
+			draw_rect(Rect2(pos.x - 1, pos.y - 6, 2, 2), C_DARK)
+			if (b.t / 20) % 2 == 0:
+				Art.text(self, "BOLT", pos + Vector2(0, -12), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			return
 		"dump":
 			# O3: a tarp-covered stack of ammo crates with a red demolition mark
 			var dc := Color.WHITE if white else Color("6b5a3a")
@@ -635,6 +646,29 @@ func draw_relay(u: Unit, pos: Vector2) -> void:
 		var bf: Dictionary = Data.RELAY_BUFFS[u.loot.buff]
 		Art.text(self, "RELAY: " + bf.name, pos + Vector2(0, -44), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 
+func draw_sentry(u: Unit, pos: Vector2, white: bool) -> void:
+	## N2: a squat tripod turret in Bolt's orange, with its laser on whatever it will shoot.
+	var tg = b.sentry_target(u) if b.t % 6 == 0 or not u.fl.has("tg") else u.fl.tg
+	u.fl["tg"] = tg
+	if tg != null and not tg.dead:
+		var a := Vector2(pos.x, pos.y - 14)
+		var e := Vector2(tg.x, tg.y - tg.h * 0.55)
+		draw_line(a, e, Color(1, 0.2, 0.15, 0.35 + 0.15 * sin(b.t * 0.2)), 1.0)
+		draw_circle(e, 2, Color(1, 0.25, 0.2, 0.8))
+		u.face = 1 if tg.x >= u.x else -1
+	var mc := Color.WHITE if white else Color("ff9a3d")
+	draw_line(pos + Vector2(-8, 0), pos + Vector2(0, -10), C_DARK, 3.0)
+	draw_line(pos + Vector2(8, 0), pos + Vector2(0, -10), C_DARK, 3.0)
+	draw_line(pos + Vector2(0, 0), pos + Vector2(0, -10), C_DARK, 2.0)
+	draw_rect(Rect2(pos.x - 7, pos.y - 19, 14, 9), C_DARK)
+	draw_rect(Rect2(pos.x - 6, pos.y - 18, 12, 7), mc)
+	draw_rect(Rect2(pos.x + (6 if u.face > 0 else -18), pos.y - 16, 12, 3), C_DARK)
+	draw_rect(Rect2(pos.x - 2, pos.y - 17, 4, 2), Color("ff4d3d") if b.t % 30 < 15 else Color("6a2a20"))
+	if u.muzzle > 0:
+		draw_circle(pos + Vector2(u.face * 20, -15), 3, Color("fff4c0"))
+	draw_rect(Rect2(pos.x - 10, pos.y - 26, 20, 4), C_DARK)
+	draw_rect(Rect2(pos.x - 9, pos.y - 25, 18.0 * u.hp / maxf(1, u.max_hp), 2), Color("62d26f"))
+
 func draw_slug(u: Unit, pos: Vector2, white: bool) -> void:
 	## The SV-001: the Boar's chassis, repainted in squad green and facing east.
 	var tx: Texture2D = Art.tex.boss
@@ -668,7 +702,7 @@ func draw_wreck(u: Unit, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox"] or b.is_boss(u) or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet"] or b.is_boss(u) or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -1389,6 +1423,12 @@ func draw_hover() -> void:
 		lines = ["JACKAL MINE", "Your soldiers set it off by stepping on it.", "Jackals only trip it when they land on it: knock them onto it.", "Shoot or blast it to clear it. Blast 38."]
 	elif h.is_prop():
 		lines = ["FUEL BARREL", "Explodes when hit. Blast 44."]
+	elif h.kind == "sentry":
+		lines = ["SENTRY GUN  HP %d/%d" % [h.hp, h.max_hp], "Shoots the nearest enemy along its laser", "at the end of your turn. Your shots pass it."]
+	elif h.kind == "rivet":
+		lines = ["GIRDER BOLT", "Shoot it and the girder drops,", "crushing whatever is under it."]
+	elif h.team != "squad":
+		return
 	else:
 		lines = ["%s  %s  LV%d" % [h.def.name, h.def.cls.to_upper(), h.s.lvl], "HP %d/%d   ADRENALINE %d" % [h.hp, h.max_hp, h.adr], "ENERGY %d   MOVE %dpx" % [h.energy, int(h.move_left)]]
 	var w := 0.0

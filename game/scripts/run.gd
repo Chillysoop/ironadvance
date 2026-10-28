@@ -31,6 +31,7 @@ var threat := 0            # threat level chosen for this run (W5)
 var qm_cache := {}         # the Quartermaster's shelf for this HQ visit
 var temp_luck := 0         # Luck that only lasts for the current mission
 var defectors: Array = []  # F3: callsigns of rescued Jackal defectors, offered first at the next hire
+var spec_seen: Array = []  # X2: specialist classes held as POWs in this run so far
 var level := {}            # the generated mission for the level being played (biome + tier)
 var dial: Array = []       # the two biomes on the gate dial right now
 var dial_breach := {}      # biome id -> true when the dial shows it as a BREACH (Vharr and Jackals at war)
@@ -159,6 +160,10 @@ func pick_biome(id: String) -> void:
 		if not burned.has(b):
 			burned.append(b)
 	level = dial_levels[id] if dial_levels.has(id) else make_level(id, mission, dial_breach.get(id, false))
+	var sp := next_specialist()
+	if sp != "":
+		level["specialist"] = sp
+		spec_seen.append(sp)
 	dial = []
 	dial_levels = {}
 	dial_rerolled = false
@@ -275,6 +280,7 @@ func new_run() -> void:
 	intel = ""
 	side = ""
 	defectors = []
+	spec_seen = []
 	temp_luck = 0
 	qm_cache = {}
 	level = {}
@@ -286,8 +292,54 @@ func new_run() -> void:
 	total_score = 0
 	uid = 1
 	seed_val = randi()
-	for d in Data.SQUAD_DEFS:
-		soldiers.append(make_soldier(d))
+	for k in draft():
+		soldiers.append(make_soldier(class_def(k)))
+
+# ---------------------------------------------------------------- X1/X2: the squad draft and specialists
+func class_def(key: String) -> Dictionary:
+	return Data.SQUAD_DEFS.filter(func(x): return x.key == key)[0]
+
+func class_keys() -> Array:
+	## Every class you can field: the four you start with plus the specialists you've freed.
+	return Data.SQUAD_DEFS.map(func(d): return d.key).filter(func(k): return Data.BASE_CLASSES.has(k) or meta.unlocked.has("cls_" + k))
+
+func draft() -> Array:
+	## The four classes a quick run starts with. Defaults to the originals.
+	var keys := class_keys()
+	var d: Array = meta.get("draft", []).filter(func(k): return keys.has(k))
+	for k in Data.BASE_CLASSES + keys:
+		if d.size() >= 4:
+			break
+		if not d.has(k):
+			d.append(k)
+	return d.slice(0, 4)
+
+func set_draft(keys: Array) -> void:
+	meta["draft"] = keys.duplicate()
+	save_meta()
+
+func next_specialist() -> String:
+	## X2: the next locked specialist to hold as a POW, on the first two levels of a quick run.
+	if campaign() or spec_seen.size() >= Data.RESCUES_PER_RUN or mission >= Data.RESCUES_PER_RUN or level.get("finale", false):
+		return ""
+	for k in Data.SPECIALISTS:
+		if not meta.unlocked.has("cls_" + k) and not spec_seen.has(k) and not soldiers.any(func(s): return s.key == k):
+			return k
+	return ""
+
+func free_specialist(key: String) -> Dictionary:
+	## X2: a specialist POW was cut loose. The class is unlocked for good, and in a quick run they
+	## join the squad for the rest of it. Returns the new soldier, or {} if the squad is full.
+	if not meta.unlocked.has("cls_" + key):
+		meta.unlocked.append("cls_" + key)
+		save_meta()
+	if campaign() or soldiers.size() >= 5:
+		return {}
+	var d: Dictionary = class_def(key).duplicate()
+	var s := make_soldier(d)
+	s["rescued"] = true
+	soldiers.append(s)
+	return s
 
 func make_soldier(d: Dictionary) -> Dictionary:
 	var deck: Array = []
@@ -446,17 +498,17 @@ func spec_offer(spec: String, nm: String) -> Dictionary:
 func recruit_classes() -> Array:
 	if campaign():
 		# the company may hold two of a class: offer the classes it has fewest of first
-		var keys: Array = Data.SQUAD_DEFS.map(func(d): return d.key)
+		var keys: Array = class_keys()
 		keys.shuffle()
 		keys.sort_custom(func(a, b): return roster.filter(func(s): return s.alive and s.key == a).size() < roster.filter(func(s): return s.alive and s.key == b).size())
 		return keys
 	var held: Array = soldiers.filter(func(s): return s.alive).map(func(s): return s.key)
 	var slots := fallen_slots()
 	var first: String = soldiers[slots[0]].key if slots.size() else ""
-	var others: Array = Data.SQUAD_DEFS.map(func(d): return d.key).filter(func(k): return k != first and not held.has(k))
+	var others: Array = class_keys().filter(func(k): return k != first and not held.has(k))
 	others.shuffle()
 	var out: Array = ([first] if first != "" and not held.has(first) else []) + others
-	return out if out.size() else Data.SQUAD_DEFS.map(func(d): return d.key)
+	return out if out.size() else class_keys()
 
 func drilled_card(key: String) -> String:
 	## The starting card a Drilled recruit of this class gets one rarity up: the strongest
@@ -817,7 +869,12 @@ func random_item_id(slots := ["weapon", "armor", "kit"]) -> String:
 func roll_item(min_tier := 0, slots := ["weapon", "armor", "kit"]) -> Dictionary:
 	var t := roll_tier(min_tier)
 	if t >= Data.TIER_MAX and slots.size() > 1 and randf() < 0.5:
-		return new_item(Data.KEYSTONE_IDS[randi() % Data.KEYSTONE_IDS.size()], t)
+		# keystones for classes in the squad (X1: a drafted squad never sees another class's)
+		var have: Array = soldiers.map(func(s): return s.key)
+		var ks: Array = Data.KEYSTONE_IDS.filter(func(k): return have.has(Data.ITEMS[k].keystone))
+		if ks.is_empty():
+			ks = Data.KEYSTONE_IDS
+		return new_item(ks[randi() % ks.size()], t)
 	return new_item(random_item_id(slots), t)
 
 func medals(st: Dictionary) -> Array:

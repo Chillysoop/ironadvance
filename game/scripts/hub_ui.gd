@@ -32,7 +32,8 @@ class SquadBar extends Control:
 		return pickable.is_empty() and get_signal_connection_list("all_decks").size() > 0
 	func plate(i: int) -> Rect2:
 		var room := size.x - (ALL_W + 8 if has_all() else 0.0)
-		var w := (room - 24) / 4.0
+		var n := maxi(4, Run.soldiers.size())  # X2: a freed specialist makes a fifth
+		var w := (room - 8.0 * (n - 1)) / n
 		return Rect2(i * (w + 8), 0, w, size.y)
 	func all_rect() -> Rect2:
 		return Rect2(size.x - ALL_W, 0, ALL_W, size.y)
