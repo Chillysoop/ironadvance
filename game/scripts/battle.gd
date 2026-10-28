@@ -1354,7 +1354,7 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 		float_text(tg, "PACK HIT!", Color("ff7a3d"), true)
 	if tg.team == "squad":
 		if debug:
-			print("[dmg r%d] %s -%d (hp %d) by %s %s" % [round_n, tg.def.key, amt, tg.hp, (src.team + ":" + (src.type if src.team != "squad" else src.def.key)) if src is Unit else str(src), str(o)])
+			print("[dmg r%d] %s -%d (hp %d) by %s %s how %s" % [round_n, tg.def.key, amt, tg.hp, (src.team + ":" + (src.type if src.team != "squad" else src.def.key)) if src is Unit else str(src), str(o), kill_how if kill_how != "" else "-"])
 		if tg.hp - amt <= 0:
 			if tg.second_wind:
 				tg.second_wind = false
@@ -3085,7 +3085,8 @@ func make_camp(c: Dictionary) -> void:
 			s.gone = false
 			s.alpha = 1.0
 			s.hp = int(ceil(s.max_hp / 2.0))
-			s.x = c.fire - 40 + i * 26
+			# by the fire, unless the screen has already scrolled past it: then at the near edge
+			s.x = maxf(c.fire - 40, cam_x + 16) + i * 26
 			var sy = T.stand_y(s.x, 0)
 			s.y = float(sy) if sy != null else s.y
 			s.vx = 0; s.vy = 0; s.air = false; s.walk = null
@@ -3394,9 +3395,14 @@ func drag_stragglers() -> void:
 		var ny = null
 		var k := 0
 		while k < 60 and ny == null:
-			ny = T.stand_y(nx, maxf(0, s.y - 60))
-			if ny != null and mine_under(s, nx, ny, 6) != null:
-				ny = null  # never drop a straggler onto an armed mine
+			# look from just above the straggler first; one stuck low in a pit or a drill bore would
+			# only find solid ground under the lane there, so then look from higher up
+			for lift in [60.0, 160.0, 260.0, 400.0]:
+				ny = T.stand_y(nx, maxf(0, s.y - lift))
+				if ny != null and mine_under(s, nx, ny, 6) != null:
+					ny = null  # never drop a straggler onto an armed mine
+				if ny != null:
+					break
 			if ny == null:
 				nx += 4
 			k += 1
@@ -4714,9 +4720,14 @@ func hover_physics(u: Unit) -> void:
 		return
 	var ty := hover_y(u, u.x, u.y)
 	var ny := u.y + clampf((ty - u.y) * 0.15, -3.0, 3.0)
-	if not T.solid(u.x, ny - u.h) and not T.solid(u.x, ny):
+	# only the leading edge has to be clear, so a tank shoved with its top into an overhang can still sink out of it
+	var eased := false
+	if not T.solid(u.x, ny if ny > u.y else ny - u.h):
 		u.y = ny
-	u.air = absf(u.vx) > 0.3 or absf(ty - u.y) > 1.5
+		eased = true
+	# wedged short of its altitude anyway: it has settled where it is, or the action waiting on everything
+	# to settle never ends (the playtest's frozen turns)
+	u.air = absf(u.vx) > 0.3 or (eased and absf(ty - u.y) > 1.5)
 	if not u.air:
 		u.vx = 0
 		u.vy = 0

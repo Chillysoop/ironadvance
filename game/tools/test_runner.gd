@@ -61,9 +61,36 @@ func until(cond: Callable, max_frames := 6000) -> bool:
 	while not cond.call():
 		await get_tree().process_frame
 		n += 1
+		if playtest_debug and n % 3000 == 0 and is_instance_valid(cur_b):
+			dump_unsettled(cur_b, n)
 		if n > max_frames:
+			if playtest_debug:
+				print("[timeout] until gave up after %d frames" % max_frames)
 			return false
 	return true
+
+var cur_b: Battle = null
+
+func dump_unsettled(b: Battle, n: int) -> void:
+	## A long wait: say what is keeping the battle from settling.
+	var why: Array = []
+	if b.projs.size():
+		why.append("projs %s" % [b.projs.map(func(p): return "%s@%d,%d v%.1f,%.1f" % [p.kind, int(p.x), int(p.y), p.vx, p.vy])])
+	if b.booms.size():
+		why.append("booms %d" % b.booms.size())
+	if b.T.chunks.size():
+		why.append("chunks %d" % b.T.chunks.size())
+	if absf(b.cam_x - b.cam_tx) >= 0.5:
+		why.append("cam %d->%d" % [int(b.cam_x), int(b.cam_tx)])
+	for u in b.units:
+		if u.sunk or u.gone:
+			continue
+		if u.walk != null or u.zip != null or u.drill != null or u.slide != 0 or u.air or u.hang or u.para:
+			why.append("hang %s para %s jumping %s" % [u.hang, u.para, u.jumping])
+			why.append("%s %s@%d,%d walk %s zip %s drill %s slide %s air %s v%.2f,%.2f dead %s" % [u.team, u.def.key if u.team == "squad" else u.type, int(u.x), int(u.y), u.walk != null, u.zip != null, u.drill != null, u.slide, u.air, u.vx, u.vy, u.dead])
+	print("[unsettled r%d] %d frames state %s busy %s sel %s: %s" % [b.round_n, n, b.state, b.busy, b.sel.def.key if b.sel != null else "-", why])
+	if n == 3000:
+		shot("unsettled_r%d" % b.round_n)
 
 func run() -> void:
 	print("[test] scenario ", scenario)
@@ -740,6 +767,10 @@ func run() -> void:
 			await aliens5()
 		"playtest":
 			await playtest()
+		"straggler":
+			await straggler()
+		"hoverwedge":
+			await hoverwedge()
 		"pinball":
 			await pinball()
 		"tuning":
@@ -3436,8 +3467,11 @@ func play_hop(b: Battle, u: Unit, v: Vector2) -> void:
 		if u.hand[i].key == "hop":
 			idx = i
 	if idx < 0 or v == Vector2.ZERO:
+		if playtest_debug:
+			print("[nohop r%d] %s has no Hop in hand" % [b.round_n, u.def.key])
 		return
 	var c := Data.card(u.hand[idx])
+	var x0 := u.x
 	var reach: float = 240.0 * c.jpow
 	var d: float = v.length() / (10.5 * c.jpow) * reach
 	b.select_card(idx)
@@ -3445,6 +3479,8 @@ func play_hop(b: Battle, u: Unit, v: Vector2) -> void:
 	await until(func(): return not is_instance_valid(b) or not b.busy, 600)
 	await until(func(): return not is_instance_valid(u) or not u.air, 600)
 	await frames_wait(10)
+	if playtest_debug and is_instance_valid(b) and is_instance_valid(u):
+		print("[hop r%d] %s %d -> %d,%d" % [b.round_n, u.def.key, int(x0), int(u.x), int(u.y)])
 
 func force_card(u: Unit, key: String) -> int:
 	for i in u.hand.size():
@@ -3490,6 +3526,8 @@ func rocket_safe(b: Battle, u: Unit, c: Dictionary, e: Unit) -> bool:
 	return not squad_near(b, p, r + 24) and foe_near(b, p, r + 10)
 
 var bot_stats := {}
+var pt_tag := "bot"
+var stuck_shot := {}
 var bot_last := ""
 
 func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
@@ -3497,6 +3535,8 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 	if fresh:
 		Run.new_run()
 	var b: Battle = main.start_battle(mission, custom)
+	cur_b = b
+	stuck_shot = {}
 	b.autopick = 0
 	b.speed = 24.0 if playtest_debug else 8.0
 	b.debug = playtest_debug
@@ -3678,6 +3718,9 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 							break
 					if playtest_debug and not hopped:
 						print("[stuck r%d] %s at %d,%d climbed %s hand %s" % [b.round_n, u.def.key, int(u.x), int(u.y), climbed, u.hand.map(func(h): return h.key)])
+						if not stuck_shot.has(u.def.key):
+							stuck_shot[u.def.key] = true
+							await shot("stuck_%s_r%d_%s" % [pt_tag, b.round_n, u.def.key])
 				elif playtest_debug and climbed:
 					print("[climb r%d] %s now %d,%d" % [b.round_n, u.def.key, int(u.x), int(u.y)])
 		if res.done:
@@ -3686,6 +3729,9 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 			last_shot = b.round_n
 			await shot("bot_m%d_r%02d" % [mission, b.round_n])
 		if playtest_debug:
+			for s in b.squad_alive():
+				if b.T.solid(s.x, s.y - s.h / 2.0) or s.x < 0 or s.x > b.world_w or s.y > Battle.WATER_Y:
+					print("[glitch r%d] %s at %d,%d solid %s" % [b.round_n, s.def.key, int(s.x), int(s.y), b.T.solid(s.x, s.y - s.h / 2.0)])
 			print("[pos r%d] cam %d alert %d squad %s foes %s" % [b.round_n, int(b.cam_x), b.alert, b.squad_alive().map(func(x): return "%s@%d,%d e%d m%d" % [x.def.key, int(x.x), int(x.y), x.energy, int(x.move_left)]), b.units.filter(func(o): return o.team == "enemy" and not o.dead and o.active).map(func(o): return "%s@%d" % [o.type, int(o.x)])])
 		var hp0: int = b.squad_alive().reduce(func(a, x): return a + x.hp, 0)
 		var t0 := b.t
@@ -3741,8 +3787,11 @@ func playtest() -> void:
 			Run.roll_intel()
 			var lv: Dictionary = Run.current_mission()
 			var before := {"scrip": Run.scrip, "hp": Run.soldiers.map(func(x): return x.hp), "tags": Run.soldiers.map(func(x): return x.tags)}
+			pt_tag = "s%d_r%d_m%d" % [seed_arg, r, m]
+			var ms0 := Time.get_ticks_msec()
 			var ok := await bot(m, 90, false, lv)
 			var row := bot_stats.duplicate()
+			row["secs"] = (Time.get_ticks_msec() - ms0) / 1000.0
 			row.erase("round_hp")
 			row.merge({"seed": seed_arg, "run": r, "m": m, "biome": lv.get("biome", "finale"), "breach": lv.get("breach", false), "enc": lv.get("encounter", ""),
 				"intel": Run.intel, "detours": lv.get("detours", []), "scrip_in": before.scrip, "scrip_out": Run.scrip, "hp_in": before.hp,
@@ -3758,6 +3807,77 @@ func playtest() -> void:
 				for x in Run.soldiers:
 					if x.alive:
 						x.hp = Run.eff_max_hp(x)
+
+func hoverwedge() -> void:
+	## A hovering tank (Squid, Prism, Overseer) shoved with its top into an overhang used to be stuck there
+	## counting as airborne, so the action waiting on everything to settle never ended: the frozen turns
+	## the playtest found on level 3. It has to sink out (or at least settle).
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	for type in ["squid", "prism", "overseer"]:
+		var x := 520.0
+		var fl: float = b.T.stand_y(x, 0)
+		var e := b.mk_enemy(type, x, fl)
+		e.active = true
+		b.units.append(e)
+		# a three-cell slab of overhang well under the tank's altitude, with the tank's top 3px into it
+		var slab_bot: float = fl - 60
+		var cx0 := int(x / Terrain.CELL)
+		var cy1 := int(floor((slab_bot - 1) / Terrain.CELL))
+		for cy in range(cy1 - 2, cy1 + 1):
+			for cx in range(cx0 - 3, cx0 + 4):
+				b.T.set_cell(cx, cy, 3)
+		e.y = (cy1 + 1) * Terrain.CELL - 3 + e.h
+		e.air = true
+		var y0 := e.y
+		var ok := await until(func(): return b.settled(), 600)
+		print("[hoverwedge] %s top %.1f in the overhang -> y %.1f air %s settled %s" % [type, y0 - e.h, e.y, e.air, ok])
+		for cy in range(cy1 - 2, cy1 + 1):
+			for cx in range(cx0 - 3, cx0 + 4):
+				b.T.set_cell(cx, cy, 0)
+		e.gone = true
+
+func straggler() -> void:
+	## A soldier down a deep drill shaft when the screen scrolls on: the drag has to lift them out
+	## onto the new screen instead of leaving them behind the camera, where they can't move or drill.
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.debug = true
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	var sq := b.squad()
+	var x0 := 300.0
+	var top: float = b.T.stand_y(x0, 0)
+	b.T.bore(x0, Battle.WATER_Y - 30, top - 40, 12)
+	ground_unit(b, sq[0], x0, top + 4)
+	for i in range(1, sq.size()):
+		ground_unit(b, sq[i], 150.0 + i * 30)
+	await frames_wait(20)
+	print("[straggler] %s sits at %d,%d (surface %d)" % [sq[0].def.key, int(sq[0].x), int(sq[0].y), int(top)])
+	# scroll to a screen whose ground stands well above the bottom of the shaft all along the drag lanes
+	var tx := 600.0
+	while tx < b.world_w - Battle.W:
+		var ok := true
+		for x in range(int(tx) + 16, int(tx) + 420, 4):
+			var gy = b.T.stand_y(x, 0)
+			if gy == null or gy > sq[0].y - 70:
+				ok = false
+				break
+		if ok:
+			break
+		tx += 40
+	b.scroll_to(tx, "go")
+	await until(func(): return not b.busy and absf(b.cam_x - b.cam_tx) < 0.5)
+	await frames_wait(30)
+	var bad := sq.filter(func(s): return s.x < b.cam_x or b.T.solid(s.x, s.y - s.h / 2.0))
+	print("[straggler] cam %d squad %s left behind %d" % [int(b.cam_x), sq.map(func(s): return "%s@%d,%d" % [s.def.key, int(s.x), int(s.y)]), bad.size()])
+	await shot("straggler")
 
 func pinball() -> void:
 	## one blast next to a bunched squad: how many bonks and how much damage follow
