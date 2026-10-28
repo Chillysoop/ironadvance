@@ -2,7 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), operator (tablet call-ins),
+## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -810,6 +810,8 @@ func run() -> void:
 			await pause_menu()
 		"operator":
 			await operator_call()
+		"training":
+			await training()
 		"trailer":
 			await preload("res://tools/trailer.gd").new().run(self, clip_arg)
 		"campaign":
@@ -1487,6 +1489,53 @@ func operator_call() -> void:
 	await frames_wait(40)
 	check(not is_instance_valid(oc), "the X hangs up and the tablet slides away")
 	main.show_hq(false)
+
+func training() -> void:
+	## N6: the drill walks through move, shoot, crate, frag and push, then a short real fight.
+	var had: bool = Run.meta.get("trained", false)
+	main.start_training()
+	var b: Battle = main.battle
+	await until(func(): return b.state == "player" and not b.busy)
+	await frames_wait(20)
+	check(b.tutorial() and b.tut_step == b.TUT_MOVE, "training opens on the move step")
+	check(main.call_layer.get_child_count() > 0 and main.call_layer.get_child(0).line().name == "SGT. KRUGER", "the sergeant calls in on the tablet")
+	b.squad()[0].x = 320
+	await frames_wait(20)
+	check(b.tut_step == b.TUT_SHOOT, "walking forward clears the move step")
+	await frames_wait(20)
+	check(b.sel.hand.any(func(c): return c.key == "rifle"), "the selected soldier holds a rifle shot for the shoot step")
+	for u in b.tut_marks.target:
+		b.kill(u, b.sel)
+	await frames_wait(20)
+	check(b.tut_step == b.TUT_CRATE, "dropping the target clears the shoot step")
+	for u in b.tut_marks.crate:
+		u.dead = true
+	await frames_wait(20)
+	check(b.tut_step == b.TUT_THROW, "opening the crate clears the crate step")
+	await frames_wait(20)
+	check(b.sel.hand.any(func(c): return c.key == "frag"), "the selected soldier holds a frag for the grenade step")
+	b.end_turn(true)
+	await until(func(): return b.state == "player" and not b.busy)
+	check(b.squad_alive().size() == 4 and b.tut_marks.group.all(func(u): return not u.dead), "the drill's targets don't shoot back between turns")
+	b.explode(b.tut_marks.group[0].x, b.tut_marks.group[0].y, 36, 11, b.sel)
+	await until(func(): return b.settled(), 600)
+	await frames_wait(20)
+	check(b.tut_step == b.TUT_PUSH, "a grenade blast clears the throw step")
+	b.cam_x = 120; b.cam_tx = 120
+	await frames_wait(20)
+	check(b.tut_step == b.TUT_FIGHT, "scrolling on clears the push step and starts the fight")
+	for u in b.units:
+		if u.team == "enemy" and not u.dead:
+			u.dead = true; u.gone = true
+	b.lvl_queue.clear(); b.loot_queue.clear()  # level-up and loot picks would wait for a click
+	b.post_action()
+	await until(func(): return Run.meta.get("trained", false) or main.battle == null or not is_instance_valid(b), 1200)
+	await frames_wait(30)
+	check(Run.meta.get("trained", false), "winning the drill marks training done")
+	check(main.call_layer.get_child_count() > 0 and main.call_layer.get_child(0).lines[0].text == Data.TUT_DONE_LINES[0], "the sergeant signs off over the title")
+	if not had:
+		Run.meta.erase("trained")
+		Run.save_meta()
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)

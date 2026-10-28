@@ -74,7 +74,8 @@ func show_title() -> void:
 	s.mode = "title"
 	# N4: each mode says what it is
 	s.buttons = [["CAMPAIGN", func(): show_slots(), "5 ACTS  COMPANY OF %d  SAVED" % Data.COMPANY_MAX],
-		["QUICK RUN", func(): start_run(), "%d LEVELS AND A FINALE" % Data.LEVELS.size()]]
+		["QUICK RUN", func(): start_run(), "%d LEVELS AND A FINALE" % Data.LEVELS.size()],
+		["TRAINING", func(): start_training(), "OPTIONAL  LEARN THE BASICS", Color("9aa2ae") if Run.meta.get("trained", false) else Color("ffb23e")]]
 	var tmax := mini(int(Run.meta.threat_max), Data.THREATS.size())
 	if tmax > 0:
 		# W5: every campaign win opens the next threat level
@@ -248,6 +249,19 @@ func start_battle(idx: int, custom := {}) -> Battle:
 		pending_call = []
 	return battle
 
+func start_training() -> void:
+	## N6: the optional drill. A fresh squad, the sergeant on the tablet, and nothing carries over.
+	Run.new_run()
+	var b := start_battle(0, Data.TRAINING.duplicate(true))
+	b.mission_over.disconnect(_on_mission_over)
+	b.mission_over.connect(func(won: bool):
+		if won:
+			Run.meta["trained"] = true
+			Run.save_meta()
+		Run.new_run()
+		show_title()
+		call_in((Data.TUT_DONE_LINES if won else Data.TUT_FAIL_LINES).map(func(l): return Run.radio_line("sarge", l, []))))
+
 func start_practice(i: int) -> void:
 	## D5: one soldier, their deck as it stands, dummies that never shoot back. Everything the
 	## range touches (HP, scrip, cards, XP) is put back when you leave.
@@ -379,6 +393,8 @@ class Screen extends Control:
 				bt.sub = buttons[i][2]
 			var nd := Run.dial.size()
 			bt.color = Color("ff4d3d") if i == 0 or (mode == "dial" and i < nd) or (mode == "title" and i == 1) else Color("9aa2ae")
+			if buttons[i].size() > 3:
+				bt.color = buttons[i][3]
 			bt.size = Vector2(widths[i], 40)
 			bt.position = Vector2(x, 470)
 			if mode == "dial":  # one button under each biome card, then a small way back and the reroll
