@@ -1656,7 +1656,16 @@ func fling(o: Unit, dir: float, pw: float, by) -> void:
 	o.vy = -3.5 - pw * 0.25
 	o.air = true; o.walk = null; o.bumped = null; o.last_hit_by = by
 
+var zaps := {}  # V5: arc ends -> tick it started, so a bolt redrawn each frame is one effect
+
 func lightning(a: Vector2, b2: Vector2) -> void:
+	if vfx != null:
+		var key := Vector4i(roundi(a.x), roundi(a.y), roundi(b2.x), roundi(b2.y))
+		if zaps.get(key, -99) > t - 10:
+			return
+		zaps[key] = t
+		vfx.add(SfLightning.arc(func(): return a, [b2], vfx.ground_fn(b2.y), 0.25))
+		return
 	var prev := a
 	for k in range(1, 6):
 		var t := k / 5.0
@@ -1884,6 +1893,8 @@ func tesla_arc(u: Unit, c: Dictionary) -> void:
 			lightning(from, to)
 			await wait(1)
 		var dm: int = ri(c.dmg[0], c.dmg[1]) + (3 if u.perk("overload") else 0)
+		if c.get("od", false):
+			vfx.add(SfLightning.impact(to.x, to.y, vfx.ground_fn(to.y), 0.6, 32))
 		damage(best, dm, u)
 		if c.get("tstun", false) or u.perk("stunbolt"):
 			add_status(best, "stun", 1, u)

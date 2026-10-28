@@ -6,7 +6,7 @@ extends Node
 ## gear (click a slot to see what fits, drag and drop, deck changes, a fifth soldier at HQ),
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
-## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing),
+## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -654,6 +654,8 @@ func run() -> void:
 			u.jetting = false
 		"sfvfx":
 			await sfvfx()
+		"sfvfx2":
+			await sfvfx2()
 		"bot":
 			await bot(mission_arg, 70)
 		"levels":
@@ -7035,3 +7037,52 @@ func sfvfx() -> void:
 	await until(func(): return not b.busy)
 	print("[sfvfx] done, live effects ", b.vfx.list.size())
 
+
+func sfvfx2() -> void:
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 0.25
+	var sq: Array = b.squad_alive()
+	var foes: Array = b.units.filter(func(o): return o.team == "enemy" and not o.dead and not o.gone and o.x < b.cam_x + Battle.W - 40)
+	foes.sort_custom(func(p, q): return p.x < q.x)
+	print("[sfvfx2] foes on screen ", foes.size())
+	# V4 burning: a soldier (to see it on our art) and a Jackal
+	sq[1].st["burn"] = 2
+	if foes.size() > 0:
+		foes[0].st["burn"] = 2
+	# V5 stun crackle
+	if foes.size() > 1:
+		foes[1].st["stun"] = 1
+	for f in [6, 20, 40]:
+		await frames_wait(f - (0 if f == 6 else (6 if f == 20 else 20)))
+		print("[sfvfx2] +%d live %d paint %.2f ms" % [f, b.vfx.list.size(), vfx_cost(b)])
+		await shot("sf2_status_%02d" % f)
+	sq[1].st.erase("burn")
+	await frames_wait(40)
+	await shot("sf2_burnout")
+	# V13: PUMPED, then Overdrive ready
+	var u: Unit = sq[2]
+	u.adr = 49
+	await frames_wait(2)
+	u.adr = 55
+	for f in [10, 22, 45, 90]:
+		await frames_wait(f - (0 if f == 10 else [10, 22, 45, 90][[10, 22, 45, 90].find(f) - 1]))
+		print("[sfvfx2] pumped +%d paint %.2f ms" % [f, vfx_cost(b)])
+		await shot("sf2_pumped_%02d" % f)
+	u.adr = 100
+	await frames_wait(24)
+	await shot("sf2_overdrive")
+	# V5 Tesla: a two-hop arc and a Storm Cage hit
+	var from := Vector2(sq[0].x, sq[0].y - 20)
+	var hops: Array = []
+	for e in foes.slice(0, 2):
+		hops.append(Vector2(e.x, e.y - e.h / 2.0))
+	if hops.size():
+		b.vfx.add(SfLightning.arc(func(): return from, hops, b.vfx.ground_fn(from.y), 0.6))
+		b.vfx.add(SfLightning.impact(hops[0].x, hops[0].y, b.vfx.ground_fn(hops[0].y), 0.6, 32))
+	for f in [3, 8, 16]:
+		await frames_wait(f - (0 if f == 3 else (3 if f == 8 else 8)))
+		await shot("sf2_tesla_%02d" % f)
+	b.speed = 1.0
+	print("[sfvfx2] done, live effects ", b.vfx.list.size())
