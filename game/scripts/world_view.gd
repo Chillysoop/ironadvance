@@ -526,6 +526,11 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			draw_circle(p + Vector2(0, -4), 11, Color(1, 0.48, 0.24, 0.3 + 0.2 * sin(b.t / 5.0)))
 			draw_bow(p + Vector2(0, -4), 0.0)
 			Art.text(self, "RAMBO BOW", p + Vector2(0, -20), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
+		"relic":
+			# G8: a boss trophy, squad gear only bosses carry
+			draw_circle(p + Vector2(0, -4), 13, Color(1, 0.7, 0.12, 0.35 + 0.25 * sin(b.t / 4.0)))
+			draw_texture_rect(Art.tex[Data.gear(L.id).icon], Rect2(p.x - 8, p.y - 12, 16, 16), false)
+			Art.text(self, Data.gear(L.id).name.to_upper(), p + Vector2(0, -22), 8, Color("ffb21e"), HORIZONTAL_ALIGNMENT_CENTER)
 		"trophy":
 			draw_circle(p + Vector2(0, -4), 11, Color(1, 0.7, 0.12, 0.3 + 0.2 * sin(b.t / 5.0)))
 			draw_texture_rect(Art.tex.ic_star, Rect2(p.x - 8, p.y - 12, 16, 16), false)
@@ -1332,7 +1337,8 @@ func draw_hover() -> void:
 			"item": lines = ["%s %s" % [Data.tier_name(L.item.tier), Data.item_name(L.item).to_upper()], "Walk over it to pick it up."]
 			"letter": lines = ["%s: %s" % [L.key, Data.CARDS[Data.LETTERS[L.key]].name.to_upper()], "3 free shots for whoever grabs it."]
 			"scrip": lines = ["%d SCRIP" % L.n]
-			_: lines = ["TROPHY: " + L.name]
+			"relic": lines = ["BOSS TROPHY: " + Data.gear(L.id).name.to_upper(), Data.gear(L.id).text, "Squad gear: it helps everyone, for the rest of the run."]
+			_: lines = ["TROPHY: " + L.get("name", L.type.to_upper())]
 		lines.append("Anything left behind goes to the stash.")
 	elif h.kind == "pad":
 		var B: Dictionary = Data.BONUSES[b.pad_bonus(h)]

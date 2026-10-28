@@ -744,6 +744,8 @@ func run() -> void:
 			await drill()
 		"pickups":
 			await pickups()
+		"bossloot":
+			await bossloot()
 		"detours":
 			await detours()
 		"hq":
@@ -5083,6 +5085,68 @@ func pickups() -> void:
 	b.refresh_unit_gear(u)
 	check(u.max_hp >= hp_before + 15, "a Legendary Juggernaut Suit adds 25 max HP (%d -> %d)" % [hp_before, u.max_hp])
 	await shot("pickups_after")
+
+func bossloot() -> void:
+	## G8: late squad gear only stocks from its level on, bosses drop a trophy you don't have,
+	## and trophies and late gear really apply.
+	var ShopScript = load("res://scripts/shop.gd")
+	for m in 3:
+		Run.new_run()
+		Run.mission = m
+		var seen := {}
+		var sh = ShopScript.new()
+		for i in 80:
+			sh.restock()
+			for g in sh.stock_gear:
+				seen[g.id] = true
+		sh.free()
+		var bad: Array = seen.keys().filter(func(k): return Data.gear(k).get("boss", false) or Data.gear(k).get("from", 0) > m)
+		var want: Array = Data.GEAR.filter(func(g): return not g.get("boss", false) and g.get("from", 0) == m).map(func(g): return g.id)
+		check(bad.is_empty() and want.all(func(k): return seen.has(k)), "level %d Quartermaster stocks %d new squad gear and nothing early %s" % [m + 1, want.size(), bad])
+	Run.new_run()
+	Run.mission = 2
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	var u: Unit = b.sel
+	var boss := spawn_alien(b, "boss", u.x + 220)
+	b.kill(boss, u)
+	await frames_wait(90)
+	var rel: Array = b.units.filter(func(o): return o.kind == "loot" and not o.gone and o.loot.type == "relic")
+	check(rel.size() == 1, "the boss drops one trophy (%d)" % rel.size())
+	await shot("bossloot_drop")
+	if rel.size():
+		var id: String = rel[0].loot.id
+		var hp0 := u.max_hp
+		b.collect(u, rel[0])
+		check(Run.has_gear(id) and Run.relic_tier(id) == Data.TIER_MAX, "picking up %s adds it as Legendary squad gear" % id)
+		var st: Dictionary = Data.gear(id).stats
+		var gb := Run.gear_bonus(u.s)
+		check(st.keys().all(func(k): return gb.get(k, 0) >= st[k]), "%s's stats reach every soldier %s" % [id, st])
+		if st.has("hp"):
+			check(u.max_hp == hp0 + 6, "Iron Heart raises max HP mid-mission (%d -> %d)" % [hp0, u.max_hp])
+	# a second boss never drops one you already own
+	for g in Data.GEAR:
+		if g.get("boss", false):
+			Run.add_gear(g.id, Data.TIER_MAX)
+	var n0 := b.units.filter(func(o): return o.kind == "loot" and o.loot.type == "relic").size()
+	var boss2 := spawn_alien(b, "boss", u.x + 260)
+	b.kill(boss2, u)
+	await frames_wait(20)
+	check(b.units.filter(func(o): return o.kind == "loot" and o.loot.type == "relic").size() == n0, "with every trophy owned the boss drops no more")
+	main.clear()
+	await frames_wait(5)
+	# late squad gear at the start of a mission
+	Run.new_run()
+	for id in ["warpaint", "ammodrone", "nanites", "overclock"]:
+		Run.add_gear(id, 1)
+	b = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	var sq := b.squad_alive()
+	check(sq.all(func(s): return s.adr >= 25), "War Paint: everyone starts with 25 adrenaline %s" % [sq.map(func(s): return s.adr)])
+	check(sq.all(func(s): return s.hand.filter(func(c): return not c.get("temp", false) and c.key != "hop" and not Data.CARDS[c.key].get("sidearm", false)).size() >= 5 or s.draw.is_empty()), "Ammo Drone: 5 cards in hand %s" % [sq.map(func(s): return s.hand.size())])
+	check(sq.all(func(s): return s.energy >= 4), "Overclock Core: +1 energy on round 1 %s" % [sq.map(func(s): return s.energy)])
+	check(Run.gear_bonus(sq[0].s).get("regen", 0) >= 2, "Nanite Swarm: everyone regenerates")
+	await shot("bossloot_late_gear")
 
 func settle_picking(b: Battle) -> bool:
 	## Waits for an action to finish, taking the first option on any level-up or loot prompt it opens.
