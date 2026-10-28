@@ -112,6 +112,13 @@ void fragment() {
 			if (n < 0.15) c = vec3(0.52, 0.72, 0.86);
 			if (mod(ap.x - ap.y, 7.0) < 1.0) c = vec3(0.86, 0.95, 1.0);
 			if (up_e && sp.y == 0) c = vec3(0.95, 0.99, 1.0);
+		} else if (m == 9) {
+			// riveted steel plate: grey panels, dark seams, a rivet at each corner, a painted top edge
+			c = vec3(0.46, 0.5, 0.54);
+			if (n < 0.15) c = vec3(0.42, 0.46, 0.5);
+			if (mod(ap.x, 16.0) < 1.0 || mod(ap.y, 12.0) < 1.0) c = vec3(0.28, 0.31, 0.35);
+			if (mod(ap.x, 16.0) >= 2.0 && mod(ap.x, 16.0) < 3.0 && mod(ap.y, 12.0) >= 2.0 && mod(ap.y, 12.0) < 3.0) c = vec3(0.66, 0.7, 0.74);
+			if (up_e && sp.y == 0) c = vec3(0.7, 0.72, 0.74);
 		} else if (m == 8) {
 			// rubber tarp: black-green with a yellow hazard stripe along the top
 			c = vec3(0.16, 0.2, 0.17);

@@ -9,6 +9,7 @@ const GRATE := 5   # steel grating: soldiers stand on it, bullets, rockets and g
 const FENCE := 6   # chain-link: stops soldiers and Jackals, not bullets, rockets or grenades
 const ICE := 7     # sheet ice: anything that lands on it keeps sliding
 const RUBBER := 8  # rubber tarp: soldiers and grenades bounce off it, no fall damage
+const STEEL := 9   # M2/M7 riveted plate: train cars and the carrier deck. Blasts barely dent it
 const FLOOD_LIMIT := 5000
 const WATER_ROW := Data.WATER_Y / CELL  # first row of cells under the water
 
@@ -40,6 +41,13 @@ var camps: Array = []    # safe camps inside the level: {x0, x1, used}
 var ice_runs: Array = []  # [x0, x1] of each sheet of ice on the ground
 var tarps: Array = []     # [x0, x1] of each rubber tarp on the ground
 var pins := {}            # N2: cell index -> rivet unit id; a bolted girder hangs from these
+var lakes: Array = []     # M1: [x0, x1] of each frozen crust over open water
+var cars: Array = []      # M2: train car structs, with "roof" set once built
+var lifts: Array = []     # M7: carrier deck elevators
+var runways: Array = []   # M7: taxi lanes a jet rolls down
+var ceiling := false      # M4: the level is underground
+var props: Array = []     # M4: propped slabs still standing
+var orig := PackedByteArray()  # M6: the map as built, for the Hive to grow back toward
 
 func _init(battle) -> void:
 	b = battle
@@ -102,8 +110,8 @@ func stand_y(x: float, from_y: float):
 	## First standing spot at or below from_y, or null if only water.
 	var y := maxf(CELL, floor(from_y / CELL) * CELL)
 	while y < Data.WATER_Y:
-		if solid(x, y) and not solid(x, y - 1):
-			return y
+		if solid(x, y) and not solid(x, y - 1) and not (ceiling and solid(x, y - 12)):
+			return y  # (in the mine, the crack over a propped slab is no place to stand)
 		y += CELL
 	return null
 
@@ -114,6 +122,7 @@ func build(mission: Dictionary) -> void:
 	var shapes: Array = []
 	var open_pits: Array = []
 	pins.clear(); pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear(); camps.clear(); yard = []
+	lakes = []; cars = []; lifts = []; runways = []; props = []; orig = PackedByteArray()
 	arena_x = 1 << 20  # outposts have no arena
 	var rules: Dictionary = mission.get("rules", {})
 	stretches = []   # fighting stretches, where a biome's extra fuel and mines and encounters go
@@ -129,6 +138,10 @@ func build(mission: Dictionary) -> void:
 			camps.append({"x0": x, "x1": x + s.w, "fire": x + s.w / 2, "used": false})
 		for p in s.pits:
 			pits.append([p[0] + x, p[1] + x])
+		for p in s.get("gaps", []):
+			# M2/M7: open drops with no planks over them, between train cars and off the deck edge
+			pits.append([p[0] + x, p[1] + x])
+			open_pits.append([p[0] + x, p[1] + x])
 		for sb in s.sandbags:
 			sandbags.append(sb + x)
 		for g in s.get("ground", []):
@@ -143,7 +156,7 @@ func build(mission: Dictionary) -> void:
 			if t.has("posts"):
 				t.posts = t.posts.map(func(v): return v + x)
 			# bridges and docks span open water: their gap is a pit with no planks over it
-			if t.t == "bridge" or t.t == "docks":
+			if t.t == "bridge" or t.t == "docks" or t.t == "crust" or t.t == "lift":
 				pits.append([t.x0, t.x1])
 				open_pits.append([t.x0, t.x1])
 			structs.append(t)
@@ -246,7 +259,7 @@ func build(mission: Dictionary) -> void:
 		var deep := top + 16 + int(hash2(cx, 7) * 4)
 		# the ground stops at the waterline like Worms: dig through it and there is only water
 		for cy in range(top, WATER_ROW):
-			set_cell(cx, cy, 4 if cy > deep else 1)
+			set_cell(cx, cy, STEEL if rules.get("deck", false) else (4 if cy > deep else 1))
 		for r in ice_runs:
 			if cxx >= r[0] and cxx < r[1]:
 				set_cell(cx, top, ICE)
@@ -259,6 +272,13 @@ func build(mission: Dictionary) -> void:
 			continue
 		var y := ground_at(p[0] - 12)
 		fill_r(p[0] - 8, y, p[1] - p[0] + 16, 8, 3)
+	ceiling = rules.get("ceiling", false)
+	if ceiling:
+		# M4: solid rock overhead, so nothing is lobbed high and nothing falls from the sky
+		for cx in cols:
+			for cy in range(0, int(ceil_at(cx * CELL + 2.0) / CELL) + 1):
+				if grid[cy * cols + cx] == 0:
+					set_cell(cx, cy, 4)
 	for s in structs:
 		build_struct(s)
 	for sx in sandbags:
@@ -267,9 +287,52 @@ func build(mission: Dictionary) -> void:
 		var g := ground_at(sx - CELL)
 		var deep := maxf(maxf(ground_at(sx), ground_at(sx + 10)), ground_at(sx + 19))
 		fill_r(sx, g - 12, 20, maxf(24, deep - g + 12), 2)
+	if rules.get("regrow", 0) > 0:
+		orig = grid.duplicate()
 	img = Image.create_from_data(cols, ROWS, false, Image.FORMAT_RG8, data)
 	tex = ImageTexture.create_from_image(img)
 	dirty = false
+
+func check_props(cause) -> void:
+	## M4: once a beam is cut clean through, what's left of it above the cut splinters and the
+	## slab drops flat onto whoever is under it.
+	for p in props:
+		if p.down:
+			continue
+		var cut := -1.0
+		var yy: float = p.top + 24
+		while yy < p.g:
+			if not solid(p.post - 2, yy) and not solid(p.post + 2, yy):
+				cut = yy
+				break
+			yy += CELL
+		if cut < 0:
+			continue
+		p.down = true
+		var yb: float = p.top + 24
+		while yb < cut:
+			for xx in [p.post - 2, p.post + 2]:
+				if solid(xx, yb):
+					b.debris(xx, yb, 3, true)
+					set_cell(int(xx / CELL), int(yb / CELL), 0)
+			yb += CELL
+		vid += 1
+		flood(int((p.top + 12) / CELL) * cols + int((p.x + p.w / 2.0) / CELL), cause)
+
+func ceil_at(x: float) -> float:
+	## M4: the bottom of the mine's rock ceiling at x.
+	return 150.0 + 26.0 * sin(x / 170.0) + 12.0 * sin(x / 61.0 + 1.0)
+
+func lift_cells(l: Dictionary, on: bool) -> void:
+	## M7: lay (or lift away) an elevator platform. Its cells are pinned so it never falls.
+	var y: float = l.y_up if l.up else l.y_dn
+	for cy in range(int(y / CELL), int((y + 8) / CELL)):
+		for cx in range(int(l.x0 / CELL), int(ceil(l.x1 / CELL))):
+			set_cell(cx, cy, STEEL if on else 0)
+			if on:
+				pins[cy * cols + cx] = -1
+			else:
+				pins.erase(cy * cols + cx)
 
 func struct_span(t: Dictionary) -> Array:
 	## Rough [x0, x1] a struct covers, for keeping ice, tarps and wires out from under it.
@@ -318,6 +381,52 @@ func flatten(a: float, bb: float, margin: float) -> void:
 
 func build_struct(s: Dictionary) -> void:
 	match s.t:
+		"crust":
+			# M1: a sheet of lake ice flush with both banks over open water. Heavies and blasts break it
+			var g := ground_at(s.x0 - 12)
+			fill_r(s.x0 - 4, g, s.x1 - s.x0 + 8, 8, ICE)
+			lakes.append([s.x0, s.x1])
+		"car":
+			# M2: a steel train car on its chassis: doors at both ends at floor level, a roof you can
+			# fight on, and a hatch with a ladder at the back end. A flatcar is just the deck.
+			var g := ground_at(s.x + s.w / 2.0)
+			var roof: float = g - s.h
+			s["roof"] = roof
+			fill_r(s.x, roof, s.w, Data.WATER_Y + 8 - roof, STEEL)
+			if s.h >= 40:
+				fill_r(s.x + 8, roof + 8, s.w - 16, s.h - 8, 0)
+				fill_r(s.x, g - 36, 8, 36, 0)
+				fill_r(s.x + s.w - 8, g - 36, 8, 36, 0)
+				fill_r(s.x + s.w - 34, roof, 18, 8, 0)
+				ladders.append({"x": s.x + s.w - 25, "top": roof, "bot": g, "offx": s.x + s.w - 46})
+				cars.append(s)
+		"coupler":
+			# M2: the walkway between two cars, a plate at floor level
+			var g := ground_at(s.x0 - 12)
+			fill_r(s.x0 - 4, g, s.x1 - s.x0 + 8, 4, STEEL)
+		"prop":
+			# M4: a rock slab hanging just under the ceiling on one wooden beam. Cut the beam and it drops
+			var top := 0.0
+			for xx in range(int(s.x), int(s.x + s.w), CELL):
+				top = maxf(top, ceil_at(xx))
+			top = (floor(top / CELL) + 2) * CELL
+			var g := ground_at(s.post)
+			# the ceiling comes down to one crack above the slab, so nobody fits up there
+			fill_r(s.x - 8, 0, s.w + 16, top - CELL, 4)
+			fill_r(s.x, top, s.w, 24, 4)
+			fill_r(s.post - 4, top + 24, 8, g - top - 24, 3)
+			s["top"] = top
+			s["g"] = g
+			s["down"] = false
+			props.append(s)
+		"lift":
+			# M7: a deck elevator. It drops a storey and comes back up on a fixed count
+			var g := ground_at(s.x0 - 12)
+			var l := {"x0": s.x0, "x1": s.x1, "y_up": g, "y_dn": g + s.get("drop", 64), "up": true, "every": s.get("every", 2), "t": s.get("every", 2)}
+			lifts.append(l)
+			lift_cells(l, true)
+		"runway":
+			runways.append({"x0": s.x0, "x1": s.x1})
 		"tower":
 			var g := ground_at(s.x)
 			var top: float = g - s.h
@@ -472,7 +581,7 @@ func carve(x: float, y: float, r: float, cause) -> void:
 			var d2 := dx * dx + dy * dy
 			if d2 > R2:
 				continue
-			if d2 <= r2 and not (m == 2 and d2 > r2 * 0.45 and r > 6):
+			if d2 <= r2 and not (m == 2 and d2 > r2 * 0.45 and r > 6) and not (m == STEEL and d2 > r2 * 0.2):
 				set_cell(cx, cy, 0)
 				any = true
 				if randf() < 0.1:
@@ -481,6 +590,7 @@ func carve(x: float, y: float, r: float, cause) -> void:
 				data[i * 2 + 1] = mini(255, data[i * 2 + 1] + 70)
 				dirty = true
 	if any:
+		check_props(cause)
 		check_floating(x, y, r + 8, cause)
 		check_bridges(cause)
 

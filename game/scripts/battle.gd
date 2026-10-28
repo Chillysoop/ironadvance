@@ -195,6 +195,18 @@ func setup(idx: int, custom := {}) -> void:
 		if type == "jbox":
 			make_jbox(x)
 			continue
+		if type == "acid":
+			# M6: standing Hive acid that never dries up
+			var ay = T.stand_y(x, 0)
+			if ay != null:
+				acids.append({"x": x, "y": ay, "r": 30.0, "turns": 9999})
+			continue
+		if type == "cart":
+			var cy = T.stand_y(x, T.ground_at(x) - 40)
+			if cy == null:
+				continue
+			var u := mk_unit(); u.team = "neutral"; u.kind = "cart"; u.x = x; u.y = cy; u.w = 26; u.h = 18; u.hp = 999; u.max_hp = 999
+			units.append(u); continue
 		if type == "m2":
 			var u := mk_unit(); u.team = "neutral"; u.kind = "m2"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.w = 26; u.h = 20
 			u.hp = 30; u.max_hp = 30; u.heavy = true; u.face = -1; u.loot = {"sq": -1, "en": -1}
@@ -208,6 +220,9 @@ func setup(idx: int, custom := {}) -> void:
 			units.append(u); continue
 		if (type == "grunt" or type == "nade") and not opt.has("tut"):
 			type = cast_foot(foot)
+			foot += 1
+		elif rules.get("aliens", false) and type != "boss" and Data.ETYPES[type].get("faction", "jackal") != "vharr":
+			type = cast_foot(foot)  # M6: nothing but Vharr in the Hive
 			foot += 1
 		if type == "boss" and mission.get("boss", "") == "hiveship":
 			type = "hiveship"
@@ -260,6 +275,7 @@ func setup(idx: int, custom := {}) -> void:
 			units.append(p)
 	place_encounter(mission.get("encounter", ""))
 	place_vehicles()
+	setup_biome()
 	place_job()
 	spawn_map_loot()
 	sel = null
@@ -2342,6 +2358,8 @@ func cast_foot(n: int) -> String:
 	## finale give every slot to the Vharr. Bombers are gone either way.
 	## Each biome sends its own Vharr (Data.BIOME_ALIENS).
 	var pool: Array = Data.BIOME_ALIENS.get(mission.get("biome", ""), ALIENS)
+	if rules.get("aliens", false):
+		return pool[n % pool.size()]
 	var tier := 2 if mission.get("finale", false) else mission_idx
 	if tier == 0:
 		if n % 8 == 5:
@@ -2407,6 +2425,209 @@ func begin() -> void:
 	await wait(60)
 	if state == "title":
 		start_player_turn()
+
+# ---------------------------------------------------------------- M1-M7: new biomes
+const LAVA_MAX := 8      # M5: the most steps the lava climbs before it holds
+const ICE_HEAVY := ["brute", "dicokka", "jwalker", "boss", "mortarcrew", "wallshield"]
+var lava_k := 0          # M5: steps the lava has climbed since the squad last pushed or made camp
+var sweeps: Array = []   # M2 tunnel, M7 taxiing jet: {k, x0, x1, every, left, t0}
+
+func setup_biome() -> void:
+	lava_k = 0
+	sweeps = []
+	if rules.get("tunnel", 0) > 0 and T.cars.size():
+		sweeps.append({"k": "tunnel", "x0": 0.0, "x1": float(world_w), "every": int(rules.tunnel), "left": int(rules.tunnel), "t0": -999})
+	for r in T.runways:
+		var n := int(rules.get("planes", 3))
+		sweeps.append({"k": "plane", "x0": r.x0, "x1": r.x1, "every": n, "left": n, "t0": -999})
+
+func biome_round() -> void:
+	## End of every enemy phase: the biome's clockwork moves one tick, always on a count you can see.
+	if rules.get("lava", 0.0) > 0 and lava_k < LAVA_MAX:
+		lava_k += 1
+		float_at(cam_x + W / 2.0, lava_y() - 16, "THE LAVA RISES", Color("ff7a3d"), true)
+		Sfx.play("splash")
+		lava_eat()
+		await wait(24)
+	if rules.get("regrow", 0) > 0 and regrow(int(rules.regrow)) > 0:
+		float_at(cam_x + W / 2.0, 120, "THE HIVE GROWS BACK", Color("c47bff"), true)
+		await wait(16)
+	for l in T.lifts:
+		l.t -= 1
+		if l.t <= 0:
+			move_lift(l)
+			await wait(16)
+	for sw in sweeps:
+		sw.left -= 1
+		if sw.left <= 0:
+			sw.left = sw.every
+			await run_sweep(sw)
+
+# --- M1 Frozen Lake
+func ice_crack(u: Unit) -> void:
+	## A heavy Jackal or any vehicle that stops on the lake crust goes through it.
+	if T.lakes.is_empty() or u.dead or u.gone or u.air:
+		return
+	if not (u.mech != null or (u.team == "enemy" and (u.heavy or ICE_HEAVY.has(u.type)))):
+		return
+	if T.mat(u.x, u.y + 1) != Terrain.ICE or not T.lakes.any(func(l): return u.x > l[0] and u.x < l[1]):
+		return
+	float_text(u, "THE ICE BREAKS!", Color("9fe3f0"), true)
+	Sfx.play("splash")
+	T.carve(u.x, u.y + 2, 20.0, null)
+	u.air = true
+	u.walk = null
+
+# --- M4 Deep Mine
+func push_cart(c: Unit, src) -> void:
+	## Anything that hits a mine cart sends it rolling away from whoever hit it.
+	if c.slide != 0 or c.air:
+		return
+	var dir := 1.0
+	if src is Unit and src != c:
+		dir = signf(c.x - src.x) if absf(c.x - src.x) > 1 else float(src.face)
+	c.slide = dir * 7.0
+	c.last_hit_by = src if src is Unit else null
+	c.fl["ran"] = {}
+	float_text(c, "RUNAWAY CART!", Color("ffd23a"), true)
+	Sfx.play("land")
+
+func cart_ram(c: Unit) -> void:
+	## A rolling cart runs over every Jackal it reaches: 18 damage and thrown on down the line.
+	for o in units:
+		if o == c or o.dead or o.gone or o.sunk or o.team != "enemy" or is_boss(o) or c.fl.get("ran", {}).has(o.id):
+			continue
+		if absf(o.x - c.x) < (o.w + c.w) / 2.0 and o.y > c.y - c.h - 4 and o.y - o.h < c.y + 2:
+			c.fl.ran[o.id] = true
+			float_text(o, "RUN OVER!", Color("ffd23a"), true)
+			damage(o, 18, c.last_hit_by, {"blast": true})
+			fling(o, signf(c.slide), 6.0, c.last_hit_by)
+			shake += 3
+
+# --- M5 Volcano
+func lava_y() -> float:
+	return WATER_Y - lava_k * float(rules.get("lava", 10.0))
+
+func lava_eat() -> void:
+	## The lava burns away wood, ice and rubber below its line, and scorches everything else.
+	var r0 := int(ceil(lava_y() / CELL))
+	for cy in range(r0, Terrain.WATER_ROW):
+		for cx in T.cols:
+			var i := cy * T.cols + cx
+			var m := T.grid[i]
+			if m == 3 or m == Terrain.ICE or m == Terrain.RUBBER:
+				T.set_cell(cx, cy, 0)
+			elif m != 0:
+				T.data[i * 2 + 1] = maxi(T.data[i * 2 + 1], 150)
+				T.dirty = true
+	T.check_bridges(null)
+	for u in units:
+		lava_check(u)
+
+func lava_check(u: Unit) -> void:
+	if lava_k <= 0 or u.dead or u.gone or u.sunk or u.weight == "hover" or u.kind == "pow" or u.y < lava_y() + 2:
+		return
+	if u.is_pickup():
+		u.gone = true
+		return
+	if u.is_prop():
+		if u.kind == "mine" or u.kind == "cart":
+			u.gone = true
+		else:
+			damage(u, 99, null, {"blast": true})
+		return
+	float_text(u, "BURNED UP", Color("ff7a3d"), true)
+	part({"x": u.x, "y": u.y - 8, "vx": 0.0, "vy": -3.0, "life": 40, "max": 40, "c": Color("ff7a1e"), "s": 4.0, "g": 0.05, "fire": true})
+	kill(u, u.last_hit_by if u.last_hit_by is Unit and u.last_hit_by.team == "squad" else null)
+
+func lava_drain() -> void:
+	if lava_k > 0:
+		lava_k = 0
+		float_at(cam_x + W / 2.0, WATER_Y - 20, "THE LAVA DRAINS", Color("ffd23a"), true)
+
+# --- M6 Vharr Hive
+func regrow(n: int) -> int:
+	## Up to n blown-away blocks on screen grow back, from the bottom up, never inside anyone.
+	if T.orig.is_empty():
+		return 0
+	var c0 := maxi(0, int((cam_x - 80) / CELL))
+	var c1 := mini(T.cols - 1, int((cam_x + W + 80) / CELL))
+	var live := units.filter(func(u): return not u.dead and not u.gone and not u.sunk)
+	var got := 0
+	for cy in range(Terrain.WATER_ROW - 1, 0, -1):
+		for cx in range(c0, c1 + 1):
+			var i := cy * T.cols + cx
+			if T.grid[i] != 0 or T.orig[i] == 0:
+				continue
+			if T.grid[i + T.cols] == 0 and (cx == 0 or T.grid[i - 1] == 0) and (cx == T.cols - 1 or T.grid[i + 1] == 0) and T.grid[i - T.cols] == 0:
+				continue
+			var px := cx * CELL + 2.0
+			var py := cy * CELL + 2.0
+			if live.any(func(u): return absf(u.x - px) < u.w / 2.0 + 4 and py > u.y - u.h - 4 and py < u.y + 4):
+				continue
+			T.set_cell(cx, cy, T.orig[i])
+			got += 1
+			if got >= n:
+				return got
+	return got
+
+# --- M7 Carrier Deck
+func move_lift(l: Dictionary) -> void:
+	## The elevator drops a storey (or comes back up), carrying whoever stands on it.
+	var y0: float = l.y_up if l.up else l.y_dn
+	var riders := units.filter(func(u): return not u.dead and not u.gone and not u.air and u.x > l.x0 - 2 and u.x < l.x1 + 2 and absf(u.y - y0) < 3)
+	T.lift_cells(l, false)
+	l.up = not l.up
+	T.lift_cells(l, true)
+	var y1: float = l.y_up if l.up else l.y_dn
+	for u in riders:
+		u.y = y1
+		u.walk = null
+	l.t = l.every
+	float_at((l.x0 + l.x1) / 2.0, y1 - 30, "LIFT UP" if l.up else "LIFT DOWN", Color("ffd23a"), true)
+	Sfx.play("land")
+
+# --- M2 tunnel and M7 jet
+func sweep_hits(sw: Dictionary) -> Array:
+	## Who a sweep would hit right now: on a car roof for the tunnel, on the deck in the lane for the jet.
+	var out: Array = []
+	for u in units:
+		if u.dead or u.gone or u.sunk or u.is_pickup() or u.kind == "pow" or u.kind == "loot" or is_boss(u):
+			continue
+		if sw.k == "tunnel":
+			if T.cars.any(func(c): return u.x >= c.x and u.x <= c.x + c.w and u.y <= c.roof + 2 and u.y > c.roof - 80):
+				out.append(u)
+		elif u.x >= sw.x0 and u.x <= sw.x1 and not u.air and absf(u.y - T.ground_at(u.x)) <= 4:
+			out.append(u)
+	return out
+
+func run_sweep(sw: Dictionary) -> void:
+	var tunnel: bool = sw.k == "tunnel"
+	if tunnel:
+		banner("TUNNEL!", Color("ff7a3d"), "EVERYONE ON THE ROOFS GETS HIT")
+	else:
+		banner("JET TAXIING!", Color("ff7a3d"), "CLEAR THE PAINTED LANE")
+	Sfx.play("alarm")
+	sw.t0 = t
+	await wait(30)
+	shake += 6
+	for u in sweep_hits(sw):
+		float_text(u, "TUNNEL!" if tunnel else "JET WASH!", Color("ff7a3d"), true)
+		if u.is_prop():
+			damage(u, 99, null, {"blast": true})
+			continue
+		damage(u, 12 if tunnel else 14, null)
+		fling(u, -1.0 if tunnel else 1.0, 6.0, null)
+	await wait(24)
+	await until(settled)
+
+func hazard_word() -> String:
+	## What going into the "water" means here.
+	if rules.get("train", false):
+		return "UNDER THE WHEELS"
+	if rules.get("lava", 0.0) > 0:
+		return "INTO THE LAVA"
+	return ""
 
 # ---------------------------------------------------------------- helpers
 func practice() -> bool:
@@ -2583,7 +2804,7 @@ func sparks(x: float, y: float, n := 5) -> void:
 	for i in n:
 		part({"x": x, "y": y, "vx": (randf() - .5) * 4, "vy": -randf() * 3, "life": 14, "max": 14, "c": Color("fff3a0"), "s": 2.0, "g": 0.2, "fire": true})
 
-const MATCOL := {1: Color("86582f"), 2: Color("8e939a"), 3: Color("80562e"), 4: Color("62503f"), 5: Color("6f777f"), 6: Color("a9b0b6"), 7: Color("bfe6f5"), 8: Color("2a332c")}
+const MATCOL := {1: Color("86582f"), 2: Color("8e939a"), 3: Color("80562e"), 4: Color("62503f"), 5: Color("6f777f"), 6: Color("a9b0b6"), 7: Color("bfe6f5"), 8: Color("2a332c"), 9: Color("7a8088")}
 
 func debris(x: float, y: float, m: int, slow := false) -> void:
 	var c: Color = MATCOL.get(m, Color("888888"))
@@ -3248,6 +3469,9 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 	var own = src if src != null and src is Unit and src.team == "squad" else null
 	if tg.kind == "crate":
 		open_crate(tg, false)
+		return
+	if tg.kind == "cart":
+		push_cart(tg, src)
 		return
 	if tg.kind == "strongbox":
 		if o.get("blast", false):
@@ -5688,6 +5912,7 @@ func check_camp(u: Unit) -> void:
 func make_camp(c: Dictionary) -> void:
 	busy = true
 	banner("CAMP", Color("62d26f"), "SAFE FOR NOW")
+	lava_drain()
 	Sfx.play("levelup")
 	await wait(30)
 	var i := 0
@@ -5955,6 +6180,7 @@ func scroll_to(tx: float, reason: String, who = null) -> void:
 		return
 	cam_tx = tx
 	if reason == "push":
+		lava_drain()
 		banner("AGGRESSIVE PUSH!", Color("ffb23e"), "ALERT -1  +1 ENERGY")
 		score += 250
 		alert = maxi(0, alert - 1)
@@ -7145,7 +7371,7 @@ func enemy_phase() -> void:
 		await wait(50)
 	if rounds_since_scroll > stall_limit() and alert >= 6 and not boss_dead and randf() < 0.4:
 		calls += 1
-	if calls and not boss_dead and mission_idx == 0 and not breach:
+	if calls and not boss_dead and mission_idx == 0 and not breach and not T.ceiling:
 		await plane_drop(1 + alert / 4)  # E3: the Jackals' own backup comes by plane
 		calls = 0
 	if calls and not boss_dead:
@@ -7160,6 +7386,11 @@ func enemy_phase() -> void:
 				shields += 1
 			var e := mk_enemy(type, cam_x + W - 60 - randf() * 240, -30.0 - i * 40)
 			e.active = true; e.heavy = false; e.air = true; e.para = true
+			if T.ceiling:
+				# M4: no sky to drop from, so they come up the tunnel from the far end
+				var ey = T.stand_y(e.x, T.ceil_at(e.x) + 12)
+				e.y = ey if ey != null else T.ground_at(e.x)
+				e.para = false
 			units.append(e)
 		banner("REINFORCEMENTS!", Color("ff7a3d"))
 		log_msg("Paratroopers dropping in. Shoot them on the way down, and get the radioman next time.")
@@ -7172,6 +7403,7 @@ func enemy_phase() -> void:
 		banner("AIRSTRIKE INBOUND", Color("ff4d3d"), "MOVE OFF THE MARKERS")
 		Sfx.play("alarm")
 		await wait(40)
+	await biome_round()
 	classes_enemy_end()
 	await leg_check()
 	if squad_alive().is_empty():
@@ -9060,6 +9292,7 @@ func step() -> void:
 			for k in (3 if u.rolling else 2):
 				if u.walk_i >= u.walk.size():
 					u.walk = null
+					ice_crack(u)
 					break
 				var pnt: Array = u.walk[u.walk_i]
 				u.walk_i += 1
@@ -9074,6 +9307,8 @@ func step() -> void:
 				u.tread += 1
 		else:
 			physics(u)
+		if lava_k > 0:
+			lava_check(u)
 		if u.team == "squad" and not u.dead:
 			for p in units:
 				if p.kind == "loot" and not p.gone and not p.sunk and absf(p.x - u.x) < (66 if Run.implanted(u.s, "magnet") else 22) and absf(p.y - u.y) < 30:
@@ -9262,6 +9497,8 @@ func physics(u: Unit) -> void:
 		elif u.slide != 0:
 			var sl := ice_step(u, u.x, u.y, u.slide)
 			u.x = sl.x; u.y = sl.y; u.slide = sl.v
+			if u.kind == "cart":
+				cart_ram(u)
 			if u.team == "squad" and (u.x < cam_x + 8 or u.x > cam_x + W - 8):
 				u.x = clampf(u.x, cam_x + 8, cam_x + W - 8)
 				u.slide = 0
@@ -9322,6 +9559,9 @@ func physics(u: Unit) -> void:
 				continue
 			u.air = false
 			u.slide = clampf(u.vx * 0.9, -4.0, 4.0) if lm == Terrain.ICE and absf(u.vx) > 0.6 and not u.para else 0.0
+			if u.kind == "cart" and absf(u.vx) > 0.6:
+				u.slide = u.vx  # M4: a cart that hops a dip keeps rolling
+			ice_crack(u)
 			u.vx = 0
 			u.vy = 0
 			if u.fl.get("crashing", false):
@@ -9362,7 +9602,8 @@ func drown(u: Unit) -> void:
 	splash(u.x)
 	u.sunk = true
 	if not u.dead:
-		float_at(u.x, WATER_Y - 30, (u.def.name + " DROWNED") if u.team == "squad" else "SPLASH!", Color("9fe3f0"), true)
+		var hw := hazard_word()
+		float_at(u.x, WATER_Y - 30, ((u.def.name + " DROWNED") if u.team == "squad" else "SPLASH!") if hw == "" else ((u.def.name + " ") if u.team == "squad" else "") + hw, Color("9fe3f0") if hw == "" else Color("ff7a3d"), true)
 		kill(u, u.last_hit_by if u.last_hit_by != null and u.last_hit_by is Unit and u.last_hit_by.team == "squad" else null)
 
 func lifeguard_swim(u: Unit) -> bool:
@@ -9397,7 +9638,7 @@ func ice_step(u: Unit, x: float, y: float, v: float) -> Dictionary:
 			ny = y + CELL
 		else:
 			air = true
-	v *= 0.975 if T.mat(nx, ny) == Terrain.ICE else 0.6
+	v *= 0.99 if u.kind == "cart" else (0.975 if T.mat(nx, ny) == Terrain.ICE else 0.6)  # M4: carts roll on
 	if absf(v) < 0.25 and not air:
 		v = 0.0
 	return {"x": nx, "y": ny, "v": v, "air": air}

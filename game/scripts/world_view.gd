@@ -33,6 +33,7 @@ func _draw() -> void:
 		draw_line(Vector2(r.x, r.y), Vector2(r.u.x, r.u.y - 20), r.get("c", Color("d8d0b8")), 3.0 if r.has("c") else 1.0)
 	draw_acids()
 	draw_wells()
+	draw_biome()
 	for u in b.units:
 		if u.dead:
 			draw_unit(u)
@@ -190,6 +191,9 @@ func draw_unit(u: Unit) -> void:
 			return
 		"barrel":
 			draw_sprite("barrel_w" if white else "barrel", pos, Vector2(0.5, 1.0))
+			return
+		"cart":
+			draw_cart(u, pos, white)
 			return
 		"crate":
 			draw_sprite("crate_w" if white else "crate", pos, Vector2(0.5, 1.0))
@@ -883,7 +887,7 @@ func draw_wreck(u: Unit, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog", "ride", "hulk", "sticky"] or b.is_boss(u) or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog", "ride", "hulk", "sticky", "cart"] or b.is_boss(u) or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -1216,6 +1220,7 @@ func draw_targeting() -> void:
 				elif tg.kind == "charge": lab = "DEFUSE"
 				elif tg.kind == "crate": lab = "OPEN"
 				elif tg.kind == "strongbox": lab = "LOCKED: BLAST OR PRY"
+				elif tg.kind == "cart": lab = "PUSH"
 				elif tg.is_prop(): lab = "BOOM"
 				elif hh.head: lab = "HEAD!"
 				elif tg.shield and hh.dx > 0: lab = "SHIELD"
@@ -1652,6 +1657,8 @@ func draw_hover() -> void:
 		lines = ["JUNCTION BOX: " + ("LIVE" if h.loot.on else "DEAD"), "Anyone standing on its cable: 4 damage, and Jackals are stunned.", "Once a round each. Knock Jackals onto it.", "Shoot or blast the box to cut the power."] if h.loot.on else ["JUNCTION BOX: DEAD", "The cable is safe to cross."]
 	elif h.kind == "mine":
 		lines = ["JACKAL MINE", "Your soldiers set it off by stepping on it.", "Jackals only trip it when they land on it: knock them onto it.", "Shoot or blast it to clear it. Blast 38."]
+	elif h.kind == "cart":
+		lines = ["MINE CART", "Hit it with anything and it rolls away from you.", "It runs over every Jackal in its path: 18 damage each."]
 	elif h.is_prop():
 		lines = ["FUEL BARREL", "Explodes when hit. Blast 44."]
 	elif h.kind == "sentry":
@@ -1682,3 +1689,94 @@ func draw_hover() -> void:
 	draw_rect(Rect2(x, y, w, 2), Color("ff4d3d") if h.team == "enemy" else Color("ffb23e"))
 	for i in lines.size():
 		Art.text(self, lines[i], Vector2(x + 8, y + 18 + i * 16), 16, Color.WHITE if i == 0 else Color("d7cfbb"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+
+# ---------------------------------------------------------------- M1-M7 biomes
+func draw_cart(u: Unit, pos: Vector2, white: bool) -> void:
+	## M4: an ore cart on two wheels, heaped with rock
+	var body := Color.WHITE if white else Color("6a5a48")
+	draw_rect(Rect2(pos.x - 13, pos.y - 16, 26, 12), C_DARK)
+	draw_rect(Rect2(pos.x - 12, pos.y - 15, 24, 10), body)
+	draw_rect(Rect2(pos.x - 12, pos.y - 12, 24, 1), Color("4a3e32"))
+	for k in 4:
+		draw_circle(Vector2(pos.x - 8 + k * 5, pos.y - 17), 3, Color("8a8478") if k % 2 == 0 else Color("6e6a60"))
+	var spin := u.x / 3.0
+	for wx in [-7, 7]:
+		draw_circle(Vector2(pos.x + wx, pos.y - 3), 3.5, C_DARK)
+		draw_line(Vector2(pos.x + wx, pos.y - 3), Vector2(pos.x + wx + cos(spin) * 3, pos.y - 3 + sin(spin) * 3), Color("9aa2ae"), 1.0)
+
+func draw_biome() -> void:
+	var T = b.T
+	# M5: the lava and the line it climbs to next
+	if b.rules.get("lava", 0.0) > 0:
+		var ly: float = b.lava_y()
+		var x0 := b.cam_x - 8
+		if b.lava_k > 0:
+			draw_rect(Rect2(x0, ly, b.W + 16, b.WATER_Y - ly + 2), Color("c8320e"))
+			draw_rect(Rect2(x0, ly, b.W + 16, 3), Color("ffb21e"))
+			for k in 14:
+				var bx := x0 + fmod(k * 97.0 + b.t * 0.4, b.W + 16)
+				draw_rect(Rect2(bx, ly + 4 + (k % 3) * 5, 6, 2), Color("ff7a1e"))
+		if b.lava_k < Battle.LAVA_MAX:
+			var ny: float = ly - float(b.rules.lava)
+			var x := x0
+			while x < b.cam_x + b.W + 8:
+				draw_rect(Rect2(x, ny, 10, 2), Color("ffd23a", 0.8))
+				x += 18
+			Art.text(self, "LAVA NEXT ROUND", Vector2(b.cam_x + 10, ny - 4), 8, Color("ffd23a"))
+	# M7: painted taxi lanes and the elevators' counts
+	for sw in b.sweeps:
+		var age: int = b.t - int(sw.t0)
+		if sw.k == "plane":
+			if not (on_screen(sw.x0, 300) or on_screen(sw.x1, 300)):
+				continue
+			var x: float = sw.x0
+			while x < sw.x1:
+				var gy: float = T.ground_at(x)
+				draw_colored_polygon(PackedVector2Array([Vector2(x, gy - 1), Vector2(x + 6, gy - 1), Vector2(x + 10, gy - 3), Vector2(x + 6, gy - 5), Vector2(x, gy - 5), Vector2(x + 4, gy - 3)]), Color("ffd23a", 0.7))
+				x += 28
+			var mid: float = clampf((sw.x0 + sw.x1) / 2.0, b.cam_x + 80, b.cam_x + b.W - 80)
+			Art.text(self, "JET IN %d" % sw.left if sw.left > 1 else "JET AFTER THIS ENEMY PHASE", Vector2(mid, T.ground_at(mid) + 16), 8, Color("ff4d3d") if sw.left <= 1 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			if age < 60:
+				draw_jet(lerpf(sw.x0 - 60, sw.x1 + 60, age / 60.0), T.ground_at(sw.x0))
+		elif sw.k == "tunnel":
+			for c in T.cars:
+				if not on_screen(c.x + c.w / 2.0, c.w):
+					continue
+				var cx: float = c.x + c.w / 2.0
+				Art.text(self, "TUNNEL IN %d" % sw.left if sw.left > 1 else "TUNNEL NEXT ENEMY PHASE", Vector2(cx, c.roof - 30), 8, Color("ff4d3d") if sw.left <= 1 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			if age < 54:
+				# the tunnel mouth swallows the roofs from the front
+				var k := age / 54.0
+				var tx: float = lerpf(b.cam_x + b.W + 20, b.cam_x - 40, k)
+				draw_rect(Rect2(tx, 0, b.cam_x + b.W + 40 - tx, 470 - 128.0), Color("1a1614", 0.85))
+				draw_rect(Rect2(tx - 10, 0, 10, 470 - 128.0), Color("4a3e36"))
+	for c in T.cars:
+		# M2: the dim inside of each car, behind whoever is in there
+		if on_screen(c.x + c.w / 2.0, c.w):
+			draw_rect(Rect2(c.x + 8, c.roof + 8, c.w - 16, c.h - 8), Color(0.16, 0.17, 0.19, 0.85))
+			for wx in range(int(c.x) + 24, int(c.x + c.w) - 24, 48):
+				draw_rect(Rect2(wx, c.roof + 16, 20, 10), Color(0.5, 0.42, 0.3, 0.5))
+	for l in T.lifts:
+		if not on_screen((l.x0 + l.x1) / 2.0, 200):
+			continue
+		var y: float = l.y_up if l.up else l.y_dn
+		draw_rect(Rect2(l.x0, y - 2, l.x1 - l.x0, 2), Color("ffd23a"))
+		Art.text(self, ("LIFT DOWN IN %d" if l.up else "LIFT UP IN %d") % l.t, Vector2((l.x0 + l.x1) / 2.0, l.y_up - 40), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+	# M4: rails under the mine carts
+	if T.ceiling:
+		for u in b.units:
+			if u.kind == "cart" and not u.gone and on_screen(u.x):
+				draw_rect(Rect2(u.x - 40, u.y - 1, 80, 1), Color("9aa2ae", 0.5))
+
+func draw_jet(x: float, gy: float) -> void:
+	## M7: a carrier jet rolling down the lane
+	var c := Color("8a9aa8")
+	draw_colored_polygon(PackedVector2Array([Vector2(x - 40, gy - 14), Vector2(x + 30, gy - 16), Vector2(x + 44, gy - 12), Vector2(x + 30, gy - 8), Vector2(x - 40, gy - 8)]), c)
+	draw_colored_polygon(PackedVector2Array([Vector2(x - 40, gy - 14), Vector2(x - 34, gy - 30), Vector2(x - 26, gy - 30), Vector2(x - 22, gy - 14)]), c.darkened(0.2))
+	draw_colored_polygon(PackedVector2Array([Vector2(x - 6, gy - 12), Vector2(x - 20, gy - 4), Vector2(x + 8, gy - 4), Vector2(x + 10, gy - 12)]), c.darkened(0.3))
+	draw_rect(Rect2(x + 18, gy - 18, 12, 4), Color("2a3a4a"))
+	for wx in [-28, 20]:
+		draw_rect(Rect2(x + wx, gy - 8, 2, 6), C_DARK)
+		draw_circle(Vector2(x + wx + 1, gy - 2), 2.5, C_DARK)
+	for k in 3:
+		draw_rect(Rect2(x - 52 - k * 10 - randf() * 6, gy - 13 + k, 8, 3), Color("ffd23a", 0.6 - k * 0.15))
