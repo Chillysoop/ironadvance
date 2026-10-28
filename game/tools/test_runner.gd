@@ -749,6 +749,8 @@ func run() -> void:
 			await soldat6()
 		"drill":
 			await drill()
+		"jumppack":
+			await jumppack()
 		"draft":
 			await draft_test()
 		"bolt":
@@ -2588,6 +2590,47 @@ func play_drill(b: Battle, u: Unit, p: Vector2, stop_after := -1.0) -> void:
 		b.stop_drill()
 	await until(func(): return not b.busy, 1200)
 	await frames_wait(4)
+
+func jumppack() -> void:
+	## A Jump Pack always flies the whole arc it previews, even when it pauses at the top for a shot.
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	b.autopick = 0
+	var s: Unit = b.squad()[0]
+	var x := 900.0
+	while not flat_open(b, x, 260) and x < b.world_w - 600:
+		x += 20
+	for o in b.units:
+		if o != s and (o.team == "enemy" or o.kind != "soldier") and absf(o.x - x - 130) < 500:
+			o.gone = true
+	for o in b.squad():
+		if o != s:
+			ground_unit(b, o, x - 200, 0)
+	cam_on(b, x + 130)
+	var lands := []
+	for hang in [false, true]:
+		ground_unit(b, s, x, 0)
+		await until(func(): return b.settled(), 300)
+		s.move_left = 0  # a jump doesn't spend movement, so running out mustn't cut it short
+		s.hand = s.hand.filter(func(h): return not Data.is_attack(Data.card(h)))
+		if hang:
+			force_card(s, "rifle")
+		s.energy = 6
+		var ji := force_card(s, "jumppack")
+		var tgt := Vector2(s.x + 220, s.y - 40)
+		var v := b.jump_vel(s, tgt, Data.card(s.hand[ji]).get("jpow", 1.0))
+		var sim := b.sim_arc(s.x, s.y - s.h / 2.0, v.vx, v.vy, 0, 200)
+		await b.resolve(func(): await b._act_jump(s, ji, tgt))
+		if hang:
+			check(s.hang, "with a gun in hand the jump pauses at the top for a shot")
+			b.world_click(Vector2(s.x, s.y + 160))
+			await until(func(): return not s.air, 300)
+		await until(func(): return b.settled(), 300)
+		lands.append(s.x)
+		check(absf(s.x - sim.x) < 14, "%s: lands where the preview ends (%.0f vs preview %.0f, took off at %.0f)" % ["paused at the top" if hang else "straight jump", s.x, sim.x, x])
+	check(absf(lands[0] - lands[1]) < 6, "pausing for a shot doesn't shorten the jump (%.0f vs %.0f)" % lands)
 
 func drill() -> void:
 	## The Drill card: in every starting deck, bores through dirt, stone and steel, spends movement,
