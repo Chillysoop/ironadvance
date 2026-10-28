@@ -82,6 +82,8 @@ const CARDS := {
 	"sa_chainsaw": {"name": "Chainsaw", "type": "MELEE", "cost": 1, "dmg": [11, 13], "range": 40, "knock": 1.5, "sidearm": true, "pool": false, "text": "SIDEARM: once a turn. Chews in deep and barely knocks them back.", "rarity": 2},
 	"sa_law": {"name": "LAW", "type": "LINE", "cost": 0, "radius": 34, "dmg": 14, "speed": 11.0, "sidearm": true, "law": true, "pool": false, "text": "SIDEARM: one free rocket. Comes back at the next camp.", "rarity": 2},
 	# O2: the Rambo Bow, a fresh arrow every turn for whoever took it off the elite bowman
+	"vomit": {"name": "Zombie Vomit", "type": "LINE", "cost": 0, "radius": 60, "dmg": 22, "speed": 9.0, "pool": false, "text": "ZOMBIE: a huge gout of vomit straight at the cursor. Blast 60.", "rarity": 3},
+	"monkeyclimb": {"name": "Monkey Climb", "type": "LINE", "cost": 0, "grapple": true, "range": 400, "pool": false, "text": "MONKEY: scale any wall or roof in reach.", "rarity": 2},
 	"rambobow": {"name": "Rambo Bow", "type": "ARC", "cost": 1, "radius": 46, "dmg": 14, "wind": 0.4, "bow": true, "pool": false, "text": "An explosive arrow that bursts on impact. A fresh one every turn this level. Every Jackal hunts the archer.", "rarity": 3},
 	# B6: the free card a soldier gets standing at a mounted M2
 	"mounted": {"name": "Mounted M2", "type": "AIM", "cost": 0, "dmg": [3, 4], "shots": 6, "range": FULL_RANGE, "gun": "mg", "bounce": 0, "sway": 0.02, "spread": 0.05, "mounted": true, "pool": false, "text": "Free while you stand at the gun. Six heavy rounds, no kick. Once a turn.", "rarity": 2},
@@ -293,6 +295,8 @@ const STATUS := {
 	"cloak": {"name": "PREDATOR", "short": "PRED", "c": Color("b48cff"), "text": "Can't be targeted, and bullets pass through, until it attacks."},
 	"flamegod": {"name": "FLAMEGOD", "short": "FLAME", "c": Color("ff9a3d"), "text": "Takes no damage. Its bullets set what they hit on fire."},
 	"vest": {"name": "VEST", "short": "VEST", "c": Color("9fb4c9"), "text": "Takes half damage."},
+	"fat": {"name": "FAT", "short": "FAT", "c": Color("ffb070"), "text": "+10 HP and 50% bigger blasts."},
+	"zombie": {"name": "ZOMBIE", "short": "ZOMB", "c": Color("9df25c"), "text": "Can't go down."},
 	"roll": {"name": "ROLLING", "short": "ROLL", "c": Color("e8dcc2"), "text": "The next Jackal shot at it goes over its head."},
 	"cluster": {"name": "CLUSTER", "short": "CLUS", "c": Color("ffd23a"), "text": "Its next grenades burst into bomblets (counts grenades, not turns)."},
 	"nades": {"name": "GRENADE KIT", "short": "NADE", "c": Color("8fbf4a"), "text": "Throws a grenade on its next attack."},
@@ -307,6 +311,10 @@ const BONUSES := {
 	"medkit": {"name": "MEDKIT", "glyph": "+", "c": Color("62d26f"), "text": "Heals 15 at once."},
 	"cluster": {"name": "CLUSTER", "glyph": "C", "c": Color("ffd23a"), "text": "Your next 2 grenades burst into bouncing bomblets."},
 	"nadekit": {"name": "GRENADE KIT", "glyph": "G", "c": Color("8fbf4a"), "text": "Two Frag Grenades that stay in hand until thrown. A Jackal throws one on its next move."},
+	# R6: Metal Slug transformations. All upside for a soldier; a Jackal only gets the Fat HP
+	"fat": {"name": "FAT", "glyph": "F", "c": Color("ffb070"), "text": "+10 HP and 50% bigger blasts for this turn and the next."},
+	"zombie": {"name": "ZOMBIE", "glyph": "Z", "c": Color("9df25c"), "text": "Two huge Zombie Vomit cards, and you can't go down for this turn and the next."},
+	"monkey": {"name": "MONKEY", "glyph": "M", "c": Color("c9a26a"), "text": "Two free Monkey Climbs: scale any wall or roof in reach. They stay until used."},
 }
 const BONUS_TURNS := 2
 const PAD_FIRST := [1, 2]   # rounds until each pad's first bonus (pads take turns)
@@ -1062,6 +1070,35 @@ const STOPS := {
 }
 
 # Camp choices: every camp revives the downed and heals a little, then the squad picks one of these.
+# R2-R4: one mid-level event per quick-run level, announced on the briefing
+const EVENTS := {
+	"fireteam": {"name": "ALLIED FIRE TEAM", "text": "Two friendly riflemen are pinned down in the first stretch. Reach them and they fight beside you until the next camp."},
+	"collapse": {"name": "COLLAPSE RUN", "text": "The second stretch crumbles behind you, 120px every round. The edge is marked. Push or fall."},
+	"dealer": {"name": "ARMS DEALER", "text": "A trader holds out in a bunker at the end of the first stretch: three items, fixed prices. Walk up to trade."},
+}
+const CRUMBLE_STEP := 120.0
+const DEALER_MUL := 0.75  # the dealer's prices against the Quartermaster's
+
+# R5: the bounty board. Three per level, fixed rewards paid on the debrief
+const BOUNTIES := [
+	{"id": "nofall", "name": "SURE FOOTED", "text": "Nobody in the squad takes fall damage.", "pay": 30},
+	{"id": "nodown", "name": "NOBODY DOWN", "text": "No soldier goes down.", "pay": 40},
+	{"id": "sniperfirst", "name": "COUNTER-SNIPE", "text": "The first Jackal you kill is a Sniper.", "pay": 35},
+	{"id": "crush2", "name": "TIMBER", "text": "Crush 2 Jackals under falling terrain.", "pay": 35},
+	{"id": "pows", "name": "NO ONE LEFT BEHIND", "text": "Free every POW.", "pay": 30},
+	{"id": "push3", "name": "FORWARD", "text": "Make 3 aggressive pushes.", "pay": 30},
+	{"id": "fast", "name": "BLITZ", "text": "Beat the level in 18 rounds or fewer.", "pay": 40},
+	{"id": "melee3", "name": "UP CLOSE", "text": "Kill 3 enemies with melee.", "pay": 30},
+]
+
+# D3: fun toggles, unlocked by Armory feats and switched on at the Memorial. Nothing gets harder
+const TOGGLES := [
+	{"id": "bigheads", "short": "Huge heads.", "name": "BIG HEADS", "feat": "skeet", "text": "Everyone's head is huge."},
+	{"id": "moon", "short": "Half gravity.", "name": "MOON GRAVITY", "feat": "timber", "text": "Half gravity: jumps, throws and knockback carry twice as far."},
+	{"id": "nades", "short": "Every kill drops a frag.", "name": "GRENADE RAIN", "feat": "pyro", "text": "Every Jackal drops a Frag Grenade when it dies."},
+	{"id": "bouncy", "short": "Bodies bounce.", "name": "BOUNCY BODIES", "feat": "pinball", "text": "Bodies bounce."},
+]
+
 const CAMP_PICKS := [
 	{"id": "patch", "name": "PATCH UP", "text": "Everyone heals to full HP."},
 	{"id": "upgrade", "name": "FIELD UPGRADE", "text": "Each soldier picks one card to go up a rarity tier."},

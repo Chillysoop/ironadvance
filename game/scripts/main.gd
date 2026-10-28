@@ -129,6 +129,7 @@ func show_title() -> void:
 	s.buttons = [["CAMPAIGN", func(): show_slots(), "5 ACTS  COMPANY OF %d  SAVED" % Data.COMPANY_MAX],
 		["QUICK RUN", func(): show_draft() if Run.class_keys().size() > 4 else start_run(), "%d LEVELS AND A FINALE" % Data.LEVELS.size()],
 		["TRAINING", func(): start_training(), "OPTIONAL  LEARN THE BASICS", Color("9aa2ae") if Run.meta.get("trained", false) else Color("ffb23e")]]
+	s.corner = ["DAILY OP", func(): start_daily()]  # D2
 	var tmax := mini(int(Run.meta.threat_max), Data.THREATS.size())
 	if tmax > 0:
 		# W5: every campaign win opens the next threat level
@@ -148,7 +149,14 @@ func show_draft() -> void:
 
 func start_run() -> void:
 	Run.leave_campaign()
+	Run.daily = ""
 	Run.new_run()
+	show_hq(false)
+
+func start_daily() -> void:
+	## D2: today's seed, today's squad. The best score of the day is kept.
+	Run.leave_campaign()
+	Run.start_daily()
 	show_hq(false)
 
 # ---------------------------------------------------------------- campaign mode
@@ -355,6 +363,8 @@ func _on_mission_over(won: bool) -> void:
 	st["xp"] = xp
 	st["kills_by"] = kills
 	st["downed_by"] = downs
+	if won and not Run.campaign():
+		st["bounties"] = Run.pay_bounties(st)  # R5
 	Run.history.append(st)
 	clear()
 	var s := Screen.new()
@@ -376,6 +386,8 @@ func _on_mission_over(won: bool) -> void:
 		s.buttons = [["OPEN THE SPOILS", func(): show_spoils([3], true)]] if won else [["NEXT MISSION", func(): next_mission()]]
 		open(s)
 		return
+	if not won or Run.alive_count() == 0 or Run.is_final_mission():
+		Run.daily_over()
 	if not won or Run.alive_count() == 0:
 		s.mode = "lost"
 		s.buttons = [["NEW RUN", func(): start_run()], ["TITLE", func(): show_title()]]
@@ -434,9 +446,19 @@ class Screen extends Control:
 	var stats := {}
 	var buttons: Array = []
 	var unlock := ""
+	var corner: Array = []  # a small extra button in the top-left corner: [label, callable]
 	var t := 0
 	func _ready() -> void:
 		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		if corner.size():
+			var cb = load("res://scripts/hud.gd").PixButton.new()
+			cb.text = corner[0]
+			cb.small = true
+			cb.color = Color("53d4e2")
+			cb.size = Vector2(170, 28)
+			cb.position = Vector2(20, 18)
+			cb.pressed.connect(corner[1])
+			add_child(cb)
 		var n := buttons.size()
 		var widths: Array = []
 		var total := 0.0
@@ -581,6 +603,9 @@ class Screen extends Control:
 		draw_rect(Rect2(300, 112 + bob, 360, 3), Color("ffd23a"))
 		draw_rect(Rect2(300, 115 + bob, 360, 2), Color("b8401c"))
 		Art.text(self, "TURN-BASED RUN AND GUN", Vector2(480, 140), 16, Color("ffb070"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+		if corner.size():
+			var best := Run.daily_best()
+			Art.text(self, ("TODAY'S BEST %d" % best) if best > 0 else "SAME SQUAD AND MAPS ALL DAY", Vector2(105, 60), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 		var ver := FileAccess.get_file_as_string("res://version.txt").strip_edges()
 		Art.text(self, "BUILD " + (ver if ver != "" else "DEV"), Vector2(950, 530), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)
 		if t % 60 < 40:
@@ -621,6 +646,32 @@ class Screen extends Control:
 		draw_texture_rect(Art.tex.ic_coin, Rect2(410, y + 30, 10, 10), false)
 		Art.text(self, "%d SCRIP" % Run.scrip, Vector2(426, y + 40), 8, Color("ffd23a"))
 		squad_line(370, "idle")
+		draw_extras(m)  # over the squad, so no rifle pokes through the boards
+	func draw_extras(m: Dictionary) -> void:
+		## R2-R5: the level's event on the left, its bounty board on the right. D2: the daily tag.
+		if Run.daily != "":
+			Art.text(self, "DAILY OP  %s" % Run.daily, Vector2(480, 62), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+		if Data.EVENTS.has(m.get("event", "")):
+			var ev: Dictionary = Data.EVENTS[m.event]
+			draw_rect(Rect2(16, 296, 290, 150), Color(0.05, 0.035, 0.03, 0.8))
+			draw_rect(Rect2(16, 296, 290, 150), Color("ffb23e"), false, 1)
+			Art.text(self, "EVENT: " + ev.name, Vector2(28, 316), 8, Color("ffb23e"))
+			var y := 336.0
+			for line in CardView.wrap_text(ev.text, 266, 16):
+				Art.text(self, line, Vector2(28, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+				y += 16
+		var bs: Array = m.get("bounties", [])
+		if bs.size():
+			draw_rect(Rect2(654, 296, 290, 150), Color(0.05, 0.035, 0.03, 0.8))
+			draw_rect(Rect2(654, 296, 290, 150), Color("ffd23a"), false, 1)
+			Art.text(self, "BOUNTY BOARD", Vector2(666, 316), 8, Color("ffd23a"))
+			var y := 334.0
+			for id in bs:
+				var bt: Dictionary = Run.bounty(id)
+				Art.text(self, bt.name, Vector2(666, y), 8, Color.WHITE)
+				Art.text(self, "+%d$" % bt.pay, Vector2(932, y), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
+				Art.text(self, bt.text, Vector2(666, y + 15), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+				y += 36
 	func dial_card(i: int) -> Rect2:
 		## Where biome card i sits: two wide cards, or three narrower ones with Gate Control.
 		var n := Run.dial.size()
@@ -728,6 +779,8 @@ class Screen extends Control:
 			rows.append(["SALVAGE FOR HQ", str(stats.salvage)])
 		if stats.get("fallen", []).size():
 			rows.append(["KILLED IN ACTION", ", ".join(stats.fallen)])
+		for bt in stats.get("bounties", []):
+			rows.append(["BOUNTY " + bt[0], ("+%d$" % bt[1]) if bt[2] else "MISSED"])
 		if mode == "final" or mode == "lost":
 			rows.append(["RUN SCORE", str(Run.total_score)])
 		for i in rows.size():
