@@ -2,7 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer), track (N7 K9 Handler), vehicles (N3 Gears, R1 hijack, E6 Jackal Walker),
+## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer), track (N7 K9 Handler), vehicles (N3 Gears, R1 hijack, E6 Jackal Walker), branches5 (B1-B4 fifth branches),
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
@@ -755,6 +755,8 @@ func run() -> void:
 			await track_test()
 		"vehicles":
 			await vehicles_test()
+		"branches5":
+			await branches5_test()
 		"pickups":
 			await pickups()
 		"bossloot":
@@ -5841,6 +5843,143 @@ func vehicles_test() -> void:
 	check(b.units.any(func(o): return o.kind == "ride" and not o.gone and o.loot.type == "walker"), "it leaves a walker you can drive")
 	Run.meta = keep
 	Run.save_meta()
+
+func branches5_test() -> void:
+	## B1-B4: Wallbanger, Coordinator, Sapper and Wrestler, the fifth branch of each original.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var sq := {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	var x := 700.0
+	while not flat_open(b, x, 360) and x < b.world_w - 600:
+		x += 20
+	for o in b.units:
+		if o.team == "enemy" and absf(o.x - x - 150) < 600:
+			o.gone = true
+	var i := 0
+	for k in ["hex", "vee", "rook"]:
+		ground_unit(b, sq[k], x - 120 - i * 30, 0)
+		i += 1
+	cam_on(b, x + 120)
+	var mo: Unit = sq.moss
+	ground_unit(b, mo, x, 0)
+	var gy: float = mo.y
+	# B1: a dirt wall between Moss and a Jackal
+	b.build_cells(x + 100, gy - 60, 16, 60, 1)
+	var e := b.mk_enemy("grunt", x + 200, b.T.stand_y(x + 200, 0))
+	e.active = true
+	e.hp = 60; e.max_hp = 60
+	b.units.append(e)
+	var ri := force_card(mo, "rifle")
+	b.select_unit(mo); b.select_card(ri)
+	b.mouse = Vector2(e.x, e.y - 18)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(e.hp == 60, "without Punch Through the dirt wall stops the rifle (%d)" % e.hp)
+	mo.s.perks.append("softpoint")
+	mo.energy = 3
+	ri = force_card(mo, "rifle")
+	b.select_unit(mo); b.select_card(ri)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	await shot("b5_wallbanger")
+	check(e.hp < 60, "B1 Punch Through: the shot goes through the dirt wall (%d)" % e.hp)
+	# B2: Hand-Off passes the next card to a squadmate
+	var hx: Unit = sq.hex
+	var rk: Unit = sq.rook
+	ground_unit(b, rk, x - 40, 0)
+	ground_unit(b, hx, x - 70, 0)
+	hx.energy = 3
+	hx.hand = [Run.new_card("handoff"), Run.new_card("medkit")]
+	var rh := rk.hand.size()
+	b.select_unit(hx); b.select_card(0)
+	b.state = "player"; b.busy = false
+	b.play_on_target(rk)
+	await until(func(): return not b.busy, 1200)
+	check(rk.hand.size() == rh + 1 and rk.hand[-1].key == "medkit", "B2 Hand-Off: Rook gets Hex's Medkit")
+	hx.hand.append({"id": -9, "key": "synchronize", "tier": Data.OD_TIER, "temp": true})
+	b.sel = hx; b.state = "player"; b.busy = false
+	b.play_self(hx.hand.size() - 1)
+	await until(func(): return not b.busy, 1200)
+	var bz := force_card(rk, "burst")
+	check(b.card_cost(rk, rk.hand[bz]) == 0, "Synchronize: everyone's next card is free")
+	# B3: Sticky Charge sticks, Clacker blows it
+	var ve: Unit = sq.vee
+	ground_unit(b, ve, x - 100, 0)
+	var e2 := b.mk_enemy("grunt", x + 300, b.T.stand_y(x + 300, 0))
+	e2.active = true
+	e2.hp = 60; e2.max_hp = 60
+	b.units.append(e2)
+	var sk: Unit = b.plant_sticky(x + 290, b.T.stand_y(x + 290, 0), ve, 13, 34)
+	check(b.stickies.size() == 1 and sk.kind == "sticky", "B3: a Sticky Charge sits where it lands")
+	ve.energy = 3
+	var ci := force_card(ve, "clacker")
+	b.sel = ve; b.state = "player"; b.busy = false
+	b.play_self(ci)
+	await until(func(): return not b.busy, 1200)
+	check(sk.gone and e2.hp < 60, "Clacker sets it off (%d)" % e2.hp)
+	# and one under a Jackal's feet blows in their phase
+	var hp2 := e2.hp
+	var sk2: Unit = b.plant_sticky(e2.x + 60, b.T.stand_y(e2.x + 60, 0), ve, 13, 34)
+	await shot("b5_sticky")
+	e2.x = sk2.x
+	b.state = "enemy"
+	await frames_wait(3)
+	b.state = "player"
+	await until(func(): return b.settled(), 600)
+	check(sk2.gone and (e2.hp < hp2 or e2.dead), "a Jackal stepping on a charge sets it off (%d -> %d)" % [hp2, e2.hp])
+	# B4: Grab, carry, Body Throw
+	var e3 := b.mk_enemy("grunt", rk.x + 24, b.T.stand_y(rk.x + 24, 0))
+	e3.active = true
+	e3.hp = 60; e3.max_hp = 60
+	b.units.append(e3)
+	rk.energy = 3
+	rk.face = 1
+	var gi := force_card(rk, "grab")
+	b.select_unit(rk); b.select_card(gi)
+	b.state = "player"; b.busy = false
+	b.play_on_target(e3)
+	await until(func(): return not b.busy, 1200)
+	check(rk.held == e3, "B4 Grab: Rook is carrying the Jackal")
+	await frames_wait(6)
+	check(e3.y < rk.y - 20 and absf(e3.x - rk.x) < 12, "the Jackal rides on his shoulder")
+	await shot("b5_grab")
+	var ti := -1
+	for k in rk.hand.size():
+		if rk.hand[k].key == "bodythrow":
+			ti = k
+	check(ti >= 0, "Body Throw is in his hand")
+	check(b.chain_ready(rk, rk.hand[ti]) == "TAG OUT", "TAG OUT is ready")
+	var hp3 := e3.hp
+	b.select_unit(rk); b.select_card(ti)
+	b.mouse = Vector2(rk.x + 160, rk.y - 40)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1800)
+	check(rk.held == null and absf(e3.x - rk.x) > 60 and e3.hp < hp3, "Body Throw: he flies and lands hard (%d -> %d at %d)" % [hp3, e3.hp, e3.x - rk.x])
+	# Suplex
+	var e4 := b.mk_enemy("grunt", rk.x + 24, b.T.stand_y(rk.x + 24, 0))
+	e4.active = true
+	e4.hp = 60; e4.max_hp = 60
+	b.units.append(e4)
+	rk.energy = 3
+	var si := force_card(rk, "suplex")
+	b.select_unit(rk); b.select_card(si)
+	b.play_on_target(e4)
+	await until(func(): return not b.busy, 1800)
+	check(e4.hp < 60 and e4.x < rk.x + 4, "Suplex: slammed down behind Rook (%d)" % e4.hp)
+	# a Brute is too heavy without Titan
+	var br := b.mk_enemy("brute", rk.x - 24, b.T.stand_y(rk.x - 24, 0))
+	br.active = true
+	b.units.append(br)
+	check(not b.can_grab(rk, br), "a Brute is too heavy to grab")
+	rk.s.perks.append("titan")
+	check(b.can_grab(rk, br), "Titan: now he can")
+	check(Data.BRANCHES.moss.size() == 5 and Data.BRANCHES.rook.size() == 5, "each original has a fifth branch")
 
 func count_cells(b: Battle, x: float, y: float, w: float, h: float) -> int:
 	var n := 0
