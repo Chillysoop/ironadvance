@@ -17,6 +17,7 @@ const JET_THRUST := 0.42 # Jet Boots: push per tick toward the cursor, plus a li
 const JET_LIFT := 0.12
 const JET_MAX_VX := 4.5
 const JET_MAX_VY := 5.0
+const Services := preload("res://scripts/services.gd")
 
 var T: Terrain
 var units: Array = []
@@ -1575,6 +1576,21 @@ func kill(tg: Unit, src) -> void:
 			card_idx = -1
 	ui_dirty = true
 
+func upgrade_choices(s: Dictionary) -> Array:
+	## One of each upgradable card (same card, rarity and mods count once), cheapest first.
+	var seen := {}
+	var out: Array = []
+	for c in s.deck:
+		if not Run.upgradable(c) or Services.is_od(c):
+			continue
+		var k := "%s:%d:%s" % [c.key, Data.tier_of(c), ",".join(c.get("mods", []))]
+		if seen.has(k):
+			continue
+		seen[k] = true
+		out.append(c)
+	out.sort_custom(func(a, b): return int(Data.card(a).cost) < int(Data.card(b).cost) or (int(Data.card(a).cost) == int(Data.card(b).cost) and Data.card(a).name < Data.card(b).name))
+	return out
+
 func credit_card(src) -> void:
 	## D4: the card that made the kill keeps count for the run. Ten kills earn it a nickname.
 	if not (src is Unit) or src != act_unit or act_inst == null or state != "player" or act_inst.get("temp", false) or act_inst.get("od", false):
@@ -3100,12 +3116,18 @@ func camp_pick(c: Dictionary) -> void:
 				s.hp = s.max_hp
 			Sfx.play("power")
 		"upgrade":
+			# each soldier picks the card; the grid shows every card already one rarity up
 			for s in squad_alive():
-				var cands: Array = s.s.deck.filter(func(cd): return Run.upgradable(cd))
-				if cands.size():
-					var cd: Dictionary = pick(cands)
-					Run.raise_tier(cd)
-					float_text(s, Data.card(cd).name.to_upper(), Color("b48cff"))
+				var cands := upgrade_choices(s.s)
+				if cands.is_empty():
+					continue
+				var shown: Array = cands.map(func(cd): return Services.next_tier(cd))
+				var k := await ask("camp_up", "%s: FIELD UPGRADE" % s.def.name, "Pick one card to go up a rarity. Shown as it will be.", shown, s)
+				if k < 0:
+					continue
+				var cd: Dictionary = cands[k]
+				Run.raise_tier(cd)
+				float_text(s, Data.card(cd).name.to_upper(), Color("b48cff"))
 			Sfx.play("levelup")
 		"cache":
 			give_scrip(60, c.fire, T.ground_at(c.fire) - 40)
@@ -3408,6 +3430,8 @@ func ask(kind: String, title: String, sub: String, opts: Array, who = null) -> i
 	## Shows a pick-one modal on the HUD and waits for the answer (-1 = skip).
 	if autopick >= 0 or hud == null:
 		return mini(autopick if autopick >= 0 else 0, opts.size() - 1)
+	if kind == "camp_up":
+		return await hud.pick_grid(kind, title, sub, opts, who)
 	return await hud.pick(kind, title, sub, opts, who)
 
 func supply_drop(title: String, for_unit) -> void:
@@ -3418,14 +3442,27 @@ func supply_drop(title: String, for_unit) -> void:
 	pool.shuffle()
 	var opts: Array = []
 	for i in 3:
-		var u: Unit = for_unit if for_unit != null else pick(alive)
+		var o: Dictionary
 		if i == 2 and randf() < 0.35:
 			var it := Run.roll_item()
-			opts.append(Run.item_opt(it, "").merged({"u": u}))
+			o = Run.item_opt(it, "")
 		else:
-			opts.append({"kind": "card", "key": pool[i], "tier": Run.roll_card_tier(pool[i]), "u": u})
-	var sub := ("%s freed them. Pick one card for %s's deck." % [for_unit.def.name, for_unit.def.name]) if for_unit != null else "Pick one card. It goes into that soldier's draw pile."
+			o = {"kind": "card", "key": pool[i], "tier": Run.roll_card_tier(pool[i])}
+		if for_unit != null:
+			o["u"] = for_unit
+		opts.append(o)
+	var sub := ("%s freed them. Pick one card for %s's deck." % [for_unit.def.name, for_unit.def.name]) if for_unit != null else "Pick one, then pick who gets it."
 	var ch := await ask("supply", title, sub, opts)
+	if ch >= 0 and not opts[ch].has("u"):
+		# you choose who gets it, never the dice
+		var o0: Dictionary = opts[ch]
+		var who_opts: Array = alive.map(func(s): return o0.merged({"u": s}))
+		var thing: String = Data.item_name(o0.item) if o0.kind == "item" else Data.card(o0).name
+		var w := await ask("supply_who", "WHO GETS %s?" % thing.to_upper(), "It goes into that soldier's draw pile." if o0.kind == "card" else "They get the chance to equip it.", who_opts)
+		if w < 0:
+			ch = -1  # skipping the second pick passes on the drop, like skipping the first
+		else:
+			opts[ch] = who_opts[w]
 	if ch >= 0 and opts[ch].kind == "item":
 		await offer_item(opts[ch].u, opts[ch].item)
 	elif ch >= 0:

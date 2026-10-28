@@ -724,6 +724,8 @@ func run() -> void:
 			await hub()
 		"field":
 			await field()
+		"picks":
+			await picks()
 		"aliens":
 			await aliens()
 		"aliens2":
@@ -932,6 +934,68 @@ func dossier() -> void:
 	await frames_wait(6)
 	check(not ro.get_children().any(func(o): return o.get_script() != null and o.get("why") != null), "a read-only Dossier shows no service buttons")
 	ro.queue_free()
+
+func modal_title(b: Battle) -> String:
+	for c in b.hud.modal.get_children():
+		if c is HudScript.ModalBG and not c.is_queued_for_deletion():
+			return c.title
+	return ""
+
+func picks() -> void:
+	## No dice in deckbuilding: supply drops ask who gets the card, and the camp Field Upgrade
+	## lets each soldier pick the card.
+	Run.new_run()
+	var lvl := {"name": "PICK YARD", "theme": "dusk", "segments": ["start", "towers", "camp", "arena"],
+		"boss_hp": 120, "plate": 36, "hp_mul": 1.0, "brief": "", "rules": {"pads": 0}}
+	var b: Battle = main.start_battle(0, lvl)
+	await until(func(): return b.state == "player" and not b.busy)
+	var sq: Array = b.squad()
+	# --- supply drop
+	var n2: int = sq[2].s.deck.size()
+	var others: Array = [0, 1, 3].map(func(k): return sq[k].s.deck.size())
+	b.supply_drop.call("Supply drop", null)
+	await frames_wait(10)
+	await shot("picks_supply")
+	check(modal_title(b) == "Supply drop", "the drop shows its three picks first")
+	b.hud.picked.emit(0)
+	await frames_wait(10)
+	await shot("picks_supply_who")
+	var who: Array = b.hud.modal.get_children().filter(func(c): return c is CardView and not c.is_queued_for_deletion())
+	check(modal_title(b).begins_with("WHO GETS") and who.size() == sq.size(), "then asks who gets it (%s, %d soldiers)" % [modal_title(b), who.size()])
+	check(who[2].label_top == "TO " + sq[2].def.name, "each copy is labelled with its soldier (%s)" % who[2].label_top)
+	b.hud.picked.emit(2)
+	await frames_wait(10)
+	check(sq[2].s.deck.size() == n2 + 1 and [0, 1, 3].map(func(k): return sq[k].s.deck.size()) == others, "the card goes to the soldier you picked and nobody else")
+	check(sq[2].s.deck[-1].get("from", "") == "drop", "it is marked as a supply drop card")
+	# --- camp Field Upgrade
+	var c: Dictionary = b.T.camps[0]
+	var me: Dictionary = sq[0].s
+	var cands: Array = b.upgrade_choices(me)
+	var target: Dictionary = cands[1]
+	var t0 := Data.tier_of(target)
+	var snap: Array = sq.map(func(u): return u.s.deck.map(func(cd): return Data.tier_of(cd)))
+	b.camp_pick.call(c)
+	await frames_wait(10)
+	b.hud.picked.emit(1)  # FIELD UPGRADE
+	await frames_wait(10)
+	await shot("picks_camp_grid")
+	var grid: Array = b.hud.modal.get_children().filter(func(o): return o is CardView and not o.is_queued_for_deletion())
+	check(modal_title(b).contains("FIELD UPGRADE") and grid.size() == cands.size(), "Field Upgrade shows %s's upgradable cards (%d)" % [me.def.name, grid.size()])
+	check(Data.tier_of(grid[1].opt) == t0 + 1, "each card is shown one rarity up")
+	b.hud.picked.emit(1)
+	await frames_wait(10)
+	check(Data.tier_of(target) == t0 + 1, "the card you picked goes up a rarity")
+	for k in range(1, sq.size()):
+		check(modal_title(b).begins_with(sq[k].def.name), "then %s picks" % sq[k].def.name)
+		b.hud.picked.emit(-1)
+		await frames_wait(10)
+	check(range(1, sq.size()).all(func(k): return sq[k].s.deck.map(func(cd): return Data.tier_of(cd)) == snap[k]), "a skipped soldier's deck is untouched")
+	var mine: Array = me.deck.map(func(cd): return Data.tier_of(cd))
+	var diff := 0
+	for k in mine.size():
+		if mine[k] != snap[0][k]:
+			diff += 1
+	check(diff == 1, "exactly one of %s's cards changed" % me.def.name)
 
 func field() -> void:
 	## PR 3 of the HQ hub: the gate loadout line (H5), all decks at once (D3), the Dossier
