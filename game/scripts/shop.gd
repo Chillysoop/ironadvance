@@ -202,12 +202,15 @@ func build_barracks() -> void:
 	var tp := price(Data.TAG_PRICE)
 	var short_tags: Array = Run.soldiers.filter(func(s): return s.alive and s.tags < Data.DOG_TAGS)
 	var tags_line := ", ".join(short_tags.map(func(s): return "%s has %d" % [s.def.name, s.tags])) if short_tags.size() else "Everyone has both"
+	var trainee: Array = Run.soldiers.filter(func(s): return s.alive and s.get("train", false))
 	var tiles := [
 		["RECRUIT", rp, "Hire a replacement for a soldier killed in action. Pick from %d recruits." % (3 if Run.hq("barracks") >= 1 else 2), recruit,
 			"Nobody has fallen. The squad is at full strength." if fallen.is_empty() else Services.short(rp), not fallen.is_empty() and Run.scrip >= rp],
 		["DOG TAG", tp, "Give a soldier back one spent dog tag. %s." % tags_line, restore_tag,
 			"Everyone still has both dog tags." if short_tags.is_empty() else Services.short(tp), short_tags.size() > 0 and Run.scrip >= tp],
 	]
+	if trainee.size():
+		tiles.append(["TRAINING", 0, "%s's free level from Barracks 2. Pick it like a level-up." % trainee[0].def.name, func(): train(trainee[0]), "", true])
 	for i in tiles.size():
 		var sv: Array = tiles[i]
 		var tile := HubUI.ActionTile.new()
@@ -448,7 +451,10 @@ func recruit() -> void:
 	var offers := Run.recruit_offers()
 	var opts: Array = offers.map(func(o):
 		var d: Dictionary = Data.SQUAD_DEFS.filter(func(x): return x.key == o.key)[0]
-		var txt := "%s. %s: %s" % [d.cls, o.trait.name, o.trait.text]
+		var tt: String = o.trait.text
+		if o.trait.id == "drilled" and o.drill_card != "":
+			tt = "Starts with %s one rarity up." % Data.CARDS[o.drill_card].name
+		var txt := "%s. %s: %s" % [d.cls, o.trait.name, tt]
 		if not o.legacy.is_empty():
 			txt += " Legacy from %s: %s." % [o.legacy.from, Data.perk(o.key, o.legacy.id).name]
 		return {"kind": "service", "name": o.name, "text": txt, "icon": "ic_heart"})
@@ -457,6 +463,20 @@ func recruit() -> void:
 		return
 	var s := Run.hire(slots[0], offers[i])
 	say("%s joins the squad as a %s." % [s.def.name, s.def.cls])
+	build()
+	if s.get("train", false):
+		await train(s)
+
+func train(s: Dictionary) -> void:
+	## Barracks 2: the recruit's free level, picked like a level-up.
+	var opts := Run.level_options(s)
+	var i := await choose("%s'S TRAINING: PICK ONE" % s.def.name, opts, Vector2(132, 176))
+	if i < 0:
+		say("%s's training waits here at the Barracks." % s.def.name)
+		build()
+		return
+	s.erase("train")
+	say(Run.apply_option(s, opts[i]))
 	build()
 
 func restore_tag() -> void:

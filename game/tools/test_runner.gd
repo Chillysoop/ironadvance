@@ -726,6 +726,8 @@ func run() -> void:
 			await field()
 		"picks":
 			await picks()
+		"recruits":
+			await recruits()
 		"aliens":
 			await aliens()
 		"aliens2":
@@ -934,6 +936,71 @@ func dossier() -> void:
 	await frames_wait(6)
 	check(not ro.get_children().any(func(o): return o.get_script() != null and o.get("why") != null), "a read-only Dossier shows no service buttons")
 	ro.queue_free()
+
+func recruits() -> void:
+	## Recruit rules: never a second soldier of a living class, Drilled names its card up front,
+	## and the Barracks 2 free level is a pick, not a roll.
+	Run.new_run()
+	var hq0: Dictionary = Run.meta.get("hq", {}).duplicate()
+	Run.meta["hq"] = {}
+	Run.soldiers[0].alive = false  # Moss
+	for k in 20:
+		var offers := Run.recruit_offers(3)
+		var keys: Array = offers.map(func(o): return o.key)
+		if keys[0] != "moss" or keys.any(func(x): return x in ["hex", "vee", "rook"]):
+			check(false, "offers only the fallen class when every other class is alive (%s)" % str(keys))
+			break
+	check(true, "with three alive, every offer is the fallen soldier's class")
+	Run.soldiers[1].alive = false  # Hex too
+	var seen := {}
+	for k in 20:
+		for o in Run.recruit_offers(3):
+			seen[o.key] = true
+	check(Run.recruit_offers(3)[0].key == "moss", "the first fallen soldier's class comes first")
+	check(seen.keys().all(func(x): return x in ["moss", "hex"]), "offers never repeat a living class (%s)" % str(seen.keys()))
+	# Drilled names its card, and that card is the one raised
+	var off: Dictionary = Run.recruit_offers(1)[0]
+	off.trait = Data.RECRUIT_TRAITS.filter(func(t): return t.id == "drilled")[0]
+	check(off.drill_card != "", "a recruit offer names the card Drilled raises (%s)" % off.drill_card)
+	var rec := Run.hire(0, off)
+	var up: Array = rec.deck.filter(func(c): return Data.tier_of(c) > Data.base_tier(c.key))
+	check(up.size() == 1 and up[0].key == off.drill_card, "Drilled raises exactly that card")
+	# Barracks 2: the free level waits for a pick
+	Run.meta["hq"] = {"barracks": 2}
+	Run.scrip = 999
+	main.show_hq(false)
+	await frames_wait(10)
+	main.screen.open_shop("barracks")
+	await frames_wait(10)
+	var sh: Control = main.screen.sub
+	sh.recruit()
+	await frames_wait(10)
+	await shot("recruits_offers")
+	check(sh.chooser != null, "the Barracks shows the recruit offers")
+	var cards: Array = sh.chooser.get_children().filter(func(c): return c is CardView)
+	check(cards.size() == 3 and cards.all(func(c): return c.opt.name != ""), "3 offers to pick from")
+	sh.chosen.emit(0)
+	await frames_wait(10)
+	var hired: Dictionary = Run.soldiers[1]
+	check(hired.alive and hired.lvl == 2 and hired.get("train", false), "Barracks 2: the recruit arrives at level 2 with a training pick waiting")
+	await shot("recruits_training")
+	check(sh.chooser != null, "the training pick opens right away")
+	var deck0: int = hired.deck.size()
+	var bonus0: Dictionary = hired.bonus.duplicate()
+	var perks0: int = hired.perks.size()
+	sh.chosen.emit(-1)
+	await frames_wait(10)
+	check(hired.get("train", false), "cancelling keeps the training for later")
+	check(main.screen.badges().get("barracks", "") == "TRAINING", "the HQ flags the Barracks while training waits")
+	var tiles: Array = sh.get_children().filter(func(c): return c is HubUI.ActionTile and c.title == "TRAINING")
+	check(tiles.size() == 1, "the Barracks has a TRAINING tile")
+	await shot("recruits_tile")
+	tiles[0].pressed.emit()
+	await frames_wait(10)
+	sh.chosen.emit(0)
+	await frames_wait(10)
+	check(not hired.has("train") and (hired.deck.size() != deck0 or hired.bonus != bonus0 or hired.perks.size() != perks0), "the picked option is applied once")
+	Run.meta["hq"] = hq0
 
 func modal_title(b: Battle) -> String:
 	for c in b.hud.modal.get_children():

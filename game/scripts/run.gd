@@ -333,6 +333,8 @@ func operate(id: String, cls: String) -> bool:
 	return true
 
 func recruit_offers(n := -1) -> Array:
+	## Recruits for the first fallen slot: the fallen soldier's class first, then classes nobody
+	## alive has, so the squad never holds two of one class.
 	if n < 0:
 		n = 3 if hq("barracks") >= 1 else 2
 	var used: Array = soldiers.filter(func(s): return s.alive).map(func(s): return s.def.name)
@@ -340,13 +342,31 @@ func recruit_offers(n := -1) -> Array:
 	names.shuffle()
 	var traits: Array = Data.RECRUIT_TRAITS.duplicate()
 	traits.shuffle()
-	var defs: Array = Data.SQUAD_DEFS.duplicate()
-	defs.shuffle()
+	var keys := recruit_classes()
 	var out: Array = []
 	for i in n:
-		var d: Dictionary = defs[i % defs.size()]
-		out.append({"key": d.key, "name": names[i], "trait": traits[i % traits.size()], "legacy": legacy_perk(d.key), "look": Art.random_look()})
+		var key: String = keys[i % keys.size()]
+		out.append({"key": key, "name": names[i], "trait": traits[i % traits.size()], "legacy": legacy_perk(key), "look": Art.random_look(), "drill_card": drilled_card(key)})
 	return out
+
+func recruit_classes() -> Array:
+	var held: Array = soldiers.filter(func(s): return s.alive).map(func(s): return s.key)
+	var slots := fallen_slots()
+	var first: String = soldiers[slots[0]].key if slots.size() else ""
+	var others: Array = Data.SQUAD_DEFS.map(func(d): return d.key).filter(func(k): return k != first and not held.has(k))
+	others.shuffle()
+	var out: Array = ([first] if first != "" and not held.has(first) else []) + others
+	return out if out.size() else Data.SQUAD_DEFS.map(func(d): return d.key)
+
+func drilled_card(key: String) -> String:
+	## The starting card a Drilled recruit of this class gets one rarity up: the strongest
+	## (highest cost) upgradable card in the starting deck.
+	var d: Dictionary = Data.SQUAD_DEFS.filter(func(x): return x.key == key)[0]
+	var best := ""
+	for k in d.deck:
+		if upgradable(new_card(k)) and (best == "" or int(Data.CARDS[k].cost) > int(Data.CARDS[best].cost)):
+			best = k
+	return best
 
 func hire(slot: int, o: Dictionary) -> Dictionary:
 	## Puts a recruit into a fallen soldier's slot.
@@ -362,18 +382,17 @@ func hire(slot: int, o: Dictionary) -> Dictionary:
 			s.hp += 5
 		"slippery": s.bonus.dodge += 6
 		"drilled":
-			var cands: Array = s.deck.filter(func(c): return upgradable(c))
+			var dk: String = o.get("drill_card", drilled_card(o.key))
+			var cands: Array = s.deck.filter(func(c): return c.key == dk and upgradable(c))
 			if cands.size():
 				raise_tier(cands[0])
 	if not o.legacy.is_empty():
 		s.perks.append(o.legacy.id)
 	if hq("barracks") >= 2:
-		# Barracks 2: a recruit shows up with one level of training already applied
+		# Barracks 2: a recruit shows up at level 2 with one training pick waiting at the Barracks
 		s.xp = xp_for_next(s)
 		s.lvl = 2
-		var lo := level_options(s)
-		if lo.size():
-			apply_option(s, lo[0])
+		s["train"] = true
 	soldiers[slot] = s
 	return s
 
