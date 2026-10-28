@@ -200,7 +200,7 @@ func _on_mission_over(won: bool) -> void:
 	var downs := {}
 	for u in battle.squad():
 		xp[u.def.key] = u.xp_gain
-		kills[u.def.key] = int(u.fl.get("kills", 0))
+		kills[u.def.key] = u.kills
 		downs[u.def.key] = u.downed or u.dead
 	st["xp"] = xp
 	st["kills_by"] = kills
@@ -437,10 +437,15 @@ class Screen extends Control:
 		Art.text(self, head, Vector2(480, 90), 16, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 		Art.text(self, m.name, Vector2(480, 130), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 		var y := 170.0
-		for line in CardView.wrap_text(m.brief, 620, 16):
+		var jb: String = m.get("job", "push")
+		var txt: String = m.brief if jb == "push" else Run.job_text(jb)
+		for line in CardView.wrap_text(txt, 620, 16):
 			Art.text(self, line, Vector2(480, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 			y += 16
-		Art.text(self, "IRON BOAR HP %d   ARMOR %d   JACKALS +%d%% HP" % [m.boss_hp, m.plate, roundi((m.hp_mul - 1) * 100)], Vector2(480, y + 14), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_CENTER)
+		if jb == "push":
+			Art.text(self, "IRON BOAR HP %d   ARMOR %d   JACKALS +%d%% HP" % [m.boss_hp, m.plate, roundi((m.hp_mul - 1) * 100)], Vector2(480, y + 14), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_CENTER)
+		else:
+			Art.text(self, "%s: %s   JACKALS +%d%% HP   PAYS +%d SCRIP" % [Data.JOBS[jb].name, Data.JOBS[jb].goal, roundi((m.hp_mul - 1) * 100), Data.JOB_PAY], Vector2(480, y + 14), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		if m.has("biome"):
 			var bm: Dictionary = Data.BIOMES[m.biome]
 			Art.text(self, "GOOD FOR %s   ROUGH ON %s" % [Data.STYLES[bm.favor], Data.STYLES[bm.rough]], Vector2(480, y - 2), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -577,6 +582,8 @@ class Screen extends Control:
 				line = "%s IS YOURS. IT PAYS AFTER EVERY OP FROM NOW ON." % op.took
 		Art.text(self, title, Vector2(480, 96), 32, Color("62d26f") if mode == "op_won" else Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 		Art.text(self, line, Vector2(480, 124), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		if mode == "op_won" and stats.has("job_note"):
+			Art.text(self, "JOB DONE: +%d SCRIP. %s" % [int(stats.get("job_pay", 0)), str(stats.job_note).to_upper()], Vector2(480, 140), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 		var rows := [["SCORE", str(stats.get("score", 0))], ["KILLS", str(stats.get("kills", 0))], ["POWS FREED", str(stats.get("pows", 0))], ["ROUNDS", str(stats.get("rounds", 0))], ["SCRIP EARNED", str(stats.get("scrip", 0))]]
 		if int(stats.get("salvage", 0)) > 0:
 			rows.append(["SALVAGE FOR HQ", str(stats.salvage)])

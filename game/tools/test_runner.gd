@@ -2,7 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## warmap, company (campaign mode),
+## warmap, company, ops (campaign mode),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -772,6 +772,8 @@ func run() -> void:
 			await warmap()
 		"company":
 			await company()
+		"ops":
+			await ops()
 		"aliens6":
 			await aliens6()
 		"aliens7":
@@ -4307,6 +4309,187 @@ func company() -> void:
 	Run.delete_campaign(1)
 	Run.meta.salvage = keep.salvage
 	Run.meta.hq = keep.hq
+	Run.save_meta()
+
+func op_battle(job: String) -> Battle:
+	## A campaign op on Mudflat Landing with the given job, held at the first player turn.
+	var sc: Dictionary = Run.sector("d1").duplicate()
+	sc["job"] = job
+	Run.mission = int(Run.camp.ops)
+	Run.level = Run.make_op(sc)
+	var b: Battle = main.start_battle(0, Run.level)
+	b.mission_over.disconnect(main._on_mission_over)
+	b.mission_over.connect(func(w): b.set_meta("result", w), CONNECT_ONE_SHOT)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 16.0
+	return b
+
+func op_end(b: Battle) -> Variant:
+	## Runs the job check like the end of an action would and waits for the battle to finish.
+	await b.job_ends()
+	await until(func(): return b.has_meta("result"), 3000)
+	return b.get_meta("result") if b.has_meta("result") else null
+
+func ops() -> void:
+	## Campaign step 3: op jobs. Rescue, demolish, hold, escort and hunt each lay out their
+	## objective, show it on the HUD, finish the op when done, and pay their bonus.
+	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate(), "bio": Run.meta.get("bio", 0)}
+	Run.delete_campaign(2)
+	Run.new_campaign(2)
+	var jobs: Array = []
+	for a in Data.ACTS:
+		for sc in a.sectors:
+			if sc.has("job"):
+				jobs.append(sc.job)
+	for j in ["push", "rescue", "demolish", "hold", "escort", "hunt"]:
+		check(jobs.has(j), "some sector on the war map is a %s op" % j)
+	check(Run.op_job(Run.sector("boss")) == "push", "a stronghold is always a push")
+	check(Run.op_job(Run.sector("d2")) == "rescue" and Run.make_op(Run.sector("d2")).job == "rescue", "Rice Terraces is a rescue op")
+	var lv := Run.make_op(Run.sector("d2"))
+	var bm: Dictionary = Data.BIOMES["delta"]
+	check(lv.segments.size() == 6 and not lv.segments.has(bm.get("arena", "arena")), "a job op has no boss arena (%s)" % [lv.segments])
+	main.show_war_room()
+	await frames_wait(10)
+	main.screen.sel = "d2"
+	main.screen.build()
+	await frames_wait(10)
+	await shot("ops_room")
+	Run.start_op(Run.sector("d2"))
+	main.show_brief()
+	await frames_wait(20)
+	await shot("ops_brief")
+
+	# O2 rescue
+	var b := await op_battle("rescue")
+	var pows: Array = b.units.filter(func(p): return p.kind == "pow" and p.fl.get("job", false))
+	check(pows.size() == 3, "a rescue op holds three prisoners (%d)" % pows.size())
+	check(pows.all(func(p): return p.y != null and p.y < b.WATER_Y), "every prisoner stands on dry ground")
+	check(b.job_left().begins_with("RESCUE: 0 OF 3"), "the HUD tracks the prisoners (%s)" % b.job_left())
+	b.cam_x = clampf(pows[0].x - 300, 0, b.world_w - b.W)
+	b.cam_tx = b.cam_x
+	await frames_wait(20)
+	await shot("ops_rescue")
+	pows[0].freed = true
+	pows[1].freed = true
+	check(not b.job_done(), "two of three freed is not done")
+	var room := Run.roster.size()
+	pows[2].freed = true
+	var res = await op_end(b)
+	check(res == true, "freeing all three wins the op")
+	check(Run.roster.size() == room + 1, "one of the freed prisoners joins the company (%d -> %d)" % [room, Run.roster.size()])
+	check(int(b.stats.get("job_pay", 0)) == Data.JOB_PAY, "a finished job pays %d scrip" % Data.JOB_PAY)
+	main.clear()
+
+	# O3 demolish
+	b = await op_battle("demolish")
+	var dumps: Array = b.units.filter(func(d): return d.kind == "dump")
+	check(dumps.size() == 3 and dumps.all(func(d): return d.hp == Data.TARGET_HP), "a demolish op has three supply dumps")
+	var s0: Unit = b.squad_alive()[0]
+	b.damage(dumps[0], 10, s0, {"blast": true})
+	check(dumps[0].hp == Data.TARGET_HP - 20, "blasts hit a dump twice as hard (%d)" % dumps[0].hp)
+	b.damage(dumps[1], 10, s0)
+	check(dumps[1].hp == Data.TARGET_HP - 10, "bullets hit a dump normally")
+	b.cam_x = clampf(dumps[0].x - 300, 0, b.world_w - b.W)
+	b.cam_tx = b.cam_x
+	await frames_wait(20)
+	await shot("ops_demolish")
+	for d in dumps:
+		b.damage(d, 999, s0)
+	check(b.job_left() == "DEMOLISH: 3 OF 3 DUMPS DOWN", "the HUD counts dumps down (%s)" % b.job_left())
+	await until(func(): return b.booms.is_empty(), 300)
+	res = await op_end(b)
+	check(res == true, "destroying every dump wins the op")
+	main.clear()
+
+	# O4 hold
+	b = await op_battle("hold")
+	b.start_hold()
+	check(not b.job_st.on, "the hold waits until the squad reaches the far end")
+	for e in b.units:
+		if e.team == "enemy":
+			e.dead = true; e.gone = true
+	b.cam_x = b.world_w - b.W
+	b.cam_tx = b.cam_x
+	for s in b.squad_alive():
+		s.x = b.job_spot(b.world_w - 300.0); s.y = b.T.stand_y(s.x, b.T.ground_at(s.x) - 40)
+	b.start_hold()
+	check(b.job_st.on and int(b.job_st.left) == Data.HOLD_PHASES, "reaching the far end starts the hold")
+	await frames_wait(30)
+	var before := b.units.size()
+	b.hold_waves()
+	var wave: Array = b.units.slice(before)
+	check(wave.size() == 3 and wave.any(func(e): return e.x < b.cam_x + 100) and wave.any(func(e): return e.x > b.cam_x + b.W - 100), "each wave comes from both edges (%d)" % wave.size())
+	await frames_wait(20)
+	await shot("ops_hold")
+	for i in Data.HOLD_PHASES - 1:
+		await b.job_round()
+	check(not b.job_done() and int(b.job_st.left) == 1, "the hold counts down one per enemy phase")
+	await b.job_round()
+	res = await op_end(b)
+	check(res == true, "surviving the hold wins the op")
+	main.clear()
+
+	# O5 escort: blocked, then rolling, then home
+	b = await op_battle("escort")
+	var tr = b.truck()
+	check(tr != null and tr.hp == Data.TRUCK_HP, "an escort op has the truck")
+	var s1: Unit = b.squad_alive()[0]
+	check(b.unit_at_point(tr.x, tr.y - 10, s1, 200, {}) != tr, "the squad's rounds pass the truck")
+	for e in b.units:
+		if e.team == "enemy":
+			e.dead = true; e.gone = true
+	var x0: float = tr.x
+	var foe := b.mk_enemy("grunt", tr.x + 120, b.T.stand_y(tr.x + 120, b.T.ground_at(tr.x + 120) - 40))
+	foe.active = true
+	b.units.append(foe)
+	await b.job_round()
+	check(tr.x == x0, "a Jackal close ahead stops the truck")
+	foe.dead = true; foe.gone = true
+	await b.job_round()
+	check(tr.x > x0, "a clear road and it rolls on (%d -> %d)" % [int(x0), int(tr.x)])
+	await frames_wait(10)
+	await shot("ops_escort")
+	var n := 0
+	while tr.x < b.world_w - 150 and n < 120:
+		b.cam_x = clampf(tr.x - 200, 0, b.world_w - b.W)
+		b.cam_tx = b.cam_x
+		await b.job_round()
+		n += 1
+	check(tr.x >= b.world_w - 150, "the truck reaches the far end (%d of %d)" % [int(tr.x), b.world_w])
+	res = await op_end(b)
+	check(res == true, "getting the truck through wins the op")
+	main.clear()
+	b = await op_battle("escort")
+	tr = b.truck()
+	var hit := b.mk_enemy("grunt", tr.x + 40, tr.y)
+	b.damage(tr, 999, hit)
+	res = await op_end(b)
+	check(res == false, "losing the truck fails the op")
+	main.clear()
+
+	# O6 hunt
+	b = await op_battle("hunt")
+	var q: Array = b.units.filter(func(e): return e.fl.has("quarry"))
+	check(q.size() == 1 and q[0].elite != "" and q[0].x > b.world_w * 0.5, "a hunt op marks one elite deep in the sector")
+	check(b.job_left().begins_with("HUNT: "), "the HUD names the target (%s)" % b.job_left())
+	b.cam_x = clampf(q[0].x - 500, 0, b.world_w - b.W)
+	b.cam_tx = b.cam_x
+	q[0].active = true
+	await frames_wait(20)
+	await shot("ops_hunt")
+	b.damage(q[0], 9999, b.squad_alive()[0])
+	await until(func(): return b.settled(), 300)
+	res = await op_end(b)
+	check(res == true, "killing the target wins the op")
+	check(str(b.stats.get("job_note", "")).contains("Epic"), "the target carried Epic gear")
+	main.clear()
+
+	main.show_title()
+	await frames_wait(3)
+	Run.delete_campaign(2)
+	Run.meta.salvage = keep.salvage
+	Run.meta.hq = keep.hq
+	Run.meta.bio = keep.bio
 	Run.save_meta()
 
 func hoverwedge() -> void:

@@ -915,57 +915,72 @@ const SECTOR_PERKS := {
 	"supply": {"name": "SUPPLY DUMP", "text": "Quartermaster prices are 10% lower this act."},
 	"airfield": {"name": "AIRSTRIP", "text": "Twice the crates on the map on every op this act."},
 }
+# O1-O6: what an op on the war map asks of the squad. Strongholds are always a push to the boss.
+const JOBS := {
+	"push": {"name": "PUSH", "goal": "BREAK THROUGH", "text": "Fight to the far end and knock out the sector's armor."},
+	"rescue": {"name": "RESCUE", "goal": "FREE 3 PRISONERS", "text": "Three of ours are held across the sector. Walk up to each one to cut them loose."},
+	"demolish": {"name": "DEMOLISH", "goal": "DESTROY 3 TARGETS", "text": "Blow up three supply dumps. Blasts do double damage to them."},
+	"hold": {"name": "HOLD", "goal": "HOLD THE FAR END", "text": "Reach the far end, then survive %d enemy phases while they come from both sides."},
+	"escort": {"name": "ESCORT", "goal": "GET THE TRUCK THROUGH", "text": "A supply truck rolls forward each enemy phase, but stops while Jackals are close ahead. Keep it alive."},
+	"hunt": {"name": "HUNT", "goal": "KILL THE TARGET", "text": "A named Jackal officer is somewhere in the sector. Kill them and take what they carry."},
+}
+const QUARRY_NAMES := ["MAJOR KROLL", "THE BUTCHER", "COLONEL VASK", "IRON MARTA", "THE SURGEON", "CAPTAIN RUST"]
+const HOLD_PHASES := 5
+const TARGET_HP := 40
+const TRUCK_HP := 70
+const TRUCK_STEP := 90.0
+const JOB_PAY := 40   # scrip for finishing a job op that isn't a push
 const ACTS := [
 	{"id": "landfall", "name": "LANDFALL", "roman": "I", "tier": 0, "hp_mul": 1.0, "boss_hp": 120, "plate": 36, "need": 3, "breach": 0.0,
 	 "text": "Hit the beach at the delta and push into the jungle. Plain war against the Jackals.",
 	 "lz": {"name": "BEACHHEAD", "at": [70, 380]},
 	 "sectors": [
-		{"id": "d1", "name": "MUDFLAT LANDING", "biome": "delta", "at": [190, 380], "links": ["lz", "d2", "d3"], "hold": {"scrip": 20}},
-		{"id": "d2", "name": "RICE TERRACES", "biome": "delta", "at": [280, 270], "links": ["d1", "j1", "j2"], "perk": "aid"},
-		{"id": "d3", "name": "FERRY DOCKS", "biome": "delta", "at": [340, 410], "links": ["d1", "j2"], "hold": {"salvage": 2}},
-		{"id": "j1", "name": "SIGNAL RIDGE", "biome": "jungle", "at": [230, 160], "links": ["d2", "j3"], "perk": "lookout"},
-		{"id": "j2", "name": "RIVER BATTERY", "biome": "jungle", "at": [440, 300], "links": ["d2", "d3", "boss"], "hold": {"scrip": 20}},
-		{"id": "j3", "name": "TEMPLE TRAIL", "biome": "jungle", "at": [400, 150], "links": ["j1", "boss"], "hold": {"bio": 1}},
+		{"id": "d1", "name": "MUDFLAT LANDING", "biome": "delta", "job": "push", "at": [190, 380], "links": ["lz", "d2", "d3"], "hold": {"scrip": 20}},
+		{"id": "d2", "name": "RICE TERRACES", "biome": "delta", "job": "rescue", "at": [280, 270], "links": ["d1", "j1", "j2"], "perk": "aid"},
+		{"id": "d3", "name": "FERRY DOCKS", "biome": "delta", "job": "demolish", "at": [340, 410], "links": ["d1", "j2"], "hold": {"salvage": 2}},
+		{"id": "j1", "name": "SIGNAL RIDGE", "biome": "jungle", "job": "hold", "at": [230, 160], "links": ["d2", "j3"], "perk": "lookout"},
+		{"id": "j2", "name": "RIVER BATTERY", "biome": "jungle", "job": "demolish", "at": [440, 300], "links": ["d2", "d3", "boss"], "hold": {"scrip": 20}},
+		{"id": "j3", "name": "TEMPLE TRAIL", "biome": "jungle", "job": "hunt", "at": [400, 150], "links": ["j1", "boss"], "hold": {"bio": 1}},
 		{"id": "boss", "name": "BOAR'S DEN", "biome": "jungle", "at": [580, 220], "links": ["j2", "j3"], "stronghold": true}]},
 	{"id": "breach", "name": "THE BREACH", "roman": "II", "tier": 1, "hp_mul": 1.15, "boss_hp": 160, "plate": 46, "need": 3, "breach": 0.4,
 	 "text": "Desert ruins and the mountain pass. The Jackals made a deal with something that came through their gate.",
 	 "lz": {"name": "AIRDROP ZONE", "at": [80, 200]},
 	 "sectors": [
-		{"id": "s1", "name": "BROKEN AQUEDUCT", "biome": "desert", "at": [200, 150], "links": ["lz", "s2", "s3"], "hold": {"scrip": 25}},
-		{"id": "s2", "name": "SALT FLATS", "biome": "desert", "at": [220, 330], "links": ["s1", "m1"], "perk": "airfield"},
-		{"id": "s3", "name": "SUNKEN TEMPLE", "biome": "desert", "at": [350, 180], "links": ["s1", "m1", "m2"], "hold": {"bio": 1}},
-		{"id": "m1", "name": "SWITCHBACKS", "biome": "mountain", "at": [380, 360], "links": ["s2", "s3", "m3"], "hold": {"salvage": 3}},
-		{"id": "m2", "name": "OBSERVATORY", "biome": "mountain", "at": [480, 130], "links": ["s3", "boss"], "perk": "lookout"},
-		{"id": "m3", "name": "CABLE CAR STATION", "biome": "mountain", "at": [520, 330], "links": ["m1", "boss"], "perk": "fuel"},
+		{"id": "s1", "name": "BROKEN AQUEDUCT", "biome": "desert", "job": "escort", "at": [200, 150], "links": ["lz", "s2", "s3"], "hold": {"scrip": 25}},
+		{"id": "s2", "name": "SALT FLATS", "biome": "desert", "job": "hold", "at": [220, 330], "links": ["s1", "m1"], "perk": "airfield"},
+		{"id": "s3", "name": "SUNKEN TEMPLE", "biome": "desert", "job": "rescue", "at": [350, 180], "links": ["s1", "m1", "m2"], "hold": {"bio": 1}},
+		{"id": "m1", "name": "SWITCHBACKS", "biome": "mountain", "job": "escort", "at": [380, 360], "links": ["s2", "s3", "m3"], "hold": {"salvage": 3}},
+		{"id": "m2", "name": "OBSERVATORY", "biome": "mountain", "job": "hunt", "at": [480, 130], "links": ["s3", "boss"], "perk": "lookout"},
+		{"id": "m3", "name": "CABLE CAR STATION", "biome": "mountain", "job": "demolish", "at": [520, 330], "links": ["m1", "boss"], "perk": "fuel"},
 		{"id": "boss", "name": "THE QUEEN'S PIT", "biome": "desert", "at": [600, 220], "links": ["m2", "m3"], "stronghold": true, "queen": true}]},
 	{"id": "pact", "name": "A BAD PACT", "roman": "III", "tier": 2, "hp_mul": 1.3, "boss_hp": 210, "plate": 60, "need": 3, "breach": 0.8,
 	 "text": "The refinery and the fortress towns. The pact is cracking and Jackals and Vharr are shooting each other.",
 	 "lz": {"name": "RAIL YARD", "at": [70, 300]},
 	 "sectors": [
-		{"id": "r1", "name": "PUMP STATION", "biome": "refinery", "at": [190, 220], "links": ["lz", "r2", "f1"], "hold": {"salvage": 3}},
-		{"id": "r2", "name": "CRACKING TOWERS", "biome": "refinery", "at": [300, 120], "links": ["r1", "r3"], "perk": "fuel"},
-		{"id": "r3", "name": "TANK FARM", "biome": "refinery", "at": [450, 140], "links": ["r2", "boss"], "hold": {"scrip": 30}},
-		{"id": "f1", "name": "MARKET STREET", "biome": "fortress", "at": [220, 390], "links": ["r1", "f2"], "perk": "supply"},
-		{"id": "f2", "name": "OLD CITADEL", "biome": "fortress", "at": [370, 330], "links": ["f1", "f3"], "hold": {"bio": 2}},
-		{"id": "f3", "name": "GARRISON GATE", "biome": "fortress", "at": [500, 400], "links": ["f2", "boss"], "perk": "aid"},
+		{"id": "r1", "name": "PUMP STATION", "biome": "refinery", "job": "demolish", "at": [190, 220], "links": ["lz", "r2", "f1"], "hold": {"salvage": 3}},
+		{"id": "r2", "name": "CRACKING TOWERS", "biome": "refinery", "job": "hold", "at": [300, 120], "links": ["r1", "r3"], "perk": "fuel"},
+		{"id": "r3", "name": "TANK FARM", "biome": "refinery", "job": "escort", "at": [450, 140], "links": ["r2", "boss"], "hold": {"scrip": 30}},
+		{"id": "f1", "name": "MARKET STREET", "biome": "fortress", "job": "rescue", "at": [220, 390], "links": ["r1", "f2"], "perk": "supply"},
+		{"id": "f2", "name": "OLD CITADEL", "biome": "fortress", "job": "hunt", "at": [370, 330], "links": ["f1", "f3"], "hold": {"bio": 2}},
+		{"id": "f3", "name": "GARRISON GATE", "biome": "fortress", "job": "push", "at": [500, 400], "links": ["f2", "boss"], "perk": "aid"},
 		{"id": "boss", "name": "THE INFESTED WORKS", "biome": "refinery", "at": [590, 270], "links": ["r3", "f3"], "stronghold": true}]},
 	{"id": "hive", "name": "HIVE TIDE", "roman": "IV", "tier": 2, "hp_mul": 1.45, "boss_hp": 240, "plate": 66, "need": 3, "breach": 0.5,
 	 "text": "The palace and the night harbor. A Hive Ship parks over the coast and seeds nests everywhere.",
 	 "lz": {"name": "CLIFF ROAD", "at": [70, 170]},
 	 "sectors": [
-		{"id": "p1", "name": "LANTERN GARDENS", "biome": "palace", "at": [190, 130], "links": ["lz", "p2", "p3"], "perk": "lookout"},
-		{"id": "p2", "name": "SHOGUN'S HALL", "biome": "palace", "at": [320, 210], "links": ["p1", "h1"], "hold": {"bio": 2}},
-		{"id": "p3", "name": "PAPER BRIDGE", "biome": "palace", "at": [200, 300], "links": ["p1", "h2"], "hold": {"scrip": 30}},
-		{"id": "h1", "name": "LIGHTHOUSE", "biome": "harbor", "at": [470, 140], "links": ["p2", "boss"], "perk": "airfield"},
-		{"id": "h2", "name": "FISH MARKET", "biome": "harbor", "at": [330, 400], "links": ["p3", "h3"], "hold": {"salvage": 3}},
-		{"id": "h3", "name": "DRY DOCK", "biome": "harbor", "at": [490, 350], "links": ["h2", "boss"], "perk": "supply"},
+		{"id": "p1", "name": "LANTERN GARDENS", "biome": "palace", "job": "hunt", "at": [190, 130], "links": ["lz", "p2", "p3"], "perk": "lookout"},
+		{"id": "p2", "name": "SHOGUN'S HALL", "biome": "palace", "job": "rescue", "at": [320, 210], "links": ["p1", "h1"], "hold": {"bio": 2}},
+		{"id": "p3", "name": "PAPER BRIDGE", "biome": "palace", "job": "escort", "at": [200, 300], "links": ["p1", "h2"], "hold": {"scrip": 30}},
+		{"id": "h1", "name": "LIGHTHOUSE", "biome": "harbor", "job": "hold", "at": [470, 140], "links": ["p2", "boss"], "perk": "airfield"},
+		{"id": "h2", "name": "FISH MARKET", "biome": "harbor", "job": "push", "at": [330, 400], "links": ["p3", "h3"], "hold": {"salvage": 3}},
+		{"id": "h3", "name": "DRY DOCK", "biome": "harbor", "job": "demolish", "at": [490, 350], "links": ["h2", "boss"], "perk": "supply"},
 		{"id": "boss", "name": "UNDER THE HIVE SHIP", "biome": "harbor", "at": [600, 240], "links": ["h1", "h3"], "stronghold": true}]},
 	{"id": "gate", "name": "SHUT THE GATE", "roman": "V", "tier": 2, "hp_mul": 1.6, "boss_hp": 270, "plate": 74, "need": 2, "breach": 0.3,
 	 "text": "Iron Harbor, where the Jackals keep the captured gate. Two big ops, then the flagship and the gate itself.",
 	 "lz": {"name": "LANDING CRAFT", "at": [80, 280]},
 	 "sectors": [
-		{"id": "g1", "name": "SEA WALL", "biome": "harbor", "at": [260, 180], "links": ["lz", "boss"], "hold": {"scrip": 40}},
-		{"id": "g2", "name": "GATE BARRACKS", "biome": "fortress", "at": [270, 390], "links": ["lz", "boss"], "hold": {"bio": 2}},
+		{"id": "g1", "name": "SEA WALL", "biome": "harbor", "job": "hold", "at": [260, 180], "links": ["lz", "boss"], "hold": {"scrip": 40}},
+		{"id": "g2", "name": "GATE BARRACKS", "biome": "fortress", "job": "rescue", "at": [270, 390], "links": ["lz", "boss"], "hold": {"bio": 2}},
 		{"id": "boss", "name": "IRON HARBOR", "biome": "harbor", "at": [520, 280], "links": ["g1", "g2"], "stronghold": true, "finale": true}]},
 ]
 
