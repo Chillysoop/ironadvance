@@ -1094,7 +1094,7 @@ func save_campaign() -> void:
 	for k in CAMP_KEYS:
 		base[k] = meta.get(k)
 	data["base"] = base
-	var head := {"act": int(camp.act), "ops": int(camp.ops), "secs": float(camp.get("secs", 0.0)), "done": camp.get("done", false),
+	var head := {"act": int(camp.act), "ops": int(camp.ops), "secs": float(camp.get("secs", 0.0)), "done": camp.get("done", false), "tour": int(camp.get("tour", 1)),
 		"names": soldiers.filter(func(s): return s.alive).map(func(s): return s.def.name)}
 	var f := FileAccess.open(camp_path(int(camp.slot)), FileAccess.WRITE)
 	if f != null:
@@ -1169,12 +1169,23 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 	lv.boss_hp = a.boss_hp
 	lv.plate = a.plate
 	lv.name = sc.name
+	if sc.get("finale", false) and not patrol:
+		# S1 Act V: the harbor flagship, refit with Vharr tech, with the Gate itself open on the pier
+		lv = Data.FINALE.duplicate(true)
+		lv["biome"] = sc.biome
+		lv["encounter"] = "gate"
+		lv.name = sc.name
+		lv.hp_mul = a.hp_mul
+		lv.boss_hp = int(a.boss_hp * 1.2)
+		lv.plate = int(a.plate * 1.2)
 	var segs: Array = lv.segments
 	var job := op_job(sc, patrol) if bonus == "" else str(Data.BONUS_OPS[bonus].job)
 	if job != "push":
 		# O2-O6: no boss at the end, one more fighting stretch instead
 		var bm: Dictionary = Data.BIOMES[sc.biome]
 		lv.segments = ["start", segs[1], "camp", "yard", segs[4], bm.segments[randi() % bm.segments.size()]]
+	elif sc.get("finale", false) and not patrol:
+		pass
 	elif not sc.get("stronghold", false):
 		lv.segments = ["start", segs[1], "camp", "yard", segs[4], segs[6]]
 	else:
@@ -1182,6 +1193,14 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 		lv.plate = int(a.plate * 1.2)
 	if sc.get("queen", false):
 		lv.encounter = "queen"
+	if int(camp.get("act", 0)) == 2 and sc.get("stronghold", false) and not patrol:
+		lv["vharr_boar"] = true  # S1 Act III: the Infested Works' Boar comes back refit by the Vharr
+	var tour := int(camp.get("tour", 1))
+	if tour > 1:
+		var m := 1.0 + Data.TOUR_HARDER * (tour - 1)
+		lv.hp_mul = lv.hp_mul * m
+		lv.boss_hp = int(lv.boss_hp * m)
+		lv.plate = int(lv.plate * m)
 	lv["op"] = sc.id
 	lv["job"] = job
 	if sc.get("varga", false) and not patrol:
@@ -1367,6 +1386,24 @@ func build_tech(id: String) -> Dictionary:
 	add_loot(it)
 	save_meta()
 	return it
+
+func second_tour(vet: Dictionary) -> void:
+	## S5: a new war in the same slot, harder, with one veteran of the last one along for it.
+	var slot := int(camp.slot)
+	var tour := int(camp.get("tour", 1)) + 1
+	var v: Dictionary = vet.duplicate(true)
+	new_campaign(slot)
+	camp["tour"] = tour
+	v.alive = true
+	v.tags = Data.DOG_TAGS
+	v.hp = eff_max_hp(v)
+	v["tour_vet"] = true
+	for slot_k in v.equip.keys():
+		v.equip[slot_k] = null  # their kit stayed with the old war's stash; the cards they earned come along
+	v.deck = v.deck.filter(func(c): return not c.has("src"))
+	roster.append(v)
+	toggle_squad(v)
+	save_campaign()
 
 func make_guest(id: String) -> Dictionary:
 	## S3: Colonel Varga, on loan for one op. Not part of the company, never on the Memorial.

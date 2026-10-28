@@ -223,7 +223,7 @@ func setup(idx: int, custom := {}) -> void:
 		if type == "boss" or type == "hiveship":
 			var bm := 1.4 if Run.threat_on(5) else 1.0
 			u.hp = int(mission.boss_hp * bm); u.max_hp = u.hp; u.plate = int(mission.plate * bm) if type == "boss" else 0
-			if type == "boss" and mission.get("finale", false):
+			if type == "boss" and (mission.get("finale", false) or mission.get("vharr_boar", false)):
 				u.fl["vharr"] = true  # Q3: the flagship comes refit with Vharr tech
 		elif randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
 			make_elite(u, pick_elite(faction(u) == "vharr"))

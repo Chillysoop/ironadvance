@@ -954,7 +954,8 @@ const BONUS_OPS := {
 	"scout": {"name": "DOWNED VHARR SCOUT", "job": "hunt", "text": "A Vharr scout ship came down. Its pilot carries Epic gear."},
 }
 const BONUS_CHANCE := 0.35
-const BONUS_OPS_LEFT := 2   # S4: odds a won Act III op ends with a Jackal deserter asking to join
+const BONUS_OPS_LEFT := 2
+const TOUR_HARDER := 0.2   # S5: each Second Tour adds this much to enemy and boss HP   # S4: odds a won Act III op ends with a Jackal deserter asking to join
 
 # S2/S3: radio chatter before and after ops. Speakers: "cmd" Command, "varga" the Jackal colonel,
 # "prime" the Vharr Overseer Prime, "sq" a soldier from the squad ({name}, {rank}, {mate} filled in).

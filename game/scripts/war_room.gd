@@ -157,7 +157,7 @@ func _draw() -> void:
 	draw_rect(Rect2(0, 0, 960, 540), Color(0.04, 0.05, 0.06, 0.8))
 	# header
 	Art.text(self, "WAR ROOM", Vector2(24, 34), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
-	Art.text(self, "ACT %s  %s" % [A.roman, A.name], Vector2(190, 34), 16, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+	Art.text(self, "ACT %s  %s%s" % [A.roman, A.name, "  TOUR %d" % int(Run.camp.get("tour", 1)) if int(Run.camp.get("tour", 1)) > 1 else ""], Vector2(190, 34), 16, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 	Art.text(self, A.text, Vector2(24, 60), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	var sc_txt := "%d SCRIP" % Run.scrip
 	Art.text(self, sc_txt, Vector2(944, 34), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
@@ -422,7 +422,7 @@ class SlotPicker extends Control:
 				Art.text(self, "EMPTY", Vector2(cr.get_center().x, cr.position.y + 110), 16, Color("6c7480"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 				continue
 			var A: Dictionary = Data.ACTS[clampi(int(h.act), 0, Data.ACTS.size() - 1)]
-			Art.text(self, "WAR WON" if h.get("done", false) else "ACT %s" % A.roman, Vector2(cr.position.x + 16, cr.position.y + 58), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+			Art.text(self, ("WAR WON" if h.get("done", false) else "ACT %s" % A.roman) + ("  TOUR %d" % int(h.get("tour", 1)) if int(h.get("tour", 1)) > 1 else ""), Vector2(cr.position.x + 16, cr.position.y + 58), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 			Art.text(self, A.name, Vector2(cr.position.x + 16, cr.position.y + 80), 8, Color("ff7a3d"))
 			var mins := int(float(h.secs) / 60.0)
 			Art.text(self, "%d OPS   %dH %02dM" % [int(h.ops), mins / 60, mins % 60], Vector2(cr.position.x + 16, cr.position.y + 104), 8, Color("e8dcc2"))
@@ -611,3 +611,85 @@ class RadioScreen extends Control:
 		if shown >= L.text.length() and t % 40 < 26:
 			Art.text(self, ">>", Vector2(896, 488), 8, L.col, HORIZONTAL_ALIGNMENT_RIGHT)
 		Art.text(self, "%d / %d" % [i + 1, lines.size()], Vector2(896, 352), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)
+
+class EndingScreen extends Control:
+	## S5: the war is won. The company's service records and the Memorial, then a Second Tour
+	## with one veteran of your choice.
+	signal tour(vet: Dictionary)
+	signal title
+	var t := 0
+	var pick := -1
+	func _ready() -> void:
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+		build()
+	func build() -> void:
+		for c in get_children():
+			c.queue_free()
+		var go = load("res://scripts/hud.gd").PixButton.new()
+		go.text = "SECOND TOUR"
+		go.sub = "WITH %s" % Run.company()[pick].def.name if pick >= 0 else "PICK A VETERAN TO BRING"
+		go.color = Color("ffd23a")
+		go.size = Vector2(260, 40)
+		go.position = Vector2(250, 486)
+		go.disabled = pick < 0
+		go.pressed.connect(func(): Sfx.play("start"); tour.emit(Run.company()[pick]))
+		add_child(go)
+		var tt = load("res://scripts/hud.gd").PixButton.new()
+		tt.text = "TITLE"
+		tt.color = Color("9aa2ae")
+		tt.size = Vector2(160, 40)
+		tt.position = Vector2(530, 486)
+		tt.pressed.connect(func(): Sfx.play("click"); title.emit())
+		add_child(tt)
+	func card(i: int) -> Rect2:
+		return Rect2(24 + (i % 5) * 132, 150 + (i / 5) * 150, 124, 142)
+	func _gui_input(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			for i in Run.company().size():
+				if card(i).has_point(ev.position):
+					accept_event()
+					pick = i
+					Sfx.play("select")
+					build()
+					return
+	func _process(_d: float) -> void:
+		t += 1
+		queue_redraw()
+	func _draw() -> void:
+		draw_rect(Rect2(0, 0, 960, 540), Color("0c1013"))
+		var g := 0.6 + 0.4 * sin(t / 20.0)
+		Art.text(self, "THE GATE IS SHUT", Vector2(480, 60), 32, Color(1.0, 0.82 * g + 0.1, 0.23), HORIZONTAL_ALIGNMENT_CENTER, 3)
+		var tour := int(Run.camp.get("tour", 1))
+		var hrs := float(Run.camp.get("secs", 0.0)) / 3600.0
+		Art.text(self, "%sTHE WAR IS WON IN %d OPS, %.1f HOURS. IRON COMPANY GOES HOME." % ["TOUR %d.  " % tour if tour > 1 else "", int(Run.camp.ops), hrs], Vector2(480, 92), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+		Art.text(self, "SERVICE RECORDS", Vector2(24, 136), 8, Color("62d26f"))
+		Art.text(self, "Click a veteran to bring them on a Second Tour: a new war, harder sectors.", Vector2(680, 136), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
+		var co := Run.company()
+		for i in co.size():
+			var s: Dictionary = co[i]
+			var r := card(i)
+			var on := i == pick
+			draw_rect(r, Color(0.05, 0.035, 0.03))
+			draw_rect(r.grow(-1), Color("2a2a1e") if on else Color("1a1e22"))
+			draw_rect(r, Color("ffd23a") if on else Color("3a4048"), false, 2)
+			Art.draw_char(self, Art.look_sheet(s), "cheer" if on else "idle", (t / 10 + i) % (2 if on else 4), Vector2(r.get_center().x, r.position.y + 58), 1, false, 0, 1.0, 0, not on, 1.3)
+			Art.text(self, "%s %s" % [Run.rank_name(s), s.def.name], Vector2(r.get_center().x, r.position.y + 76), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, s.def.cls, Vector2(r.get_center().x, r.position.y + 92), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+			var sv := Run.svc(s)
+			Art.text(self, "%d OPS  %d KILLS" % [int(sv.ops), int(sv.kills)], Vector2(r.get_center().x, r.position.y + 110), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+			if sv.medals.size():
+				Art.text(self, "%d MEDAL%s" % [sv.medals.size(), "" if sv.medals.size() == 1 else "S"], Vector2(r.get_center().x, r.position.y + 128), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		# the Memorial
+		var mx := 696.0
+		draw_rect(Rect2(mx, 150, 240, 292), Color(0.05, 0.035, 0.03))
+		draw_rect(Rect2(mx, 150, 240, 292), Color("9aa2ae"), false, 2)
+		Art.text(self, "THE MEMORIAL", Vector2(mx + 120, 170), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+		var mem: Array = Run.meta.get("memorial", [])
+		if mem.is_empty():
+			Art.text(self, "Nobody fell. Everyone came home.", Vector2(mx + 120, 200), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		for k in mini(mem.size(), 14):
+			var m: Dictionary = mem[k]
+			var rk: String = Data.RANKS[int(m.get("rank", 0))].short if m.has("rank") else ""
+			Art.text(self, "%s %s, %s" % [rk, m.name, m.cls], Vector2(mx + 12, 196 + k * 17), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		if mem.size() > 14:
+			Art.text(self, "AND %d MORE" % (mem.size() - 14), Vector2(mx + 120, 436), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)

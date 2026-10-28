@@ -780,6 +780,8 @@ func run() -> void:
 			await story()
 		"lab":
 			await lab()
+		"ending":
+			await ending()
 		"aliens6":
 			await aliens6()
 		"aliens7":
@@ -4823,6 +4825,64 @@ func lab() -> void:
 	Run.meta.bio = keep.bio
 	Run.meta.unlocked = keep.unlocked
 	Run.save_meta()
+
+func ending() -> void:
+	## Campaign step 6: Act III and IV bosses, the Iron Harbor finale as a gate siege, the ending
+	## screen, and a Second Tour with one veteran.
+	Run.delete_campaign(5)
+	Run.new_campaign(5)
+	Run.camp.act = 2
+	Run.start_op(Run.sector("boss"))
+	check(Run.level.get("vharr_boar", false), "Act III's stronghold is a Vharr-refit Boar")
+	var hp3: float = float(Run.level.get("hp_mul", 1.0))
+	Run.start_op(Run.sector("r1"), true)
+	check(not Run.level.get("vharr_boar", false), "but its patrols are not")
+	Run.camp.act = 4
+	Run.start_op(Run.sector("boss"))
+	var lv: Dictionary = Run.level
+	check(lv.get("finale", false) and lv.get("encounter", "") == "gate" and lv.get("segments", []).has("pier"), "Iron Harbor is the finale, with a gate siege (%s)" % lv.get("encounter", ""))
+	var boss_hp: float = float(lv.get("boss_hp", 0))
+	check(boss_hp > 0, "the finale boss is tougher than the act's (%s)" % boss_hp)
+	var b: Battle = main.start_battle(5, Run.level)
+	b.mission_over.disconnect(main._on_mission_over)
+	await until(func(): return b.state == "player" and not b.busy)
+	check(b.units.any(func(u: Unit): return u.team == "enemy" and b.is_boss(u)), "the finale fields a boss")
+	await shot("ending_finale")
+	main.clear()
+	# win the war
+	Run.camp.held = Run.act().sectors.filter(func(sc): return not sc.get("stronghold", false)).map(func(sc): return Run.sec_key(sc.id))
+	Run.start_op(Run.sector("boss"))
+	var res := Run.op_over(true)
+	check(Run.camp.done and res.has("act_done"), "shutting the Gate wins the war")
+	var vet: Dictionary = Run.company()[0]
+	Run.svc(vet).kills = 31
+	Run.svc(vet).ops = 14
+	vet.rank = 3
+	main.show_ending()
+	await frames_wait(10)
+	await shot("ending_screen")
+	main.screen.pick = 0
+	main.screen.build()
+	await frames_wait(10)
+	await shot("ending_pick")
+	var vname: String = vet.def.name
+	main.screen.tour.emit(vet)
+	await frames_wait(10)
+	check(int(Run.camp.get("tour", 1)) == 2 and not Run.camp.done and int(Run.camp.act) == 0, "Second Tour: a new war in the same slot")
+	var v2: Array = Run.roster.filter(func(s): return s.get("tour_vet", false))
+	check(v2.size() == 1 and v2[0].def.name == vname and int(v2[0].get("rank", 0)) == 3 and Run.soldiers.has(v2[0]), "the veteran comes along, rank and all, in the squad")
+	check(v2[0].equip.values().all(func(x): return x == null), "without their old kit")
+	Run.camp.act = 2
+	Run.start_op(Run.sector("boss"))
+	check(float(Run.level.get("hp_mul", 1.0)) > hp3, "Second Tour sectors are harder (%s > %s)" % [Run.level.get("hp_mul", 1.0), hp3])
+	Run.camp.act = 0
+	Run.save_campaign()
+	check(Run.load_campaign(5) and int(Run.camp.get("tour", 1)) == 2, "the tour is saved")
+	main.show_war_room()
+	await frames_wait(10)
+	await shot("ending_tour2_room")
+	Run.level = {}
+	Run.delete_campaign(5)
 
 func hoverwedge() -> void:
 	## A hovering tank (Squid, Prism, Overseer) shoved with its top into an overhang used to be stuck there
