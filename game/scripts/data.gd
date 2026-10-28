@@ -277,6 +277,7 @@ const STATUS := {
 	"supp": {"name": "SUPPRESSED", "short": "SUPP", "c": Color("c9d1da"), "text": "Half movement on its next turn."},
 	"mark": {"name": "MARKED", "short": "MARK", "c": Color("ff4d3d"), "text": "The next hit on it is a critical (x1.5)."},
 	"flared": {"name": "FLARED", "short": "FLARE", "c": Color("ffe36a"), "text": "Lit up by a flare: takes +3 from every hit."},
+	"pinned": {"name": "PINNED", "short": "PIN", "c": Color("ff7a3d"), "text": "A hound has it by the leg: no movement next turn."},
 	"stun": {"name": "STUNNED", "short": "STUN", "c": Color("ffd23a"), "text": "Skips its next turn."},
 	# bonus pad powerups (Soldat): they last the rest of this turn and the holder's next one
 	"berserk": {"name": "BERSERKER", "short": "BERS", "c": Color("ff4d3d"), "text": "Deals double damage."},
@@ -1210,6 +1211,14 @@ const ETYPES := {
 	"sapper": {"name": "Jackal Sapper", "hp": 11, "speed": 150, "sapper": true, "score": 175, "w": 16, "h": 34, "note": "Runs in and plants a charge that blows next turn. Shoot the charge to defuse it."},
 	# E6: a two-legged mech mid-level. Blow the ground out under one leg and it topples.
 	"jwalker": {"name": "Jackal Walker", "sheet": "en_grunt", "hp": 48, "dmg": [3, 4], "shots": 3, "range": 500, "speed": 60, "prefer": 300, "heavy": true, "score": 600, "w": 30, "h": 56, "note": "Mini-boss. A mech with a machine gun. Blow the ground out from under one leg and it topples, crushing whatever it lands on. Leaves a walker you can drive."},
+	# E1-E5, E7, E8: more Jackals. Like everyone else they move and attack in one turn, and every
+	# attack is in plain sight first: the sniper's laser, the gunship's marked strip.
+	"jsniper": {"name": "Jackal Sniper", "hp": 12, "dmg": [11, 13], "range": 1400, "speed": 0, "hold": true, "score": 250, "w": 16, "h": 34, "note": "Sits back with a red laser always on. On his turn he fires down that line, then lays it on the nearest soldier for next time. Step out of the line or put a wall in it."},
+	"flamer": {"name": "Flametrooper", "hp": 16, "dmg": 6, "range": 110, "speed": 110, "prefer": 80, "score": 200, "w": 18, "h": 34, "note": "Walks up and hoses a short cone of fire that sets you Burning and burns wood away. Shoot the fuel tank on his back and it blows."},
+	"jdog": {"name": "Jackal Hound", "weight": "light", "hp": 7, "dmg": 4, "leap": 220, "speed": 170, "pack": 3, "pin": true, "score": 80, "w": 24, "h": 18, "note": "Comes in packs of three. Leaps gaps from 220px and bites; whoever it bites is PINNED: no movement next turn. Light: knock it flying."},
+	"wallshield": {"name": "Shield Wall", "sheet": "en_shield", "hp": 16, "dmg": [3, 4], "range": 340, "speed": 80, "prefer": 160, "shield": true, "pack": 3, "wall": true, "score": 150, "w": 18, "h": 34, "note": "Three Riot Jackals with locked shields: they advance as one and their shields stop 90% from the front. Flank them, lob over, or blow one out of line and the wall breaks."},
+	"gunship": {"name": "Jackal Gunship", "weight": "hover", "hp": 70, "alt": 190, "heavy": true, "dmg": 9, "strafe": 140, "speed": 140, "score": 900, "w": 70, "h": 30, "note": "Mini-boss. Hovers high and rakes the strip marked on the ground, then marks the next one by the nearest soldier. Throw a body or a barrel into its rotor for 18. When it goes down it crushes what's under it."},
+	"dicokka": {"name": "Di-Cokka", "hp": 50, "dmg": 12, "radius": 40, "range": 700, "speed": 80, "score": 800, "w": 44, "h": 26, "note": "Mini-boss. A small tank that rolls back and forth and lobs shells. Front armor stops 70%; hits from above or behind do +50%. Knock it into the air and it lands FLIPPED: stuck for 2 turns and takes double."},
 	"mortarcrew": {"name": "Mortar Crew", "hp": 18, "arc": true, "heavyArc": true, "dmg": 12, "radius": 46, "range": 900, "speed": 0, "score": 250, "w": 18, "h": 34, "note": "Shells your cover from long range. Sits still. Something is hanging over it."},
 	# Vharr aliens. Like the Jackals they move and attack in the same enemy phase, and
 	# "weight" sets how physics moves them: light flies twice as far, hover holds altitude on a pod.

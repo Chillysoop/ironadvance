@@ -160,6 +160,7 @@ func setup(idx: int, custom := {}) -> void:
 		i += 1
 	var pi := randi() % Data.POW_NAMES.size()
 	var foot := 0  # plain rifleman and bomber slots seen so far (cast_foot)
+	var walled := false
 	for sp in T.spawns:
 		var type: String = sp[0]
 		var x: float = sp[1]
@@ -214,8 +215,13 @@ func setup(idx: int, custom := {}) -> void:
 		var y = T.stand_y(x, 0) if (opt.has("hold") or opt.has("top")) and not opt.has("inside") else T.stand_y(x, T.ground_at(x) - 40)
 		if opt.has("up"):
 			y = T.stand_y(x, T.ground_at(x) - opt.up)
+		if type == "shield" and not walled and mission_idx >= 1 and not tutorial():
+			type = "wallshield"  # E5: one Shield Wall per level from level 2
+			walled = true
 		var u := mk_enemy(type, x, y)
 		u.hold = opt.has("hold")
+		if Data.ETYPES[type].get("wall", false):
+			u.fl["wall"] = u.id
 		if type == "boss" or type == "hiveship":
 			var bm := 1.4 if Run.threat_on(5) else 1.0
 			u.hp = int(mission.boss_hp * bm); u.max_hp = u.hp; u.plate = int(mission.plate * bm) if type == "boss" else 0
@@ -240,6 +246,8 @@ func setup(idx: int, custom := {}) -> void:
 			var px := x + k * 18.0
 			var mate := mk_enemy(type, px, T.stand_y(px, (y if y != null else 0.0) - 40))
 			mate.hold = u.hold
+			if u.fl.has("wall"):
+				mate.fl["wall"] = u.fl.wall
 			units.append(mate)
 	if not spec_placed() and T.stretches.size():
 		# X2: no prisoner in the level's segments, so the specialist is tied up mid-stretch
@@ -1265,9 +1273,12 @@ func place_vehicles() -> void:
 	if mission.get("walker", false):
 		var x: float = st[0] + w * 0.75
 		var y = T.stand_y(x, 0)
+		var mb: String = mission.get("miniboss", "jwalker")
 		if y != null and y < WATER_Y - 4:
-			var e := mk_enemy("jwalker", x, y)
-			e.mech = {"type": "walker", "hp": 0, "max": 0, "own": false, "h0": 34, "w0": 16}
+			var e := mk_enemy(mb, x, y)
+			if mb == "jwalker":
+				e.mech = {"type": "walker", "hp": 0, "max": 0, "own": false, "h0": 34, "w0": 16}
+			place_alien(e)
 			units.append(e)
 
 func leg_check() -> void:
@@ -1306,6 +1317,278 @@ func walker_wreck(e: Unit) -> void:
 	var r := park_ride(e.x, "walker", 18)
 	if r != null:
 		float_at(r.x, r.y - 40, "WALKER UP FOR GRABS", Color("ffb23e"), true)
+
+# ---------------------------------------------------------------- E1-E5, E7, E8: new Jackals
+func sniper_line(e: Unit) -> Dictionary:
+	## E1: where the Jackal Sniper's laser runs right now, from his scope to the first wall.
+	var o := Vector2(e.x + e.face * 10, e.y - e.h + 10)
+	var a: float = e.fl.get("laser", PI if e.face < 0 else 0.0)
+	var r := cast_ray(o.x, o.y, a, Data.ETYPES.jsniper.range)
+	return {"from": o, "to": Vector2(r.x, r.y), "a": a}
+
+func sniper_act(e: Unit) -> void:
+	## Fire down the laser he showed last turn, then lay it on the nearest soldier for next time.
+	var E: Dictionary = Data.ETYPES.jsniper
+	if e.fl.has("laser"):
+		var L := sniper_line(e)
+		e.muzzle = 4
+		Sfx.play("snipe")
+		fire_bullet(e, L.from.x, L.from.y, L.a, {"dmg": E.dmg, "range": E.range, "bounce": 0, "chip": 5}, false)
+		await wait(24)
+	if e.dead or e.air:
+		return
+	var tg = null
+	var o := Vector2(e.x, e.y - e.h + 10)
+	for s in foes_of(e):
+		if s.team == "squad" and not targetable(e, s):
+			continue
+		if ray_clear(o.x, o.y, s.x, s.y - s.h / 2.0) and (tg == null or absf(s.x - e.x) < absf(tg.x - e.x)):
+			tg = s
+	if tg == null:
+		tg = nearest_squad(e)
+	if tg == null:
+		return
+	e.face = 1 if tg.x >= e.x else -1
+	var o2 := Vector2(e.x + e.face * 10, e.y - e.h + 10)
+	e.fl["laser"] = atan2(tg.y - tg.h / 2.0 - o2.y, tg.x - o2.x)
+	float_text(e, "LASER ON " + (tg.def.name if tg.team == "squad" else "TARGET"), Color("ff4d3d"))
+	Sfx.play("tick")
+	await wait(10)
+
+func flamer_act(e: Unit) -> void:
+	## E2: walk up and hose a short cone of fire. Wood in the cone burns away.
+	var E: Dictionary = Data.ETYPES.flamer
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	if absf(tg.x - e.x) > E.range - 20 and not e.hold:
+		await enemy_advance(e, tg.x - signf(tg.x - e.x) * (E.range - 40), E.speed, func():
+			var t2 = nearest_squad(e)
+			return t2 != null and absf(t2.x - e.x) <= E.range - 20 and absf(t2.y - e.y) < 50)
+	if e.dead or e.air:
+		return
+	tg = nearest_squad(e)
+	if tg == null or absf(tg.x - e.x) > E.range or absf(tg.y - e.y) > 50:
+		return
+	e.face = 1 if tg.x >= e.x else -1
+	e.pose = "recoil"; e.pose_t = 30
+	Sfx.play("rocket")
+	for f in 18:
+		for k in 3:
+			part({"x": e.x + e.face * 14, "y": e.y - 18, "vx": e.face * randf_range(4, 7), "vy": randf_range(-1.2, 1.2), "life": 18, "max": 18, "c": pick([Color("ffb23e"), Color("ff7a3d"), Color("ffe36a")]), "s": 3.0, "g": -0.03, "fire": true})
+		await wait(1)
+	for o in units:
+		if o == e or o.dead or o.gone or o.sunk or o.is_pickup() or o.kind == "pow" or signf(o.x - e.x) != e.face:
+			continue
+		if absf(o.x - e.x) <= E.range and absf(o.y - e.y) < 44:
+			damage(o, int(round(E.dmg * (1 + alert * 0.06))), e, {})
+			add_status(o, "burn", 2, e)
+	var x := e.x + e.face * 16
+	while absf(x - e.x) <= E.range:
+		for dy in [6, 18, 30]:
+			if T.mat(x, e.y - dy) == 3:
+				T.carve(x, e.y - dy, 6, null)  # wood in the cone goes up
+		x += e.face * 10
+	await wait(10)
+
+func tank_hit(tg: Unit, dx: float, by) -> bool:
+	## E2: a round into the Flametrooper's back finds the fuel tank.
+	if tg.type != "flamer" or tg.dead or tg.fl.get("tank_gone", false) or signf(dx) != tg.face:
+		return false
+	tg.fl["tank_gone"] = true
+	float_text(tg, "TANK HIT!", Color("ffb23e"), true)
+	booms.append({"t": 1, "x": tg.x - tg.face * 6, "y": tg.y - 20, "r": 54.0, "dmg": 18, "owner": by, "burn": true})
+	return true
+
+func wall_mates(e: Unit) -> Array:
+	## E5: the Riot Jackals locked in one Shield Wall with this one (itself included).
+	if not e.fl.has("wall") or e.dead:
+		return []
+	return units.filter(func(o): return not o.dead and not o.gone and o.fl.get("wall", -1) == e.fl.wall and absf(o.x - e.x) < 70 and absf(o.y - e.y) < 30)
+
+func wall_locked(e: Unit) -> bool:
+	return wall_mates(e).size() >= 2
+
+func wall_act(e: Unit) -> bool:
+	## The wall's front man walks it forward as one block; the others only shoot. Returns true if handled.
+	var mates := wall_mates(e)
+	if mates.size() < 2:
+		return false
+	mates.sort_custom(func(a, b2): return a.x < b2.x)
+	var tg = nearest_squad(e)
+	if tg == null:
+		return true
+	var dir := 1.0 if tg.x > e.x else -1.0
+	var lead: Unit = mates[-1] if dir > 0 else mates[0]
+	if e == lead and e.fl.get("wall_moved", -1) != round_n and not e.hold:
+		var E: Dictionary = Data.ETYPES[e.type]
+		var x0 := lead.x
+		var stop: float = tg.x - dir * E.prefer
+		if (stop - lead.x) * dir > 0:
+			await enemy_advance(lead, stop, E.speed)
+		var moved := lead.x - x0
+		for m in mates:
+			m.fl["wall_moved"] = round_n
+			if m != lead and absf(moved) > 1:
+				var tx: float = m.x + moved
+				var ty = T.stand_y(tx, m.y - 30)
+				if ty != null:
+					var pts: Array = []
+					var n := int(absf(moved) / 2.0)
+					for k in n:
+						pts.append([m.x + moved * (k + 1) / n, ty, false])
+					await walk_along(m, pts)
+		float_text(lead, "SHIELD WALL", Color("c9d1da"))
+	if e.dead or e.air:
+		return true
+	var E2: Dictionary = Data.ETYPES[e.type]
+	var bs = best_shot(e, foes_of(e), E2.range)
+	if bs != null:
+		await wait(4)
+		await enemy_shoot(e, bs.t, E2)
+	return true
+
+func chute_hit(tg: Unit, y: float) -> bool:
+	## E3: a round through the parachute cuts it; the trooper drops like a stone.
+	if not tg.para or y > tg.y - tg.h:
+		return false
+	tg.para = false
+	tg.fl.erase("chute")
+	tg.vy = 2.0
+	float_text(tg, "CHUTE CUT!", Color("ffd23a"), true)
+	Sfx.play("ping")
+	return true
+
+func plane_drop(n: int) -> void:
+	## E3: a plane crosses the top of the screen and drops troopers on chutes. They hang there
+	## through your turn and come down in the next enemy phase.
+	var drop: Array = ["grunt", "grunt", "shield", "nade"]
+	banner("PARATROOPERS!", Color("ff7a3d"), "SHOOT THE CHUTES BEFORE THEY LAND")
+	Sfx.play("alarm")
+	for i in n:
+		var x: float = cam_x + W - 120 - i * 70
+		var e := mk_enemy(drop[i % drop.size()], x, 70.0 + (i % 2) * 22)
+		e.active = true; e.heavy = false; e.air = true; e.para = true; e.vy = 0.0
+		e.fl["chute"] = true
+		units.append(e)
+		puff(x, 50, 2.0)
+		await wait(8)
+	log_msg("Paratroopers hang over the field. Shoot a chute and its trooper falls hard.")
+
+func gunship_act(e: Unit) -> void:
+	## E7: fly over the marked strip and rake it, then mark the next strip by the nearest soldier.
+	var E: Dictionary = Data.ETYPES.gunship
+	if e.fl.has("strafe"):
+		var sx: float = (e.fl.strafe.x0 + e.fl.strafe.x1) / 2.0
+		await hover_move(e, sx, E.speed * 2)
+		if e.dead:
+			return
+		Sfx.play("mg")
+		var x0: float = e.fl.strafe.x0
+		var x1: float = e.fl.strafe.x1
+		for k in 8:
+			var gx: float = lerpf(x0, x1, k / 7.0)
+			var gy = T.stand_y(gx, 0)
+			tracer(e.x, e.y - 6, gx, gy if gy != null else WATER_Y, Color("ffb0a0"))
+			if gy != null:
+				T.carve(gx, gy, 3, null)
+				dust(gx, gy, Color("c9b38a"), 2)
+			await wait(3)
+		for o in units:
+			if o == e or o.dead or o.gone or o.sunk or o.is_pickup() or o.kind == "pow" or o.team == "enemy":
+				continue
+			if o.x >= x0 - o.w / 2.0 and o.x <= x1 + o.w / 2.0 and not o.has_st("cloak"):
+				damage(o, int(round(E.dmg * (1 + alert * 0.06))), e, {})
+		e.fl.erase("strafe")
+		await wait(10)
+	var tg = nearest_squad(e)
+	if tg == null or e.dead:
+		return
+	e.face = 1 if tg.x >= e.x else -1
+	e.fl["strafe"] = {"x0": tg.x - E.strafe / 2.0, "x1": tg.x + E.strafe / 2.0}
+	float_at(tg.x, tg.y - 50, "STRAFING RUN NEXT TURN", Color("ff4d3d"), true)
+
+func rotor_check() -> void:
+	## E7: a body or a barrel thrown into the gunship's rotor wrecks it.
+	for g in units:
+		if g.type != "gunship" or g.dead or g.gone:
+			continue
+		for o in units:
+			if o == g or o.dead and not o.is_body() or o.gone or not o.air or o.fl.get("rotored", -1) == g.id:
+				continue
+			if absf(o.x - g.x) < g.w / 2.0 + 4 and o.y - o.h < g.y - g.h + 4 and o.y > g.y - g.h - 14:
+				o.fl["rotored"] = g.id
+				o.vy = 3.0
+				o.vx *= -0.4
+				float_text(g, "ROTOR HIT!", Color("ffb23e"), true)
+				Sfx.play("bonk")
+				sparks(o.x, g.y - g.h, 10)
+				damage(g, 18, o.last_hit_by if o.last_hit_by is Unit else null, {"blast": true})
+
+func gunship_down(g: Unit) -> void:
+	g.weight = ""
+	g.air = true
+	g.vy = 0.0
+	g.walk = null
+	g.fl["crashing"] = true  # it still has to come down
+	float_text(g, "GOING DOWN!", Color("ff7a3d"), true)
+
+func gunship_crash(g: Unit) -> void:
+	## E7: the wreck crushes whatever it lands on.
+	g.fl.erase("crashing")
+	g.dead = true
+	g.gone = true
+	shake += 10
+	explode(g.x, g.y - 10, 64, 26, g.last_hit_by if g.last_hit_by is Unit else null)
+	for k in 12:
+		debris(g.x + randf_range(-30, 30), g.y - randf_range(4, 30), 2)
+	float_at(g.x, g.y - 40, "GUNSHIP DOWN!", Color("ffb23e"), true)
+
+func dicokka_act(e: Unit) -> void:
+	## E8: roll back and forth a set step, then lob a shell. Flipped, it just lies there.
+	var E: Dictionary = Data.ETYPES.dicokka
+	if e.fl.get("flipped", 0) > 0:
+		e.fl.flipped -= 1
+		if e.fl.flipped <= 0:
+			e.fl.erase("flipped")
+			float_text(e, "BACK ON ITS TRACKS", Color("ff7a3d"))
+		else:
+			float_text(e, "FLIPPED", Color("ffd23a"))
+		return
+	if not e.fl.has("home"):
+		e.fl["home"] = e.x
+		e.fl["dir"] = -1.0
+	var tx: float = e.fl.home + e.fl.dir * 110
+	e.fl.dir = -e.fl.dir
+	await enemy_advance(e, tx, E.speed)
+	if e.dead or e.air:
+		return
+	var tg = nearest_squad(e)
+	if tg == null or absf(tg.x - e.x) > E.range:
+		return
+	e.face = 1 if tg.x >= e.x else -1
+	await lob(e, tg, E.dmg, E.radius, 1.3)
+
+func dicokka_dmg(tg: Unit, amt: int, src, o: Dictionary) -> int:
+	## Armored front, soft from above and behind, and twice as soft flipped on its back.
+	if tg.fl.get("flipped", 0) > 0:
+		float_text(tg, "BELLY HIT", Color("ffd23a"))
+		return amt * 2
+	if not (src is Unit) or o.get("status", false):
+		return amt
+	var above: bool = src.y < tg.y - tg.h - 10
+	var front: bool = signf(src.x - tg.x) == tg.face
+	if front and not above:
+		float_text(tg, "ARMOR", Color("9fb4c9"))
+		return maxi(1, int(round(amt * 0.3)))
+	return int(round(amt * 1.5))
+
+func dicokka_land(u: Unit, imp: float) -> void:
+	if u.type == "dicokka" and not u.dead and imp > 3.5 and u.last_hit_by is Unit and u.last_hit_by.team == "squad":
+		u.fl["flipped"] = 2
+		float_text(u, "FLIPPED!", Color("ffd23a"), true)
+		Sfx.play("thud")
+		shake += 4
 
 # ---------------------------------------------------------------- N1 Finch, N4 Kage, N5 Volta, N6 Brass, N8 Sable
 func vis_foes() -> Array:
@@ -2077,9 +2360,15 @@ func cast_foot(n: int) -> String:
 	if tier == 0:
 		if n % 8 == 5:
 			return "gatetrooper"  # H7: a Jackal with a stolen Vharr ray
+		match n % 12:
+			2: return "jsniper"  # E1
+			6: return "flamer"  # E2
+			9: return "jdog"  # E4, a pack of three
 		return "grunt" if n % 4 != 3 else pool[(n / 4) % pool.size()]
 	if tier >= 2 and n == 1:
 		return "overseer"  # from level 3 an Overseer runs the Jackals that are left
+	if n % 10 == 4:
+		return "jsniper"  # the Jackal snipers stay on through the whole war
 	return pool[n % pool.size()]
 
 func place_alien(u: Unit) -> void:
@@ -2569,7 +2858,7 @@ func tick_statuses(team: String) -> void:
 			damage(u, 2, u.st_by.get("toxic", null), {"status": true})
 			kill_how = ""
 			u.armor = a
-		for k in ["burn", "toxic", "mark", "berserk", "cloak", "flamegod", "vest", "roll", "flared"]:
+		for k in ["burn", "toxic", "mark", "berserk", "cloak", "flamegod", "vest", "roll", "flared", "pinned"]:
 			if u.st.has(k):
 				u.st[k] -= 1
 				if u.st[k] <= 0:
@@ -2636,6 +2925,8 @@ func unit_at_point(x: float, y: float, shooter, travelled: float, skip: Dictiona
 			continue
 		if x >= u.x - u.w / 2.0 and x <= u.x + u.w / 2.0 and y >= u.y - u.h and y <= u.y:
 			return u
+		if u.para and shooter != null and shooter.team == "squad" and absf(x - u.x) < 16 and y >= u.y - 62 and y < u.y - u.h:
+			return u  # E3: the chute above a paratrooper
 	return null
 
 func trace_bullet(x: float, y: float, ang: float, max_len: float, bounces: int, shooter, pierce: bool, pass_mat := 0, soft := 0, bodies := 0) -> Dictionary:
@@ -2802,9 +3093,14 @@ func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: boo
 			float_text(tg, "SHIELD", Color("c9d1da"))
 			sparks(hh.x, hh.y, 6)
 		elif tg.shield and hh.dx > 0 and not tg.dead and not angled:
-			d = maxi(1, int(round(d * 0.25)))
-			float_text(tg, "SHIELD", Color("c9d1da"))
+			var locked := wall_locked(tg)
+			d = maxi(1, int(round(d * (0.1 if locked else 0.25))))
+			float_text(tg, "SHIELD WALL" if locked else "SHIELD", Color("c9d1da"))
 			sparks(hh.x, hh.y, 6)
+		if chute_hit(tg, hh.y):
+			continue
+		if a.team == "squad":
+			tank_hit(tg, hh.dx, a)
 		if tg.team == "squad" and a.team == "enemy" and tg.fl.get("deflect", 0) > 0 and not a.dead:
 			# Kage's blade sends it back where it came from
 			tg.fl.deflect -= 1
@@ -2988,6 +3284,8 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 		amt = int(ceil(amt / 2.0))
 	if tg.team == "enemy" and tg.has_st("flared") and not o.get("status", false):
 		amt += flare_bonus()
+	if tg.type == "dicokka":
+		amt = dicokka_dmg(tg, amt, src, o)
 	if tg.team == "squad" and tg.mech != null:
 		mech_hit(tg, amt)  # N3/R1: the vehicle takes it
 		return
@@ -3289,6 +3587,8 @@ func kill(tg: Unit, src) -> void:
 		drop_plate(tg, src)
 	elif tg.type == "jwalker":
 		walker_wreck(tg)
+	elif tg.type == "gunship":
+		gunship_down(tg)
 	elif tg.type == "droppod" or tg.type == "vgate":
 		tg.gone = true
 		for i in 8:
@@ -6447,7 +6747,9 @@ func start_player_turn() -> void:
 			s.energy += 1
 		if Run.has_gear("overclock") and (round_n % 2 == 1 or Run.relic_tier("overclock") >= 3):
 			s.energy += 1
-		s.move_left = full_move(s)
+		s.move_left = 0.0 if s.has_st("pinned") else full_move(s)
+		if s.has_st("pinned"):
+			float_text(s, "PINNED", Color("ff7a3d"), true)
 		s.moved = false
 		s.attacked = false
 		s.aim_discount = false
@@ -6865,6 +7167,9 @@ func enemy_phase() -> void:
 		await wait(50)
 	if rounds_since_scroll > stall_limit() and alert >= 6 and not boss_dead and randf() < 0.4:
 		calls += 1
+	if calls and not boss_dead and mission_idx == 0 and not breach:
+		await plane_drop(1 + alert / 4)  # E3: the Jackals' own backup comes by plane
+		calls = 0
 	if calls and not boss_dead:
 		var n := 1 + alert / 4
 		var shields := 0
@@ -7298,7 +7603,24 @@ func enemy_act(e: Unit) -> void:
 		return
 	if e.elite == "hungry":
 		await eat_body(e)
+	if Data.ETYPES[e.type].get("wall", false) and await wall_act(e):
+		return
 	match e.type:
+		"jsniper":
+			await sniper_act(e)
+			return
+		"flamer":
+			await flamer_act(e)
+			return
+		"jdog":
+			await skitter_act(e)
+			return
+		"gunship":
+			await gunship_act(e)
+			return
+		"dicokka":
+			await dicokka_act(e)
+			return
 		"hive":
 			await hive_act(e)
 			return
@@ -7557,7 +7879,8 @@ func leap_to(e: Unit, p: Vector2) -> void:
 
 func skitter_act(e: Unit) -> void:
 	## Scramble in close (climbing walls on the way), then pounce on the nearest target and bite.
-	var E: Dictionary = Data.ETYPES.skitter
+	## E4 Jackal Hounds hunt the same way and pin whoever they bite.
+	var E: Dictionary = Data.ETYPES[e.type]
 	var tg = nearest_squad(e)
 	if tg == null:
 		return
@@ -7575,12 +7898,16 @@ func skitter_act(e: Unit) -> void:
 	if e.dead:
 		return
 	for o in units:
-		if o == e or o.dead or o.gone or o.sunk or o.type == "skitter" or (o.team != "squad" and o.team != "enemy"):
+		if o == e or o.dead or o.gone or o.sunk or o.type == e.type or (o.team != "squad" and o.team != "enemy"):
+			continue
+		if o.team == "enemy" and not at_war(e, o):
 			continue
 		if absf(o.x - e.x) < 20 + o.w / 2.0 and absf(o.y - e.y) < 30:
 			Sfx.play("slash")
 			fx.append({"kind": "slash", "x": o.x, "y": o.y - o.h / 2.0, "t": 0, "dur": 10, "sc": 1.0, "face": e.face})
 			damage(o, E.dmg, e, {})
+			if E.get("pin", false) and o.team == "squad" and not o.dead:
+				add_status(o, "pinned", 1, e)
 
 func beam_path(e: Unit, ang: float, rng := -1.0, from = null) -> Dictionary:
 	## The squid ray: a straight line that passes through one wall up to 28px thick.
@@ -8671,6 +8998,7 @@ func _process(delta: float) -> void:
 		hud.refresh()
 
 func step() -> void:
+	rotor_check()
 	t += 1
 	hold_fast()
 	if stickies.size() and state == "enemy":
@@ -8939,6 +9267,10 @@ func physics(u: Unit) -> void:
 	if u.weight == "hover" and not u.dead:
 		hover_physics(u)
 		return
+	if u.para and u.fl.get("chute", false) and state != "enemy" and not u.dead:
+		u.vx = 0.0
+		u.vy = 0.0
+		return  # E3: the troopers hang under their chutes until the enemy phase
 	if not u.air:
 		if u.y > WATER_Y + 2:
 			drown(u)  # standing on anything below the waterline is standing in the water
@@ -9014,6 +9346,9 @@ func physics(u: Unit) -> void:
 			u.slide = clampf(u.vx * 0.9, -4.0, 4.0) if lm == Terrain.ICE and absf(u.vx) > 0.6 and not u.para else 0.0
 			u.vx = 0
 			u.vy = 0
+			if u.fl.get("crashing", false):
+				gunship_crash(u)
+			dicokka_land(u, imp)
 			if u.crash:
 				u.crash = false
 				collision_dmg(u, Data.ETYPES[u.type].get("crash", 5) if u.kind == "enemy" else 5, "CRASH")
