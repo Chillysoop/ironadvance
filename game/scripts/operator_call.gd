@@ -122,7 +122,7 @@ class FaceView extends Control:
 		var col: Color = L.get("col", Color("62d26f"))
 		draw_rect(Rect2(Vector2.ZERO, size), col.darkened(0.82))
 		var who: String = L.get("who", "")
-		var sheet: String = {"cmd": "sq_moss_beret", "varga": "en_radio", "prime": "en_overseer"}.get(who, "")
+		var sheet: String = {"cmd": "sq_moss_beret", "varga": "en_radio", "prime": "en_overseer", "sarge": "sq_rook_helmet"}.get(who, "")
 		if who == "sq" and L.has("s"):
 			sheet = Art.look_sheet(L.s)
 		if Art.meta.has(sheet):

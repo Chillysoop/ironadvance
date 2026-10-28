@@ -884,6 +884,11 @@ const SEGMENTS := {
 	"range": {"w": 820, "sandbags": [], "pits": [], "structs": [{"t": "tower", "x": 440, "h": 96}],
 		"spawns": [["grunt", 200], ["barrel", 290], ["shield", 340], ["grunt", 440, {"hold": 1}], ["grunt", 580], ["mg", 700]]},
 	"camp": {"w": 560, "sandbags": [60, 500], "pits": [], "camp": true, "structs": [], "spawns": []},
+	# N6: the training drill. A target, a crate, a bunched pair for a grenade, then a short real fight
+	"drill": {"w": 1000, "sandbags": [], "pits": [], "structs": [],
+		"spawns": [["grunt", 430, {"tut": "target"}], ["crate", 510, {"tut": "crate"}], ["grunt", 600, {"tut": "group"}], ["grunt", 625, {"tut": "group"}]]},
+	"drill2": {"w": 900, "sandbags": [260], "pits": [], "structs": [{"t": "tower", "x": 520, "h": 96}],
+		"spawns": [["grunt", 380, {"tut": "fight"}], ["grunt", 520, {"tut": "fight", "hold": 1}], ["nade", 700, {"tut": "fight"}]]},
 	# the open clearing after the mid-level camp, where a detour plays out (empty if you press on)
 	"yard": {"w": 760, "sandbags": [], "pits": [], "yard": true, "structs": [], "spawns": []},
 	"arena": {"w": 1200, "sandbags": [120, 360], "pits": [], "flat": true,
@@ -1030,6 +1035,7 @@ const RADIO_CAST := {
 	"cmd": {"name": "MAJ. HALE", "role": "COMMAND", "col": Color("62d26f")},
 	"varga": {"name": "COL. VARGA", "role": "JACKAL ARMY", "col": Color("ff7a3d")},
 	"prime": {"name": "OVERSEER PRIME", "role": "VHARR", "col": Color("c47bff")},
+	"sarge": {"name": "SGT. KRUGER", "role": "DRILL INSTRUCTOR", "col": Color("ffb23e")},
 }
 const RADIO_ACT := [
 	[["cmd", "Iron Company, this is Hale. The Jackals hold the whole delta. Take it back one sector at a time."],
@@ -1055,6 +1061,19 @@ const RADIO_LANDFALL := [
 	["cmd", "Take three sectors and their Boar's Den opens. Break it and the front moves on."],
 	["sq", "Nice beach, {mate}. Shame about the Jackals."],
 ]
+# N6: the training drill, one list of lines per step (move, shoot, crate, throw, push, fight)
+const TUT_LINES := [
+	["Listen up, recruits. This is a drill: nothing here counts.", "Click the ground to walk. Move anyone a few steps forward."],
+	["Target Jackal ahead. Click RIFLE SHOT, or press its number key.", "Aim at him with the mouse and click to fire. Right-click cancels. SHIFT steadies your aim."],
+	["Supply crate up ahead. Shoot it open.", "Loot you leave lying around is collected when the screen moves on."],
+	["Two Jackals bunched up ahead. Arm the FRAG GRENADE and lob it at their feet.", "The dotted trail shows every bounce. The mouse wheel sets the fuse."],
+	["Each soldier gets 3 ENERGY a turn. NEXT (SPACE) picks who can still act. END TURN (ENTER) ends it.", "Now push. Walk someone into the PUSH ZONE on the right and the screen moves on."],
+	["These ones shoot back. After your turn, every enemy moves and fires.", "Use cover, knock them off ledges, finish them. Go."],
+]
+const TUT_DONE_LINES := ["That's the drill, recruits. You're ready for the gate.", "QUICK RUN is one run of three levels. CAMPAIGN is the long war."]
+const TUT_FAIL_LINES := ["Down in the dirt already? Get up. TRAINING is on the title screen whenever you want another go."]
+const TRAINING := {"name": "BOOT CAMP", "theme": "dusk", "segments": ["drill", "drill2"], "boss_hp": 1, "plate": 0, "hp_mul": 1.0,
+	"brief": "", "rules": {"pads": 0, "wind": 0.0, "amp": 0.3}, "tutorial": true}
 const RADIO_JOB := {
 	"push": [["cmd", "Push through to the far end and knock out their armor."], ["cmd", "Straight fight. Break their line and keep moving east."]],
 	"rescue": [["cmd", "Three of ours are held in there. Bring them home."], ["cmd", "Prisoners spotted. Walk up and cut them loose, they'll do the rest."]],

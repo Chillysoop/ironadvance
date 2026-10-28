@@ -54,6 +54,10 @@ var pow_queue: Array = []
 var job_st := {}   # O4: {"on", "left"} while holding the far end
 var lvl_queue: Array = []
 var dummies: Array = []       # practice range: [type, x] of each dummy, to stand them back up
+var tut_step := 0             # N6 training: the drill step the recruits are on
+var tut_said := -1            # the last step the sergeant has called in
+var tut_marks := {}           # drill step -> the units it is about
+var tut_blast := false        # a squad blast went off on the grenade step
 var boss_active := false
 var boss_dead := false
 var gate = null          # the gate home to HQ, opened after the boss falls
@@ -162,6 +166,12 @@ func setup(idx: int, custom := {}) -> void:
 		if type == "barrel":
 			var u := mk_unit(); u.team = "neutral"; u.kind = "barrel"; u.x = x; u.y = T.stand_y(x, 0); u.w = 14; u.h = 18
 			units.append(u); continue
+		if type == "crate":
+			var u := mk_unit(); u.team = "neutral"; u.kind = "crate"; u.x = x; u.y = T.stand_y(x, 0); u.w = 16; u.h = 14; u.hp = 1; u.max_hp = 1
+			units.append(u)
+			if opt.has("tut"):
+				tut_marks[opt.tut] = tut_marks.get(opt.tut, []) + [u]
+			continue
 		if type == "pad":
 			var py = T.stand_y(x, T.ground_at(x) - 40)
 			if py == null:
@@ -194,7 +204,7 @@ func setup(idx: int, custom := {}) -> void:
 			if not spec_placed():
 				make_specialist(u)
 			units.append(u); continue
-		if type == "grunt" or type == "nade":
+		if (type == "grunt" or type == "nade") and not opt.has("tut"):
 			type = cast_foot(foot)
 			foot += 1
 		if type == "boss" and mission.get("boss", "") == "hiveship":
@@ -214,9 +224,14 @@ func setup(idx: int, custom := {}) -> void:
 				# D1: until a player has beaten one Boar, the level 1 Boar is a softer Rookie Boar
 				u.fl["rookie"] = true
 				u.hp = int(u.hp * ROOKIE_HP); u.max_hp = u.hp; u.plate = int(u.plate * ROOKIE_HP)
-		elif randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
+		elif not tutorial() and randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
 			make_elite(u, pick_elite(faction(u) == "vharr"))
 		units.append(u)
+		if opt.has("tut"):
+			tut_marks[opt.tut] = tut_marks.get(opt.tut, []) + [u]
+			# drill dummies drop to one rifle shot or one frag, so each lesson lands first try
+			if opt.tut in ["target", "group"]:
+				u.hp = mini(u.hp, 5); u.max_hp = u.hp
 		place_alien(u)
 		if type == "hiveship":
 			hang_plates(u)
@@ -411,6 +426,8 @@ func pick_elite(alien: bool) -> String:
 
 func spawn_map_loot() -> void:
 	## Crates on roofs and in the open, the odd strongbox, and one buried cache per mission (L1, L3, L6).
+	if tutorial():
+		return  # the drill lays out its own crate
 	var lo := 520.0
 	var hi := world_w - 900.0
 	var n := int((hi - lo) / 360.0) * (2 if Run.intel == "surplus" else 1)
@@ -889,7 +906,7 @@ func begin() -> void:
 		banner(mission.get("banner", "MISSION %d START!" % (mission_idx + 1)), Color("ffb23e"), mission.name)
 	if breach:
 		log_msg("BREACH: the Vharr and the Jackals are fighting each other. Each shoots whoever is nearest, so let them.")
-	if hud != null and Run.tips_on() and Run.history.is_empty() and not practice():
+	if hud != null and Run.tips_on() and Run.history.is_empty() and not practice() and not tutorial():
 		hud.coach_queue.append_array(COACH)
 	activate_enemies()
 	await wait(60)
@@ -899,6 +916,53 @@ func begin() -> void:
 # ---------------------------------------------------------------- helpers
 func practice() -> bool:
 	return mission.get("practice", false)
+
+# ---------------------------------------------------------------- N6: the optional training drill
+const TUT_MOVE := 0
+const TUT_SHOOT := 1
+const TUT_CRATE := 2
+const TUT_THROW := 3
+const TUT_PUSH := 4
+const TUT_FIGHT := 5
+const TUT_DONE := 6
+
+func tutorial() -> bool:
+	return mission.get("tutorial", false)
+
+func tut_clear(key: String) -> bool:
+	return tut_marks.get(key, []).all(func(u): return u.dead)
+
+func tut_update() -> void:
+	## One step at a time: the sergeant calls in what to do, the step ends when it's done.
+	if state != "player" or busy:
+		return
+	var done := false
+	match tut_step:
+		TUT_MOVE:
+			done = squad_alive().any(func(u): return u.x >= 300)
+		TUT_SHOOT:
+			done = tut_clear("target")
+		TUT_CRATE:
+			done = tut_clear("crate")
+		TUT_THROW:
+			# any squad blast passes: the lesson is the throw, and the pair join the fight if they live
+			done = tut_clear("group") or tut_blast
+		TUT_PUSH:
+			done = cam_x > 40
+	if done:
+		tut_step += 1
+		Sfx.play("coin")
+	if tut_said < tut_step and tut_step < TUT_DONE:
+		tut_said = tut_step
+		var main = get_tree().current_scene
+		if main != null and main.has_method("call_in"):
+			main.call_in(Data.TUT_LINES[tut_step].map(func(l): return Run.radio_line("sarge", l, [])))
+	# the card a step teaches is always in the selected soldier's hand
+	var need: String = {TUT_SHOOT: "rifle", TUT_CRATE: "rifle", TUT_THROW: "frag"}.get(tut_step, "")
+	if need != "" and sel != null and not sel.dead:
+		if not sel.hand.any(func(c): return c.key == need):
+			sel.hand.append({"id": -2, "key": need, "tier": Data.base_tier(need), "temp": true})
+			ui_dirty = true
 
 func practice_round() -> void:
 	## D5: no enemy phase at the range. When every dummy is down, a fresh set stands up.
@@ -2259,6 +2323,8 @@ func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> vo
 		if g != null:
 			gases.erase(g)
 	var own_sq: bool = owner != null and owner is Unit and owner.team == "squad"
+	if own_sq and tut_step == TUT_THROW:
+		tut_blast = true
 	if own_sq and owner.perk("napalm"):
 		burn = true
 	if own_sq and owner.fl.get("accel", false):
@@ -4273,8 +4339,12 @@ func post_action() -> void:
 	if await job_ends():
 		return
 	start_hold()
+	if tutorial() and tut_step >= TUT_FIGHT and not units.any(func(e): return e.team == "enemy" and not e.dead):
+		await until(settled)
+		victory()
+		return
 	var active := units.filter(func(e): return e.team == "enemy" and not e.dead and e.active)
-	if active.is_empty():
+	if active.is_empty() and (not tutorial() or tut_step >= TUT_FIGHT):
 		var rest := units.filter(func(e): return e.team == "enemy" and not e.dead)
 		if rest.size():
 			banner("WAVE CLEAR!", Color("62d26f"), "+300  +15$")
@@ -4937,6 +5007,14 @@ func end_turn(force := false) -> void:
 func enemy_phase() -> void:
 	if practice():
 		await practice_round()
+		return
+	if tutorial() and tut_step < TUT_FIGHT:
+		# the drill's targets never shoot back
+		state = "enemy"
+		busy = true
+		ui_dirty = true
+		await wait(20)
+		start_player_turn()
 		return
 	state = "enemy"
 	busy = true
@@ -6876,6 +6954,8 @@ func _process(delta: float) -> void:
 
 func step() -> void:
 	t += 1
+	if t % 15 == 0 and tutorial():
+		tut_update()
 	if end_confirm_t > 0:
 		end_confirm_t -= 1
 	if not aim_hold:
