@@ -32,6 +32,42 @@ static func ramp(stops: Array, t: float) -> Color:
 static func out_cubic(t: float) -> float:
 	return 1.0 - pow(1.0 - clampf(t, 0.0, 1.0), 3)
 
+static func smooth(a: float, b: float, x: float) -> float:
+	var t := clampf((x - a) / (b - a), 0.0, 1.0)
+	return t * t * (3 - 2 * t)
+
+static func out_expo(t: float) -> float:
+	return 1.0 if t >= 1.0 else 1.0 - pow(2.0, -10.0 * clampf(t, 0.0, 1.0))
+
+static func out_back(t: float, s := 1.7) -> float:
+	var u := clampf(t, 0.0, 1.0) - 1.0
+	return 1.0 + (s + 1.0) * u * u * u + s * u * u
+
+static func noise(x: float, seed := 0) -> float:
+	var i := floori(x)
+	var f := x - i
+	var u := f * f * (3 - 2 * f)
+	var a := hsh(i, seed) * 2 - 1
+	return a + (hsh(i + 1, seed) * 2 - 1 - a) * u
+
+static func noise2(x: float, y: float, seed := 0) -> float:
+	var ix := floori(x)
+	var iy := floori(y)
+	var fx := x - ix
+	var fy := y - iy
+	var u := fx * fx * (3 - 2 * fx)
+	var v := fy * fy * (3 - 2 * fy)
+	var h00 := hsh(ix * 73 + iy * 9301, seed) * 2 - 1
+	var h10 := hsh((ix + 1) * 73 + iy * 9301, seed) * 2 - 1
+	var h01 := hsh(ix * 73 + (iy + 1) * 9301, seed) * 2 - 1
+	var h11 := hsh((ix + 1) * 73 + (iy + 1) * 9301, seed) * 2 - 1
+	var top := h00 + (h10 - h00) * u
+	var bot := h01 + (h11 - h01) * u
+	return top + (bot - top) * v
+
+static func lum(c: Color) -> float:
+	return c.r * 0.3 + c.g * 0.59 + c.b * 0.11
+
 static func glow_texture(r: int) -> ImageTexture:
 	if glow_tex.has(r):
 		return glow_tex[r]
