@@ -656,10 +656,28 @@ func pick(a: Array):
 # ---------------------------------------------------------------- fx
 func float_text(u: Unit, text: String, c := Color.WHITE, big := false) -> void:
 	var n := texts.filter(func(tx): return tx.u == u and tx.t < 20).size()
-	texts.append({"u": u, "x": u.x, "y": u.y - u.h - 10 - n * 14, "text": text, "c": c, "big": big, "t": 0})
+	texts.append({"u": u, "x": u.x, "y": clear_text_y(u.x, u.y - u.h - 10 - n * 14, text), "text": text, "c": c, "big": big, "t": 0})
 
 func float_at(x: float, y: float, text: String, c := Color.WHITE, big := false) -> void:
-	texts.append({"u": null, "x": x, "y": y, "text": text, "c": c, "big": big, "t": 0})
+	texts.append({"u": null, "x": x, "y": clear_text_y(x, y, text), "text": text, "c": c, "big": big, "t": 0})
+
+func clear_text_y(x: float, y: float, text: String) -> float:
+	## Lift a new floating text above any young one it would land on, so a big chain
+	## (pile-up, combo, overkill, level ups) stacks into lines instead of one smear.
+	var half := Art.text_width(text, 8) / 2.0 + 6
+	for k in 10:
+		var hit := false
+		for tx in texts:
+			var ty: float = tx.y - tx.t * 0.6
+			var tx_x: float = tx.u.x if tx.u != null else tx.x
+			var tw := Art.text_width(tx.text, 16 if tx.big else 8) / 2.0
+			if tx.t < 45 and absf(ty - y) < (18 if tx.big else 12) and absf(tx_x - x) < half + tw:
+				hit = true
+				break
+		if not hit:
+			break
+		y -= 14
+	return y
 
 func banner(text: String, c := Color("ffb23e"), sub := "") -> void:
 	banners.append({"text": text, "c": c, "sub": sub, "t": 0, "dur": 90})
@@ -3669,7 +3687,10 @@ func supply_drop(title: String, for_unit) -> void:
 func level_up(u: Unit) -> void:
 	if u.dead:
 		return
-	banner("LEVEL UP!", Color("ffd23a"), "%s IS NOW LEVEL %d" % [u.def.name, u.s.lvl])
+	# several levels from one blast queue up: name each step and say how many are left
+	var left: int = lvl_queue.count(u)
+	var shown: int = u.s.lvl - left
+	banner("LEVEL UP!", Color("ffd23a"), "%s IS NOW LEVEL %d" % [u.def.name, shown])
 	bark(u, pick(Data.BARKS.lvl))
 	var opts := Run.level_options(u.s)
 	var picks := 1
@@ -3677,7 +3698,8 @@ func level_up(u: Unit) -> void:
 		Run.extra_picks -= 1
 		picks = 2
 	while picks > 0 and opts.size():
-		var ch := await ask("level", "%s  LEVEL %d" % [u.def.name, u.s.lvl], "Pick %s: a new card, a stat boost or an ability." % ("two" if picks > 1 else "one"), opts, u)
+		var more := "  %d more level-up%s after this one." % [left, "s" if left > 1 else ""] if left > 0 else ""
+		var ch := await ask("level", "%s  LEVEL %d" % [u.def.name, shown], "Pick %s: a new card, a stat boost or an ability.%s" % ["two" if picks > 1 else "one", more], opts, u)
 		if ch == -2 and Run.lvl_rerolls > 0:
 			Run.lvl_rerolls -= 1
 			opts = Run.level_options(u.s)
@@ -7119,6 +7141,10 @@ func _unhandled_input(ev: InputEvent) -> void:
 			return
 		if busy and ev.keycode in [KEY_SPACE, KEY_ESCAPE, KEY_ENTER] and stop_drill():
 			return
+		if ev.keycode == KEY_ESCAPE and hud != null and hud.close_deck():
+			return
+		if hud != null and hud.deck_open:
+			return  # keys stay out of the battle while the deck viewer is up
 		if ev.keycode == KEY_ESCAPE:
 			if card_idx < 0:
 				drop_hang(sel)

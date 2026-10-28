@@ -733,11 +733,12 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 		for i in u.energy:
 			draw_texture_rect(Art.tex.ic_bolt, Rect2(x - u.energy * 4.5 + i * 9, y - 12 - u.h - 8, 8, 8), false)
 	if b.inspect and b.state == "player":
-		var info := "%dE  %dpx  ADR %d%s" % [u.energy, int(maxf(0, u.move_left)), u.adr, "  OW" if u.overwatch > 0 else ""]
+		var info := "%s  %dE  MOVE %d  ADR %d%s" % [u.def.name, u.energy, int(maxf(0, u.move_left)), u.adr, "  OW" if u.overwatch > 0 else ""]
 		var tw := Art.text_width(info, 8) + 6
 		var iy := u.y - u.h - 58 - b.squad().find(u) * 13
-		draw_rect(Rect2(x - tw / 2, iy, tw, 12), Color(C_DARK, 0.85))
-		Art.text(self, info, Vector2(x, iy + 10), 8, Color("62d26f") if b.can_act(u) else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+		var ix := clampf(x, b.cam_x + tw / 2 + 2, b.cam_x + Battle.W - 2 - tw / 2)
+		draw_rect(Rect2(ix - tw / 2, iy, tw, 12), Color(C_DARK, 0.85))
+		Art.text(self, info, Vector2(ix, iy + 10), 8, Color("62d26f") if b.can_act(u) else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 	if sel and b.state == "player":
 		var by := u.y - u.h - 36 + sin(b.t / 8.0) * 2
 		var pts := PackedVector2Array([Vector2(x - 6, by), Vector2(x + 6, by), Vector2(x, by + 7)])
@@ -1004,21 +1005,26 @@ func draw_targeting() -> void:
 				# K1: the whole bouncing flight up to the fuse, and where it bursts
 				var eff: int = int(fz / 2) if u.perk("shortfuse") else fz
 				var gs := b.sim_grenade(v.hx, v.hy, v.vx, v.vy, c.get("wind", 1.0), eff)
+				# ARC orange with a dark core, so the trail never reads as snow or rain
 				for i in gs.pts.size():
-					if i % 3 == 0:
+					if i % 2 == 0:
 						var p: Vector2 = gs.pts[i]
-						draw_rect(Rect2(p.x - 1, p.y - 1, 3, 3), Color(1, 1, 1, maxf(0.25, 1 - i / float(eff + 20))))
+						var a := maxf(0.4, 1 - i / float(eff + 20))
+						draw_rect(Rect2(p.x - 2, p.y - 2, 5, 5), Color(0.05, 0.035, 0.03, a * 0.85))
+						draw_rect(Rect2(p.x - 1, p.y - 1, 3, 3), Color(1, 0.82, 0.35, a))
 				var bp := Vector2(gs.x, gs.y)
 				if not gs.lost:
 					var rr: float = c.get("radius", 30) * b.blast_scale(u)
 					draw_arc(bp, rr, 0, TAU, 32, Color(1, 0.45, 0.2, 0.7), 1.0)
 					draw_rect(Rect2(bp.x - 3, bp.y - 3, 6, 6), Color("ff7a3d"))
+					draw_offscreen_burst(bp)
 				Art.text(self, "FUSE %.1fs  [WHEEL]" % (eff / 60.0), Vector2(m.x + 12, m.y + 22), 8, Color("ffd23a"))
 			var sim := b.sim_arc(v.hx, v.hy, v.vx, v.vy, c.get("wind", 1.0), 40)
 			for i in (sim.pts.size() if fz == null else 0):
 				if i % 2 == 0:
 					var p: Vector2 = sim.pts[i]
-					draw_rect(Rect2(p.x - 1, p.y - 1, 3, 3), Color(1, 1, 1, 1 - i / 44.0))
+					draw_rect(Rect2(p.x - 2, p.y - 2, 5, 5), Color(0.05, 0.035, 0.03, (1 - i / 44.0) * 0.85))
+					draw_rect(Rect2(p.x - 1, p.y - 1, 3, 3), Color(1, 0.82, 0.35, 1 - i / 44.0))
 			draw_line(Vector2(v.hx, v.hy), Vector2(v.hx + v.vx * 5, v.hy + v.vy * 5), Color("ffb23e"), 2.0)
 			var px := u.x - 20
 			var py := u.y + 22
@@ -1269,6 +1275,18 @@ func draw_reticle(p: Vector2, col: Color) -> void:
 	draw_arc(p, s, 0, TAU, 16, col, 1.0)
 	for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
 		draw_line(p + d * (s - 3), p + d * (s + 4), col, 1.0)
+
+func draw_offscreen_burst(bp: Vector2) -> void:
+	## A grenade that bursts off screen gets an arrow on the nearest edge.
+	var lo := Vector2(b.cam_x + 10, 40)
+	var hi := Vector2(b.cam_x + Battle.W - 10, 400)
+	if bp.x >= lo.x and bp.x <= hi.x and bp.y >= lo.y:
+		return
+	var e := Vector2(clampf(bp.x, lo.x, hi.x), clampf(bp.y, lo.y, hi.y))
+	var d := (bp - e).normalized()
+	var side := Vector2(-d.y, d.x)
+	draw_colored_polygon(PackedVector2Array([e + d * 7, e - d * 3 + side * 5, e - d * 3 - side * 5]), Color("ff7a3d"))
+	Art.text(self, "BURST", e - d * 12 + Vector2(0, 3), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
 
 # ---------------------------------------------------------------- text
 func draw_texts() -> void:

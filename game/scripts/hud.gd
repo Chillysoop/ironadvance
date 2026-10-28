@@ -18,6 +18,7 @@ var modal: Control
 var cards: Array = []
 var tags: Array = []
 var deck_view: Control = null
+var deck_open := false    # the DECK viewer is up (it waits on nothing, so Esc may close it)
 var hand_x0 := 270.0      # left edge of the hand, so the action meter can sit beside it
 var targeting := false    # a card is armed: the hand ghosts out so it doesn't hide what you aim at
 
@@ -254,6 +255,7 @@ func hint_text() -> String:
 
 # ---------------------------------------------------------------- modal: pick one
 func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> int:
+	deck_open = false
 	for c in modal.get_children():
 		c.queue_free()
 	var bg := ModalBG.new()
@@ -328,6 +330,7 @@ func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> 
 
 func pick_grid(kind: String, title: String, sub: String, opts: Array, who = null) -> int:
 	## A pick-one over many cards (a whole deck), in rows of eight.
+	deck_open = false
 	for c in modal.get_children():
 		c.queue_free()
 	var bg := ModalBG.new()
@@ -401,12 +404,21 @@ func show_deck() -> void:
 	close.color = Color("ffb23e")
 	close.size = Vector2(100, 26)
 	close.position = Vector2(430, 506)
-	close.pressed.connect(func(): modal.visible = false)
+	close.pressed.connect(close_deck)
 	modal.add_child(close)
 	var dz := dossier_button(Vector2(540, 506), maxi(0, Run.soldiers.find(u.s)))
-	dz.pressed.connect(func(): modal.visible = false)
+	dz.pressed.connect(close_deck)
 	modal.add_child(dz)
 	modal.visible = true
+	deck_open = true
+
+func close_deck() -> bool:
+	## Esc or CLOSE on the deck viewer. True when there was one to close.
+	if not deck_open:
+		return false
+	deck_open = false
+	modal.visible = false
+	return true
 
 func dossier_button(pos: Vector2, i: int) -> PixButton:
 	var bt := PixButton.new()
@@ -593,7 +605,12 @@ class ModalBG extends Control:
 		if who != null and who is Unit and kind != "deck":
 			var t := Time.get_ticks_msec() / 160
 			Art.draw_char(self, who.sheet, "cheer", t % 2, Vector2(170, 360), 1, false, 0, 1.0, 0, false, 2.5)
-			Art.text(self, "LV %d" % who.s.lvl, Vector2(170, 384), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			# the title names the level being picked for (it can trail the soldier's level when several queue up)
+			var lv: int = title.get_slice(" ", title.get_slice_count(" ") - 1).to_int() if kind == "level" else 0
+			Art.text(self, "LV %d" % (lv if lv > 0 else who.s.lvl), Vector2(170, 384), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		if kind == "level":
+			Art.text(self, "Abilities follow the soldier's two specialist paths (gold label): MINOR, then MAJOR, then CAPSTONE.", Vector2(480, 448), 16, Color("c9bfa8"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+			Art.text(self, "REROLL deals three new options.  BANISH removes one option from this soldier's pool for the run.", Vector2(480, 463), 16, Color("c9bfa8"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 		elif who != null and kind == "deck":
 			Art.draw_char(self, who.sheet, "idle", (Time.get_ticks_msec() / 200) % 4, Vector2(100, 200), 1, false, 0, 1.0, 0, true, 2.0)
 
@@ -787,6 +804,9 @@ class Overlay extends Control:
 			var strip := Rect2(480 - hw / 2 - 8, top - 2, hw + 16, lines.size() * 14 + 4)
 			# aiming at something behind the strip: fade it nearly away
 			var al := 0.2 if hud.targeting and strip.grow(24).has_point(get_local_mouse_position()) else 1.0
+			# a hovered card lifts into the strip's spot: get out of its way
+			if hud.cards.any(func(cv): return cv.hover):
+				al = 0.0
 			draw_rect(strip, Color(0.05, 0.035, 0.03, 0.7 * al))
 			for i in lines.size():
 				Art.text(self, lines[i], Vector2(480, top + 11 + i * 14), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0, true, al)
