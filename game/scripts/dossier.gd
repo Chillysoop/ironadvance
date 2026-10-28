@@ -2,7 +2,7 @@ extends Control
 ## The Dossier: everything about one soldier on one screen. SHEET (stats, archetypes, implants,
 ## duos), GEAR (their four slots and the shared stash) and DECK (every card, the cost curve,
 ## live chains). Card services sit on the selected card and show the result before you pay.
-## Opens from the squad bar or 1-4 at HQ; Q/E or the arrow keys flip to the next soldier.
+## Opens from the squad bar or 1-5 at HQ; Q/E or the arrow keys flip to the next soldier.
 
 signal done
 
@@ -84,7 +84,7 @@ func _input(ev: InputEvent) -> void:
 			if readonly or not s().alive or tab == "squad":
 				return
 			practice()
-		KEY_1, KEY_2, KEY_3, KEY_4:
+		KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 			var k: int = ev.keycode - KEY_1
 			if k < Run.soldiers.size():
 				switch_to(k)
@@ -103,7 +103,7 @@ func build() -> void:
 	modal = null
 	var bar := HubUI.SquadBar.new()
 	bar.position = Vector2(16, 44)
-	bar.current = 4 if tab == "squad" else idx
+	bar.current = HubUI.ALL_PLATE if tab == "squad" else idx
 	bar.picked.connect(func(i):
 		if tab == "squad":
 			tab = "deck"
@@ -406,9 +406,48 @@ func gear_item():
 	return null
 
 func gear_select(p: Dictionary) -> void:
+	var me := s()
+	if not readonly and me.alive:
+		# an empty (or full) slot picked, then gear that fits it, or the other way round: equip it
+		var held = gear_item()
+		var it = gear_at(p)
+		if gear_pick.get("where", "") == "equip" and p.where == "stash" and ArmoryScript.fits(it, gear_pick.slot):
+			equip_into(it, gear_pick.slot)
+			return
+		if gear_pick.get("where", "") == "stash" and p.where == "equip" and ArmoryScript.fits(held, p.slot):
+			equip_into(held, p.slot)
+			return
 	Sfx.play("click")
 	gear_pick = {} if gear_pick.hash() == p.hash() else p
 	build()
+
+func gear_at(p: Dictionary):
+	var keep := gear_pick
+	gear_pick = p
+	var it = gear_item()
+	gear_pick = keep
+	return it
+
+func equip_into(it: Dictionary, slot: String) -> void:
+	var me := s()
+	var delta := ArmoryScript.card_delta(it, me.equip[slot])
+	Run.belt.erase(it)
+	Run.equip(me, it, slot)
+	Sfx.play("buy")
+	say("%s equipped %s: %s." % [me.def.name, Data.item_name(it), ArmoryScript.deck_words(delta)])
+	gear_pick = {}
+	build()
+
+func gear_fit(it, where: String, slot := "") -> int:
+	## Lights the stash gear that fits a picked slot, or the slots a picked item fits.
+	if readonly or not s().alive or gear_pick.is_empty():
+		return 0
+	var held = gear_item()
+	if gear_pick.where == "equip" and where == "stash" and it != null:
+		return 1 if ArmoryScript.fits(it, gear_pick.slot) else -1
+	if gear_pick.where == "stash" and where == "equip" and held != null:
+		return 1 if ArmoryScript.fits(held, slot) else -1
+	return 0
 
 func build_gear() -> void:
 	var me := s()
@@ -418,8 +457,10 @@ func build_gear() -> void:
 		tile.item = me.equip[slot]
 		tile.tw = 128
 		tile.empty_label = Data.SLOT_NAMES[Data.slot_group(slot)]
+		tile.clickable_empty = not readonly
 		tile.position = Vector2(MID.position.x + (k % 2) * 136, MID.position.y + 54 + (k / 2) * 52)
 		tile.selected = gear_pick.get("where", "") == "equip" and gear_pick.slot == slot
+		tile.fit = gear_fit(tile.item, "equip", slot)
 		tile.pressed.connect(func(): gear_select({"where": "equip", "slot": slot}))
 		add_child(tile)
 	for i in maxi(Data.STASH_MAX, Run.stash.size()):
@@ -428,6 +469,7 @@ func build_gear() -> void:
 		tile.empty_label = "EMPTY"
 		tile.position = Vector2(MID.position.x + (i % 4) * 110, MID.position.y + 190 + (i / 4) * 50)
 		tile.selected = gear_pick.get("where", "") == "stash" and gear_pick.i == i
+		tile.fit = gear_fit(tile.item, "stash")
 		var k := i
 		tile.pressed.connect(func(): gear_select({"where": "stash", "i": k}))
 		add_child(tile)
@@ -459,51 +501,23 @@ func build_gear() -> void:
 		bt.text = "UNEQUIP"
 		bt.color = Color("9aa2ae")
 		bt.pressed.connect(func():
+			var delta := ArmoryScript.card_delta(null, it)
 			Run.unequip(me, gear_pick.slot)
 			Sfx.play("click")
+			say("%s took off %s: %s." % [me.def.name, Data.item_name(it), ArmoryScript.deck_words(delta)])
 			gear_pick = {}
 			build())
 	elif Data.ITEMS[it.id].slot != "belt":
 		bt.text = "EQUIP ON %s" % me.def.name
 		bt.color = Color("53d4e2")
-		bt.pressed.connect(func():
-			Run.belt.erase(it)
-			if not Run.stash.has(it):
-				Run.stash.append(it)
-			Run.equip(me, it)
-			Sfx.play("buy")
-			say("%s equipped %s." % [me.def.name, Data.item_name(it)])
-			gear_pick = {}
-			build())
+		bt.pressed.connect(func(): equip_into(it, Run.slot_for(me, it)))
 	else:
 		return
 	add_child(bt)
 
 func equip_preview(it: Dictionary) -> Array:
 	## S4: what equipping this item would change for the open soldier, as [text, good] lines.
-	var me := s()
-	var slot := Run.slot_for(me, it)
-	var old = me.equip[slot]
-	var a := Data.item_stats(it)
-	var b: Dictionary = Data.item_stats(old) if old != null else {}
-	var out: Array = []
-	var keys: Array = a.keys()
-	for k in b:
-		if not keys.has(k):
-			keys.append(k)
-	for k in keys:
-		var d = a.get(k, 0) - b.get(k, 0)
-		if is_zero_approx(float(d)):
-			continue
-		var ln: String = Data.stat_lines({k: abs(d)})[0]
-		out.append([("+ " if d > 0 else "- ") + ln, d > 0])
-	for k in Data.ITEMS[it.id].get("cards", []):
-		out.append(["+ card: %s" % Data.CARDS[k].name, true])
-	if old != null:
-		for k in Data.ITEMS[old.id].get("cards", []):
-			out.append(["- card: %s" % Data.CARDS[k].name, false])
-		out.append(["%s goes to the stash." % Data.item_name(old), true])
-	return out
+	return ArmoryScript.equip_changes(s(), it)
 
 # ---------------------------------------------------------------- reading the soldier
 func stats() -> Array:
@@ -807,6 +821,17 @@ func draw_gear(me: Dictionary) -> void:
 		Art.text(self, sets, Vector2(x + 280, MID.position.y + 46), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 	var gb := Data.stat_lines(Run.gear_bonus(me))
 	var y := MID.position.y + 380
+	if not readonly and gear_pick.get("where", "") == "equip":
+		# a picked slot: what fits it, and what the gear in it puts in the deck
+		var cx := x + 280
+		var cy := MID.position.y + 154
+		var n: int = Run.stash.filter(func(o): return ArmoryScript.fits(o, gear_pick.slot)).size()
+		var word: String = Data.SLOT_NAMES[Data.slot_group(gear_pick.slot)]
+		if it != null:
+			var cards := ArmoryScript.card_delta(it, null)
+			para("In the deck: %s. Unequip and they leave." % ArmoryScript.deck_words(cards).replace("+", "") if cards.size() else "Adds no cards, stats only.", Vector2(x + 280, MID.position.y + 92), 140, Color("e8dcc2"), 4)
+		Art.text(self, ("%d in the stash fit%s this %s slot: click one." % [n, "" if n > 1 else "s", word]) if n > 0 else "Nothing in the stash fits a %s slot." % word,
+			Vector2(cx - 280, cy + 8), 16, Color("62d26f") if n > 0 else Color("e8a070"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 	if it == null:
 		head("FROM GEAR AND IMPLANTS", Vector2(x, y))
 		para(", ".join(gb) if gb.size() else "Nothing equipped yet.", Vector2(x, y + 14), MID.size.x, Color("e8dcc2"), 3)
@@ -827,7 +852,8 @@ func draw_gear(me: Dictionary) -> void:
 const SQUAD := Rect2(16, 122, 928, 362)
 
 func squad_col(i: int) -> Rect2:
-	var w := (SQUAD.size.x - 3 * 8) / 4.0
+	var n := maxi(4, Run.soldiers.size())  # X2: room for a freed fifth soldier
+	var w := (SQUAD.size.x - (n - 1) * 8) / n
 	return Rect2(SQUAD.position.x + i * (w + 8), SQUAD.position.y, w, SQUAD.size.y)
 
 func deck_rows(me: Dictionary) -> Array:
@@ -873,7 +899,8 @@ func draw_squad() -> void:
 		var cost := 0.0
 		for c in me.deck:
 			cost += int(Data.card(c).cost)
-		Art.text(self, "%s   AVG COST %.1f" % [me.def.cls.to_upper(), cost / maxf(1.0, me.deck.size())], Vector2(x, y + 12), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		Art.text(self, me.def.cls.to_upper(), Vector2(x, y + 12), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		Art.text(self, "AVG COST %.1f" % (cost / maxf(1.0, me.deck.size())), Vector2(r.end.x - 8, y + 12), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 0, true)
 		y += 30
 		var rows := deck_rows(me)
 		var max_rows := 19

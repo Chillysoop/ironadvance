@@ -5,6 +5,7 @@ extends RefCounted
 const Services := preload("res://scripts/services.gd")
 const INK := Color(0.05, 0.035, 0.03)
 const ALL_W := 92.0
+const ALL_PLATE := 99      # SquadBar.current / hover for the ALL DECKS plate (soldiers are 0-4)
 
 static func field_dossier(parent: Node, i := 0) -> Control:
 	## S6: the same Dossier from the field (debrief, camp, level-up, the battle deck view),
@@ -18,7 +19,7 @@ static func field_dossier(parent: Node, i := 0) -> Control:
 
 class SquadBar extends Control:
 	## Four soldier plates: portrait, hotkey, HP, dog tags and the one thing worth doing for them.
-	## Click one (or press 1-4 where the screen listens) to open that soldier.
+	## Click one (or press 1-5 where the screen listens) to open that soldier.
 	signal picked(i: int)
 	signal all_decks           # D3: a fifth plate, shown only when the screen listens for it
 	var current := -1         # the soldier whose screen is open, outlined in gold
@@ -49,7 +50,7 @@ class SquadBar extends Control:
 				if plate(i).has_point(ev.position):
 					hover = i
 			if has_all() and all_rect().has_point(ev.position):
-				hover = 4
+				hover = ALL_PLATE
 		elif ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 			accept_event()
 			for i in Run.soldiers.size():
@@ -66,8 +67,8 @@ class SquadBar extends Control:
 		if has_all():
 			var ar := all_rect()
 			draw_rect(ar, INK)
-			draw_rect(ar.grow(-1), Color("3a4048") if hover == 4 else Color("2a2e34"))
-			if current == 4:
+			draw_rect(ar.grow(-1), Color("3a4048") if hover == ALL_PLATE else Color("2a2e34"))
+			if current == ALL_PLATE:
 				draw_rect(ar.grow(1), Color("ffd23a"), false, 2.0)
 			for k in 4:  # four little decks fanned out
 				var cr := Rect2(ar.position + Vector2(8 + k * 7, 9 + (k % 2) * 3), Vector2(12, 18))

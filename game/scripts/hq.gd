@@ -287,7 +287,7 @@ func open_upgrades() -> void:
 	add_nav("upgrades")
 
 func open_dossier(i: int, tb := "deck") -> void:
-	## S1: a soldier's sheet, gear and deck, from the squad bar, a click on them, or 1-4.
+	## S1: a soldier's sheet, gear and deck, from the squad bar, a click on them, or 1-5.
 	Sfx.play("click")
 	var d: Control = DossierScript.new()
 	d.idx = i
@@ -302,7 +302,7 @@ func idle() -> bool:
 
 func troop_x(i: int) -> float:
 	var n: int = Run.soldiers.filter(func(s): return s.alive).size()
-	return 480 + (i - (n - 1) / 2.0) * 46
+	return 480 + (i - (n - 1) / 2.0) * (46 if n <= 4 else 40)
 
 func troop_at(p: Vector2) -> int:
 	## Index into Run.soldiers of the soldier standing at p, or -1.
@@ -328,11 +328,11 @@ func _gui_input(ev: InputEvent) -> void:
 const KEYS := {KEY_H: "hq", KEY_Q: "qm", KEY_W: "workshop", KEY_A: "armory", KEY_D: "doc", KEY_B: "barracks", KEY_M: "memorial", KEY_U: "upgrades"}
 
 func _unhandled_input(ev: InputEvent) -> void:
-	## H4: a key per building skips the walk; 1-4 open a soldier from the HQ scene; ESC goes home.
+	## H4: a key per building skips the walk; 1-5 open a soldier from the HQ scene; ESC goes home.
 	if not (ev is InputEventKey and ev.pressed and not ev.echo) or sub_busy():
 		return
 	var at_hq := idle()
-	if at_hq and ev.keycode >= KEY_1 and ev.keycode <= KEY_4 and ev.keycode - KEY_1 < Run.soldiers.size():
+	if at_hq and ev.keycode >= KEY_1 and ev.keycode <= KEY_5 and ev.keycode - KEY_1 < Run.soldiers.size():
 		get_viewport().set_input_as_handled()
 		open_dossier(ev.keycode - KEY_1)
 	elif KEYS.has(ev.keycode) and not (at_hq and KEYS[ev.keycode] == "hq"):

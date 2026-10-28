@@ -194,6 +194,13 @@ func back_button() -> Control:
 	go.pressed.connect(func(): Sfx.play("click"); done.emit())
 	return go
 
+func looks_step() -> float:
+	## U3 look boxes share the row left of the back button, so a fifth soldier still fits.
+	return minf(180.0, 720.0 / maxi(1, Run.soldiers.size()))
+
+func looks_x(i: int) -> float:
+	return 24.0 + i * looks_step()
+
 func build_barracks() -> void:
 	var fallen := Run.fallen_slots()
 	var rp := price(recruit_price())
@@ -231,12 +238,14 @@ func build_barracks() -> void:
 	for i in Run.soldiers.size():
 		if not Run.soldiers[i].alive:
 			continue
+		var x := looks_x(i)
+		var stacked := looks_step() < 180  # five soldiers: narrower boxes, buttons one above the other
 		for j in 2:
 			var lb := HudScript.PixButton.new()
 			lb.text = ["HEADGEAR", "COLORS"][j]
 			lb.color = Color("53d4e2")
-			lb.size = Vector2(82, 20)
-			lb.position = Vector2(24 + i * 180 + j * 90, 470)
+			lb.size = Vector2(looks_step() - 8, 18) if stacked else Vector2(82, 20)
+			lb.position = Vector2(x, 466 + j * 22) if stacked else Vector2(x + j * 90, 470)
 			lb.tooltip_text = "Free. Cycle this soldier's headgear." if j == 0 else "Free. Roll new colors for hat, shirt and pants."
 			var si := i
 			lb.pressed.connect(func(): restyle(si, j == 0))
@@ -300,10 +309,11 @@ func _draw() -> void:
 		Art.text(self, "SQUAD LOOKS: FREE", Vector2(24, 352), 8, Color("53d4e2"))
 		for i in Run.soldiers.size():
 			var s: Dictionary = Run.soldiers[i]
-			var x := 24.0 + i * 180
-			draw_rect(Rect2(x, 362, 172, 100), Color(0.05, 0.035, 0.03))
-			draw_rect(Rect2(x + 1, 363, 170, 98), Color("2a2e34"))
-			Art.draw_char(self, Art.look_sheet(s), "idle" if s.alive else "die", (t / 12 + i) % 4 if s.alive else 5, Vector2(x + 86, 450), 1, false, 0, 1.0, 0, true, 1.6)
+			var x := looks_x(i)
+			var bw := looks_step() - 8
+			draw_rect(Rect2(x, 362, bw, 100), Color(0.05, 0.035, 0.03))
+			draw_rect(Rect2(x + 1, 363, bw - 2, 98), Color("2a2e34"))
+			Art.draw_char(self, Art.look_sheet(s), "idle" if s.alive else "die", (t / 12 + i) % 4 if s.alive else 5, Vector2(x + bw / 2, 450), 1, false, 0, 1.0, 0, true, 1.6)
 			Art.text(self, s.def.name, Vector2(x + 8, 378), 8, Color.WHITE if s.alive else Color("8a7a7a"))
 	if msg_t > 0 and not chooser is TilePicker:
 		var w := Art.text_width(msg, 16, true) + 20

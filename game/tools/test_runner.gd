@@ -3,6 +3,7 @@ extends Node
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
 ## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer), track (N7 K9 Handler), vehicles (N3 Gears, R1 hijack, E6 Jackal Walker), branches5 (B1-B4 fifth branches),
+## gear (click a slot to see what fits, drag and drop, deck changes, a fifth soldier at HQ),
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
@@ -11,6 +12,7 @@ extends Node
 const Services := preload("res://scripts/services.gd")
 const HubUI := preload("res://scripts/hub_ui.gd")
 const HudScript := preload("res://scripts/hud.gd")
+const ArmoryScript := preload("res://scripts/armory.gd")
 
 var out_dir := "user://shots"
 var scenario := ""
@@ -771,6 +773,8 @@ func run() -> void:
 			await dossier()
 		"hub":
 			await hub()
+		"gear":
+			await gear_test()
 		"field":
 			await field()
 		"picks":
@@ -1296,6 +1300,149 @@ func field() -> void:
 	check(main.screen != null and main.screen.has_method("open_dossier") and main.screen.sub != null and main.screen.sub.idx == 0, "leaving the range comes back to Moss's Dossier at HQ")
 	check(Run.scrip == scrip0 and Run.soldiers[0].hp == 9 and Run.soldiers[0].deck.size() == deck0 and Run.history.size() == hist0, "everything the range touched is put back (scrip %d, HP %d, deck %d)" % [Run.scrip, Run.soldiers[0].hp, Run.soldiers[0].deck.size()])
 	await shot("field_back")
+
+func gear_test() -> void:
+	## Gear equipping: a fifth soldier fits the Armory and the Dossier, clicking an empty slot
+	## lights what fits, the deck change is spelled out, and gear drags between slots.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.leave_campaign()
+	Run.new_run()
+	Run.scrip = 400
+	var bolt := Run.free_specialist("bolt")
+	check(Run.soldiers.size() == 5 and not bolt.is_empty(), "Bolt joins as a fifth soldier")
+	var moss: Dictionary = Run.soldiers[0]
+	var hex: Dictionary = Run.soldiers[1]
+	var carbine := Run.new_item("carbine", 0)
+	var service := Run.new_item("service", 0)
+	var ghillie := Run.new_item("ghillie", 0)
+	var scope := Run.new_item("scope", 0)
+	for it in [carbine, ghillie, scope, service]:
+		Run.stash.append(it)
+	main.show_hq(false)
+	await frames_wait(20)
+	var hq: Control = main.screen
+	await shot("gear_hq5")
+	hq.go("armory")
+	await frames_wait(20)
+	var a: Control = hq.sub
+	await shot("gear_armory5")
+	var bolt_tiles: Array = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, bolt))
+	check(bolt_tiles.size() == 4 and bolt_tiles.all(func(tl): return tl.get_global_rect().end.x <= 940), "Bolt's four slots fit on the Armory screen")
+	# click Moss's empty weapon slot: the carbine and the pistol light up, the vest and scope dim
+	var slot_tile = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, moss) and tl.ref.slot == "weapon")[0]
+	await click_at(slot_tile.get_global_rect().get_center())
+	await frames_wait(6)
+	var lit: Array = a.tiles.filter(func(tl): return tl.fit == 1).map(func(tl): return tl.item)
+	check(a.pick.get("slot", "") == "weapon" and lit.has(carbine) and lit.has(service) and not lit.has(ghillie), "clicking an empty weapon slot lights the weapons that fit")
+	check(a.tiles.filter(func(tl): return tl.item == ghillie)[0].fit == -1, "gear that doesn't fit is dimmed")
+	var carb_tile = a.tiles.filter(func(tl): return tl.item == carbine)[0]
+	warp(carb_tile.get_global_rect().get_center())
+	await frames_wait(6)
+	await shot("gear_slot_fits")
+	var ch := ArmoryScript.equip_changes(moss, carbine, "weapon")
+	check(ch.any(func(l): return l[0] == "Deck: +2 Carbine Burst"), "the preview spells out the deck change: %s" % [ch])
+	var n0: int = moss.deck.size()
+	await click_at(carb_tile.get_global_rect().get_center())
+	await frames_wait(6)
+	check(moss.equip.weapon == carbine and moss.deck.size() == n0 + 2, "clicking a lit item equips it into the picked slot")
+	check(a.msg.contains("+2 Carbine Burst"), "the Armory says what changed in the deck: " + a.msg)
+	# drag the pistol onto Moss's weapon slot: the carbine's cards leave, the pistol's come in
+	var pis_tile = a.tiles.filter(func(tl): return tl.item == service)[0]
+	slot_tile = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, moss) and tl.ref.slot == "weapon")[0]
+	await drag_to(pis_tile.get_global_rect().get_center(), slot_tile.get_global_rect().get_center(), true)
+	await shot("gear_dragging")
+	await drag_to(Vector2.ZERO, slot_tile.get_global_rect().get_center(), false, true)
+	check(moss.equip.weapon == service and Run.stash.has(carbine), "dragging the pistol onto the slot swaps out the carbine")
+	check(moss.deck.filter(func(c): return c.key == "carbine").is_empty() and a.msg.contains("-2 Carbine Burst"), "the carbine's cards left the deck: " + a.msg)
+	# drag the pistol from Moss to Hex's weapon slot
+	slot_tile = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, moss) and tl.ref.slot == "weapon")[0]
+	var hex_slot = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, hex) and tl.ref.slot == "weapon")[0]
+	await drag_to(slot_tile.get_global_rect().get_center(), hex_slot.get_global_rect().get_center())
+	check(hex.equip.weapon == service and moss.equip.weapon == null and not moss.deck.any(func(c): return c.get("src", -1) == service.uid), "gear drags from one soldier to another, cards and all")
+	# the ghillie can't go in Bolt's weapon slot
+	var gh_tile = a.tiles.filter(func(tl): return tl.item == ghillie)[0]
+	var bw = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, bolt) and tl.ref.slot == "weapon")[0]
+	await drag_to(gh_tile.get_global_rect().get_center(), bw.get_global_rect().get_center())
+	check(bolt.equip.weapon == null and Run.stash.has(ghillie) and a.msg.contains("doesn't fit"), "armor won't drop into a weapon slot: " + a.msg)
+	# Bolt's armor slot takes it; then drag it back to the stash
+	var ba = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, bolt) and tl.ref.slot == "armor")[0]
+	gh_tile = a.tiles.filter(func(tl): return tl.item == ghillie)[0]
+	await drag_to(gh_tile.get_global_rect().get_center(), ba.get_global_rect().get_center())
+	check(bolt.equip.armor == ghillie, "the fifth soldier takes gear by drag and drop")
+	ba = a.tiles.filter(func(tl): return tl.ref.where == "equip" and is_same(tl.ref.s, bolt) and tl.ref.slot == "armor")[0]
+	await drag_to(ba.get_global_rect().get_center(), Vector2(300, 300))
+	check(bolt.equip.armor == null and Run.stash.has(ghillie), "dragging gear onto the stash takes it off")
+	# select a stash item: the slots it fits light up
+	var sc_tile = a.tiles.filter(func(tl): return tl.item == scope)[0]
+	await click_at(sc_tile.get_global_rect().get_center())
+	await frames_wait(6)
+	await shot("gear_item_picked")
+	var lit_slots: Array = a.tiles.filter(func(tl): return tl.fit == 1 and tl.ref.where == "equip")
+	check(lit_slots.size() == 10 and lit_slots.all(func(tl): return tl.ref.slot.begins_with("kit")), "a picked kit lights every kit slot (%d)" % lit_slots.size())
+	await click_at(lit_slots[9].get_global_rect().get_center())
+	check(bolt.equip.kit2 == scope, "clicking a lit slot equips the picked item there")
+	# the Dossier gear tab: an empty slot lights what fits too
+	hq.open_dossier(4)
+	await frames_wait(10)
+	var d: Control = hq.sub
+	await shot("gear_dossier5")
+	check(d.idx == 4, "the Dossier opens on Bolt")
+	d.set_tab("gear")
+	await frames_wait(4)
+	d.gear_select({"where": "equip", "slot": "weapon"})
+	await frames_wait(6)
+	await shot("gear_dossier_slot")
+	var dl: Array = d.get_children().filter(func(c): return c is ArmoryScript.ItemTile and c.fit == 1).map(func(c): return c.item)
+	check(dl.has(carbine) and not dl.has(ghillie), "the Dossier lights the stash weapons for an empty slot")
+	d.gear_select({"where": "stash", "i": Run.stash.find(carbine)})
+	await frames_wait(4)
+	check(bolt.equip.weapon == carbine, "clicking one equips it on Bolt")
+	d.set_tab("squad")
+	await frames_wait(6)
+	await shot("gear_all_decks5")
+	d.done.emit()
+	await frames_wait(4)
+	for id in ["qm", "workshop", "doc", "barracks"]:
+		hq.go(id)
+		await frames_wait(16)
+		await shot("gear_hq5_" + id)
+	Run.meta = keep
+
+func warp(p: Vector2) -> void:
+	var ev := InputEventMouseMotion.new()
+	ev.position = p
+	ev.global_position = p
+	get_viewport().push_input(ev, true)
+
+func drag_to(from: Vector2, to: Vector2, hold := false, release_only := false) -> void:
+	## Press on from, move in steps to to, and let go (unless hold).
+	if not release_only:
+		warp(from)
+		await frames_wait(1)
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = true
+		ev.position = from
+		ev.global_position = from
+		get_viewport().push_input(ev, true)
+		await frames_wait(2)
+		for k in range(1, 7):
+			var mv := InputEventMouseMotion.new()
+			mv.position = from.lerp(to, k / 6.0)
+			mv.global_position = mv.position
+			mv.button_mask = MOUSE_BUTTON_MASK_LEFT
+			get_viewport().push_input(mv, true)
+			await frames_wait(1)
+	if hold:
+		await frames_wait(4)
+		return
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = to
+	up.global_position = to
+	get_viewport().push_input(up, true)
+	await frames_wait(4)
 
 func hub() -> void:
 	## The HQ hub: buildings with one job each, a nav strip between them, ready badges, the
