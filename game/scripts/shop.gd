@@ -209,6 +209,11 @@ func build_barracks() -> void:
 		["DOG TAG", tp, "Give a soldier back one spent dog tag. %s." % tags_line, restore_tag,
 			"Everyone still has both dog tags." if short_tags.is_empty() else Services.short(tp), short_tags.size() > 0 and Run.scrip >= tp],
 	]
+	if Run.campaign():
+		# C1: the campaign hires into the company instead of into a dead soldier's slot
+		var n := Run.company().size()
+		tiles[0] = ["RECRUIT", rp, "Hire a new soldier into the company (%d of %d). Pick from %d recruits.%s" % [n, Data.COMPANY_MAX, 3 if Run.hq("barracks") >= 1 else 2, " They inherit %s's best cards." % Run.legacy_deck().name if not Run.legacy_deck().is_empty() else ""], recruit,
+			"The company is full." if not Run.company_room() else Services.short(rp), Run.company_room() and Run.scrip >= rp]
 	if trainee.size():
 		tiles.append(["TRAINING", 0, "%s's free level from Barracks 2. Pick it like a level-up." % trainee[0].def.name, func(): train(trainee[0]), "", true])
 	for i in tiles.size():
@@ -285,7 +290,10 @@ func _draw() -> void:
 		draw_card_fits()
 	else:
 		var fallen: int = Run.fallen_slots().size()
-		Art.text(self, "%d KILLED IN ACTION THIS RUN" % fallen if fallen else "THE SQUAD IS AT FULL STRENGTH", Vector2(24, 140), 8, Color("ff4d3d") if fallen else Color("62d26f"))
+		if Run.campaign():
+			Art.text(self, "COMPANY: %d OF %d SOLDIERS" % [Run.company().size(), Data.COMPANY_MAX], Vector2(24, 140), 8, Color("62d26f"))
+		else:
+			Art.text(self, "%d KILLED IN ACTION THIS RUN" % fallen if fallen else "THE SQUAD IS AT FULL STRENGTH", Vector2(24, 140), 8, Color("ff4d3d") if fallen else Color("62d26f"))
 		Art.text(self, "Lose the last dog tag and a soldier is gone for good. %d names on the Memorial; recruits of a fallen soldier's class can inherit one of their abilities." % Run.meta.memorial.size(), Vector2(24, 250), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		# U3: the squad's looks, each with its restyle buttons below
 		Art.text(self, "SQUAD LOOKS: FREE", Vector2(24, 352), 8, Color("53d4e2"))
@@ -440,6 +448,9 @@ func buy_shelf() -> void:
 	build()
 
 func recruit() -> void:
+	if Run.campaign():
+		await enlist()
+		return
 	var slots := Run.fallen_slots()
 	if slots.is_empty():
 		say("Nobody to replace. The squad is at full strength.")
@@ -467,6 +478,24 @@ func recruit() -> void:
 	if s.get("train", false):
 		await train(s)
 
+func enlist() -> void:
+	if not Run.company_room() or Run.scrip < price(recruit_price()):
+		Sfx.play("deny")
+		return
+	var offers := Run.recruit_offers()
+	var opts: Array = offers.map(func(o):
+		var d: Dictionary = Data.SQUAD_DEFS.filter(func(x): return x.key == o.key)[0]
+		var txt := "%s. %s: %s" % [d.cls, o.trait.name, o.trait.text]
+		if o.legacy_deck != "":
+			txt += " Inherits %s's best cards." % o.legacy_deck
+		return {"kind": "service", "name": o.name, "text": txt, "icon": "ic_heart"})
+	var i := await choose("HIRE INTO THE COMPANY", opts)
+	if i < 0 or not pay(price(recruit_price())):
+		return
+	var s := Run.enlist(offers[i])
+	say("%s joins the company as a %s. Put them in the squad from the War Room." % [s.def.name, s.def.cls])
+	build()
+
 func train(s: Dictionary) -> void:
 	## Barracks 2: the recruit's free level, picked like a level-up.
 	var opts := Run.level_options(s)
@@ -475,7 +504,10 @@ func train(s: Dictionary) -> void:
 		say("%s's training waits here at the Barracks." % s.def.name)
 		build()
 		return
-	s.erase("train")
+	if int(s.train) > 1:
+		s.train = int(s.train) - 1
+	else:
+		s.erase("train")
 	say(Run.apply_option(s, opts[i]))
 	build()
 

@@ -46,6 +46,7 @@ const META_PATH := "user://meta.json"
 # stay shared (L2).
 const CAMP_KEYS := ["salvage", "bio", "hq", "implants", "memorial"]
 var camp := {}             # campaign state; empty during a standard run
+var roster: Array = []     # campaign: the whole company (C1); soldiers is the squad that deploys
 var run_base := {}         # the standard run's CAMP_KEYS while a campaign is loaded
 
 func _ready() -> void:
@@ -66,12 +67,22 @@ func snapshot() -> Dictionary:
 		if p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
 			var v = get(p.name)
 			snap[p.name] = v.duplicate(true) if v is Dictionary or v is Array else v
+	if not roster.is_empty():
+		# the squad is the same people as part of the roster: keep them linked through a copy
+		snap.erase("soldiers")
+		snap["_squad"] = soldiers.map(func(x): return roster.find(x))
 	return snap
 
 func restore(snap: Dictionary) -> void:
-	for k in snap:
-		set(k, snap[k])
+	set_state(snap)
 	save_meta()  # anything the range wrote to disk is undone too
+
+func set_state(snap: Dictionary) -> void:
+	for k in snap:
+		if not k.begins_with("_") and not k in ["meta", "run_base", "base"]:
+			set(k, snap[k])
+	if snap.has("_squad"):
+		soldiers = snap._squad.filter(func(i): return i >= 0).map(func(i): return roster[i])
 
 func save_meta() -> void:
 	var m := meta
@@ -283,8 +294,16 @@ func memorialize(s: Dictionary) -> void:
 	## A soldier went down with no dog tags left. Their gear goes to the stash and their tag to the wall.
 	for slot in s.equip.keys():
 		unequip(s, slot)
-	meta.memorial.append({"name": s.def.name, "key": s.key, "cls": s.def.cls, "lvl": s.lvl,
-		"perks": s.perks.duplicate(), "mission": mission + 1})
+	var entry := {"name": s.def.name, "key": s.key, "cls": s.def.cls, "lvl": s.lvl,
+		"perks": s.perks.duplicate(), "mission": mission + 1}
+	if campaign():
+		# C6: their best cards wait on the Memorial for the next recruit
+		var best: Array = s.deck.filter(func(c): return not c.has("src") and not c.get("temp", false))
+		best.sort_custom(func(a, b): return Data.tier_of(a) > Data.tier_of(b))
+		entry["cards"] = best.slice(0, Data.LEGACY_CARDS).map(func(c): return {"key": c.key, "tier": Data.tier_of(c)})
+		entry["rank"] = rank(s)
+		entry["ops"] = int(svc(s).ops)
+	meta.memorial.append(entry)
 	save_meta()
 
 func legacy_perk(key: String) -> Dictionary:
@@ -367,22 +386,29 @@ func recruit_offers(n := -1) -> Array:
 	## alive has, so the squad never holds two of one class.
 	if n < 0:
 		n = 3 if hq("barracks") >= 1 else 2
-	var used: Array = soldiers.filter(func(s): return s.alive).map(func(s): return s.def.name)
+	var used: Array = (roster if campaign() else soldiers).filter(func(s): return s.alive).map(func(s): return s.def.name)
 	var names: Array = Data.CALLSIGNS.filter(func(c): return not used.has(c))
 	names.shuffle()
 	var traits: Array = Data.RECRUIT_TRAITS.duplicate()
 	traits.shuffle()
 	var keys := recruit_classes()
 	var out: Array = []
+	var deck := legacy_deck()
 	for i in n:
 		var key: String = keys[i % keys.size()]
 		if i < defectors.size():
-			out.append({"key": key, "name": defectors[i], "trait": Data.DEFECTOR_TRAIT, "legacy": {}, "look": Art.random_look(), "drill_card": ""})
+			out.append({"key": key, "name": defectors[i], "trait": Data.DEFECTOR_TRAIT, "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": ""})
 			continue
-		out.append({"key": key, "name": names[i], "trait": traits[i % traits.size()], "legacy": legacy_perk(key), "look": Art.random_look(), "drill_card": drilled_card(key)})
+		out.append({"key": key, "name": names[i], "trait": traits[i % traits.size()], "legacy": legacy_perk(key), "look": Art.random_look(), "drill_card": drilled_card(key), "legacy_deck": deck.get("name", "")})
 	return out
 
 func recruit_classes() -> Array:
+	if campaign():
+		# the company may hold two of a class: offer the classes it has fewest of first
+		var keys: Array = Data.SQUAD_DEFS.map(func(d): return d.key)
+		keys.shuffle()
+		keys.sort_custom(func(a, b): return roster.filter(func(s): return s.alive and s.key == a).size() < roster.filter(func(s): return s.alive and s.key == b).size())
+		return keys
 	var held: Array = soldiers.filter(func(s): return s.alive).map(func(s): return s.key)
 	var slots := fallen_slots()
 	var first: String = soldiers[slots[0]].key if slots.size() else ""
@@ -402,7 +428,14 @@ func drilled_card(key: String) -> String:
 	return best
 
 func hire(slot: int, o: Dictionary) -> Dictionary:
-	## Puts a recruit into a fallen soldier's slot.
+	## Puts a recruit into a fallen soldier's slot. In the campaign they join the company instead.
+	if campaign():
+		return enlist(o)
+	var s := make_recruit(o)
+	soldiers[slot] = s
+	return s
+
+func make_recruit(o: Dictionary) -> Dictionary:
 	var d: Dictionary = Data.SQUAD_DEFS.filter(func(x): return x.key == o.key)[0].duplicate()
 	d.name = o.name
 	var s := make_soldier(d)
@@ -431,7 +464,6 @@ func hire(slot: int, o: Dictionary) -> Dictionary:
 		s.xp = xp_for_next(s)
 		s.lvl = 2
 		s["train"] = true
-	soldiers[slot] = s
 	return s
 
 func fallen_slots() -> Array:
@@ -992,6 +1024,7 @@ func new_campaign(slot: int) -> void:
 	meta.memorial = []
 	camp = {"slot": slot, "act": 0, "held": [], "ops": 0, "act_ops": 0, "secs": 0.0, "done": false}
 	new_run()  # campaign() is already true, so this reads the campaign's empty HQ
+	roster = soldiers.duplicate()
 	threat = 0
 	scrip = Data.CAMP_START_SCRIP
 	save_campaign()
@@ -1005,10 +1038,7 @@ func load_campaign(slot: int) -> bool:
 		return false
 	_enter_base()
 	var data: Dictionary = d.data
-	for k in data:
-		if k in ["meta", "run_base", "base"]:
-			continue
-		set(k, data[k])
+	set_state(data)
 	for k in CAMP_KEYS:
 		meta[k] = data.base.get(k, run_base[k])
 	camp.slot = slot
@@ -1043,6 +1073,7 @@ func leave_campaign() -> void:
 		meta[k] = run_base[k]
 	run_base = {}
 	camp = {}
+	roster = []
 	threat = 0
 	new_run()
 
@@ -1139,22 +1170,186 @@ func op_over(won: bool) -> Dictionary:
 			camp.act_ops = 0
 	return out
 
-func after_op() -> Dictionary:
-	## Back at HQ after an op: held sectors pay, everyone is patched up and gets their dog tags
-	## back, and Command fills any empty slot with a rookie so you can always field a squad.
+func after_op(st := {}) -> Dictionary:
+	## Back at HQ after an op: service records and promotions, held sectors pay, the fallen leave
+	## the roster, everyone is patched up with their dog tags back, Command sends rookies until
+	## there are enough to field a squad, and the squad is topped up from the bench.
 	var inc := income()
+	inc.merge(book_service(st))
 	scrip += inc.scrip
 	meta.salvage = int(meta.get("salvage", 0)) + inc.salvage
 	meta.bio = int(meta.get("bio", 0)) + inc.bio
-	for s in soldiers:
-		if s.alive:
-			s.tags = Data.DOG_TAGS
-			s.hp = eff_max_hp(s)
+	roster = company()
 	var rookies: Array = []
-	for i in fallen_slots():
-		var o: Dictionary = recruit_offers(1)[0]
-		rookies.append(hire(i, o).def.name)
+	while roster.size() < Data.SQUAD_MAX:
+		rookies.append(enlist(recruit_offers(1)[0]).def.name)
 	inc["rookies"] = rookies
+	fill_squad()
+	for s in roster:
+		s.tags = Data.DOG_TAGS
+		s.hp = eff_max_hp(s)
 	level = {}
 	save_meta()
 	return inc
+
+# ---------------------------------------------------------------- the company (C1-C6)
+func svc(s: Dictionary) -> Dictionary:
+	## C5: a soldier's service record.
+	if not s.has("svc"):
+		s["svc"] = {"ops": 0, "kills": 0, "downs": 0, "medals": []}
+	return s.svc
+
+func rank(s: Dictionary) -> int:
+	return int(s.get("rank", 0))
+
+func rank_name(s: Dictionary) -> String:
+	return Data.RANKS[rank(s)].short
+
+func company() -> Array:
+	return roster.filter(func(s): return s.alive)
+
+func bench() -> Array:
+	return company().filter(func(s): return not soldiers.has(s))
+
+func company_room() -> bool:
+	return company().size() < Data.COMPANY_MAX
+
+func fits_squad(s: Dictionary) -> bool:
+	return soldiers.size() < Data.SQUAD_MAX and not soldiers.any(func(x): return x.key == s.key)
+
+func toggle_squad(s: Dictionary) -> String:
+	## C1: put a soldier in or out of the squad. Picking someone whose class is already in it swaps them.
+	if soldiers.has(s):
+		if soldiers.size() <= 1:
+			return "SOMEBODY HAS TO GO"
+		soldiers.erase(s)
+		return ""
+	var same: Array = soldiers.filter(func(x): return x.key == s.key)
+	if same.size():
+		soldiers[soldiers.find(same[0])] = s
+		return ""
+	if soldiers.size() >= Data.SQUAD_MAX:
+		return "SQUAD IS FULL: TAKE SOMEONE OUT"
+	soldiers.append(s)
+	return ""
+
+func fill_squad() -> void:
+	## Top the squad up from the bench, one per class.
+	soldiers = soldiers.filter(func(x): return x.alive)
+	for s in company():
+		if not soldiers.has(s) and fits_squad(s):
+			soldiers.append(s)
+
+func legacy_deck() -> Dictionary:
+	## C6: the oldest unclaimed set of fallen cards on the Memorial.
+	for m in meta.get("memorial", []):
+		if m.get("cards", []).size() and not m.get("claimed", false):
+			return m
+	return {}
+
+func enlist(o: Dictionary) -> Dictionary:
+	## A new soldier joins the company. They pick up a fallen veteran's best cards when any wait.
+	var s := make_recruit(o)
+	var m := legacy_deck()
+	if not m.is_empty():
+		for c in m.cards:
+			s.deck.append(new_card(c.key, int(c.tier), "legacy"))
+		m["claimed"] = true
+		s["legacy_from"] = m.name
+	roster.append(s)
+	return s
+
+func promo_offers(s: Dictionary) -> Array:
+	## The options for the oldest promotion this soldier hasn't picked yet.
+	var r := rank(s) - int(s.get("promo", 0)) + 1
+	return Data.PROMO_OFFERS[clampi(r, 1, Data.RANKS.size() - 1)]
+
+func promote(s: Dictionary, id: String) -> String:
+	## C3: apply a promotion pick. Returns a log line.
+	match id:
+		"hp":
+			s.max_hp += 10
+			s.hp += 10
+		"move": s.bonus.move += 40
+		"dodge": s.bonus.dodge += 8
+		"hand": s.bonus.hand += 1
+		"energy": s.bonus.energy1 += 1
+		"legend":
+			var best := ""
+			for k in s.def.pool:
+				if best == "" or int(Data.CARDS[k].cost) > int(Data.CARDS[best].cost) or (Data.CARDS[k].cost == Data.CARDS[best].cost and Data.base_tier(k) > Data.base_tier(best)):
+					best = k
+			s.deck.append(new_card(best, Data.TIER_MAX, "promotion"))
+	s.promo = int(s.get("promo", 1)) - 1
+	if s.promo <= 0:
+		s.erase("promo")
+	return "%s %s: %s" % [rank_name(s), s.def.name, Data.PROMOTIONS[id].text]
+
+func award(s: Dictionary, id: String) -> bool:
+	## C5: a medal, once per soldier, with its bonus.
+	var sv := svc(s)
+	if sv.medals.has(id):
+		return false
+	sv.medals.append(id)
+	match id:
+		"heart":
+			s.max_hp += 3
+			s.hp += 3
+		"marksman": s.bonus.dodge += 3
+		"veteran": s.bonus.move += 20
+		"ace": s.bonus.energy1 += 1
+	return true
+
+func book_service(st: Dictionary) -> Dictionary:
+	## After an op: service records, medals, promotions and bench XP. Returns lines for the news.
+	var out := {"medals": [], "promos": [], "bench": 0}
+	var won: bool = st.get("won", false)
+	var xps: Array = []
+	for s in soldiers:
+		if not s.alive:
+			continue
+		var sv := svc(s)
+		var k: int = int(st.get("kills_by", {}).get(s.key, 0))
+		var down: bool = st.get("downed_by", {}).get(s.key, false)
+		sv.ops = int(sv.ops) + 1
+		sv.kills = int(sv.kills) + k
+		if down:
+			sv.downs = int(sv.downs) + 1
+		xps.append(int(st.get("xp", {}).get(s.key, 0)))
+		var got: Array = []
+		if won and down and award(s, "heart"):
+			got.append("heart")
+		if k >= 5 and award(s, "marksman"):
+			got.append("marksman")
+		if sv.ops >= 10 and award(s, "veteran"):
+			got.append("veteran")
+		if sv.kills >= 30 and award(s, "ace"):
+			got.append("ace")
+		for m in got:
+			out.medals.append("%s: %s" % [s.def.name, Data.MEDALS[m].name])
+		while rank(s) < Data.RANKS.size() - 1 and int(sv.ops) >= int(Data.RANKS[rank(s) + 1].ops):
+			s.rank = rank(s) + 1
+			s.promo = int(s.get("promo", 0)) + 1
+			out.promos.append("%s is now a %s." % [s.def.name, Data.RANKS[rank(s)].name.capitalize()])
+	# C4: the bench trains on half the squad's average XP; any level they gain is picked at HQ
+	var avg := 0.0
+	if xps.size():
+		avg = float(xps.reduce(func(a, b): return a + b, 0)) / xps.size()
+	var bx := int(avg * Data.BENCH_XP)
+	if bx > 0:
+		for s in bench():
+			var gained := add_xp(s, bx)
+			if gained > 0:
+				s["train"] = int(s.get("train", 0)) + gained
+		out.bench = bx
+	return out
+
+func pending_picks() -> Array:
+	## Promotions and training levels waiting for a pick, across the company.
+	var out: Array = []
+	for s in company():
+		for i in int(s.get("promo", 0)):
+			out.append({"s": s, "kind": "promo"})
+		for i in int(s.get("train", 0)):
+			out.append({"s": s, "kind": "train"})
+	return out
