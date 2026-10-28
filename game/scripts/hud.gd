@@ -28,12 +28,12 @@ func setup(battle: Battle) -> void:
 	b = battle
 	b.hud = self
 	var root := Control.new()
-	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 	overlay = Overlay.new()
 	overlay.hud = self
-	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(overlay)
 	roster_box = Control.new()
@@ -103,7 +103,7 @@ func setup(battle: Battle) -> void:
 		lv.pressed.connect(func(): Sfx.play("click"); b.leave_practice())
 		root.add_child(lv)
 	modal = Control.new()
-	modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.mouse_filter = Control.MOUSE_FILTER_STOP
 	modal.visible = false
 	root.add_child(modal)
@@ -147,8 +147,15 @@ func refresh() -> void:
 		var n := want.size()
 		var cw := 100.0
 		var gap := 6.0
-		var total := n * cw + maxf(0, n - 1) * gap
-		var x0 := 480 - total / 2.0
+		# keep clear of the energy panel on the left and the belt/buttons on the right;
+		# a big hand overlaps its cards instead of covering the panel
+		var lo := 218.0
+		var hi := 826.0
+		var step := cw + gap
+		if n > 1 and n * cw + (n - 1) * gap > hi - lo:
+			step = (hi - lo - cw) / (n - 1)
+		var total := cw + maxf(0, n - 1) * step
+		var x0 := maxf(lo, 480 - total / 2.0)
 		hand_x0 = x0
 		for i in n:
 			var cv := CardView.new()
@@ -156,7 +163,7 @@ func refresh() -> void:
 			cv.hand_mode = true
 			cv.size = Vector2(cw, 138)
 			cv.base_y = 470
-			cv.position = Vector2(x0 + i * (cw + gap), 470)
+			cv.position = Vector2(x0 + i * step, 470)
 			cv.hotkey = str(i + 1)
 			var idx := i
 			cv.pressed.connect(func(): b.select_card(idx))
@@ -198,6 +205,10 @@ func _process(_d: float) -> void:
 		next_btn.text = "NEXT"
 		next_btn.sub = "%d CAN ACT" % n
 		next_btn.color = Color("ff4d3d")
+	elif b.state == "enemy":
+		next_btn.text = "ENEMY TURN"
+		next_btn.sub = ""
+		next_btn.color = Color("9aa2ae")
 	else:
 		next_btn.text = "END TURN"
 		next_btn.sub = "SPACE"
@@ -250,7 +261,7 @@ func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> 
 	bg.sub = sub
 	bg.who = who
 	bg.kind = kind
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.add_child(bg)
 	var n := opts.size()
 	var cw := 132.0
@@ -324,7 +335,7 @@ func pick_grid(kind: String, title: String, sub: String, opts: Array, who = null
 	bg.sub = sub
 	bg.who = who
 	bg.kind = "deck"
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.add_child(bg)
 	var cw := 84.0
 	var per_row := 8
@@ -370,7 +381,7 @@ func show_deck() -> void:
 	bg.sub = "%s: %s   Abilities: %s%s" % [u.def.trait[0], u.def.trait[1], ", ".join(perks) if perks.size() else "none yet", ("   (" + ", ".join(arch) + ")") if arch.size() else ""]
 	bg.who = u
 	bg.kind = "deck"
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.add_child(bg)
 	var all: Array = []
 	all.append_array(u.draw)
@@ -445,7 +456,9 @@ class PixButton extends Control:
 		var ty := (h - 2) / 2.0 + 5 + press
 		if sub != "":
 			ty -= 5
-		Art.text(self, text, Vector2(w / 2.0, ty), 8 if h < 30 or small else 16, Color.WHITE if not disabled else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+		# a label too wide for the big font drops to the small one instead of spilling past the edges
+		var fs := 8 if h < 30 or small or Art.text_width(text, 16) > w - 12 else 16
+		Art.text(self, text, Vector2(w / 2.0, ty), fs, Color.WHITE if not disabled else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 		if sub != "":
 			Art.text(self, sub, Vector2(w / 2.0, ty + 12), 8, Color(1, 1, 1, 0.7), HORIZONTAL_ALIGNMENT_CENTER, 1)
 

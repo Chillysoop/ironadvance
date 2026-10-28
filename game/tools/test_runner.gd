@@ -2,7 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## warmap, company, ops, story, lab (campaign mode),
+## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -800,6 +800,8 @@ func run() -> void:
 			await pinball()
 		"tuning":
 			await tuning()
+		"clicks":
+			await clicks()
 		"trailer":
 			await preload("res://tools/trailer.gd").new().run(self, clip_arg)
 		"campaign":
@@ -1382,6 +1384,52 @@ func hub() -> void:
 	hq._unhandled_input(w)
 	await frames_wait(6)
 	check(hq.sub != null and hq.sub.get_script() == load("res://scripts/workshop.gd"), "W opens the Workshop")
+
+func click_at(p: Vector2) -> void:
+	## A real left click pushed through the viewport, so it has to land on a control's rect like a mouse would.
+	for down in [true, false]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = down
+		ev.position = p
+		ev.global_position = p
+		get_viewport().push_input(ev, true)
+		await frames_wait(2)
+
+func clicks() -> void:
+	## Screens that read clicks on their own rect (not a child button) must cover the whole view.
+	## They used to be 0x0, so crates, shop picks and HQ soldiers ignored the mouse.
+	Run.new_run()
+	var tips = Run.meta.get("tips_off", false)
+	Run.meta["tips_off"] = true
+	Run.scrip = 500
+	main.show_hq(false)
+	await frames_wait(20)
+	var hq: Control = main.screen
+	check(hq.size == Vector2(960, 540), "the HQ covers the view: %s" % hq.size)
+	await click_at(Vector2(hq.troop_x(0), hq.GROUND - 20))
+	await frames_wait(10)
+	check(hq.sub != null and is_instance_valid(hq.sub), "clicking a soldier at HQ opens their Dossier")
+	main.show_debrief({})
+	await frames_wait(10)
+	var d: Control = main.screen
+	check(d.size == Vector2(960, 540), "the debrief covers the view: %s" % d.size)
+	await click_at(d.crate_rect(0).get_center())
+	check(d.crates[0].open_t >= 0, "clicking a crate opens it")
+	await frames_wait(200)
+	main.show_shop()
+	await frames_wait(10)
+	var sh: Control = main.screen
+	var gold := Run.scrip
+	sh.buy_card(0)
+	await frames_wait(4)
+	check(sh.chooser != null and sh.chooser.size == Vector2(960, 540), "the who-gets-it picker covers the view")
+	var deck0: int = Run.soldiers[1].deck.size()
+	if sh.chooser != null:
+		await click_at(sh.chooser.tiles[1].get_center())
+	await frames_wait(6)
+	check(Run.soldiers[1].deck.size() == deck0 + 1 and Run.scrip < gold, "clicking Hex's plate gives Hex the card")
+	Run.meta["tips_off"] = tips
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)
