@@ -45,7 +45,7 @@ func _draw() -> void:
 	draw_projs()
 	for tr in b.tracers:
 		var c: Color = tr.c
-		c.a = tr.t / 9.0
+		c.a *= tr.t / 9.0
 		draw_line(Vector2(tr.x1, tr.y1), Vector2(tr.x2, tr.y2), c, 2.0)
 	draw_parts()
 	draw_fx()

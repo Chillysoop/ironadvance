@@ -422,6 +422,15 @@ func show_deck() -> void:
 	modal.visible = true
 	deck_open = true
 
+func toggle_pause() -> void:
+	## N7: Esc with nothing armed pauses the battle under a small menu.
+	if get_tree().paused:
+		return
+	var pm := PauseMenu.new()
+	pm.hud = self
+	add_child(pm)
+	get_tree().paused = true
+
 func close_deck() -> bool:
 	## Esc or CLOSE on the deck viewer. True when there was one to close.
 	if not deck_open:
@@ -582,6 +591,100 @@ class Tag extends Control:
 		else:
 			Art.text(self, "DOWN" if u.downed else "KIA", Vector2(x0 + 36, 21), 8, Color("ffb23e") if u.downed else Color("ff4d3d"))
 
+class PauseMenu extends Control:
+	## N7: RESUME, CONTROLS, QUIT TO TITLE. Runs while the tree is paused.
+	var hud
+	var page := "menu"     # "menu", "controls" or "quit"
+	const CONTROLS := [
+		["CLICK A CARD / 1-9", "Arm a card, then click to fire"],
+		["RIGHT-CLICK / ESC", "Cancel the armed card"],
+		["CLICK GROUND", "Walk the selected soldier"],
+		["CLICK A SOLDIER / TAB, E, Q", "Select a soldier"],
+		["SPACE", "NEXT: the next soldier who can act"],
+		["ENTER", "END TURN (asks twice while anyone can act)"],
+		["M", "Auto-move with mobility cards"],
+		["WHEEL / [ ]", "Set a grenade's fuse"],
+		["SHIFT", "Hold a steady aim"],
+		["ALT / V", "Intel on every soldier"],
+		["J", "Jet Boots, when equipped"],
+	]
+	func _ready() -> void:
+		process_mode = Node.PROCESS_MODE_ALWAYS
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		build()
+	func build() -> void:
+		for c in get_children():
+			c.queue_free()
+		var opts: Array = []
+		match page:
+			"menu":
+				opts = [["RESUME", Color("62d26f"), resume], ["CONTROLS", Color("53d4e2"), func(): go("controls")], ["QUIT TO TITLE", Color("ff4d3d"), func(): go("quit")]]
+			"controls":
+				opts = [["BACK", Color("9aa2ae"), func(): go("menu")]]
+			"quit":
+				opts = [["QUIT", Color("ff4d3d"), quit], ["STAY", Color("62d26f"), func(): go("menu")]]
+		var y := 300.0 if page != "controls" else 430.0
+		if page == "menu":
+			y = 210.0
+		for i in opts.size():
+			var bt := PixButton.new()
+			bt.process_mode = Node.PROCESS_MODE_ALWAYS
+			bt.text = opts[i][0]
+			bt.color = opts[i][1]
+			bt.size = Vector2(240, 36)
+			if page == "quit":
+				bt.position = Vector2(480 - 250 + i * 260, y)
+			else:
+				bt.position = Vector2(360, y + i * 46)
+			bt.pressed.connect(opts[i][2])
+			add_child(bt)
+	func go(p: String) -> void:
+		Sfx.play("click")
+		page = p
+		build()
+	func resume() -> void:
+		Sfx.play("click")
+		get_tree().paused = false
+		queue_free()
+	func quit() -> void:
+		get_tree().paused = false
+		var main = hud.get_parent()
+		if Run.campaign():
+			# like closing the window mid-op: the war rolls back to the last HQ save
+			Run.load_campaign(int(Run.camp.slot))
+		main.show_title()
+	func _input(ev: InputEvent) -> void:
+		if ev is InputEventKey and ev.pressed and not ev.echo:
+			if ev.keycode == KEY_ESCAPE:
+				if page == "menu":
+					resume()
+				else:
+					go("menu")
+			get_viewport().set_input_as_handled()
+	func _process(_d: float) -> void:
+		queue_redraw()
+	func _draw() -> void:
+		draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.8))
+		var r := Rect2(220, 110, 520, 380) if page == "controls" else Rect2(280, 130, 400, 220 if page == "menu" else 240)
+		if page == "quit":
+			r = Rect2(200, 170, 560, 190)
+		draw_rect(r.grow(2), Color(0.05, 0.035, 0.03))
+		draw_rect(r, Color("2a2e34"))
+		draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 2), Color("6c7480"))
+		match page:
+			"menu":
+				Art.text(self, "PAUSED", Vector2(480, 172), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+			"controls":
+				Art.text(self, "CONTROLS", Vector2(480, 140), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+				for i in CONTROLS.size():
+					Art.text(self, CONTROLS[i][0], Vector2(470, 172 + i * 22), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
+					Art.text(self, CONTROLS[i][1], Vector2(490, 172 + i * 22), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			"quit":
+				Art.text(self, "QUIT TO TITLE?", Vector2(480, 210), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+				var line := "This op is lost. The war picks up from your last HQ save." if Run.campaign() else "This run is lost. Salvage, bio-parts, HQ upgrades and unlocks you already earned are kept."
+				Art.text(self, line, Vector2(480, 246), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+
 class Coach extends Control:
 	## N1/N5: new-player tips in the Quartermaster's box style. NEXT pages through the queue;
 	## SKIP drops the rest; DON'T SHOW AGAIN turns every tip off for good.
@@ -624,6 +727,8 @@ class Coach extends Control:
 				press(1)
 			get_viewport().set_input_as_handled()
 	func _process(_d: float) -> void:
+		if hud.coach_queue.is_empty():
+			queue_free()
 		queue_redraw()
 	func _draw() -> void:
 		if hud.coach_queue.is_empty():
@@ -818,7 +923,7 @@ class Overlay extends Control:
 		elif boss != null and b.boss_active and not boss.dead:
 			var bw := 360.0
 			var bx := 480 - bw / 2
-			var bname := "VHARR BOAR" if boss.fl.get("vharr", false) else "IRON BOAR"
+			var bname := "VHARR BOAR" if boss.fl.get("vharr", false) else ("ROOKIE BOAR" if boss.fl.get("rookie", false) else "IRON BOAR")
 			if boss.dome > 0:
 				Art.text(self, bname + "  DOMED: CRUSH OR MELEE IT", Vector2(bx, 52), 8, Color("9df25c"))
 			else:
