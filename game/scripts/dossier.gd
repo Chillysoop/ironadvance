@@ -633,7 +633,7 @@ func draw_left(me: Dictionary) -> void:
 	y += 6
 	head("IMPLANTS", Vector2(x, y))
 	y += 14
-	var imp := Run.implants(me.key)
+	var imp := Run.implants_of(me)
 	if imp.is_empty():
 		y = para("None. The Doc's Lab installs them.", Vector2(x, y), LEFT.size.x - 20, Color("6c7480"), 2)
 	for id in imp:

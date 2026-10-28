@@ -144,7 +144,10 @@ func setup(idx: int, custom := {}) -> void:
 	terrain_sprite.scale = Vector2(CELL, CELL)
 	terrain_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var i := 0
-	for s in Run.soldiers:
+	var deployed: Array = Run.soldiers.duplicate()
+	if mission.get("guest", "") != "":
+		deployed.append(Run.make_guest(mission.guest))
+	for s in deployed:
 		if not s.alive or (mission.has("only") and s.key != mission.only):
 			continue
 		var x := 50.0 + i * 35
@@ -1207,7 +1210,7 @@ func walk_along(u: Unit, pts: Array) -> void:
 
 # ---------------------------------------------------------------- damage, adrenaline, xp, death
 func give_xp(u, n: int) -> void:
-	if u == null or not (u is Unit) or u.team != "squad" or u.dead or n <= 0 or practice():
+	if u == null or not (u is Unit) or u.team != "squad" or u.dead or n <= 0 or practice() or u.s.has("guest"):
 		return
 	if mission.get("patrol", false):
 		n = maxi(1, n / 2)
@@ -1261,8 +1264,10 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 		float_text(tg, "PAYBACK +%d" % own.payback, Color("9fb4c9"), true)
 		own.payback = 0
 	if own != null and tg.team == "enemy" and not o.get("status", false):
-		if tg.has_st("mark"):
+		var intel: bool = tg.elite != "" and Run.campaign() and Run.hq("comms") >= 2 and not tg.fl.has("intel")
+		if tg.has_st("mark") or intel:
 			tg.st.erase("mark")
+			tg.fl["intel"] = true  # B4 Comms 2: the first hit on an elite lands as marked
 			amt = int(round(amt * 1.5))
 			o = o.duplicate()
 			o["crit"] = true
@@ -1528,6 +1533,12 @@ func kill(tg: Unit, src) -> void:
 		credit_card(src)
 		if src is Unit and src.team == "squad":
 			src.kills += 1  # C5: the service record
+			if src.s.get("spec", "") == "defector" and faction(tg) == "jackal" and absf(tg.x - src.x) < 70 and not src.fl.has("turncoat"):
+				# C7 Turncoat: an up-close kill hands the Defector the Jackal's gun for one shot
+				src.fl["turncoat"] = true
+				var gk: String = Data.DROP_GUNS.get(tg.type, "rifle")
+				src.hand.append({"id": -2, "key": gk, "tier": Data.base_tier(gk), "temp": true})
+				float_text(src, "TURNCOAT: " + Data.CARDS[gk].name.to_upper(), Color("ffd23a"), true)
 		var base: int = Data.ETYPES[tg.type].score
 		if state == "player":
 			combo += 1
@@ -3989,9 +4000,11 @@ func job_round() -> void:
 				await wait(20)
 				return
 			var nx := minf(tr.x + Data.TRUCK_STEP, minf(cam_x + W - 70, world_w - 60.0))
+			var ford := false
 			while nx < world_w - 60 and not truck_road(nx, tr.y):
 				nx += 16  # rolls over a hole or open water to the far side
-			if nx <= tr.x + 4 or nx > cam_x + W - 30:
+				ford = true
+			if nx <= tr.x + 4 or (nx > cam_x + W - 30 and not ford):
 				float_text(tr, "WAITING FOR THE SQUAD", Color("9fb4c9"))
 				await wait(20)
 				return
@@ -4140,7 +4153,7 @@ func start_player_turn() -> void:
 		if s.fuel_max > 0 and not s.air:
 			s.fuel = 0 if s.carry == "colors" else s.fuel_max
 		stow_hand(s)
-		draw_cards(s, hand_size(s))
+		draw_cards(s, hand_size(s) + (1 if round_n == 1 and Run.campaign() and Run.hq("comms") >= 3 else 0))
 		if not s.hand.any(func(c): return c.key == "hop"):
 			s.hand.append({"id": -4, "key": "hop", "tier": Data.base_tier("hop"), "temp": true})
 		give_sidearm(s)
@@ -4151,6 +4164,12 @@ func start_player_turn() -> void:
 	refresh_duos()
 	refresh_mounts()
 	var al0 := squad_alive()
+	if round_n == 1 and Run.campaign() and Run.hq("hangar") >= 1 and al0.size():
+		# B4 Hangar: the Slug rolls out with the squad
+		call_slug(al0[0])
+		units.back().loot.turns += 2 if Run.hq("hangar") >= 2 else 1  # the tick below takes one right away
+		if Run.hq("hangar") >= 3:
+			al0[0].hand.append({"id": -3, "key": "slugcall", "tier": Data.OD_TIER, "temp": true})
 	if round_n == 1 and (Run.trophies.size() >= 3 or Run.hq("motor") >= 1) and not slug_given and al0.size():
 		# L7: three Boar parts rebuilt the SV-001, or the Motor Pool keeps it running. It answers one call
 		# per mission, two with Motor Pool 3.
@@ -6248,7 +6267,7 @@ func sync_back() -> void:
 		u.s.hp = maxi(0, u.hp)
 		if u.dead and u.downed:
 			u.s.hp = int(ceil(Run.eff_max_hp(u.s) / 2.0))
-		elif u.dead:
+		elif u.dead and not u.s.has("guest"):
 			u.s.alive = false
 			u.s.hp = 0
 			Run.memorialize(u.s)

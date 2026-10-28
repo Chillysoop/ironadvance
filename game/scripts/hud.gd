@@ -107,10 +107,10 @@ func setup(battle: Battle) -> void:
 	modal.mouse_filter = Control.MOUSE_FILTER_STOP
 	modal.visible = false
 	root.add_child(modal)
-	for i in 4:
+	for i in 5:
 		var tg := Tag.new()
 		tg.hud = self
-		tg.position = Vector2(6, 434 + i * 26)
+		tg.position = Vector2(6, 434 + i * 26 if i < 4 else 408)  # a fifth for a guest (S3)
 		tg.size = Vector2(150, 24)
 		roster_box.add_child(tg)
 		tags.append(tg)

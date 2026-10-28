@@ -326,8 +326,14 @@ func hq(id: String) -> int:
 	return r
 
 func hq_buildings() -> Array:
-	## The campaign has no gate dial, so no Gate Control.
-	return Data.HQ_BUILDINGS.filter(func(B): return not (campaign() and B.id == "gate"))
+	## The campaign has no gate dial, so no Gate Control, and adds the story buildings as acts open them (B4).
+	if not campaign():
+		return Data.HQ_BUILDINGS
+	var out: Array = Data.HQ_BUILDINGS.filter(func(B): return B.id != "gate")
+	for B in Data.CAMP_BUILDINGS:
+		if int(camp.get("act", 0)) >= int(B.act):
+			out.append(B)
+	return out
 
 func hq_upgrade(id: String) -> bool:
 	## Buy the next rank of a building with Salvage.
@@ -346,34 +352,46 @@ func implants(cls: String) -> Array:
 	## Surgeries installed on a class (a SQUAD_DEFS key).
 	return meta.get("implants", {}).get(cls, [])
 
-func implanted(s, id: String) -> bool:
-	return s is Dictionary and s.has("key") and implants(s.key).has(id)
+func implants_of(s: Dictionary) -> Array:
+	## B3: in the campaign implants go on the person; in runs on the class, so they outlive permadeath.
+	if campaign():
+		return s.get("implants", [])
+	return implants(s.key) if s.has("key") else []
 
-func surgery_block(id: String, cls: String) -> String:
-	## Why this surgery can't go on this class right now, or "" when it can.
+func implanted(s, id: String) -> bool:
+	return s is Dictionary and s.has("key") and implants_of(s).has(id)
+
+func surgery_block(id: String, who) -> String:
+	## Why this surgery can't go on this class (or, in the campaign, this soldier) right now, or "" when it can.
 	var S: Dictionary = Data.SURGERIES[id]
+	var cls: String = who.key if who is Dictionary else who
 	if hq("doc") < 1:
 		return "BUILD THE DOC'S LAB"
 	if S.cls != "" and S.cls != cls:
 		return "WRONG CLASS"
-	if implants(cls).has(id):
+	if (implants_of(who) if who is Dictionary else implants(cls)).has(id):
 		return "INSTALLED"
 	if int(meta.get("bio", 0)) < Data.SURGERY_BIO or int(meta.get("salvage", 0)) < Data.SURGERY_SALVAGE:
 		return "NEED %d BIO + %d SALVAGE" % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE]
 	return ""
 
-func operate(id: String, cls: String) -> bool:
-	## Install a surgery on a class. Past the slot cap the oldest implant comes out.
-	if surgery_block(id, cls) != "":
+func operate(id: String, who) -> bool:
+	## Install a surgery on a class, or on one soldier in the campaign. Past the slot cap the oldest comes out.
+	if surgery_block(id, who) != "":
 		return false
 	meta.bio = int(meta.bio) - Data.SURGERY_BIO
 	meta.salvage = int(meta.salvage) - Data.SURGERY_SALVAGE
-	if not meta.has("implants"):
-		meta.implants = {}
-	var have: Array = implants(cls).duplicate()
+	var cls: String = who.key if who is Dictionary else who
+	var have: Array = (implants_of(who) if who is Dictionary else implants(cls)).duplicate()
 	while have.size() >= hq("doc"):
 		have.pop_front()
 	have.append(id)
+	if who is Dictionary:
+		who["implants"] = have
+		save_meta()
+		return true
+	if not meta.has("implants"):
+		meta.implants = {}
 	meta.implants[cls] = have
 	for s in soldiers:
 		if s.key == cls and s.alive:
@@ -397,7 +415,7 @@ func recruit_offers(n := -1) -> Array:
 	for i in n:
 		var key: String = keys[i % keys.size()]
 		if i < defectors.size():
-			out.append({"key": key, "name": defectors[i], "trait": Data.DEFECTOR_TRAIT, "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": ""})
+			out.append({"key": Data.DEFECTOR_CLASS.base if campaign() else key, "name": defectors[i], "trait": Data.DEFECTOR_TRAIT, "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": ""})
 			continue
 		out.append({"key": key, "name": names[i], "trait": traits[i % traits.size()], "legacy": legacy_perk(key), "look": Art.random_look(), "drill_card": drilled_card(key), "legacy_deck": deck.get("name", "")})
 	return out
@@ -438,7 +456,14 @@ func hire(slot: int, o: Dictionary) -> Dictionary:
 func make_recruit(o: Dictionary) -> Dictionary:
 	var d: Dictionary = Data.SQUAD_DEFS.filter(func(x): return x.key == o.key)[0].duplicate()
 	d.name = o.name
+	var spec: bool = campaign() and o.trait.id == "defector"
+	if spec:
+		# C7: in the campaign a deserter is a class of their own
+		d.cls = Data.DEFECTOR_CLASS.cls
+		d.deck = d.deck + Data.DEFECTOR_CLASS.deck_add
 	var s := make_soldier(d)
+	if spec:
+		s["spec"] = "defector"
 	s.trait = o.trait.id
 	s["look"] = o.get("look", Art.random_look())  # U3: recruits show up in their own kit
 	match o.trait.id:
@@ -820,7 +845,7 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 			for k in Data.SETS[set_id].bonus:
 				out[k] = out.get(k, 0) + Data.SETS[set_id].bonus[k]
 	if s.has("key"):
-		for id in implants(s.key):
+		for id in implants_of(s):
 			var st: Dictionary = Data.SURGERIES[id].get("stats", {})
 			for k in st:
 				out[k] = out.get(k, 0) + st[k]
@@ -1144,6 +1169,8 @@ func make_op(sc: Dictionary, patrol := false) -> Dictionary:
 		lv.encounter = "queen"
 	lv["op"] = sc.id
 	lv["job"] = job
+	if sc.get("varga", false) and not patrol:
+		lv["guest"] = "varga"  # S3: the colonel fights alongside the company this once
 	lv["patrol"] = patrol
 	lv["stronghold"] = sc.get("stronghold", false) and not patrol
 	lv["banner"] = "PATROL" if patrol else ("STRONGHOLD ASSAULT" if lv.stronghold else "OP %d START!" % (int(camp.ops) + 1))
@@ -1157,6 +1184,24 @@ func op_job(sc: Dictionary, patrol := false) -> String:
 		var ks: Array = Data.JOBS.keys()
 		return ks[randi() % ks.size()]
 	return sc.get("job", "push")
+
+func op_roster(lv: Dictionary) -> String:
+	## B4 Comms 1: every enemy type waiting in the op's segments, for the brief.
+	var n := {}
+	for sname in lv.get("segments", []):
+		for sp in Data.SEGMENTS[sname].spawns:
+			var ty: String = sp[0]
+			if ty == "boss" and lv.get("boss", "") == "hiveship":
+				ty = "hiveship"
+			if Data.ETYPES.has(ty):
+				var nm: String = Data.ETYPES[ty].name.to_upper()
+				n[nm] = int(n.get(nm, 0)) + 1
+	var parts: Array = []
+	for k in n:
+		parts.append("%d %s" % [n[k], k])
+	if lv.get("encounter", "") != "":
+		parts.append("A VHARR " + str(lv.encounter).to_upper())
+	return ", ".join(parts)
 
 func job_text(job: String) -> String:
 	var tx: String = Data.JOBS[job].text
@@ -1195,6 +1240,7 @@ func after_op(st := {}) -> Dictionary:
 	## there are enough to field a squad, and the squad is topped up from the bench.
 	var inc := income()
 	inc.merge(book_service(st))
+	inc["deserter"] = deserter(st)
 	scrip += inc.scrip
 	meta.salvage = int(meta.get("salvage", 0)) + inc.salvage
 	meta.bio = int(meta.get("bio", 0)) + inc.bio
@@ -1210,6 +1256,91 @@ func after_op(st := {}) -> Dictionary:
 	level = {}
 	save_meta()
 	return inc
+
+func deserter(st: Dictionary) -> String:
+	## S4: in Act III a won op can end with a Jackal deserter asking to join. Returns a news line.
+	var a := int(camp.get("act", 0)) - (1 if st.get("op", {}).has("act_done") else 0)
+	if a != 2 or not st.get("won", false) or level.get("patrol", false) or randf() >= Data.DESERTER_CHANCE:
+		return ""
+	var used: Array = roster.map(func(s): return s.def.name) + defectors
+	var names: Array = Data.CALLSIGNS.filter(func(c): return not used.has(c))
+	if names.is_empty():
+		return ""
+	var nm: String = names[randi() % names.size()]
+	if company_room():
+		var s := enlist({"key": Data.DEFECTOR_CLASS.base, "name": nm, "trait": Data.DEFECTOR_TRAIT, "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": ""})
+		return "%s, a Jackal deserter, joined the company as a %s." % [s.def.name, s.def.cls]
+	defectors.append(nm)
+	return "%s, a Jackal deserter, waits at the Barracks for a free bunk." % nm
+
+func make_guest(id: String) -> Dictionary:
+	## S3: Colonel Varga, on loan for one op. Not part of the company, never on the Memorial.
+	var d: Dictionary = Data.SQUAD_DEFS.filter(func(x): return x.key == "rook")[0].duplicate()
+	d.name = "VARGA"
+	d.cls = "Jackal Colonel"
+	d.hp = 40
+	d.deck = ["hmg", "hmg", "burst", "rifle", "rifle", "haymaker", "frag", "sprint", "knife"]
+	var s := make_soldier(d)
+	s["guest"] = id
+	s.lvl = 5
+	s["look"] = {"head": "", "hat": 3, "shirt": 3, "pants": 3}
+	return s
+
+# ---------------------------------------------------------------- S2/S3 radio
+func radio_line(who: String, text: String, sq: Array) -> Dictionary:
+	## One line of chatter. A squad line goes to a random soldier; {name}/{rank}/{mate} are filled in.
+	var out := {"who": who, "text": text}
+	if who == "sq":
+		if sq.is_empty():
+			return {}
+		var s: Dictionary = sq[randi() % sq.size()]
+		var mates: Array = sq.filter(func(m): return m != s)
+		var mate: String = mates[randi() % mates.size()].def.name.capitalize() if mates.size() else "Command"
+		out["s"] = s
+		out["name"] = "%s %s" % [rank_name(s), s.def.name]
+		out["role"] = s.def.cls.to_upper()
+		out["col"] = Color("ffd23a")
+		out.text = text.format({"name": s.def.name.capitalize(), "rank": rank_name(s), "mate": mate})
+	else:
+		var C: Dictionary = Data.RADIO_CAST[who]
+		out["name"] = C.name
+		out["role"] = C.role
+		out["col"] = C.col
+	return out
+
+func radio_before() -> Array:
+	## S2: the act's opening the first time, the job, maybe a taunt, and the colonel on his op.
+	var sq: Array = soldiers.filter(func(s): return s.alive)
+	var a := int(camp.get("act", 0))
+	var raw: Array = []
+	if int(camp.get("intro", -1)) < a:
+		camp["intro"] = a
+		raw.append_array(Data.RADIO_ACT[a])
+	else:
+		var jl: Array = Data.RADIO_JOB[level.get("job", "push")]
+		raw.append(jl[randi() % jl.size()])
+		if randf() < 0.5:
+			var tl: Array = Data.RADIO_TAUNT[a]
+			raw.append(tl[randi() % tl.size()])
+	if level.get("guest", "") == "varga":
+		raw.append_array(Data.RADIO_VARGA_OP)
+	return raw.map(func(r): return radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())
+
+func radio_after(st: Dictionary) -> Array:
+	## S2: Command's word on the op, a squad cheer on a win, and the villains when an act falls.
+	var sq: Array = soldiers.filter(func(s): return s.alive)
+	var op: Dictionary = st.get("op", {})
+	var raw: Array = []
+	if not st.get("won", false):
+		raw.append(Data.RADIO_LOST[randi() % Data.RADIO_LOST.size()])
+	else:
+		raw.append(Data.RADIO_WON[randi() % Data.RADIO_WON.size()])
+		raw.append(["sq", Data.RADIO_SQ_WON[randi() % Data.RADIO_SQ_WON.size()]])
+	if op.has("act_done"):
+		var i: int = Data.ACTS.map(func(x): return x.name).find(op.act_done)
+		if i >= 0:
+			raw.append_array(Data.RADIO_ACT_DONE[i])
+	return raw.map(func(r): return radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())
 
 # ---------------------------------------------------------------- the company (C1-C6)
 func svc(s: Dictionary) -> Dictionary:

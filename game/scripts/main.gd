@@ -81,16 +81,27 @@ func show_war_room() -> void:
 	var w: Control = WarRoomScript.new()
 	w.attack.connect(func(sc: Dictionary, patrol: bool):
 		Run.start_op(sc, patrol)
-		show_brief())
+		show_radio(Run.radio_before(), show_brief))
 	w.back.connect(func(): show_hq(false))
 	w.quit.connect(show_title)
 	open(w)
 
+func show_radio(lines: Array, then: Callable) -> void:
+	## S2: radio chatter, then on to whatever comes next.
+	clear()
+	var r: Control = WarRoomScript.RadioScreen.new()
+	r.lines = lines
+	r.done.connect(then)
+	open(r)
+
 func campaign_home(st := {}) -> void:
-	## After an op: held sectors pay, the squad is patched up, promotions and training are
-	## picked, then HQ with the news.
+	## After an op: the radio, held sectors pay, the squad is patched up, promotions and training
+	## are picked, then HQ with the news.
+	var talk := Run.radio_after(st) if st.has("won") else []
 	var inc := Run.after_op(st)
 	var news: Array = []
+	if inc.deserter != "":
+		news.append(inc.deserter)
 	news.append_array(inc.promos)
 	for m in inc.medals:
 		news.append("Medal for " + m + ".")
@@ -105,11 +116,16 @@ func campaign_home(st := {}) -> void:
 	news.append("Everyone is patched up and has their dog tags back.")
 	if inc.rookies.size():
 		news.append("Command sent replacements: %s." % ", ".join(inc.rookies))
-	if Run.pending_picks().size():
-		show_picks(func(): show_hq(true); screen.news = news)
+	var home := func():
+		if Run.pending_picks().size():
+			show_picks(func(): show_hq(true); screen.news = news)
+		else:
+			show_hq(true)
+			screen.news = news
+	if talk.is_empty():
+		home.call()
 	else:
-		show_hq(true)
-		screen.news = news
+		show_radio(talk, home)
 
 func show_picks(then: Callable) -> void:
 	## C3/C4: promotions and the bench's training levels, one pick each.
@@ -199,6 +215,8 @@ func _on_mission_over(won: bool) -> void:
 	var kills := {}
 	var downs := {}
 	for u in battle.squad():
+		if u.s.has("guest"):
+			continue
 		xp[u.def.key] = u.xp_gain
 		kills[u.def.key] = u.kills
 		downs[u.def.key] = u.downed or u.dead
@@ -451,6 +469,10 @@ class Screen extends Control:
 			Art.text(self, "GOOD FOR %s   ROUGH ON %s" % [Data.STYLES[bm.favor], Data.STYLES[bm.rough]], Vector2(480, y - 2), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
 		var it: Dictionary = Data.INTEL[Run.intel] if Data.INTEL.has(Run.intel) else Data.INTEL.clear
 		Art.text(self, "INTEL: %s  %s" % [it.name, it.text.to_upper()], Vector2(480, y + 58), 8, Color("53d4e2") if Run.intel != "clear" else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+		if Run.campaign() and Run.hq("comms") >= 1:
+			var ros: Array = CardView.wrap_text("COMMS: " + Run.op_roster(m), 900, 16)
+			for k in mini(2, ros.size()):
+				Art.text(self, ros[k], Vector2(480, 440 + k * 15), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 		if Run.threat > 0:
 			Art.text(self, "THREAT %d: %s" % [Run.threat, ", ".join(Data.THREATS.slice(0, Run.threat).map(func(x): return x.name))], Vector2(480, y + 72), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
 		draw_texture_rect(Art.tex.ic_coin, Rect2(410, y + 30, 10, 10), false)
