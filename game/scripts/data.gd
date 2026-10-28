@@ -862,6 +862,78 @@ const LEVELS := [
 const FINALE := {"name": "IRON HARBOR", "theme": "night", "segments": ["start", "docks", "pier"], "finale": true,
 	"boss_hp": 260, "plate": 70, "hp_mul": 1.4, "brief": "The last gate opens on the harbor. The Jackal flagship BOAR is loading out. Sink it and the war is over."}
 
+# ---------------------------------------------------------------- campaign mode (K3)
+# The campaign is five acts. Each act is one front map: a landing zone you start on, six sectors
+# and a stronghold. Any sector that touches one you hold is open (M1). Take "need" of them and the
+# stronghold opens; beat it and the war moves to the next act. Held sectors pay something after
+# every op for the rest of the war (M2), or give a perk that lasts for their act (M3).
+# Positions are screen coordinates on the War Room map. "tier" picks the enemy mix (0 = mostly
+# Jackals, 1 = Vharr arriving, 2 = Vharr everywhere) and hp_mul / boss_hp / plate set the numbers.
+const CAMP_SLOTS := 3
+const CAMP_START_SCRIP := 120
+const CAMP_THREAT_PAY := 0.2      # each threat level picked for an op adds 20% to its pay (P3)
+const PATROL_PAY := 0.5           # replaying a held sector pays half (M5)
+const SECTOR_PERKS := {
+	"aid": {"name": "FIELD HOSPITAL", "text": "Camps heal 5 more HP on every op this act."},
+	"lookout": {"name": "LOOKOUT POST", "text": "+1 Luck on every op this act."},
+	"fuel": {"name": "FUEL DEPOT", "text": "The SV-001 Slug is on call on every op this act."},
+	"supply": {"name": "SUPPLY DUMP", "text": "Quartermaster prices are 10% lower this act."},
+	"airfield": {"name": "AIRSTRIP", "text": "Twice the crates on the map on every op this act."},
+}
+const ACTS := [
+	{"id": "landfall", "name": "LANDFALL", "roman": "I", "tier": 0, "hp_mul": 1.0, "boss_hp": 120, "plate": 36, "need": 3, "breach": 0.0,
+	 "text": "Hit the beach at the delta and push into the jungle. Plain war against the Jackals.",
+	 "lz": {"name": "BEACHHEAD", "at": [70, 380]},
+	 "sectors": [
+		{"id": "d1", "name": "MUDFLAT LANDING", "biome": "delta", "at": [190, 380], "links": ["lz", "d2", "d3"], "hold": {"scrip": 20}},
+		{"id": "d2", "name": "RICE TERRACES", "biome": "delta", "at": [280, 270], "links": ["d1", "j1", "j2"], "perk": "aid"},
+		{"id": "d3", "name": "FERRY DOCKS", "biome": "delta", "at": [340, 410], "links": ["d1", "j2"], "hold": {"salvage": 2}},
+		{"id": "j1", "name": "SIGNAL RIDGE", "biome": "jungle", "at": [230, 160], "links": ["d2", "j3"], "perk": "lookout"},
+		{"id": "j2", "name": "RIVER BATTERY", "biome": "jungle", "at": [440, 300], "links": ["d2", "d3", "boss"], "hold": {"scrip": 20}},
+		{"id": "j3", "name": "TEMPLE TRAIL", "biome": "jungle", "at": [400, 150], "links": ["j1", "boss"], "hold": {"bio": 1}},
+		{"id": "boss", "name": "BOAR'S DEN", "biome": "jungle", "at": [580, 220], "links": ["j2", "j3"], "stronghold": true}]},
+	{"id": "breach", "name": "THE BREACH", "roman": "II", "tier": 1, "hp_mul": 1.15, "boss_hp": 160, "plate": 46, "need": 3, "breach": 0.4,
+	 "text": "Desert ruins and the mountain pass. The Jackals made a deal with something that came through their gate.",
+	 "lz": {"name": "AIRDROP ZONE", "at": [80, 200]},
+	 "sectors": [
+		{"id": "s1", "name": "BROKEN AQUEDUCT", "biome": "desert", "at": [200, 150], "links": ["lz", "s2", "s3"], "hold": {"scrip": 25}},
+		{"id": "s2", "name": "SALT FLATS", "biome": "desert", "at": [220, 330], "links": ["s1", "m1"], "perk": "airfield"},
+		{"id": "s3", "name": "SUNKEN TEMPLE", "biome": "desert", "at": [350, 180], "links": ["s1", "m1", "m2"], "hold": {"bio": 1}},
+		{"id": "m1", "name": "SWITCHBACKS", "biome": "mountain", "at": [380, 360], "links": ["s2", "s3", "m3"], "hold": {"salvage": 3}},
+		{"id": "m2", "name": "OBSERVATORY", "biome": "mountain", "at": [480, 130], "links": ["s3", "boss"], "perk": "lookout"},
+		{"id": "m3", "name": "CABLE CAR STATION", "biome": "mountain", "at": [520, 330], "links": ["m1", "boss"], "perk": "fuel"},
+		{"id": "boss", "name": "THE QUEEN'S PIT", "biome": "desert", "at": [600, 220], "links": ["m2", "m3"], "stronghold": true, "queen": true}]},
+	{"id": "pact", "name": "A BAD PACT", "roman": "III", "tier": 2, "hp_mul": 1.3, "boss_hp": 210, "plate": 60, "need": 3, "breach": 0.8,
+	 "text": "The refinery and the fortress towns. The pact is cracking and Jackals and Vharr are shooting each other.",
+	 "lz": {"name": "RAIL YARD", "at": [70, 300]},
+	 "sectors": [
+		{"id": "r1", "name": "PUMP STATION", "biome": "refinery", "at": [190, 220], "links": ["lz", "r2", "f1"], "hold": {"salvage": 3}},
+		{"id": "r2", "name": "CRACKING TOWERS", "biome": "refinery", "at": [300, 120], "links": ["r1", "r3"], "perk": "fuel"},
+		{"id": "r3", "name": "TANK FARM", "biome": "refinery", "at": [450, 140], "links": ["r2", "boss"], "hold": {"scrip": 30}},
+		{"id": "f1", "name": "MARKET STREET", "biome": "fortress", "at": [220, 390], "links": ["r1", "f2"], "perk": "supply"},
+		{"id": "f2", "name": "OLD CITADEL", "biome": "fortress", "at": [370, 330], "links": ["f1", "f3"], "hold": {"bio": 2}},
+		{"id": "f3", "name": "GARRISON GATE", "biome": "fortress", "at": [500, 400], "links": ["f2", "boss"], "perk": "aid"},
+		{"id": "boss", "name": "THE INFESTED WORKS", "biome": "refinery", "at": [590, 270], "links": ["r3", "f3"], "stronghold": true}]},
+	{"id": "hive", "name": "HIVE TIDE", "roman": "IV", "tier": 2, "hp_mul": 1.45, "boss_hp": 240, "plate": 66, "need": 3, "breach": 0.5,
+	 "text": "The palace and the night harbor. A Hive Ship parks over the coast and seeds nests everywhere.",
+	 "lz": {"name": "CLIFF ROAD", "at": [70, 170]},
+	 "sectors": [
+		{"id": "p1", "name": "LANTERN GARDENS", "biome": "palace", "at": [190, 130], "links": ["lz", "p2", "p3"], "perk": "lookout"},
+		{"id": "p2", "name": "SHOGUN'S HALL", "biome": "palace", "at": [320, 210], "links": ["p1", "h1"], "hold": {"bio": 2}},
+		{"id": "p3", "name": "PAPER BRIDGE", "biome": "palace", "at": [200, 300], "links": ["p1", "h2"], "hold": {"scrip": 30}},
+		{"id": "h1", "name": "LIGHTHOUSE", "biome": "harbor", "at": [470, 140], "links": ["p2", "boss"], "perk": "airfield"},
+		{"id": "h2", "name": "FISH MARKET", "biome": "harbor", "at": [330, 400], "links": ["p3", "h3"], "hold": {"salvage": 3}},
+		{"id": "h3", "name": "DRY DOCK", "biome": "harbor", "at": [490, 350], "links": ["h2", "boss"], "perk": "supply"},
+		{"id": "boss", "name": "UNDER THE HIVE SHIP", "biome": "harbor", "at": [600, 240], "links": ["h1", "h3"], "stronghold": true}]},
+	{"id": "gate", "name": "SHUT THE GATE", "roman": "V", "tier": 2, "hp_mul": 1.6, "boss_hp": 270, "plate": 74, "need": 2, "breach": 0.3,
+	 "text": "Iron Harbor, where the Jackals keep the captured gate. Two big ops, then the flagship and the gate itself.",
+	 "lz": {"name": "LANDING CRAFT", "at": [80, 280]},
+	 "sectors": [
+		{"id": "g1", "name": "SEA WALL", "biome": "harbor", "at": [260, 180], "links": ["lz", "boss"], "hold": {"scrip": 40}},
+		{"id": "g2", "name": "GATE BARRACKS", "biome": "fortress", "at": [270, 390], "links": ["lz", "boss"], "hold": {"bio": 2}},
+		{"id": "boss", "name": "IRON HARBOR", "biome": "harbor", "at": [520, 280], "links": ["g1", "g2"], "stronghold": true, "finale": true}]},
+]
+
 const THEMES := {
 	"dusk": {"water": [Color("14485a"), Color("2f8aa0")], "tint": Color(1, 1, 1), "grass": Color("7cb042")},
 	"jungle": {"water": [Color("0e3a34"), Color("2a8a6a")], "tint": Color(0.92, 1.02, 0.95), "grass": Color("4ca83a")},

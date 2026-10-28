@@ -39,6 +39,13 @@ var dial_rerolled := false # Gate Control 2: one reroll per HQ visit
 var sway_mul := 1.0        # the current biome's sway rule, read by Data.card during a battle
 var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "bio": 0, "hq": {}, "implants": {}}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
 const META_PATH := "user://meta.json"
+# Campaign mode (B1): the campaign keeps its own HQ, Salvage, Bio-parts, implants and Memorial.
+# While a campaign is loaded those keys in meta hold the campaign's values and run_base holds the
+# standard run's, so every screen that reads meta works in both modes. Feats and Armory unlocks
+# stay shared (L2).
+const CAMP_KEYS := ["salvage", "bio", "hq", "implants", "memorial"]
+var camp := {}             # campaign state; empty during a standard run
+var run_base := {}         # the standard run's CAMP_KEYS while a campaign is loaded
 
 func _ready() -> void:
 	load_meta()
@@ -66,9 +73,15 @@ func restore(snap: Dictionary) -> void:
 	save_meta()  # anything the range wrote to disk is undone too
 
 func save_meta() -> void:
+	var m := meta
+	if campaign():
+		m = meta.duplicate()
+		for k in CAMP_KEYS:
+			m[k] = run_base.get(k, m[k])
+		save_campaign()
 	var f := FileAccess.open(META_PATH, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify(meta))
+		f.store_string(JSON.stringify(m))
 
 func feat(id: String, n := 1) -> String:
 	## Counts toward an Armory unlock feat. Returns the unlocked item's name the moment it unlocks.
@@ -98,6 +111,8 @@ func roll_intel() -> void:
 		for i in Data.INTEL[k].w:
 			pool.append(k)
 	intel = pool[randi() % pool.size()] if mission > 0 else "clear"
+	if camp_perk("airfield"):
+		intel = "surplus"
 
 # ---------------------------------------------------------------- biomes and the gate dial
 func current_mission() -> Dictionary:
@@ -279,8 +294,18 @@ func legacy_perk(key: String) -> Dictionary:
 
 # ---------------------------------------------------------------- HQ upgrades
 func hq(id: String) -> int:
-	## Rank 0-3 of an HQ building.
-	return int(meta.get("hq", {}).get(id, 0))
+	## Rank 0-3 of an HQ building. In the campaign some held sectors stand in for a rank (M3).
+	var r := int(meta.get("hq", {}).get(id, 0))
+	if campaign():
+		match id:
+			"motor": r = maxi(r, 1 if camp_perk("fuel") else 0)
+			"mess": r = maxi(r, 1 if camp_perk("aid") else 0)
+			"armory": r = maxi(r, 2 if camp_perk("supply") else 0)
+	return r
+
+func hq_buildings() -> Array:
+	## The campaign has no gate dial, so no Gate Control.
+	return Data.HQ_BUILDINGS.filter(func(B): return not (campaign() and B.id == "gate"))
 
 func hq_upgrade(id: String) -> bool:
 	## Buy the next rank of a building with Salvage.
@@ -415,7 +440,7 @@ func new_card(key: String, tier := -1, from := "") -> Dictionary:
 	return c
 
 func luck_total() -> int:
-	var n := luck + (2 if has_gear("charm") else 0) + (1 if has_gear("dogtags") else 0) + (2 if has_cmd("rabbit") else 0) + temp_luck
+	var n := luck + (1 if camp_perk("lookout") else 0) + (2 if has_gear("charm") else 0) + (1 if has_gear("dogtags") else 0) + (2 if has_cmd("rabbit") else 0) + temp_luck
 	for s in soldiers:
 		if s.alive:
 			n += int(gear_bonus(s).get("luck", 0))
@@ -424,7 +449,10 @@ func luck_total() -> int:
 func tier_weights() -> Array:
 	## Rarity odds for this point in the run. Later missions and Luck move weight off Common.
 	var w: Array = Data.RARITY.slice(0, Data.TIER_MAX + 1).map(func(r): return r.w)
-	var shift := minf(40.0, mission * 6.0 + luck_total() * 3.0)
+	var step := mission * 6.0
+	if campaign():
+		step = int(camp.act) * 10.0 + mini(int(camp.act_ops), 5) * 2.0  # rarity climbs by act, not by op count
+	var shift := minf(40.0, step + luck_total() * 3.0)
 	w[0] -= shift
 	var split := [0.0, 0.5, 0.3, 0.15, 0.05]
 	for i in range(1, w.size()):
@@ -909,3 +937,208 @@ func fabricate(it: Dictionary) -> Dictionary:
 	var cp := {"uid": uid, "id": it.id, "tier": it.tier, "affixes": it.affixes.duplicate()}
 	stash.append(cp)
 	return cp
+
+# ---------------------------------------------------------------- campaign mode
+func campaign() -> bool:
+	return not camp.is_empty()
+
+func _process(delta: float) -> void:
+	if campaign():
+		camp.secs = float(camp.get("secs", 0.0)) + delta
+
+func camp_path(slot: int) -> String:
+	return "user://campaign_%d.save" % slot
+
+func camp_head(slot: int) -> Dictionary:
+	## What the slot picker shows for a save: act, ops fought, time played. {} when the slot is empty.
+	if not FileAccess.file_exists(camp_path(slot)):
+		return {}
+	var f := FileAccess.open(camp_path(slot), FileAccess.READ)
+	if f == null:
+		return {}
+	var d = f.get_var()
+	return d.get("head", {}) if d is Dictionary else {}
+
+func _enter_base() -> void:
+	## Put the standard run's HQ aside while a campaign is loaded.
+	if run_base.is_empty():
+		for k in CAMP_KEYS:
+			var v = meta.get(k)
+			run_base[k] = v.duplicate(true) if v is Dictionary or v is Array else v
+
+func new_campaign(slot: int) -> void:
+	## A fresh war: the starting four, a small war chest, an empty base.
+	_enter_base()
+	meta.salvage = 0
+	meta.bio = 0
+	meta.hq = {}
+	meta.implants = {}
+	meta.memorial = []
+	camp = {"slot": slot, "act": 0, "held": [], "ops": 0, "act_ops": 0, "secs": 0.0, "done": false}
+	new_run()  # campaign() is already true, so this reads the campaign's empty HQ
+	threat = 0
+	scrip = Data.CAMP_START_SCRIP
+	save_campaign()
+
+func load_campaign(slot: int) -> bool:
+	if not FileAccess.file_exists(camp_path(slot)):
+		return false
+	var f := FileAccess.open(camp_path(slot), FileAccess.READ)
+	var d = f.get_var() if f != null else null
+	if not (d is Dictionary and d.has("data")):
+		return false
+	_enter_base()
+	var data: Dictionary = d.data
+	for k in data:
+		if k in ["meta", "run_base", "base"]:
+			continue
+		set(k, data[k])
+	for k in CAMP_KEYS:
+		meta[k] = data.base.get(k, run_base[k])
+	camp.slot = slot
+	return true
+
+func save_campaign() -> void:
+	if not campaign():
+		return
+	var data := snapshot()
+	data.erase("meta")
+	data.erase("run_base")
+	var base := {}
+	for k in CAMP_KEYS:
+		base[k] = meta.get(k)
+	data["base"] = base
+	var head := {"act": int(camp.act), "ops": int(camp.ops), "secs": float(camp.get("secs", 0.0)), "done": camp.get("done", false),
+		"names": soldiers.filter(func(s): return s.alive).map(func(s): return s.def.name)}
+	var f := FileAccess.open(camp_path(int(camp.slot)), FileAccess.WRITE)
+	if f != null:
+		f.store_var({"head": head, "data": data})
+
+func delete_campaign(slot: int) -> void:
+	if FileAccess.file_exists(camp_path(slot)):
+		DirAccess.remove_absolute(camp_path(slot))
+
+func leave_campaign() -> void:
+	## Save and put the standard run's HQ back.
+	if not campaign():
+		return
+	save_campaign()
+	for k in CAMP_KEYS:
+		meta[k] = run_base[k]
+	run_base = {}
+	camp = {}
+	threat = 0
+	new_run()
+
+func act(a := -1) -> Dictionary:
+	return Data.ACTS[clampi(int(camp.get("act", 0)) if a < 0 else a, 0, Data.ACTS.size() - 1)]
+
+func sec_key(id: String, a := -1) -> String:
+	return "%d:%s" % [int(camp.get("act", 0)) if a < 0 else a, id]
+
+func sector(id: String, a := -1) -> Dictionary:
+	for sc in act(a).sectors:
+		if sc.id == id:
+			return sc
+	return {}
+
+func sector_held(id: String) -> bool:
+	return id == "lz" or camp.get("held", []).has(sec_key(id))
+
+func held_count() -> int:
+	## Sectors taken this act, not counting the stronghold.
+	return act().sectors.filter(func(sc): return not sc.get("stronghold", false) and camp.held.has(sec_key(sc.id))).size()
+
+func sector_open(sc: Dictionary) -> bool:
+	## M1: open when it touches ground you hold. The stronghold waits for "need" sectors.
+	if camp.held.has(sec_key(sc.id)):
+		return false
+	if sc.get("stronghold", false):
+		return held_count() >= int(act().need)
+	return sc.links.any(func(l): return sector_held(l))
+
+func camp_perk(id: String) -> bool:
+	## M3: a held sector's perk, only for the act it's in.
+	return campaign() and act().sectors.any(func(sc): return sc.get("perk", "") == id and camp.held.has(sec_key(sc.id)))
+
+func income() -> Dictionary:
+	## M2: what every held sector in the war pays after each op.
+	var out := {"scrip": 0, "salvage": 0, "bio": 0}
+	if not campaign():
+		return out
+	for key in camp.held:
+		var parts: PackedStringArray = key.split(":")
+		var h: Dictionary = sector(parts[1], int(parts[0])).get("hold", {})
+		for k in h:
+			out[k] = out.get(k, 0) + int(h[k])
+	return out
+
+func make_op(sc: Dictionary, patrol := false) -> Dictionary:
+	## One operation on the war map. A sector op is shorter than a run level: one camp, then the
+	## sector's boss. A stronghold keeps the full length. A patrol replays a held sector (M5).
+	var a := act()
+	var lv := make_level(sc.biome, int(a.tier), randf() < float(a.breach))
+	lv.hp_mul = a.hp_mul
+	lv.boss_hp = a.boss_hp
+	lv.plate = a.plate
+	lv.name = sc.name
+	var segs: Array = lv.segments
+	if not sc.get("stronghold", false):
+		lv.segments = ["start", segs[1], "camp", "yard", segs[4], segs[6]]
+	else:
+		lv.boss_hp = int(a.boss_hp * 1.2)
+		lv.plate = int(a.plate * 1.2)
+	if sc.get("queen", false):
+		lv.encounter = "queen"
+	lv["op"] = sc.id
+	lv["patrol"] = patrol
+	lv["stronghold"] = sc.get("stronghold", false) and not patrol
+	lv["banner"] = "PATROL" if patrol else ("STRONGHOLD ASSAULT" if lv.stronghold else "OP %d START!" % (int(camp.ops) + 1))
+	return lv
+
+func start_op(sc: Dictionary, patrol := false) -> void:
+	mission = int(camp.ops)   # the Quartermaster restocks after every op
+	level = make_op(sc, patrol)
+	history.clear()
+
+func op_over(won: bool) -> Dictionary:
+	## Book an op on the war map. Returns what changed for the result screen.
+	camp.ops = int(camp.ops) + 1
+	camp.act_ops = int(camp.act_ops) + 1
+	var out := {}
+	if not won or level.get("patrol", false):
+		return out
+	var sc := sector(level.op)
+	if not camp.held.has(sec_key(sc.id)):
+		camp.held.append(sec_key(sc.id))
+		out["took"] = sc.name
+		if sc.has("perk"):
+			out["perk"] = sc.perk
+	if sc.get("stronghold", false):
+		out["act_done"] = act().name
+		if int(camp.act) >= Data.ACTS.size() - 1:
+			camp.done = true
+		else:
+			camp.act = int(camp.act) + 1
+			camp.act_ops = 0
+	return out
+
+func after_op() -> Dictionary:
+	## Back at HQ after an op: held sectors pay, everyone is patched up and gets their dog tags
+	## back, and Command fills any empty slot with a rookie so you can always field a squad.
+	var inc := income()
+	scrip += inc.scrip
+	meta.salvage = int(meta.get("salvage", 0)) + inc.salvage
+	meta.bio = int(meta.get("bio", 0)) + inc.bio
+	for s in soldiers:
+		if s.alive:
+			s.tags = Data.DOG_TAGS
+			s.hp = eff_max_hp(s)
+	var rookies: Array = []
+	for i in fallen_slots():
+		var o: Dictionary = recruit_offers(1)[0]
+		rookies.append(hire(i, o).def.name)
+	inc["rookies"] = rookies
+	level = {}
+	save_meta()
+	return inc

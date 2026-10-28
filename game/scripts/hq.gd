@@ -26,6 +26,7 @@ var held := {}              # textures must stay referenced until the frame rend
 var hover_troop := -1       # the soldier in the scene under the mouse
 var walk := {}              # H4: the squad trotting over to a building: {id, x, t}
 var dial_btn: Control = null
+var news: Array = []        # campaign: what happened since the last op, shown on arrival
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -71,6 +72,9 @@ func build() -> void:
 	var go := HudScript.PixButton.new()
 	go.text = "DIAL THE GATE"
 	go.sub = "FINALE" if next_mission_n() > Data.LEVELS.size() else "LEVEL %d OF %d" % [next_mission_n(), Data.LEVELS.size()]
+	if Run.campaign():
+		go.text = "WAR ROOM"
+		go.sub = "ACT %s  %d OF %d TAKEN" % [Run.act().roman, mini(Run.held_count(), int(Run.act().need)), int(Run.act().need)]
 	if Run.scrip >= Services.price(Services.PATCH):
 		go.sub = "%d SCRIP UNSPENT" % Run.scrip
 	dial_btn = go
@@ -162,8 +166,9 @@ func open_upgrades() -> void:
 	for c in get_children():
 		c.queue_free()
 	sub = null
-	for i in Data.HQ_BUILDINGS.size():
-		var B: Dictionary = Data.HQ_BUILDINGS[i]
+	var blds := Run.hq_buildings()
+	for i in blds.size():
+		var B: Dictionary = blds[i]
 		var r := Run.hq(B.id)
 		var bt := HudScript.PixButton.new()
 		bt.small = true
@@ -470,9 +475,11 @@ func _draw() -> void:
 		draw_troop_card(Run.soldiers[hover_troop], troop_x(al.find(Run.soldiers[hover_troop])))
 	# header
 	draw_rect(Rect2(0, 0, 960, 70), Color(0.05, 0.035, 0.03, 0.75))
-	Art.text(self, "IRON ADVANCE HQ", Vector2(24, 34), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+	Art.text(self, "FIELD HQ  ACT %s" % Run.act().roman if Run.campaign() else "IRON ADVANCE HQ", Vector2(24, 34), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 	var line := "Kit out the squad, then dial the gate for level 1."
-	if Run.history.size():
+	if Run.campaign():
+		line = "Act %s: %s. Kit out the squad, then pick the next op in the War Room." % [Run.act().roman, Run.act().name.capitalize()]
+	elif Run.history.size():
 		line = "Back through the gate. Resupply, then dial the gate for " + ("the finale." if next_mission_n() > Data.LEVELS.size() else "level %d." % next_mission_n())
 	Art.text(self, line, Vector2(24, 56), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	var cur := "%d SALVAGE   %d BIO-PARTS" % [int(Run.meta.get("salvage", 0)), int(Run.meta.get("bio", 0))]
@@ -480,12 +487,23 @@ func _draw() -> void:
 	var sc := "%d SCRIP" % Run.scrip
 	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 16) - 22, 20, 16, 16), false)
 	Art.text(self, sc, Vector2(936, 36), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
+	if news.size() and idle() and t < 420:
+		draw_news()
 	if memorial_open:
 		draw_memorial_panel()
 	elif upgrades_open:
 		draw_upgrades_panel()
 	elif doc_open:
 		draw_doc_panel()
+
+func draw_news() -> void:
+	## Campaign: the after-op report, fading out after a few seconds.
+	var a := clampf((420 - t) / 60.0, 0, 1)
+	var r := Rect2(250, 132, 460, 20 + news.size() * 16)
+	draw_rect(r, Color(0.05, 0.035, 0.03, 0.9 * a))
+	draw_rect(r, Color(0.38, 0.82, 0.44, a), false, 2)
+	for i in news.size():
+		Art.text(self, news[i], r.position + Vector2(12, 22 + i * 16), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true, a)
 
 func draw_badges() -> void:
 	## H2: a bobbing tag over each building with something ready.
@@ -605,9 +623,10 @@ func draw_upgrades_panel() -> void:
 	draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.97))
 	Art.text(self, "UPGRADE HQ", Vector2(40, 60), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 	Art.text(self, "%d SALVAGE" % int(Run.meta.get("salvage", 0)), Vector2(920, 58), 16, Color("53d4e2"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
-	Art.text(self, "Salvage comes from beaten Boars and Salvage yards, and is kept when a run ends.", Vector2(40, 86), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
-	for i in Data.HQ_BUILDINGS.size():
-		var B: Dictionary = Data.HQ_BUILDINGS[i]
+	Art.text(self, "Salvage comes from beaten Boars, Salvage yards and held sectors. This base belongs to this campaign." if Run.campaign() else "Salvage comes from beaten Boars and Salvage yards, and is kept when a run ends.", Vector2(40, 86), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+	var blds := Run.hq_buildings()
+	for i in blds.size():
+		var B: Dictionary = blds[i]
 		var r := Run.hq(B.id)
 		var y := 100.0 + i * 56
 		draw_rect(Rect2(32, y, 896, 50), Color(0.08, 0.07, 0.06, 0.9))
