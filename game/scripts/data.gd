@@ -921,7 +921,7 @@ const LEVELS := [
 ]
 # After the third level: one fixed fight against the Jackal flagship.
 const FINALE := {"name": "IRON HARBOR", "theme": "night", "segments": ["start", "docks", "pier"], "finale": true,
-	"boss_hp": 260, "plate": 70, "hp_mul": 1.4, "brief": "The last gate opens on the harbor. The Jackal flagship BOAR is loading out. Sink it and the war is over."}
+	"boss_hp": 260, "plate": 70, "hp_mul": 1.4, "brief": "The last gate opens on the harbor. The Jackal flagship BOAR is loading out. Sink it and the war is over. The squad goes in fully patched up."}
 
 # ---------------------------------------------------------------- campaign mode (K3)
 # The campaign is five acts. Each act is one front map: a landing zone you start on, six sectors

@@ -798,6 +798,8 @@ func run() -> void:
 			await hoverwedge()
 		"drowncamp":
 			await drowncamp()
+		"worms":
+			await worms()
 		"pinball":
 			await pinball()
 		"tuning":
@@ -4427,6 +4429,58 @@ func drowncamp() -> void:
 	b.do_move(s, s.x + 40)
 	var ok := await until(func(): return not b.busy and s.walk == null, 600)
 	print("[drowncamp] revived at %d,%d sunk %s walked %s" % [int(s.x), int(s.y), s.sunk, ok])
+
+func worms() -> void:
+	## Worms rules from the 2026-10-28 playtest: the ground stops at the waterline, a shaft dug down into
+	## the water drowns whoever drops in, a Hop always clears the lip of a hole, and the aim line shows
+	## a ricochet coming back at the shooter.
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	b.autopick = 0
+	var under := 0
+	for cx in b.T.cols:
+		if b.T.grid[(Battle.WATER_Y / Terrain.CELL + 1) * b.T.cols + cx] != 0:
+			under += 1
+	print("[worms] solid cells just under the waterline: %d of %d columns" % [under, b.T.cols])
+	# a shaft bored straight down through the ground into the sea
+	var sq := b.squad()
+	var a: Unit = sq[0]
+	b.T.bore(a.x, Battle.WATER_Y + 30, a.y - 40, 11)
+	b.T.flush()
+	await until(func(): return a.sunk or (not a.air and a.y > Battle.WATER_Y - 20), 300)
+	print("[worms] dropped down the shaft: y %d sunk %s dead %s" % [int(a.y), a.sunk, a.dead or a.downed])
+	# a hole far deeper than a Hop used to clear, with its floor still above the water
+	var h: Unit = sq[2]
+	var top := h.y
+	var floor_y := minf(top + 120, Battle.WATER_Y - 12)
+	b.T.bore(h.x, floor_y - 11, top - 40, 11)
+	b.T.flush()
+	await until(func(): return not h.air and h.y > top + 40, 300)
+	await frames_wait(20)
+	print("[worms] %s sits in a hole %dpx deep" % [h.def.key, int(h.y - top)])
+	b.state = "player"; b.busy = false
+	b.select_unit(h)
+	force_card(h, "hop")
+	await play_hop(b, h, Vector2(3, -6))
+	print("[worms] hop out of the hole: y %d (lip %d) out %s" % [int(h.y), int(top), h.y < top + 12])
+	# a pistol round fired straight into stone comes right back
+	var r: Unit = sq[3]
+	cam_on(b, r.x)
+	b.T.fill_r(r.x + 50, r.y - 60, 16, 60, 2)
+	b.T.flush()
+	b.select_unit(r)
+	var pi := force_card(r, "pistol")
+	b.select_card(pi)
+	b.mouse = Vector2(r.x + 49, r.y - r.h * 0.6)
+	await frames_wait(8)
+	var aa := b.aim_angle(r, Data.card(r.hand[pi]), b.mouse)
+	var tr := b.trace_bullet(aa.mx, aa.my, aa.a, 9999.0, 2, r, false)
+	print("[worms] ricochet comes back into the shooter: %s" % tr.hits.any(func(hh): return hh.u == r))
+	await shot("worms_ricochet")
 
 func op_battle(job: String) -> Battle:
 	## A campaign op on Mudflat Landing with the given job, held at the first player turn.

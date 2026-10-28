@@ -189,6 +189,10 @@ func start_finale() -> void:
 	level = Data.FINALE.duplicate(true)
 	if meta.unlocked.has("gatefinale"):
 		level["encounter"] = "gate"  # L3: once a campaign shut the Gate, the run's finale has a gate siege too
+	# a full heal before the harbor: squads used to arrive at 22 to 42 HP and lose every finale
+	for s in soldiers:
+		if s.alive:
+			s.hp = eff_max_hp(s)
 
 func is_final_mission() -> bool:
 	return current_mission().get("finale", false) or (level.is_empty() and mission >= Data.MISSIONS.size() - 1)
