@@ -315,6 +315,46 @@ func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> 
 		c.queue_free()
 	return r
 
+func pick_grid(kind: String, title: String, sub: String, opts: Array, who = null) -> int:
+	## A pick-one over many cards (a whole deck), in rows of eight.
+	for c in modal.get_children():
+		c.queue_free()
+	var bg := ModalBG.new()
+	bg.title = title
+	bg.sub = sub
+	bg.who = who
+	bg.kind = "deck"
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	modal.add_child(bg)
+	var cw := 84.0
+	var per_row := 8
+	for i in opts.size():
+		var cv := CardView.new()
+		cv.opt = opts[i]
+		cv.size = Vector2(cw, 116)
+		cv.position = Vector2(150 + (i % per_row) * (cw + 6), 156 + (i / per_row) * 128)
+		if opts[i].get("label", "") != "":
+			cv.label_top = opts[i].label
+		var idx := i
+		cv.pressed.connect(func(): Sfx.play("coin"); picked.emit(idx))
+		modal.add_child(cv)
+	var skip := PixButton.new()
+	skip.text = "SKIP"
+	skip.color = Color("9aa2ae")
+	skip.size = Vector2(100, 26)
+	skip.position = Vector2(430, 506)
+	skip.pressed.connect(func(): picked.emit(-1))
+	modal.add_child(skip)
+	if who != null and who is Unit:
+		modal.add_child(dossier_button(Vector2(540, 506), maxi(0, Run.soldiers.find(who.s))))
+	modal.visible = true
+	Sfx.play("select")
+	var r: int = await picked
+	modal.visible = false
+	for c in modal.get_children():
+		c.queue_free()
+	return r
+
 func show_deck() -> void:
 	var u := b.sel
 	if u == null:

@@ -512,7 +512,7 @@ const STOPS := {
 # Camp choices: every camp revives the downed and heals a little, then the squad picks one of these.
 const CAMP_PICKS := [
 	{"id": "patch", "name": "PATCH UP", "text": "Everyone heals to full HP."},
-	{"id": "upgrade", "name": "FIELD UPGRADE", "text": "One card in each soldier's deck goes up a rarity tier."},
+	{"id": "upgrade", "name": "FIELD UPGRADE", "text": "Each soldier picks one card to go up a rarity tier."},
 	{"id": "cache", "name": "SUPPLY CACHE", "text": "Dig up 60 scrip."},
 	{"id": "quiet", "name": "LIE LOW", "text": "Alert drops to 0 and everyone gets +1 energy right now."},
 ]
