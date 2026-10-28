@@ -298,6 +298,10 @@ func new_run() -> void:
 		soldiers.append(make_soldier(class_def(k)))
 
 # ---------------------------------------------------------------- X1/X2: the squad draft and specialists
+func squad_classes() -> Array:
+	## Class keys of the soldiers still in the fight, for class-card offers.
+	return soldiers.filter(func(s): return s.alive).map(func(s): return s.key)
+
 func class_def(key: String) -> Dictionary:
 	return Data.SQUAD_DEFS.filter(func(x): return x.key == key)[0]
 

@@ -50,7 +50,7 @@ func _ready() -> void:
 	build()
 
 func restock() -> void:
-	var keys: Array = Data.offer_keys()
+	var keys: Array = Data.offer_keys(Run.squad_classes())
 	keys.shuffle()
 	stock_cards.clear()
 	for i in 5:
@@ -412,7 +412,9 @@ func buy_card(i: int) -> void:
 	var hint := func(s: Dictionary) -> String:
 		var fit := Services.branch_fit(s, o.key)
 		return "%s: deck %d > %d.%s" % [s.def.name, s.deck.size(), s.deck.size() + 1, (" Feeds %s." % fit) if fit != "" else ""]
-	var cand: Array = Run.soldiers.filter(func(s): return s.alive)
+	# a class card (Whistle, Vulcan) only goes to a soldier of that class
+	var cls := Data.card_classes(o.key)
+	var cand: Array = Run.soldiers.filter(func(s): return s.alive and (cls.is_empty() or cls.has(s.key)))
 	if cand.is_empty():
 		return
 	var drag := {"opt": o, "held": Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)}

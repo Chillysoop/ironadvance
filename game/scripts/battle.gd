@@ -643,10 +643,24 @@ func sentry_fire(st: Unit) -> void:
 		var mx := st.x
 		var my := st.y - 14
 		st.face = 1 if tg.x >= st.x else -1
-		st.muzzle = 6
-		Sfx.play("mg", -3)
-		fire_bullet(by if by is Unit else st, mx, my, atan2(tg.y - tg.h * 0.55 - my, tg.x - mx), {"dmg": dmg, "range": 560, "bounce": 0, "pierce": ksc}, false)
-		await wait(12)
+		# make every burst obvious, hit or miss: a callout over the turret, a fat orange tracer,
+		# and MISS over the target when nothing landed
+		if k == 0:
+			float_at(st.x, st.y - 34, "SENTRY FIRES", Color("ff9a3d"))
+			await wait(10)
+		st.muzzle = 10
+		Sfx.play("mg")
+		var hp0: int = tg.hp
+		var ang := atan2(tg.y - tg.h * 0.55 - my, tg.x - mx)
+		var tr := trace_bullet(mx, my, ang, 560, 0, by if by is Unit else st, ksc)
+		for sg in tr.segs:
+			tracers.append({"x1": sg[0], "y1": sg[1] - 1, "x2": sg[2], "y2": sg[3] - 1, "c": Color("ff9a3d"), "t": 22})
+			tracers.append({"x1": sg[0], "y1": sg[1] + 1, "x2": sg[2], "y2": sg[3] + 1, "c": Color("ff9a3d"), "t": 22})
+		fire_bullet(by if by is Unit else st, mx, my, ang, {"dmg": dmg, "range": 560, "bounce": 0, "pierce": ksc}, false)
+		sparks(mx + st.face * 20, my - 1, 5)
+		if not tg.dead and tg.hp >= hp0:
+			float_text(tg, "SENTRY MISSED", Color("c9d1da"))
+		await wait(16)
 
 func sentries_fire() -> void:
 	var sts := units.filter(func(o): return o.kind == "sentry" and not o.dead and not o.gone)
@@ -3572,14 +3586,14 @@ func commit_aim(p: Vector2) -> void:
 			resolve(func(): await _act_dog(u, idx, c, p))
 			return
 		if c.get("drill", false):
-			if u.move_left + c.get("reach", 0) < 4:
+			if out_of_move(u, c):
 				float_text(u, "NO MOVE LEFT", Color("ff7a3d"))
 				Sfx.play("deny")
 				return
 			resolve(func(): await _act_drill(u, idx, c, p))
 			return
 		if c.get("jump", false):
-			if c.get("hop", false) and u.move_left < 1:
+			if out_of_move(u, c):
 				float_text(u, "NO MOVE LEFT", Color("ff7a3d"))
 				return
 			resolve(func(): await _act_jump(u, idx, p))
@@ -3616,6 +3630,12 @@ func _act_aim(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
 			await sentry_fire(st)
 	await apply_recoil(u, kick)
 	await wait(6)
+
+func out_of_move(u: Unit, c: Dictionary) -> bool:
+	## Hop and Drill spend movement: with none left they can't be played (the hand crosses them out).
+	if c.get("drill", false):
+		return u.move_left + c.get("reach", 0) < 4
+	return c.get("hop", false) and u.move_left < 1
 
 func recoil_vel(u: Unit, c: Dictionary, ang: float) -> Vector2:
 	## The shove a heavy gun gives its shooter: straight back from the shot, with a little lift.
@@ -4851,7 +4871,7 @@ func supply_drop(title: String, for_unit) -> void:
 	var alive := squad_alive()
 	if alive.is_empty():
 		return
-	var pool: Array = Data.offer_keys()
+	var pool: Array = Data.offer_keys(Run.squad_classes() if for_unit == null else [for_unit.def.key])
 	pool.shuffle()
 	var opts: Array = []
 	for i in 3:
@@ -4869,7 +4889,9 @@ func supply_drop(title: String, for_unit) -> void:
 	if ch >= 0 and not opts[ch].has("u"):
 		# you choose who gets it, never the dice
 		var o0: Dictionary = opts[ch]
-		var who_opts: Array = alive.map(func(s): return o0.merged({"u": s}))
+		# a class card (Whistle, Vulcan) only goes to a soldier of that class
+		var cls: Array = Data.card_classes(o0.key) if o0.kind == "card" else []
+		var who_opts: Array = alive.filter(func(s): return cls.is_empty() or cls.has(s.def.key)).map(func(s): return o0.merged({"u": s}))
 		var thing: String = Data.item_name(o0.item) if o0.kind == "item" else Data.card(o0).name
 		var w := await ask("supply_who", "WHO GETS %s?" % thing.to_upper(), "It goes into that soldier's draw pile." if o0.kind == "card" else "They get the chance to equip it.", who_opts)
 		if w < 0:
