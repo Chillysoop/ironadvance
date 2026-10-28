@@ -89,7 +89,9 @@ func dump_unsettled(b: Battle, n: int) -> void:
 		if u.walk != null or u.zip != null or u.drill != null or u.slide != 0 or u.air or u.hang or u.para:
 			why.append("hang %s para %s jumping %s" % [u.hang, u.para, u.jumping])
 			why.append("%s %s@%d,%d walk %s zip %s drill %s slide %s air %s v%.2f,%.2f dead %s" % [u.team, u.def.key if u.team == "squad" else u.type, int(u.x), int(u.y), u.walk != null, u.zip != null, u.drill != null, u.slide, u.air, u.vx, u.vy, u.dead])
-	print("[unsettled r%d] %d frames state %s busy %s sel %s: %s" % [b.round_n, n, b.state, b.busy, b.sel.def.key if b.sel != null else "-", why])
+	for u in b.squad():
+		why.append("SQ %s@%.1f,%.1f air %s dead %s gone %s sunk %s hang %s para %s walk %s v%.2f,%.2f" % [u.def.key, u.x, u.y, u.air, u.dead, u.gone, u.sunk, u.hang, u.para, u.walk != null, u.vx, u.vy])
+	print("[unsettled r%d] %d frames tick %d state %s busy %s sel %s: %s" % [b.round_n, n, b.t, b.state, b.busy, b.sel.def.key if b.sel != null else "-", why])
 	if n == 3000:
 		shot("unsettled_r%d" % b.round_n)
 
@@ -786,6 +788,8 @@ func run() -> void:
 			await straggler()
 		"hoverwedge":
 			await hoverwedge()
+		"drowncamp":
+			await drowncamp()
 		"pinball":
 			await pinball()
 		"tuning":
@@ -4310,6 +4314,31 @@ func company() -> void:
 	Run.meta.salvage = keep.salvage
 	Run.meta.hq = keep.hq
 	Run.save_meta()
+
+func drowncamp() -> void:
+	## A soldier who drowned and is revived at camp has to come back as a normal body: the update loop
+	## skips sunk units, so a revived one still marked sunk froze the turn on its first walk.
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	b.autopick = 0
+	var s: Unit = b.squad()[1]
+	# drown them the way the fall physics does
+	s.y = Battle.WATER_Y + 3; s.sunk = true
+	b.kill(s, null)
+	await until(func(): return s.dead or s.downed, 120)
+	print("[drowncamp] %s sunk %s dead %s downed %s" % [s.def.key, s.sunk, s.dead, s.downed])
+	var c: Dictionary = b.T.camps[0]
+	c.used = true
+	await b.make_camp(c)
+	b.state = "player"; b.busy = false
+	b.select_unit(s)
+	b.do_move(s, s.x + 40)
+	var ok := await until(func(): return not b.busy and s.walk == null, 600)
+	print("[drowncamp] revived at %d,%d sunk %s walked %s" % [int(s.x), int(s.y), s.sunk, ok])
 
 func op_battle(job: String) -> Battle:
 	## A campaign op on Mudflat Landing with the given job, held at the first player turn.
