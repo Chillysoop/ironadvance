@@ -304,6 +304,9 @@ func draw_unit(u: Unit) -> void:
 	if u.type == "droppod":
 		draw_droppod(pos, white, false)
 		return
+	if u.type == "vgate":
+		draw_vgate(u, pos, white)
+		return
 	if u.type == "hive":
 		draw_hive(u, pos, white)
 		return
@@ -1093,6 +1096,23 @@ func draw_shipplate(u: Unit, pos: Vector2, white: bool) -> void:
 	for k in 4:
 		draw_rect(Rect2(pos.x - w / 2 + 4 + k * 12, pos.y - 6, 2, 2), Color("3a3f46"))
 
+func draw_vgate(u: Unit, pos: Vector2, white: bool) -> void:
+	## E6: two ribbed violet pillars with a slow portal swirl between them.
+	var a := u.alpha
+	var rock := Color.WHITE if white else Color("4a1f6e")
+	for k in [-1, 1]:
+		draw_rect(Rect2(pos.x + k * 18 - 6, pos.y - 64, 12, 64), Color(C_DARK, a))
+		draw_rect(Rect2(pos.x + k * 18 - 5, pos.y - 63, 10, 63), Color(rock, a))
+		for r in 4:
+			draw_rect(Rect2(pos.x + k * 18 - 5, pos.y - 56 + r * 14, 10, 2), Color(Color("2a0d3a"), a))
+	draw_rect(Rect2(pos.x - 24, pos.y - 68, 48, 8), Color(C_DARK, a))
+	draw_rect(Rect2(pos.x - 23, pos.y - 67, 46, 6), Color(Color("7d3cb0") if not white else Color.WHITE, a))
+	var c := pos + Vector2(0, -30)
+	draw_circle(c, 13, Color(0.48, 0.24, 0.69, 0.35 * a))
+	for k in 3:
+		var a0: float = b.t / 12.0 + k * TAU / 3
+		draw_arc(c, 4.0 + k * 4, a0, a0 + 2.2, 10, Color(C_OOZE, (0.8 - k * 0.2) * a), 2.0)
+
 func draw_droppod(pos: Vector2, white: bool, falling: bool) -> void:
 	## A Vharr drop pod: a dark violet capsule with an ooze seam, still smoking.
 	if falling:
@@ -1240,6 +1260,10 @@ func draw_hover() -> void:
 			lines.append("ARMOR PLATE %d" % h.plate if h.plate > 0 else "ARMOR CRACKED: TAKES +30%")
 			if h.fl.get("vharr", false):
 				lines.append("VHARR REFIT: a dome every third turn (crushing and melee go through it), and a tongue that yanks the nearest soldier in a clear line.")
+		if h.fl.get("lead", false):
+			lines.append("THE HUNT: kill it for Epic gear and Bio-parts.")
+		if h.fl.get("turned", false):
+			lines.append("TURNED: this Jackal fights the Vharr now, and still you.")
 		if h.type == "hiveship":
 			lines.append("HULL PLATES UP: shots do 40%" if b.ship_plated(h) else "HULL EXPOSED: TAKES +30%")
 		if h.elite != "":

@@ -772,6 +772,8 @@ func run() -> void:
 			await warmap()
 		"aliens6":
 			await aliens6()
+		"aliens7":
+			await aliens7()
 		"playtest":
 			await playtest()
 		"straggler":
@@ -2038,6 +2040,97 @@ func aliens6() -> void:
 	bo.dome = 0
 	await b2.vboar_tricks(bo)
 	check(bo.dome == 0, "the dome needs time to come back")
+
+func enc_battle(id: String) -> Battle:
+	Run.new_run()
+	Run.level = Run.make_level("jungle", 1)
+	Run.level.encounter = id
+	var b: Battle = main.start_battle(1, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	return b
+
+func aliens7() -> void:
+	## E3 Drop Pod Ambush, E4 The Hunt, E5 Thrall Outbreak, E6 Gate Siege.
+	Run.new_run()
+	var seen := {}
+	for i in 60:
+		seen[Run.make_level("jungle", 1 + i % 2).encounter] = true
+	check(Data.ENCOUNTERS.all(func(k): return seen.has(k)), "levels 2 and 3 roll all six encounters (%s)" % str(seen.keys()))
+	check(Run.make_level("jungle", 0).encounter == "", "level 1 has none")
+	# --- E3
+	var b := await enc_battle("droppods")
+	check(not b.ambush.is_empty() and not b.ambush.done, "the ambush waits in a stretch after the mid camp")
+	var x0: float = b.ambush.x
+	flat_strip(b, x0 - 200, 500)
+	var s := alien_field(b, x0)
+	await b.pod_ambush()
+	await until(func(): return b.settled(), 900)
+	await shot("alien7_pods")
+	var pods := b.units.filter(func(u): return u.type == "droppod" and not u.dead)
+	check(pods.size() == 3, "three pods crash down around the squad (%d)" % pods.size())
+	check(b.ambush.done, "only once")
+	if pods.size():
+		var n0 := b.units.size()
+		b.kill(pods[0], s)
+		check(b.units.size() == n0, "a pod broken before it opens lets nothing out")
+	# --- E4
+	b = await enc_battle("hunt")
+	var leads := b.units.filter(func(u): return u.fl.get("lead", false))
+	check(leads.size() == 1 and leads[0].elite != "" and b.units.filter(func(u): return u.fl.get("hunt", false)).size() == 3, "an elite alien and two escorts hunt the squad")
+	if leads.size():
+		var ld: Unit = leads[0]
+		cam_on(b, ld.x - Battle.W - 200)
+		check(ld.active and ld.x > b.cam_x + Battle.W, "it comes after you before it's on screen")
+		var bio0 := int(Run.meta.get("bio", 0))
+		b.kill(ld, b.squad()[0])
+		check(int(Run.meta.get("bio", 0)) == bio0 + Data.ELITE_BIO, "bringing it down pays Bio-parts like an elite outpost")
+	# --- E5
+	b = await enc_battle("outbreak")
+	var ovs := b.units.filter(func(u): return u.fl.get("outbreak", false))
+	var camp := b.units.filter(func(u): return u.fl.get("camp", false))
+	check(ovs.size() == 1 and camp.size() == 5, "an Overseer over a five-Jackal camp")
+	if ovs.size():
+		var ov: Unit = ovs[0]
+		flat_strip(b, ov.x - 500, 700)
+		for u in b.units:
+			if u.team == "enemy" and not u.fl.get("camp", false) and u != ov:
+				u.dead = true; u.gone = true
+		for u in b.squad():
+			u.x = ov.x - 420; u.y = b.T.stand_y(u.x, 0); u.air = false
+		cam_on(b, ov.x - 200)
+		await b.enemy_act(ov)
+		await until(func(): return b.settled(), 900)
+		var thr := func(): return camp.filter(func(u): return u.fl.get("thrall", false)).size()
+		check(thr.call() == 1, "it takes one Jackal a turn (%d)" % thr.call())
+		await b.enemy_act(ov)
+		await until(func(): return b.settled(), 900)
+		check(thr.call() == 2, "then another (%d)" % thr.call())
+		b.kill(ov, b.squad()[0])
+		var alive := camp.filter(func(u): return not u.dead)
+		check(alive.size() and alive.all(func(u): return u.fl.get("turned", false)), "kill it and the camp turns on the Vharr")
+		var sk := spawn_alien(b, "skitter", alive[0].x + 120)
+		check(b.foes_of(alive[0]).has(sk) and b.foes_of(sk).has(alive[0]), "turned Jackals and the Vharr fight each other")
+		await shot("alien7_outbreak")
+	# --- E6
+	b = await enc_battle("gate")
+	var gs := b.units.filter(func(u): return u.type == "vgate")
+	check(gs.size() == 1, "a Vharr gate stands in the stretch")
+	if gs.size():
+		var g: Unit = gs[0]
+		flat_strip(b, g.x - 400, 600)
+		s = alien_field(b, g.x - 300)
+		b.units.append(g)
+		g.dead = false; g.gone = false; g.active = true; g.y = b.T.stand_y(g.x, 0); g.air = false
+		for i in 6:
+			await b.enemy_act(g)
+			await until(func(): return b.settled(), 600)
+		var from := b.units.filter(func(u): return u.fl.get("from") == g and not u.dead)
+		check(from.size() == 4, "one alien a turn, four at a time (%d)" % from.size())
+		await shot("alien7_gate")
+		var gh := g.hp
+		b.crush(g, 5, s, 0, 0)
+		check(gh - g.hp == 15, "dropping something on it does triple (%d)" % (gh - g.hp))
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.

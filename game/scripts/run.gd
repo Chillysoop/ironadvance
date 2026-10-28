@@ -157,8 +157,9 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	var detours: Array = Data.DETOURS.keys()
 	detours.shuffle()
 	var nd := 4 if hq("mess") >= 3 else 3
-	# from level 2 on, one stretch after the mid camp holds a Vharr encounter (E1 Swarm or E2 Nest)
-	var enc: String = "" if tier < 1 else ["swarm", "nest"][randi() % 2]
+	# from level 2 on, one stretch after the mid camp holds a Vharr encounter: E1 Swarm, E2 Nest,
+	# E3 Drop Pod Ambush, E4 The Hunt, E5 Thrall Outbreak or E6 Gate Siege
+	var enc: String = "" if tier < 1 else Data.ENCOUNTERS[randi() % Data.ENCOUNTERS.size()]
 	if tier >= 1 and (id == "desert" or id == "mountain"):
 		enc = "queen"  # Q2: the Burrow Queen owns the sand and the scree
 	# Q1: from level 2 the Hive Ship hangs over the delta and the harbor instead of a BOAR
