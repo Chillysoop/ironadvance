@@ -100,8 +100,9 @@ func campaign_home(st := {}) -> void:
 	var talk := Run.radio_after(st) if st.has("won") else []
 	var inc := Run.after_op(st)
 	var news: Array = []
-	if inc.deserter != "":
-		news.append(inc.deserter)
+	for k in ["deserter", "engineer", "bonus"]:
+		if inc[k] != "":
+			news.append(inc[k])
 	news.append_array(inc.promos)
 	for m in inc.medals:
 		news.append("Medal for " + m + ".")
@@ -598,6 +599,9 @@ class Screen extends Control:
 			if op.has("act_done"):
 				title = "ACT %s CLEARED!" % Data.ACTS.filter(func(a): return a.name == op.act_done)[0].roman
 				line = "THE WAR IS WON." if Run.camp.get("done", false) else "THE FRONT MOVES ON: ACT %s, %s." % [Run.act().roman, Run.act().name]
+			elif op.has("bonus"):
+				title = "BONUS OP DONE!"
+				line = "%s: EPIC GEAR IN THE STASH." % op.bonus
 			elif op.has("perk"):
 				line = "%s: %s" % [Data.SECTOR_PERKS[op.perk].name, Data.SECTOR_PERKS[op.perk].text.to_upper()]
 			elif op.has("took"):

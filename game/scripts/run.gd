@@ -182,6 +182,8 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 
 func start_finale() -> void:
 	level = Data.FINALE.duplicate(true)
+	if meta.unlocked.has("gatefinale"):
+		level["encounter"] = "gate"  # L3: once a campaign shut the Gate, the run's finale has a gate siege too
 
 func is_final_mission() -> bool:
 	return current_mission().get("finale", false) or (level.is_empty() and mission >= Data.MISSIONS.size() - 1)
@@ -418,7 +420,19 @@ func recruit_offers(n := -1) -> Array:
 			out.append({"key": Data.DEFECTOR_CLASS.base if campaign() else key, "name": defectors[i], "trait": Data.DEFECTOR_TRAIT, "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": ""})
 			continue
 		out.append({"key": key, "name": names[i], "trait": traits[i % traits.size()], "legacy": legacy_perk(key), "look": Art.random_look(), "drill_card": drilled_card(key), "legacy_deck": deck.get("name", "")})
+	# L3: classes a campaign unlocked turn up among run recruits now and then
+	if not campaign() and out.size():
+		for sp in ["defector", "engineer"]:
+			if meta.unlocked.has("cls_" + sp) and randf() < 0.25:
+				out[out.size() - 1] = spec_offer(sp, out[out.size() - 1].name)
+				break
 	return out
+
+func spec_offer(spec: String, nm: String) -> Dictionary:
+	## A recruit offer for one of the campaign classes (C7).
+	if spec == "defector":
+		return {"key": Data.DEFECTOR_CLASS.base, "name": nm, "trait": Data.DEFECTOR_TRAIT, "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": "", "spec": "defector"}
+	return {"key": Data.ENGINEER_CLASS.base, "name": nm, "trait": Data.ENGINEER_CLASS.trait, "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": "", "spec": "engineer"}
 
 func recruit_classes() -> Array:
 	if campaign():
@@ -456,14 +470,15 @@ func hire(slot: int, o: Dictionary) -> Dictionary:
 func make_recruit(o: Dictionary) -> Dictionary:
 	var d: Dictionary = Data.SQUAD_DEFS.filter(func(x): return x.key == o.key)[0].duplicate()
 	d.name = o.name
-	var spec: bool = campaign() and o.trait.id == "defector"
-	if spec:
-		# C7: in the campaign a deserter is a class of their own
-		d.cls = Data.DEFECTOR_CLASS.cls
-		d.deck = d.deck + Data.DEFECTOR_CLASS.deck_add
+	var spec: String = o.get("spec", "defector" if campaign() and o.trait.id == "defector" else "")
+	if spec != "":
+		# C7: the campaign's own classes (a deserter, a gate engineer), built on a base kit
+		var C: Dictionary = Data.DEFECTOR_CLASS if spec == "defector" else Data.ENGINEER_CLASS
+		d.cls = C.cls
+		d.deck = d.deck + C.deck_add
 	var s := make_soldier(d)
-	if spec:
-		s["spec"] = "defector"
+	if spec != "":
+		s["spec"] = spec
 	s.trait = o.trait.id
 	s["look"] = o.get("look", Art.random_look())  # U3: recruits show up in their own kit
 	match o.trait.id:
@@ -1145,7 +1160,7 @@ func income() -> Dictionary:
 			out[k] = out.get(k, 0) + int(h[k])
 	return out
 
-func make_op(sc: Dictionary, patrol := false) -> Dictionary:
+func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 	## One operation on the war map. A sector op is shorter than a run level: one camp, then the
 	## sector's boss. A stronghold keeps the full length. A patrol replays a held sector (M5).
 	var a := act()
@@ -1155,7 +1170,7 @@ func make_op(sc: Dictionary, patrol := false) -> Dictionary:
 	lv.plate = a.plate
 	lv.name = sc.name
 	var segs: Array = lv.segments
-	var job := op_job(sc, patrol)
+	var job := op_job(sc, patrol) if bonus == "" else str(Data.BONUS_OPS[bonus].job)
 	if job != "push":
 		# O2-O6: no boss at the end, one more fighting stretch instead
 		var bm: Dictionary = Data.BIOMES[sc.biome]
@@ -1173,7 +1188,8 @@ func make_op(sc: Dictionary, patrol := false) -> Dictionary:
 		lv["guest"] = "varga"  # S3: the colonel fights alongside the company this once
 	lv["patrol"] = patrol
 	lv["stronghold"] = sc.get("stronghold", false) and not patrol
-	lv["banner"] = "PATROL" if patrol else ("STRONGHOLD ASSAULT" if lv.stronghold else "OP %d START!" % (int(camp.ops) + 1))
+	lv["bonus"] = bonus
+	lv["banner"] = "BONUS OP" if bonus != "" else "PATROL" if patrol else ("STRONGHOLD ASSAULT" if lv.stronghold else "OP %d START!" % (int(camp.ops) + 1))
 	return lv
 
 func op_job(sc: Dictionary, patrol := false) -> String:
@@ -1208,8 +1224,10 @@ func job_text(job: String) -> String:
 	return tx % Data.HOLD_PHASES if job == "hold" else tx
 
 func start_op(sc: Dictionary, patrol := false) -> void:
+	## A held sector attacked (not patrolled) is its bonus op (P2).
 	mission = int(camp.ops)   # the Quartermaster restocks after every op
-	level = make_op(sc, patrol)
+	var bonus := bonus_at(sc) if not patrol and sector_held(sc.id) else ""
+	level = make_op(sc, patrol, bonus)
 	history.clear()
 
 func op_over(won: bool) -> Dictionary:
@@ -1217,7 +1235,10 @@ func op_over(won: bool) -> Dictionary:
 	camp.ops = int(camp.ops) + 1
 	camp.act_ops = int(camp.act_ops) + 1
 	var out := {}
-	if not won or level.get("patrol", false):
+	if level.get("bonus", "") != "" and won:
+		camp.bonus = {}
+		out["bonus"] = Data.BONUS_OPS[level.bonus].name
+	if not won or level.get("patrol", false) or level.get("bonus", "") != "":
 		return out
 	var sc := sector(level.op)
 	if not camp.held.has(sec_key(sc.id)):
@@ -1227,6 +1248,11 @@ func op_over(won: bool) -> Dictionary:
 			out["perk"] = sc.perk
 	if sc.get("stronghold", false):
 		out["act_done"] = act().name
+		# L3: campaign milestones unlock run content (the classes, then the gate finale)
+		var unl: String = {2: "cls_defector", 3: "cls_engineer", 4: "gatefinale"}.get(int(camp.act), "")
+		if unl != "" and not meta.unlocked.has(unl):
+			meta.unlocked.append(unl)
+			out["unlock"] = unl
 		if int(camp.act) >= Data.ACTS.size() - 1:
 			camp.done = true
 		else:
@@ -1241,6 +1267,12 @@ func after_op(st := {}) -> Dictionary:
 	var inc := income()
 	inc.merge(book_service(st))
 	inc["deserter"] = deserter(st)
+	var kk: Dictionary = camp.get("kills", {})
+	for ty in st.get("kinds", {}):
+		kk[ty] = int(kk.get(ty, 0)) + int(st.kinds[ty])
+	camp["kills"] = kk
+	inc["engineer"] = engineer_joins()
+	inc["bonus"] = roll_bonus()
 	scrip += inc.scrip
 	meta.salvage = int(meta.get("salvage", 0)) + inc.salvage
 	meta.bio = int(meta.get("bio", 0)) + inc.bio
@@ -1268,10 +1300,73 @@ func deserter(st: Dictionary) -> String:
 		return ""
 	var nm: String = names[randi() % names.size()]
 	if company_room():
-		var s := enlist({"key": Data.DEFECTOR_CLASS.base, "name": nm, "trait": Data.DEFECTOR_TRAIT, "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": ""})
+		var s := enlist(spec_offer("defector", nm))
 		return "%s, a Jackal deserter, joined the company as a %s." % [s.def.name, s.def.cls]
 	defectors.append(nm)
 	return "%s, a Jackal deserter, waits at the Barracks for a free bunk." % nm
+
+func engineer_joins() -> String:
+	## C7: when Act IV opens, a Gate Engineer reports to the company.
+	if int(camp.get("act", 0)) < 3 or camp.get("engineer", false) or not company_room():
+		return ""
+	camp["engineer"] = true
+	var used: Array = roster.map(func(s): return s.def.name)
+	var names: Array = Data.CALLSIGNS.filter(func(c): return not used.has(c))
+	var s := enlist(spec_offer("engineer", names[randi() % names.size()] if names.size() else "SPARKS"))
+	return "%s, a Gate Engineer, joined the company with Vharr tech." % s.def.name
+
+func roll_bonus() -> String:
+	## P2: a bonus op may turn up on a held sector; an old one counts down and leaves. Returns news.
+	var b: Dictionary = camp.get("bonus", {})
+	if not b.is_empty():
+		b.left = int(b.left) - 1
+		if int(b.left) <= 0:
+			camp.bonus = {}
+			return "The %s moved on." % Data.BONUS_OPS[b.kind].name.to_lower()
+		return ""
+	var held: Array = act().sectors.filter(func(sc): return not sc.get("stronghold", false) and sector_held(sc.id))
+	if held.is_empty() or randf() >= Data.BONUS_CHANCE:
+		return ""
+	var kind: String = Data.BONUS_OPS.keys()[randi() % Data.BONUS_OPS.size()]
+	var sc: Dictionary = held[randi() % held.size()]
+	camp["bonus"] = {"sec": sec_key(sc.id), "kind": kind, "left": Data.BONUS_OPS_LEFT}
+	return "Bonus op at %s: %s. It's there for %d ops." % [sc.name, Data.BONUS_OPS[kind].name.to_lower(), Data.BONUS_OPS_LEFT]
+
+func bonus_at(sc: Dictionary) -> String:
+	## The bonus op kind sitting on this sector, or "".
+	var b: Dictionary = camp.get("bonus", {})
+	return b.kind if not b.is_empty() and b.sec == sec_key(sc.id) else ""
+
+# ---------------------------------------------------------------- B5 the Alien Lab
+func tech_need() -> int:
+	return Data.TECH_KILLS[mini(maxi(hq("lab"), 1), Data.TECH_KILLS.size()) - 1]
+
+func tech_kills(alien: String) -> int:
+	return int(camp.get("kills", {}).get(alien, 0))
+
+func tech_block(id: String) -> String:
+	## Why the Lab can't build this tech right now, or "".
+	var T: Dictionary = Data.VHARR_TECH.filter(func(x): return x.id == id)[0]
+	if hq("lab") < 1:
+		return "BUILD THE ALIEN LAB"
+	if tech_kills(T.alien) < tech_need():
+		return "KILL %d MORE" % (tech_need() - tech_kills(T.alien))
+	if int(meta.get("bio", 0)) < Data.TECH_BIO or int(meta.get("salvage", 0)) < Data.TECH_SALVAGE:
+		return "NEED %d BIO + %d SALVAGE" % [Data.TECH_BIO, Data.TECH_SALVAGE]
+	return ""
+
+func build_tech(id: String) -> Dictionary:
+	## Builds one piece of Vharr tech into the stash. The first build unlocks it for runs too (L2).
+	if tech_block(id) != "":
+		return {}
+	meta.bio = int(meta.bio) - Data.TECH_BIO
+	meta.salvage = int(meta.salvage) - Data.TECH_SALVAGE
+	if not meta.unlocked.has(id):
+		meta.unlocked.append(id)
+	var it := new_item(id, 3 if hq("lab") >= 3 else maxi(1, roll_tier()))
+	add_loot(it)
+	save_meta()
+	return it
 
 func make_guest(id: String) -> Dictionary:
 	## S3: Colonel Varga, on loan for one op. Not part of the company, never on the Memorial.

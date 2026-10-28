@@ -67,6 +67,10 @@ const CARDS := {
 	"hop": {"name": "Hop", "type": "LINE", "cost": 1, "jump": true, "jpow": 0.62, "hop": true, "pool": false, "text": "Everyone has one. Jump a short gap or up a wall about head high. Uses the rest of your movement.", "rarity": 0},
 	# every soldier starts with one Drill in the deck; once it's spent it waits for the next draw
 	"drill": {"name": "Drill", "type": "LINE", "cost": 0, "drill": true, "reach": 0, "pool": false, "text": "Bore through any terrain toward the cursor. Uses movement as you go. Click to stop early.", "rarity": 0, "up": {"reach": 60}},
+	# B5: Vharr tech, built in the Alien Lab
+	"blink": {"name": "Blink", "type": "SELF", "cost": 1, "blink": 360.0, "text": "Teleport behind the nearest enemy within reach, facing it.", "rarity": 2, "up": {"blink": 480.0}},
+	"gravnade": {"name": "Gravity Grenade", "type": "SELF", "cost": 1, "gwell": 140.0, "text": "Opens a gravity well on the biggest group of enemies nearby and pulls them together.", "rarity": 2, "up": {"gwell": 180.0}},
+	"domeup": {"name": "Dome Projector", "type": "SELF", "cost": 1, "domes": 2, "drange": 90.0, "text": "A Vharr dome over you and squadmates close by. Stops bullets and blasts until your next turn.", "rarity": 2, "up": {"drange": 140.0}},
 	"jumppack": {"name": "Jump Pack", "type": "LINE", "cost": 1, "jump": true, "jpow": 1.0, "text": "Launch yourself in an arc. Lands soft. Counts as a push.", "rarity": 1, "up": {"jpow": 1.3}},
 	"knife": {"name": "Knife", "type": "MELEE", "cost": 1, "dmg": [8, 10], "range": 38, "knock": 6, "text": "Never misses. Kicks them away.", "rarity": 0, "up": {"dmg": [11, 13]}},
 	"medkit": {"name": "Field Dressing", "type": "ALLY", "cost": 1, "heal": 9, "range": 110, "text": "Patch up a squadmate.", "rarity": 0, "up": {"heal": 13}},
@@ -262,6 +266,11 @@ const ITEMS := {
 	"jetboots": {"name": "Jet Boots", "slot": "kit", "stats": {"jet": 90}, "text": "Press J, then hold the mouse to fly toward the cursor. Fuel refills each turn you start on the ground."},
 	"guidance": {"name": "Guidance Chip", "slot": "kit", "stats": {"aim_dmg": 1}, "text": "Rockets think for themselves."},
 	"napalmmix": {"name": "Napalm Mix", "slot": "kit", "stats": {"blast": 0.06}, "text": "Sticky, smelly, very flammable."},
+	# B5: Vharr tech from the campaign's Alien Lab. Locked until built once; then runs roll it too (L2).
+	"blinkpack": {"name": "Blink Pack", "slot": "kit", "cards": ["blink", "blink"], "locked": true, "vharr": true, "text": "Adds 2 Blink cards."},
+	"gravlauncher": {"name": "Gravity Launcher", "slot": "weapon", "cards": ["gravnade", "gravnade"], "locked": true, "vharr": true, "text": "Adds 2 Gravity Grenade cards."},
+	"domeprojector": {"name": "Dome Projector", "slot": "kit", "cards": ["domeup", "domeup"], "locked": true, "vharr": true, "text": "Adds 2 Dome Projector cards."},
+	"prismplate": {"name": "Prism Plate", "slot": "armor", "stats": {"hp": 2, "reflect": 1}, "locked": true, "vharr": true, "text": "Reflects the first enemy shot each turn back at the shooter."},
 	# Armory unlocks (W4): locked until a feat is done once, in any run
 	"boarplate": {"name": "Boar Plating", "slot": "armor", "stats": {"hp": 3, "armor_turn": 2}, "set": "boar", "locked": true, "text": "Cut from a cracked Iron Boar."},
 	"skeetvest": {"name": "Skeet Vest", "slot": "armor", "stats": {"dodge": 8, "move": 10}, "locked": true, "text": "Pull!"},
@@ -571,8 +580,9 @@ const HQ_BUILDINGS := [
 ]
 # B4: campaign-only buildings, each opening with an act (index into ACTS)
 const CAMP_BUILDINGS := [
-	{"id": "comms", "name": "COMMS", "act": 1, "ranks": ["The brief lists every enemy type waiting in the sector.", "Your first hit on each elite is a marked hit (+50%).", "Everyone draws 1 extra card on the first turn of an op."]},
-	{"id": "hangar", "name": "HANGAR", "act": 1, "ranks": ["The Slug rolls out with the squad at the start of every op.", "It stays in the fight 1 round longer.", "The Slug can also be called back once per op."]},
+	{"id": "comms", "name": "COMMS", "act": 1, "ranks": ["The brief lists the sector's enemies.", "Your first hit on each elite is a marked hit (+50%).", "Everyone draws 1 extra card on the first turn of an op."]},
+	{"id": "lab", "name": "ALIEN LAB", "act": 2, "ranks": ["Builds Vharr tech: 15 kills of an alien.", "Tech needs only 10 kills.", "Every tech you build comes out Epic."]},
+	{"id": "hangar", "name": "HANGAR", "act": 1, "ranks": ["The Slug rolls out with the squad every op.", "It stays in the fight 1 round longer.", "The Slug can also be called back once per op."]},
 ]
 const HQ_COST := [10, 20, 30]   # Salvage for rank 1, 2, 3
 const BOSS_SALVAGE := 5         # every Boar you beat pays this much Salvage
@@ -923,7 +933,28 @@ const SECTOR_PERKS := {
 # C7: a campaign-only class. Deserters come over as Jackal Defectors on the Vanguard's kit.
 const DEFECTOR_CLASS := {"base": "rook", "cls": "Jackal Defector", "deck_add": ["haymaker"],
 	"text": "Turncoat: a kill within arm's reach steals the Jackal's gun as a one-shot card, once a turn."}
-const DESERTER_CHANCE := 0.5   # S4: odds a won Act III op ends with a Jackal deserter asking to join
+const DESERTER_CHANCE := 0.5
+const ENGINEER_CLASS := {"base": "hex", "cls": "Gate Engineer", "deck_add": ["blink", "domeup"],
+	"trait": {"id": "engineer", "name": "Gate Tech", "text": "Starts every op under a Vharr dome. Carries a Blink and a Dome Projector."}}
+
+# B5: Vharr tech the Alien Lab can build, each from one alien type once enough have been killed
+const VHARR_TECH := [
+	{"id": "blinkpack", "alien": "blinker"},
+	{"id": "gravlauncher", "alien": "warden"},
+	{"id": "domeprojector", "alien": "weaver"},
+	{"id": "prismplate", "alien": "prism"},
+]
+const TECH_KILLS := [15, 10]        # kills needed: Lab rank 1, rank 2+
+const TECH_BIO := 2
+const TECH_SALVAGE := 4
+
+# P2: bonus ops that sit on a held sector for a couple of ops. Skipping one costs nothing.
+const BONUS_OPS := {
+	"convoy": {"name": "SUPPLY CONVOY", "job": "escort", "text": "A friendly convoy is passing through. Get it across for Epic gear."},
+	"scout": {"name": "DOWNED VHARR SCOUT", "job": "hunt", "text": "A Vharr scout ship came down. Its pilot carries Epic gear."},
+}
+const BONUS_CHANCE := 0.35
+const BONUS_OPS_LEFT := 2   # S4: odds a won Act III op ends with a Jackal deserter asking to join
 
 # S2/S3: radio chatter before and after ops. Speakers: "cmd" Command, "varga" the Jackal colonel,
 # "prime" the Vharr Overseer Prime, "sq" a soldier from the squad ({name}, {rank}, {mate} filled in).

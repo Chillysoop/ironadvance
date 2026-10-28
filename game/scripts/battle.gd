@@ -164,6 +164,8 @@ func setup(idx: int, custom := {}) -> void:
 		u.draw = deck
 		if Run.implanted(s, "adrenal"):
 			u.adr = 25
+		if s.get("spec", "") == "engineer":
+			u.dome = 2  # C7 Gate Tech: the Engineer deploys under a dome
 		if Run.campaign() and Run.soldiers.any(func(x): return x.alive and Run.rank(x) >= Data.RANKS.size() - 1):
 			u.dodge += Data.CAPTAIN_DODGE  # C3: a Captain in the squad steadies everyone
 		units.append(u)
@@ -1365,6 +1367,13 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 			if own != null:
 				give_xp(own, 4)
 		return
+	if tg.team == "squad" and tg.g("reflect") > 0 and src is Unit and src.team == "enemy" and not src.dead and not o.get("blast", false) and not o.get("melee", false) and not o.get("status", false) and not tg.fl.has("reflected"):
+		# B5 Prism Plate: the first enemy shot each turn goes back where it came from
+		tg.fl["reflected"] = true
+		float_text(tg, "REFLECT", Color("c47bff"), true)
+		sparks(tg.x, tg.y - tg.h / 2.0, 5)
+		damage(src, amt, tg, {"status": true})
+		return
 	if tg.dome > 0 and not o.get("melee", false) and not o.get("impact", false) and not o.get("status", false):
 		float_text(tg, "DOME", Color("9df25c"))
 		sparks(tg.x, tg.y - tg.h / 2.0, 3)
@@ -1530,6 +1539,9 @@ func kill(tg: Unit, src) -> void:
 			bodies[0].soak = 0
 	if tg.team == "enemy":
 		stats.kills += 1
+		var kinds: Dictionary = stats.get("kinds", {})
+		kinds[tg.type] = int(kinds.get(tg.type, 0)) + 1  # B5: the Alien Lab counts what you kill
+		stats["kinds"] = kinds
 		credit_card(src)
 		if src is Unit and src.team == "squad":
 			src.kills += 1  # C5: the service record
@@ -3081,6 +3093,16 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 			float_text(s, "OVERWATCH +%d" % c.ownet, Color("53d4e2"))
 	if c.get("slug", false):
 		call_slug(u)
+	if c.has("blink"):
+		await vharr_blink(u, c.blink)
+	if c.has("gwell"):
+		await vharr_well(u, c.gwell)
+	if c.has("domes"):
+		for s in squad_alive():
+			if s == u or absf(s.x - u.x) <= c.drange:
+				s.dome = maxi(s.dome, c.domes)
+				float_text(s, "DOME", Color("9df25c"))
+		Sfx.play("power")
 	if c.has("armor"):
 		u.armor += c.armor
 		float_text(u, "+%d ARMOR" % c.armor, Color("9fb4c9"))
@@ -4026,6 +4048,10 @@ func truck_road(x: float, from_y: float) -> bool:
 func job_reward() -> void:
 	## A finished job pays on top of the usual: scrip, plus a recruit, a crate or a trophy.
 	var j := job()
+	if mission.get("bonus", "") != "":
+		var bx: float = squad_alive()[0].x if squad_alive().size() else cam_x + W / 2.0
+		drop_loot(bx, T.ground_at(bx) - 40, {"type": "item", "item": Run.roll_item(3)})
+		stats["bonus_gear"] = true
 	if j == "push":
 		return
 	Run.scrip += Data.JOB_PAY
@@ -4050,6 +4076,49 @@ func job_reward() -> void:
 			Run.meta.bio = int(Run.meta.get("bio", 0)) + tk
 			stats["bio"] = int(stats.get("bio", 0)) + tk
 			stats["job_note"] = "%d Bio-parts from the field." % tk
+
+# ---------------------------------------------------------------- B5: Vharr tech in the squad's hands
+func vharr_blink(u: Unit, reach: float) -> void:
+	## Blink Pack: step out of the air right behind the nearest enemy, facing it.
+	var foes := units.filter(func(e): return e.team == "enemy" and not e.dead and not e.gone and absf(e.x - u.x) <= reach and not is_boss(e))
+	foes.sort_custom(func(a, b): return absf(a.x - u.x) < absf(b.x - u.x))
+	for e in foes:
+		var side := 1 if e.x >= u.x else -1
+		var nx: float = e.x + side * (e.w / 2.0 + 16)
+		var ny = T.stand_y(nx, e.y - 40)
+		if ny == null or nx < cam_x + 10 or nx > cam_x + W - 10:
+			continue
+		for k in 6:
+			puff(u.x + randf_range(-8, 8), u.y - randf_range(0, 30), 1.5)
+		u.x = nx
+		u.y = ny
+		u.vx = 0; u.vy = 0; u.air = false; u.walk = null
+		u.face = -side
+		for k in 6:
+			puff(u.x + randf_range(-8, 8), u.y - randf_range(0, 30), 1.5)
+		float_text(u, "BLINK", Color("c47bff"), true)
+		Sfx.play("power")
+		await wait(10)
+		return
+	float_text(u, "NOTHING TO BLINK TO", Color("9aa2ae"))
+
+func vharr_well(u: Unit, r: float) -> void:
+	## Gravity Grenade: a Warden's well on the biggest bunch of enemies within reach, pulling them in.
+	var foes := units.filter(func(e): return e.team == "enemy" and not e.dead and not e.gone and absf(e.x - u.x) < 460 and e.x > cam_x and e.x < cam_x + W)
+	var best = null
+	var best_n := -1
+	for e in foes:
+		var n := foes.filter(func(o): return absf(o.x - e.x) < r).size()
+		if n > best_n:
+			best = e
+			best_n = n
+	if best == null:
+		float_text(u, "NO TARGETS", Color("9aa2ae"))
+		return
+	var well := {"x": best.x, "y": best.y - 20.0, "r": r, "by": u, "foes": true}
+	float_at(well.x, well.y - 40, "GRAVITY WELL", Color("c47bff"), true)
+	Sfx.play("power")
+	await pull_well(well)
 
 func relay_waves() -> void:
 	## O4: while a relay is being held, Jackals pour in from the right at the start of each enemy phase.
@@ -5584,6 +5653,8 @@ func pull_well(w: Dictionary) -> void:
 	for u in units:
 		if u.dead or u.gone or u.sunk or u.heavy or u.immovable or u.is_pickup() or u.kind == "pow" or u == w.by:
 			continue
+		if w.get("foes", false) and u.team != "enemy":
+			continue  # the squad's own well only pulls the enemy
 		if u.weight == "hover" or u.weight == "buried" or u.type == "boss":
 			continue
 		var dx: float = w.x - u.x
