@@ -30,6 +30,7 @@ var side := ""             # "outpost" while an Elite Outpost side fight is runn
 var threat := 0            # threat level chosen for this run (W5)
 var qm_cache := {}         # the Quartermaster's shelf for this HQ visit
 var temp_luck := 0         # Luck that only lasts for the current mission
+var defectors: Array = []  # F3: callsigns of rescued Jackal defectors, offered first at the next hire
 var level := {}            # the generated mission for the level being played (biome + tier)
 var dial: Array = []       # the two biomes on the gate dial right now
 var dial_breach := {}      # biome id -> true when the dial shows it as a BREACH (Vharr and Jackals at war)
@@ -168,8 +169,9 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	var detours: Array = Data.DETOURS.keys()
 	detours.shuffle()
 	var nd := 4 if hq("mess") >= 3 else 3
-	# from level 2 on, one stretch after the mid camp holds a Vharr encounter (E1 Swarm or E2 Nest)
-	var enc: String = "" if tier < 1 else ["swarm", "nest"][randi() % 2]
+	# from level 2 on, one stretch after the mid camp holds a Vharr encounter: E1 Swarm, E2 Nest,
+	# E3 Drop Pod Ambush, E4 The Hunt, E5 Thrall Outbreak or E6 Gate Siege
+	var enc: String = "" if tier < 1 else Data.ENCOUNTERS[randi() % Data.ENCOUNTERS.size()]
 	if tier >= 1 and (id == "desert" or id == "mountain"):
 		enc = "queen"  # Q2: the Burrow Queen owns the sand and the scree
 	# Q1: from level 2 the Hive Ship hangs over the delta and the harbor instead of a BOAR
@@ -261,6 +263,7 @@ func new_run() -> void:
 	extra_picks = 0
 	intel = ""
 	side = ""
+	defectors = []
 	temp_luck = 0
 	qm_cache = {}
 	level = {}
@@ -393,6 +396,9 @@ func recruit_offers(n := -1) -> Array:
 	var deck := legacy_deck()
 	for i in n:
 		var key: String = keys[i % keys.size()]
+		if i < defectors.size():
+			out.append({"key": key, "name": defectors[i], "trait": Data.DEFECTOR_TRAIT, "legacy": {}, "look": Art.random_look(), "drill_card": "", "legacy_deck": ""})
+			continue
 		out.append({"key": key, "name": names[i], "trait": traits[i % traits.size()], "legacy": legacy_perk(key), "look": Art.random_look(), "drill_card": drilled_card(key), "legacy_deck": deck.get("name", "")})
 	return out
 
@@ -441,6 +447,11 @@ func make_recruit(o: Dictionary) -> Dictionary:
 			s.max_hp += 5
 			s.hp += 5
 		"slippery": s.bonus.dodge += 6
+		"defector":
+			s.max_hp += 3
+			s.hp += 3
+			s.bonus.dodge += 4
+			defectors.erase(o.name)
 		"drilled":
 			var dk: String = o.get("drill_card", drilled_card(o.key))
 			var cands: Array = s.deck.filter(func(c): return c.key == dk and upgradable(c))

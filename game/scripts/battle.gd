@@ -104,6 +104,7 @@ var theme := "dusk"
 var breach := false       # BREACH biome: the Vharr and the Jackals are at war with each other too
 var wells: Array = []     # Gravity Warden wells: {x, y, r, by}
 var acids: Array = []     # acid pools from burst Hive Pods: {x, y, r, turns}
+var ambush := {}          # E3 Drop Pod Ambush: {x, done}; pods rain down when the squad gets there
 var detour := {}          # the camp detour being played: {id, x0, x1, done, left, scav, mod}
 var th := {}              # the theme colors, with the biome's look laid over them
 var rules := {}           # the biome's rules: sway, sight, wind, amp, wet, fuel, mines, elite
@@ -498,7 +499,8 @@ func mk_enemy(type: String, x: float, y) -> Unit:
 	u.heavy = E.get("heavy", false); u.shield = E.get("shield", false)
 	u.weight = E.get("weight", "")
 	u.pod = int(round(E.get("pod", 0) * mission.hp_mul))
-	u.sheet = "en_" + type if Art.meta.has("en_" + type) else ""
+	var sk: String = E.get("sheet", "en_" + type)
+	u.sheet = sk if Art.meta.has(sk) else ""
 	return u
 
 const ALIENS := ["skitter", "squid", "blinker"]
@@ -511,6 +513,8 @@ func cast_foot(n: int) -> String:
 	var pool: Array = Data.BIOME_ALIENS.get(mission.get("biome", ""), ALIENS)
 	var tier := 2 if mission.get("finale", false) else mission_idx
 	if tier == 0:
+		if n % 8 == 5:
+			return "gatetrooper"  # H7: a Jackal with a stolen Vharr ray
 		return "grunt" if n % 4 != 3 else pool[(n / 4) % pool.size()]
 	if tier >= 2 and n == 1:
 		return "overseer"  # from level 3 an Overseer runs the Jackals that are left
@@ -919,7 +923,7 @@ func unit_at_point(x: float, y: float, shooter, travelled: float, skip: Dictiona
 			continue  # PREDATOR: rounds pass right through the shimmer
 		if u == shooter and travelled < 40:
 			continue
-		if shooter != null and u != shooter and u.team != "" and u.team == shooter.team and not (breach and faction(u) != faction(shooter)):
+		if shooter != null and u != shooter and u.team != "" and u.team == shooter.team and not at_war(u, shooter):
 			continue  # bullets slip past teammates, explosions don't (in a BREACH the two factions aren't teammates)
 		if u.kind == "slug" or (u.kind == "truck" and shooter != null and shooter.team == "squad"):
 			continue
@@ -1443,7 +1447,7 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 			give_xp(own, maxi(1, int(amt / 3)))
 		if tg.hp <= 0:
 			# R2: overkill by half its health or more and the Jackal bursts into helmet, boots and smoke
-			pop_next = tg.kind == "enemy" and not is_boss(tg) and not tg.type in ["shipplate", "droppod"] and -tg.hp >= maxi(6, tg.max_hp / 2)
+			pop_next = tg.kind == "enemy" and not is_boss(tg) and not tg.type in ["shipplate", "droppod", "vgate"] and -tg.hp >= maxi(6, tg.max_hp / 2)
 			kill(tg, src)
 			pop_next = false
 	ui_dirty = true
@@ -1505,7 +1509,7 @@ func kill(tg: Unit, src) -> void:
 	feed_kill(tg, src)
 	if tg.type == "shipplate":
 		drop_plate(tg, src)
-	elif tg.type == "droppod":
+	elif tg.type == "droppod" or tg.type == "vgate":
 		tg.gone = true
 		for i in 8:
 			debris(tg.x + randf_range(-10, 10), tg.y - randf_range(4, 22), 2)
@@ -1543,6 +1547,20 @@ func kill(tg: Unit, src) -> void:
 		float_text(tg, ("x%d " % mult if mult > 1 else "") + "+%d" % (base * mult), Color("ffb23e"), true)
 		float_at(tg.x, tg.y - tg.h - 34, pick(Data.SCREAMS), Color("ffe9c0"))
 		Sfx.play("scream", -6)
+		if src is Unit and src.team == "enemy" and src != tg and at_war(src, tg):
+			# F2 TURNCOAT: one faction killed the other. Whoever set it up gets the kill's XP, or the squad shares it.
+			var setter = null
+			for h in [tg.last_hit_by, src.last_hit_by]:
+				if setter == null and h is Unit and h.team == "squad" and not h.dead:
+					setter = h
+			if setter != null:
+				give_xp(setter, 4 + base / 50)
+				gain_adr(setter, 8)
+				float_text(setter, "TURNCOAT KILL", Color("ffd23a"))
+			else:
+				for h in squad_alive():
+					give_xp(h, 2)
+			stats["turncoat"] = int(stats.get("turncoat", 0)) + 1
 		var marked: bool = src is Unit and src.team == "squad" and src.carry == "yellow"
 		give_scrip(int(maxi(2, base / 25) * (1.5 if Run.has_cmd("warchest") else 1.0)) * (2 if marked else 1), tg.x, tg.y - tg.h - 50)
 		if tg.has_st("toxic") and squad_alive().any(func(h): return h.perk("pandemic")):
@@ -1582,6 +1600,24 @@ func kill(tg: Unit, src) -> void:
 				booms.append({"t": 4, "x": w.x, "y": w.y, "r": 40.0, "dmg": 6, "owner": src if src is Unit and src.team == "squad" else null})
 				float_at(w.x, w.y - 20, "WELL COLLAPSES!", Color("c47bff"), true)
 			wells = wells.filter(func(q): return q.by != tg)
+		if tg.fl.get("lead", false):
+			banner("THE HUNT IS OVER", Color("62d26f"), "EPIC GEAR + %d BIO-PARTS" % Data.ELITE_BIO)
+			drop_loot(tg.x, tg.y - 30, {"type": "item", "item": Run.roll_item(3)})
+			Run.meta.bio = int(Run.meta.get("bio", 0)) + Data.ELITE_BIO
+			stats["bio"] = int(stats.get("bio", 0)) + Data.ELITE_BIO
+		if tg.type == "vgate":
+			banner("GATE DESTROYED!", Color("62d26f"))
+			for i in 4:
+				booms.append({"t": 4 + i * 10, "x": tg.x + (randf() - .5) * 40, "y": tg.y - randf() * 60, "r": 26.0, "dmg": 0, "owner": null})
+		if tg.fl.get("outbreak", false):
+			var camp := units.filter(func(o): return o.fl.get("camp", false) and not o.dead and not o.gone)
+			if camp.size():
+				banner("THE CAMP TURNS!", Color("ffd23a"), "THE JACKALS LEFT FIGHT THE VHARR")
+			for o in camp:
+				o.fl["turned"] = true
+				o.fl.erase("thrall")
+				o.fl.erase("link")
+				float_text(o, "TURNS ON THE VHARR!", Color("ffd23a"), true)
 		if tg.type == "overseer":
 			for o in units:
 				if o.fl.get("link", -1) == tg.id and not o.dead:
@@ -1705,6 +1741,8 @@ func feed_kill(tg: Unit, src) -> void:
 		stamp = "HEADSHOT!"
 	elif tg.air and how in ["FALL", "SLAM"]:
 		stamp = "SPLAT!"
+	if src is Unit and src.team == "enemy" and src != tg and at_war(src, tg):
+		stamp = "TURNCOAT!"
 	if state == "player" and combo >= 1 and tg.team == "enemy":
 		stamp = (stamp + " " if stamp != "" else "") + ["", "", "DOUBLE!", "TRIPLE!", "MULTI KILL!"][mini(combo + 1, 4)]
 	feed.append({"killer": killer, "kc": kc, "how": how, "victim": victim, "vc": Color("ff7a3d") if tg.team == "enemy" else Color("53d4e2"), "stamp": stamp.strip_edges(), "t": 0})
@@ -1775,6 +1813,9 @@ func crush(u: Unit, d: int, cause, kvx: float, kvy: float) -> void:
 			give_xp(cause, 3)
 	if u.type == "boss":
 		crack_boss(u)
+	if u.type == "vgate":
+		d *= 3
+		float_text(u, "CAVED IN!", Color("ffd23a"), true)
 	if u.type == "queen" and u.weight != "buried":
 		d *= 3
 		float_text(u, "CAVED IN!", Color("ffd23a"), true)
@@ -3494,8 +3535,19 @@ func activate_enemies() -> void:
 	for e in units:
 		if e.team != "enemy" or e.dead or e.active:
 			continue
-		if e.x < cam_x + W + 40:
+		if e.x < cam_x + W + 40 or (e.fl.get("hunt", false) and e.x < cam_x + W + 700):
 			e.active = true
+			if e.fl.get("lead", false):
+				banner("YOU ARE BEING HUNTED", Color("c47bff"), "AN ELITE %s IS STALKING THE SQUAD" % Data.ETYPES[e.type].name.to_upper())
+				Sfx.play("alarm")
+				log_msg("Something elite is tracking you through this stretch. Bring it down: it pays like an elite outpost.")
+			if e.type == "vgate":
+				banner("VHARR GATE!", Color("c47bff"), "ONE ALIEN COMES THROUGH EVERY TURN")
+				Sfx.play("alarm")
+				log_msg("A Vharr gate is open ahead. Blast it, or drop something heavy on it.")
+			if e.fl.get("outbreak", false):
+				banner("THRALL OUTBREAK", Color("9df25c"), "AN OVERSEER IS TAKING THE JACKAL CAMP")
+				log_msg("An Overseer is turning that Jackal camp into Thralls, one a turn. Kill it fast and the rest turn on the Vharr.")
 			if e.type == "radio" and radio_t == null:
 				radio_t = 3 + jammer_rounds()
 				log_msg("A radioman is calling for backup. Paratroopers in %d rounds unless you drop him." % radio_t)
@@ -3629,6 +3681,10 @@ func post_action() -> void:
 		await check_push(front[0])
 	while pow_queue.size():
 		var q: Dictionary = pow_queue.pop_front()
+		if q.pow.fl.get("defector", false):
+			sign_defector(q.pow)
+			give_xp(q.u, 8)
+			continue
 		banner("POW RESCUED!", Color("62d26f"), "+500  +25$")
 		score += 500
 		stats.pows += 1
@@ -4311,6 +4367,8 @@ func enemy_phase() -> void:
 		strikes = []
 		await until(settled)
 		await wait(10)
+	if not ambush.is_empty() and not ambush.done and squad_alive().any(func(q): return q.x >= ambush.x - 120):
+		await pod_ambush()
 	for sl in units.filter(func(u): return u.kind == "slug" and not u.gone):
 		await slug_act(sl)
 	var armed := units.filter(func(u): return u.kind == "charge" and not u.dead and not u.gone and not u.primed)
@@ -4325,7 +4383,7 @@ func enemy_phase() -> void:
 	for e in es:
 		if e.dead or squad_alive().is_empty() or boss_dead:
 			break
-		if e.x > cam_x + W + 60:
+		if e.x > cam_x + W + 60 and not e.fl.get("hunt", false):
 			continue
 		await until(settled)
 		if e.dead:
@@ -4351,7 +4409,10 @@ func enemy_phase() -> void:
 		await wait(10)
 	acting = null
 	while pow_queue.size():
-		pow_queue.pop_front()
+		var q2: Dictionary = pow_queue.pop_front()
+		if q2.pow.fl.get("defector", false):
+			sign_defector(q2.pow)
+			continue
 		score += 500
 		stats.pows += 1
 	await check_detour()
@@ -4756,12 +4817,17 @@ func foes_of(e: Unit) -> Array:
 	## Who an enemy fights: your squad, and in a BREACH biome the other faction's active units too.
 	## Spawners (Hive Pods, tunnels) stay out of it.
 	var out := squad_alive()
-	if breach and e.team == "enemy":
-		var f := faction(e)
+	if e.team == "enemy":
 		for o in units:
-			if o.team == "enemy" and o.active and not o.dead and not o.gone and not o.sunk and faction(o) != f and not Data.ETYPES[o.type].get("static", false) and not is_boss(o):
+			if o.active and not o.dead and not o.gone and not o.sunk and at_war(e, o) and not Data.ETYPES[o.type].get("static", false) and not is_boss(o):
 				out.append(o)
 	return out
+
+func at_war(a: Unit, b2: Unit) -> bool:
+	## Two enemies that fight each other: the two factions in a BREACH, or Jackals that turned on the Vharr (E5).
+	if a.team != "enemy" or b2.team != "enemy" or faction(a) == faction(b2):
+		return false
+	return breach or a.fl.get("turned", false) or b2.fl.get("turned", false)
 
 func engineer_build(e: Unit) -> bool:
 	var tg = nearest_squad(e)
@@ -4811,6 +4877,14 @@ func enemy_act(e: Unit) -> void:
 		return
 	if e.type == "droppod":
 		await droppod_act(e)
+		return
+	if e.type == "vgate":
+		await vgate_act(e)
+		return
+	if await surrender(e):
+		return
+	if e.type == "gatetrooper":
+		await trooper_act(e)
 		return
 	if await jackal_nade(e):
 		return
@@ -5145,8 +5219,8 @@ func beam_path(e: Unit, ang: float, rng := -1.0, from = null) -> Dictionary:
 	return {"end": o + dv * R, "hits": hits}
 
 func fire_beam(e: Unit, ang: float) -> void:
-	var E: Dictionary = Data.ETYPES.squid
-	var bp := beam_path(e, ang)
+	var E: Dictionary = Data.ETYPES[e.type]
+	var bp := beam_path(e, ang, E.range)
 	if debug:
 		print("[beam] from ", e.center(), " to ", bp.end, " hits ", bp.hits.map(func(h): return h.team + ":" + h.type))
 	var o := e.center()
@@ -5159,6 +5233,62 @@ func fire_beam(e: Unit, ang: float) -> void:
 	for u in bp.hits:
 		damage(u, int(round(E.dmg * (1 + alert * 0.06))), e, {})
 	await wait(14)
+
+func trooper_act(e: Unit) -> void:
+	## H7 Gate Trooper: walk in to its preferred range like any Jackal, then fire the stolen ray.
+	var E: Dictionary = Data.ETYPES.gatetrooper
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	if not e.hold:
+		var x0 := e.x
+		await enemy_advance(e, tg.x + (E.prefer if e.x >= tg.x else -E.prefer), E.speed, func():
+			return absf(e.x - x0) >= 40 and best_shot(e, foes_of(e), E.range) != null)
+	if e.dead or e.air:
+		return
+	var b = best_shot(e, foes_of(e), E.range)
+	if b != null:
+		var c := e.center()
+		e.face = 1 if b.t.x >= e.x else -1
+		e.pose = "recoil"; e.pose_t = 8
+		await wait(8)
+		await fire_beam(e, atan2(b.t.y - b.t.h / 2.0 - c.y, b.t.x - c.x))
+
+func sign_defector(p: Unit) -> void:
+	## F3: a walked-out defector joins the recruit pool and is offered first at the next hire.
+	Run.defectors.append(p.pow_name)
+	banner("DEFECTOR!", Color("ffd23a"), "%s WANTS TO JOIN THE SQUAD" % p.pow_name)
+	log_msg("%s, an ex-Jackal, will be first in line at the next hire. Defector: +3 max HP, +4 dodge." % p.pow_name)
+	score += 300
+	Sfx.play("coin")
+
+func surrender(e: Unit) -> bool:
+	## F3: in a BREACH a cornered Jackal gives up instead of fighting: hurt, alone, with a soldier
+	## close. Walk over him like a POW and he signs up as a recruit. One per level.
+	if not breach or faction(e) != "jackal" or e.elite != "" or is_thrall(e) or e.fl.get("turned", false) or stats.get("defectors", 0) >= 1:
+		return false
+	if not e.type in ["grunt", "shield", "sapper", "engineer", "jetter", "gatetrooper"] or e.hp > e.max_hp * 0.4:
+		return false
+	if not squad_alive().any(func(s): return absf(s.x - e.x) < 180 and absf(s.y - e.y) < 80):
+		return false
+	if units.any(func(o): return o != e and o.team == "enemy" and o.active and not o.dead and faction(o) == "jackal" and absf(o.x - e.x) < 260):
+		return false
+	stats["defectors"] = int(stats.get("defectors", 0)) + 1
+	var names: Array = Data.CALLSIGNS.filter(func(c): return not Run.soldiers.any(func(s): return s.def.name == c) and not Run.defectors.has(c))
+	e.team = "neutral"
+	e.kind = "pow"
+	e.active = false
+	e.walk = null
+	e.st.clear()
+	e.shield = false
+	e.fl["defector"] = true
+	e.pow_name = names[randi() % names.size()] if names.size() else "TURNCOAT"
+	e.face = -1
+	float_text(e, "DON'T SHOOT! I QUIT!", Color("ffd23a"), true)
+	log_msg("A cornered Jackal throws down his rifle. Walk him out like a POW and he'll sign up with you.")
+	Sfx.play("deny")
+	await wait(20)
+	return true
 
 func squid_act(e: Unit) -> void:
 	## Glide to its preferred range, then fire the ray at the nearest target.
@@ -5499,10 +5629,11 @@ func overseer_act(e: Unit) -> void:
 	## Link up to two Jackals as Thralls, hang back behind them, and lash out at the nearest soldier.
 	var E: Dictionary = Data.ETYPES.overseer
 	var linked := units.filter(func(o): return o.fl.get("link", -1) == e.id and not o.dead)
-	if linked.size() < E.links:
+	var outbreak: bool = e.fl.get("outbreak", false)
+	if linked.size() < E.links or outbreak:
 		var free := units.filter(func(o): return o.team == "enemy" and not o.dead and o.active and faction(o) == "jackal" and o.type != "boss" and not o.fl.has("link") and absf(o.x - e.x) < 460)
 		free.sort_custom(func(a, b2): return absf(a.x - e.x) < absf(b2.x - e.x))
-		for o in free.slice(0, E.links - linked.size()):
+		for o in free.slice(0, 1 if outbreak else E.links - linked.size()):  # E5: one a turn, all of them in the end
 			o.fl["link"] = e.id
 			o.fl["thrall"] = true
 			float_text(o, "THRALL", Color("9df25c"), true)
@@ -5789,6 +5920,55 @@ func droppod_act(e: Unit) -> void:
 			await enemy_act(c)
 			await until(settled)
 
+# ---------------------------------------------------------------- E3 and E6
+func alien_pool() -> Array:
+	return Data.BIOME_ALIENS.get(mission.get("biome", ""), ALIENS)
+
+func pod_ambush() -> void:
+	## E3: three pods crash down around the squad's front. They open next enemy phase.
+	ambush.done = true
+	banner("DROP POD AMBUSH!", Color("c47bff"), "BREAK THE PODS BEFORE THEY OPEN")
+	Sfx.play("alarm")
+	await wait(30)
+	var sq := squad_alive()
+	sq.sort_custom(func(a, b2): return a.x > b2.x)
+	var pool: Array = alien_pool().filter(func(k): return Data.ETYPES[k].get("weight", "") != "hover")
+	var xs: Array = []
+	for k in 3:
+		var tg: Unit = sq[k % sq.size()]
+		var x: float = clampf(tg.x + randf_range(-40, 40), cam_x + 20, cam_x + W - 20)
+		for tries in 8:
+			if not xs.any(func(o): return absf(o - x) < 70):
+				break
+			x = clampf(x + 70, cam_x + 20, cam_x + W - 20) if tries % 2 == 0 else clampf(x - 140, cam_x + 20, cam_x + W - 20)
+		xs.append(x)  # spread out, so one pod's blast doesn't crack the next
+		var cargo: Array = ["skitter", "skitter"] if k == 0 or pool.is_empty() else [pick(pool)]
+		projs.append(mk_proj({"kind": "droppod", "x": x, "y": -40.0 - k * 40, "vx": 0.0, "vy": 6.0, "r": 30.0, "dmg": int(round(7 * (1 + alert * 0.06))), "owner": null, "cargo": cargo}))
+		Sfx.play("toss")
+		await wait(12)
+	await until(settled)
+	await wait(10)
+
+func vgate_act(e: Unit) -> void:
+	## E6: one alien comes through the gate on the squad's side, until four from it are alive.
+	var E: Dictionary = Data.ETYPES.vgate
+	if units.filter(func(o): return o.fl.get("from") == e and not o.dead).size() >= E.cap:
+		return
+	var tg = nearest_squad(e)
+	var dir := -1.0 if tg == null or tg.x < e.x else 1.0
+	var x: float = e.x + dir * 30
+	var y = T.stand_y(x, e.y - 40)
+	var c := mk_enemy(pick(alien_pool()), x, y if y != null else e.y)
+	c.active = true
+	c.fl["from"] = e
+	units.append(c)
+	place_alien(c)
+	float_text(e, "%s COMES THROUGH" % Data.ETYPES[c.type].name.to_upper(), Color("c47bff"), true)
+	Sfx.play("power")
+	for i in 8:
+		part({"x": x, "y": c.y - 20, "vx": (randf() - .5) * 3, "vy": (randf() - .5) * 3, "life": 30, "max": 30, "c": Color("c47bff"), "s": 2.0, "g": 0.0})
+	await wait(16)
+
 # ---------------------------------------------------------------- Q3 Vharr Boar
 func vboar_tricks(bo: Unit) -> void:
 	## The finale BOAR's Vharr refit: a dome over the turret every third turn, and a tongue that
@@ -5849,7 +6029,8 @@ func eat_body(e: Unit) -> void:
 			return
 
 func place_encounter(id: String) -> void:
-	## E1 Swarm or E2 Nest in the first fighting stretch after the mid camp's yard.
+	## The level's Vharr encounter (Data.ENCOUNTERS, or the Burrow Queen) in the first fighting
+	## stretch after the mid camp's yard.
 	if id == "" or T.stretches.is_empty():
 		return
 	var st: Array = T.stretches[-1]
@@ -5883,6 +6064,30 @@ func place_encounter(id: String) -> void:
 	elif id == "queen":
 		put.call("queen", 0.7)
 		put.call("skitter", 0.4)
+	elif id == "droppods":
+		ambush = {"x": st[0] + w * 0.35, "done": false}
+	elif id == "hunt":
+		var pool: Array = alien_pool().filter(func(k): return Data.ETYPES[k].get("weight", "") != "hover")
+		var hu = put.call(pick(pool) if pool.size() else "stalker", 0.8)
+		if hu != null:
+			make_elite(hu, pick_elite(true))
+			hu.fl["hunt"] = true
+			hu.fl["lead"] = true
+			for f in [0.74, 0.86]:
+				var es = put.call("skitter", f)
+				if es != null:
+					es.fl["hunt"] = true
+	elif id == "outbreak":
+		for jt in [["grunt", 0.4], ["shield", 0.46], ["grunt", 0.52], ["brute", 0.58], ["grunt", 0.64]]:
+			var j = put.call(jt[0], jt[1])
+			if j != null:
+				j.fl["camp"] = true
+		var ov = put.call("overseer", 0.75)
+		if ov != null:
+			ov.fl["outbreak"] = true
+	elif id == "gate":
+		put.call("vgate", 0.62)
+		put.call("skitter", 0.5)
 	elif id == "swarm":
 		put.call("burrow", 0.45)
 		var b2 = put.call("burrow", 0.8)
@@ -6252,7 +6457,7 @@ func body_collisions(u: Unit) -> void:
 			continue
 		if absf(o.x - u.x) < (o.w + u.w) / 2.0 and u.y > o.y - o.h and u.y - u.h < o.y:
 			var mates: bool = not u.rushing and u.team == "squad" and o.team == "squad"
-			var mate_hurt := true
+			var mate_hurt: bool = o.type != "droppod" or u.rushing  # a thrown body bounces off a steel pod without denting it
 			if mates:
 				# one blast, one bonk: a pair of squadmates bonks once (no rebound bonks), it only hurts
 				# the one knocked into, and each soldier takes at most one squadmate bonk per blast
