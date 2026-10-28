@@ -1660,7 +1660,8 @@ func draw_hover() -> void:
 		lines = ["STICKY CHARGE  BLAST %d" % int(h.loot.r), "A Clacker sets it off. So does a Jackal", "stepping on it in their phase."]
 	elif h.kind == "ride":
 		var V: Dictionary = Data.VEHICLES[h.loot.type]
-		lines = ["PARKED JACKAL " + V.name, "Walk onto it to drive it. It soaks every hit", "until it breaks, and its guns go in your hand."]
+		var hp: int = h.loot.get("hp", -1)
+		lines = ["PARKED JACKAL %s  HP %s" % [V.name, str(hp) if hp >= 0 else str(V.hp)], V.pitch, "%s. %s" % [Data.vehicle_move(h.loot.type), Data.VEHICLE_RULES], "CARDS WHILE DRIVING: " + Data.vehicle_card_names(h.loot.type), "Walk onto it to climb in."]
 	elif h.kind == "dog":
 		var g = h.loot.get("guard")
 		lines = ["REX  HP %d/%d" % [h.hp, h.max_hp], "Moves only when Track plays a dog card.", "GUARDING " + g.def.name if g is Unit else "Your shots pass him."]
@@ -1670,6 +1671,12 @@ func draw_hover() -> void:
 		return
 	else:
 		lines = ["%s  %s  LV%d" % [h.def.name, h.def.cls.to_upper(), h.s.lvl], "HP %d/%d   ADRENALINE %d" % [h.hp, h.max_hp, h.adr], "ENERGY %d   MOVE %dpx" % [h.energy, int(h.move_left)]]
+		if h.mech != null and h.mech.max > 0:
+			var V: Dictionary = Data.VEHICLES[h.mech.type]
+			lines.append("DRIVING %s  VEHICLE HP %d/%d  %s" % [V.name, maxi(0, h.mech.hp), h.mech.max, Data.vehicle_move(h.mech.type)])
+			lines.append("It takes every hit; %s's HP is safe." % h.def.name)
+			if not h.mech.own:
+				lines.append("VEHICLE CARDS: " + Data.vehicle_card_names(h.mech.type))
 	var w := 0.0
 	for l in lines:
 		w = maxf(w, Art.text_width(l, 16, true))

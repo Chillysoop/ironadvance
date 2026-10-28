@@ -264,11 +264,20 @@ const CARDS := {
 }
 # Vehicles (N3, R1, E6). seat: how far the driver sits above the ground; cards: what a hijacker
 # gets in hand while driving. A soldier's own HP is safe until the vehicle breaks.
+# pitch: the one-line reason to climb in, shown on hover and when boarding.
 const VEHICLES := {
-	"walker": {"name": "WALKER", "hp": 30, "seat": 22, "move": 0, "cards": ["vulcan", "stomp", "eject"]},
-	"bike": {"name": "BIKE", "hp": 16, "seat": 8, "move": 140, "cards": ["vulcan", "eject"]},
-	"tank": {"name": "TANK", "hp": 44, "seat": 16, "move": -40, "cards": ["tankshell", "vulcan", "eject"]},
+	"walker": {"name": "WALKER", "hp": 30, "seat": 22, "move": 0, "cards": ["vulcan", "stomp", "eject"], "pitch": "All-rounder: a twin MG, and Stomp crushes and stuns Jackals next to you."},
+	"bike": {"name": "BIKE", "hp": 16, "seat": 8, "move": 140, "cards": ["vulcan", "eject"], "pitch": "Fast but flimsy: race across the map, then bail out as a bomb."},
+	"tank": {"name": "TANK", "hp": 44, "seat": 16, "move": -40, "cards": ["tankshell", "vulcan", "eject"], "pitch": "The toughest hull and a big-blast main gun, but slow."},
 }
+const VEHICLE_RULES := "It takes every hit until it breaks: the driver's own HP is safe."
+
+static func vehicle_move(type: String) -> String:
+	var m: int = VEHICLES[type].move
+	return "MOVE +%d" % m if m > 0 else ("MOVE %d" % m if m < 0 else "NORMAL MOVE")
+
+static func vehicle_card_names(type: String) -> String:
+	return ", ".join(VEHICLES[type].cards.map(func(k): return CARDS[k].name.to_upper()))
 # ---------------------------------------------------------------- combos (C1, C3, C5, C6)
 const MOMENTUM := 3          # every 3rd card a soldier plays in a turn refunds 1 energy
 const STATUS := {
