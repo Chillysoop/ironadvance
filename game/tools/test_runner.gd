@@ -4,7 +4,7 @@ extends Node
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
 ## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer), track (N7 K9 Handler), vehicles (N3 Gears, R1 hijack, E6 Jackal Walker), branches5 (B1-B4 fifth branches),
 ## gear (click a slot to see what fits, drag and drop, deck changes, a fifth soldier at HQ),
-## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), operator (tablet call-ins), training (N6 drill),
+## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -833,6 +833,8 @@ func run() -> void:
 			await clicks()
 		"pause":
 			await pause_menu()
+		"uiclarity":
+			await ui_clarity()
 		"operator":
 			await operator_call()
 		"training":
@@ -1640,6 +1642,150 @@ func pause_menu() -> void:
 	menu[0].quit()
 	await frames_wait(5)
 	check(main.battle == null and not get_tree().paused, "QUIT TO TITLE leaves the battle")
+
+func right_click(p := Vector2(480, 300)) -> void:
+	for down in [true, false]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_RIGHT
+		ev.pressed = down
+		ev.position = p
+		ev.global_position = p
+		Input.parse_input_event(ev)
+		await frames_wait(3)
+
+func ui_clarity() -> void:
+	## Conner's 2026-10-28 clarity pass.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	var tips = Run.meta.get("tips_off", false)
+	Run.meta["tips_off"] = true
+	# class cards only for classes in the squad
+	var base: Array = Data.offer_keys(["moss", "hex", "vee", "rook"])
+	check(not base.has("whistle") and not base.has("sicem") and not base.has("vulcan") and not base.has("sentry"), "no Whistle, Sic 'Em, Vulcan or Sentry without Track, Gears or Bolt")
+	check(base.has("frag") and base.has("snipe") and base.has("shapedcharge"), "shared cards still offered")
+	var wt: Array = Data.offer_keys(["moss", "hex", "vee", "track"])
+	check(wt.has("whistle") and wt.has("sicem") and not wt.has("vulcan"), "Track in the squad brings his dog cards")
+	Run.new_run()
+	var sk: Array = Run.squad_classes()
+	check(sk == ["moss", "hex", "vee", "rook"], "squad classes %s" % [sk])
+	var bad := 0
+	for i in 40:
+		Run.qm_cache = {}
+		var sh: Control = load("res://scripts/shop.gd").new()
+		sh.restock()
+		for o in sh.stock_cards:
+			if not Data.card_classes(o.key).is_empty():
+				bad += 1
+		sh.free()
+	check(bad == 0, "40 QM restocks offer no class cards for missing classes (%d)" % bad)
+	# battle: power-up panel, Hop/Drill crossed out, grenade aim, sentry
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var u: Unit = b.sel
+	u.st["cloak"] = 2
+	u.st["berserk"] = 1
+	var hi := force_card(u, "hop")
+	var di := force_card(u, "drill")
+	u.move_left = 0
+	b.ui_dirty = true
+	await frames_wait(6)
+	var hv: CardView = main.hud.cards[hi]
+	var dv: CardView = main.hud.cards[di]
+	check(hv.no_move and hv.disabled and dv.no_move and dv.disabled, "out of movement: Hop and Drill are crossed out")
+	await shot("ui_powerups_nomove")
+	u.move_left = 100
+	b.ui_dirty = true
+	await frames_wait(4)
+	check(not hv.no_move and not dv.no_move, "with movement back they light up again")
+	u.st.erase("cloak"); u.st.erase("berserk")
+	var fi := force_card(u, "frag")
+	b.select_card(fi)
+	b.mouse = Vector2(u.x + 160, u.y - 120)
+	await frames_wait(6)
+	await shot("ui_grenade_aim")
+	b.cancel_card()
+	# sentry: the real end of turn, with the callouts
+	var x := 700.0
+	while not flat_open(b, x, 400) and x < b.world_w - 600:
+		x += 20
+	for o in b.units:
+		if o.team == "enemy" and absf(o.x - x - 150) < 520:
+			o.gone = true
+	cam_on(b, x + 150)
+	ground_unit(b, u, x, 0)
+	var e := b.mk_enemy("grunt", x + 300, b.T.stand_y(x + 300, 0))
+	e.active = true
+	e.hp = 60; e.max_hp = 60
+	b.units.append(e)
+	var st := b.make_sentry(u, x + 40, b.T.stand_y(x + 40, 0), 20, [4, 5])
+	await frames_wait(4)
+	var tg = b.sentry_target(st)
+	check(tg != null, "the sentry has a target")
+	var hp0 := e.hp
+	var seen := {"call": false, "tr": false}
+	b.end_turn(true)
+	for k in 600:
+		await get_tree().process_frame
+		if b.texts.any(func(t): return t.text == "SENTRY FIRES"):
+			seen.call = true
+		if b.tracers.any(func(t): return t.c == Color("ff9a3d")):
+			if not seen.tr:
+				await shot("ui_sentry_fires")
+			seen.tr = true
+		if b.state == "player" and not b.busy and k > 30:
+			break
+	check(seen.call and seen.tr, "at end of turn the sentry calls out and fires a bright tracer")
+	check(tg == null or e.hp < hp0 or e.dead or b.texts.any(func(t): return t.text == "SENTRY MISSED"), "the shot hit (%d -> %d) or said it missed" % [hp0, e.hp])
+	main.hud.show_deck()
+	await frames_wait(3)
+	await right_click()
+	await frames_wait(3)
+	check(not main.hud.deck_open, "right-click closes the battle deck viewer")
+	# out of battle: card tips and right-click back
+	main.show_hq(false)
+	await frames_wait(10)
+	var hq: Control = main.screen
+	hq.go("qm")
+	await frames_wait(10)
+	var shop: Control = hq.sub
+	var long := {"kind": "card", "key": "ridealong"}
+	var cv := CardView.new()
+	cv.opt = long
+	cv.size = Vector2(84, 116)
+	cv.position = Vector2(300, 200)
+	shop.add_child(cv)
+	await frames_wait(3)
+	cv.hover = true
+	await frames_wait(3)
+	check(cv.cropped != "" and cv.tip != null, "a card with cut-off text shows its full text on hover")
+	await shot("ui_card_tip")
+	cv.queue_free()
+	await right_click()
+	await frames_wait(6)
+	check(hq.idle(), "right-click leaves the QM tent for the HQ")
+	hq.go("workshop")
+	await frames_wait(6)
+	await right_click()
+	await frames_wait(6)
+	check(hq.idle(), "right-click leaves the workshop")
+	hq.go("armory")
+	await frames_wait(6)
+	await right_click()
+	await frames_wait(6)
+	check(hq.idle(), "right-click leaves the armory")
+	hq.open_dossier(0)
+	await frames_wait(6)
+	await right_click()
+	await frames_wait(6)
+	check(hq.idle(), "right-click closes a Dossier")
+	main.dial_gate()
+	await frames_wait(6)
+	await right_click()
+	await frames_wait(10)
+	check(main.screen != null and main.screen.has_method("idle"), "right-click on the gate dial goes back to HQ")
+	Run.meta = keep
+	Run.meta["tips_off"] = tips
+	Run.save_meta()
 
 func operator_call() -> void:
 	## C4: radio lines come in on a corner tablet that clicks through and hangs up by itself.

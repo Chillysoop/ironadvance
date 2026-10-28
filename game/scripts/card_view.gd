@@ -23,6 +23,9 @@ var base_y := 0.0
 var chain := ""              # signature chain this card would complete right now (hand only)
 var badge := ""              # small purple pill on the top-right corner (e.g. fusion progress "2/3")
 var corner := ""             # tiny origin tag at the bottom-left (SHOP, LVL, GUN)
+var no_move := false         # hand only: Hop or Drill with no movement left, crossed out
+var cropped := ""            # the full text when the body didn't fit; hovering shows it (outside battle)
+var tip: Control = null
 
 const PAPER := Color("e4d6b0")
 const PAPER_D := Color("bba57c")
@@ -42,6 +45,16 @@ func _gui_input(ev: InputEvent) -> void:
 		accept_event()
 
 func _process(_d: float) -> void:
+	var want_tip := hover and cropped != "" and not hand_mode and is_visible_in_tree()
+	if want_tip and tip == null:
+		tip = CardTip.new()
+		tip.text = cropped
+		add_child(tip)
+	elif not want_tip and tip != null:
+		tip.queue_free()
+		tip = null
+	if tip != null:
+		tip.place(get_global_rect())
 	if hand_mode:
 		# cards you can't pay for sink and grey out so the playable ones stand up
 		var target := -60.0 if (hover or selected) and not disabled else (-10.0 if hover else (14.0 if disabled else 0.0))
@@ -197,17 +210,21 @@ func _draw() -> void:
 	# a long body packs its lines tighter before anything is cut off
 	var bl := wrap_text(body, w - 10, 16)
 	var bottom := h - (22 if price >= 0 else 8)
+	var cut := false
 	var lh := 12.0
 	if bl.size() > 1 and y + (bl.size() - 1) * lh > bottom:
 		lh = maxf(10.0, floorf((bottom - y) / (bl.size() - 1)))
 	for i in bl.size():
 		if y > bottom:
+			cut = true
 			break
 		var line: String = bl[i]
 		if i < bl.size() - 1 and y + lh > bottom:
 			line += "..."
+			cut = true
 		Art.text(self, line, Vector2(w / 2.0, y + 2), 16, Color("3a3024") if not dim else Color("4a4030"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
 		y += lh
+	cropped = (name_ + "\n" + (stat + "\n" if stat != "" else "") + body) if cut else ""
 	if supercharged and not dim:
 		var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 150.0)
 		draw_rect(Rect2(0, 0, w, h - 2), Color(1, 0.48, 0.24, pulse), false, 2.0)
@@ -242,6 +259,13 @@ func _draw() -> void:
 		Art.text(self, badge, Vector2(w + 4 - bw / 2.0, 4), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 1)
 	if label_top != "":
 		Art.text(self, label_top, Vector2(w / 2.0, -6), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+	if no_move:
+		# a big red X and the reason, so nobody wonders why Hop or Drill won't play
+		for k in [-1.0, 0.0, 1.0]:
+			draw_line(Vector2(8 + k, 20), Vector2(w - 8 + k, h - 12), Color("c0392b"), 2.0)
+			draw_line(Vector2(w - 8 + k, 20), Vector2(8 + k, h - 12), Color("c0392b"), 2.0)
+		draw_rect(Rect2(4, 17, w - 8, 15), INK)
+		Art.text(self, "NO MOVE LEFT", Vector2(w / 2.0, 28), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_CENTER, 0)
 	if sold or stamp != "":
 		draw_rect(Rect2(1, 1, w - 2, h - 4), Color(0.08, 0.06, 0.05, 0.55))
 		draw_rect(Rect2(8, h / 2.0 - 12, w - 16, 22), INK)
@@ -331,3 +355,25 @@ static func wrap_text(s: String, width: float, size: int) -> Array:
 	if line != "":
 		out.append(line)
 	return out
+
+class CardTip extends Control:
+	## The whole text of a card whose body was cut short, beside the card while it's hovered.
+	var text := ""
+	var lines: Array = []
+	const W := 240.0
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		top_level = true
+		z_index = 100
+		for para in text.split("\n"):
+			lines.append_array(CardView.wrap_text(para, W - 16, 16))
+		size = Vector2(W, lines.size() * 14 + 14)
+	func place(card: Rect2) -> void:
+		var x := card.end.x + 6 if card.end.x + 6 + W <= 956 else card.position.x - 6 - W
+		position = Vector2(clampf(x, 4, 956 - W), clampf(card.position.y, 4, 536 - size.y))
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2(-1, -1), size + Vector2(2, 2)), Color(0.05, 0.035, 0.03))
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.1, 0.11, 0.13, 0.97))
+		draw_rect(Rect2(0, 0, size.x, 2), Color("ffd23a"))
+		for i in lines.size():
+			Art.text(self, lines[i], Vector2(8, 16 + i * 14), 16, Color("ffd23a") if i == 0 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
