@@ -2609,6 +2609,7 @@ func jumppack() -> void:
 		if o != s:
 			ground_unit(b, o, x - 200, 0)
 	cam_on(b, x + 130)
+	b.sel = s
 	var lands := []
 	for hang in [false, true]:
 		ground_unit(b, s, x, 0)
@@ -2621,7 +2622,7 @@ func jumppack() -> void:
 		var ji := force_card(s, "jumppack")
 		var tgt := Vector2(s.x + 220, s.y - 40)
 		var v := b.jump_vel(s, tgt, Data.card(s.hand[ji]).get("jpow", 1.0))
-		var sim := b.sim_arc(s.x, s.y - s.h / 2.0, v.vx, v.vy, 0, 200)
+		var sim := b.sim_body(s, v.vx, v.vy)  # what the aim preview draws
 		await b.resolve(func(): await b._act_jump(s, ji, tgt))
 		if hang:
 			check(s.hang, "with a gun in hand the jump pauses at the top for a shot")
