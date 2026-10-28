@@ -56,7 +56,7 @@ func restock() -> void:
 	for i in 5:
 		var t := Run.roll_card_tier(keys[i])
 		stock_cards.append({"kind": "card", "key": keys[i], "tier": t, "price": price(Data.card_price(keys[i], t))})
-	var gear: Array = Data.GEAR.filter(func(g): return not Run.has_gear(g.id))
+	var gear: Array = Data.GEAR.filter(func(g): return not Run.has_gear(g.id) and not g.get("boss", false) and g.get("from", 0) <= Run.mission)
 	gear.shuffle()
 	stock_gear = gear.slice(0, 3).map(func(g):
 		var t := Run.roll_tier()

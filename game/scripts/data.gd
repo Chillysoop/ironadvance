@@ -680,6 +680,17 @@ const GEAR := [
 	{"id": "bandolier", "icon": "ic_bolt", "name": "Bandolier", "text": "+1 energy for everyone on round 1.", "price": 100},
 	{"id": "dogtags", "icon": "ic_skull", "name": "Service Medal", "text": "Kills give 50% more XP.", "price": 80},
 	{"id": "stimpack", "icon": "ic_flame", "name": "Adrenal Pump", "text": "Adrenaline builds 50% faster.", "price": 90},
+	# G8 late squad gear: the Quartermaster only stocks these from "from" (Run.mission) on.
+	# "stats" go to every soldier through Run.gear_bonus, like an item they all wear.
+	{"id": "warpaint", "icon": "ic_flame", "name": "War Paint", "from": 1, "text": "Everyone starts each mission with 25 adrenaline.", "price": 120},
+	{"id": "ammodrone", "icon": "ic_up", "name": "Ammo Drone", "from": 1, "text": "+1 card in hand each turn for everyone.", "price": 150},
+	{"id": "nanites", "icon": "ic_heart", "name": "Nanite Swarm", "from": 2, "stats": {"regen": 2}, "text": "Everyone heals 2 HP at the start of every turn.", "price": 160},
+	{"id": "overclock", "icon": "ic_bolt", "name": "Overclock Core", "from": 2, "text": "+1 energy for everyone on odd rounds.", "price": 200},
+	# G8 boss trophies: never sold. A boss drops one you don't have yet, already Legendary.
+	{"id": "boarcore", "icon": "ic_flame", "name": "Boar Reactor", "boss": true, "stats": {"blast": 0.2}, "text": "Every blast the squad sets off is 20% bigger.", "price": 0},
+	{"id": "boarhide", "icon": "ic_skull", "name": "Boar Hide", "boss": true, "stats": {"armor_turn": 2}, "text": "Everyone gets 2 armor at the start of every turn.", "price": 0},
+	{"id": "ironheart", "icon": "ic_heart", "name": "Iron Heart", "boss": true, "stats": {"hp": 6}, "text": "+6 max HP for everyone.", "price": 0},
+	{"id": "hivecore", "icon": "ic_star", "name": "Hive Core", "boss": true, "stats": {"kill_draw": 1, "kill_adr": 10}, "text": "ON KILL: draw a card (once a turn) and +10 adrenaline. Everyone.", "price": 0},
 ]
 
 const XP_LEVELS := [0, 14, 34, 60, 92, 130, 175, 230]
@@ -1254,6 +1265,10 @@ func relic_text(id: String, t: int) -> String:
 		"bandolier": return "+1 energy for everyone on round 1%s." % (" and 2" if t >= 3 else "")
 		"dogtags": return "Kills give %d%% more XP. +1 Luck." % int(30 + 10 * t)
 		"stimpack": return "Adrenaline builds %d%% faster." % int(30 + 10 * t)
+		"warpaint": return "Everyone starts each mission with %d adrenaline." % (50 if t >= 3 else 25)
+		"ammodrone": return "+1 card in hand each turn for everyone%s." % (", +2 on round 1" if t >= 3 else "")
+		"nanites": return "Everyone heals %d HP at the start of every turn." % (3 if t >= 3 else 2)
+		"overclock": return "+1 energy for everyone %s." % ("every round" if t >= 3 else "on odd rounds")
 	return gear(id).get("text", "")
 
 func offer_keys() -> Array:

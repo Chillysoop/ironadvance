@@ -859,6 +859,11 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 		if sets[set_id] >= 2:
 			for k in Data.SETS[set_id].bonus:
 				out[k] = out.get(k, 0) + Data.SETS[set_id].bonus[k]
+	# G8: squad gear with stats (Nanite Swarm, boss trophies) counts as worn by everyone
+	for id in gear:
+		var gs: Dictionary = Data.gear(id).get("stats", {})
+		for k in gs:
+			out[k] = out.get(k, 0) + (3 if id == "nanites" and relic_tier(id) >= 3 else gs[k])
 	if s.has("key"):
 		for id in implants_of(s):
 			var st: Dictionary = Data.SURGERIES[id].get("stats", {})
