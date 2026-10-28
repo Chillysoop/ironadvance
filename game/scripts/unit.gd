@@ -31,6 +31,7 @@ var alpha := 1.0
 var dead_t := 0
 var armor := 0
 var muzzle := 0
+var muzzle_kind := "shot"  # cosmetic: which flash effects.gd draws (shot, mg, snipe, rocket, beam)
 var bumped = null     # Dictionary used as a set of unit ids
 var last_hit_by = null
 var rushing := false

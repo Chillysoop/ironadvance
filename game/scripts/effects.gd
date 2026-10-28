@@ -1,25 +1,18 @@
 extends Node2D
-## Cosmetic battle effects over the world: brass and smoke for every shot, sparks and chips
-## where bullets land (by material), helmets that pop off the fallen, a hot flash and flying
-## chunks for every blast, and flames under Jet Boots. It only watches the battle: nothing
+## Cosmetic battle effects over the world: brass and a Sprite Fusion muzzle flash for every
+## shot, a Sprite Fusion strike where bullets land (chips in the surface's colour, ricochets
+## off shallow hits), helmets that pop off the fallen and flames under Jet Boots. Blasts are
+## vfx.gd's (started by Battle.fireball). It only watches the battle: nothing
 ## here feeds back into the simulation.
 
 @onready var b: Battle = get_parent()
 var bits: Array = []    # {k, x, y, vx, vy, life, max, rot, vr, c, s}
-var flashes: Array = [] # {x, y, t, sc}
 var muz := {}           # unit id -> muzzle value last tick
 var fallen := {}        # unit id -> 1 helmet popped, 2 body landed
 var last_t := -1
 
 const C_DARK := Color(0.05, 0.035, 0.03)
 const BRASS := [Color("ffd890"), Color("d8a040"), Color("a07028")]
-const CHIPS := {
-	1: [Color("8a5a30"), Color("6a4424"), Color("b08a5a")],   # dirt
-	2: [Color("a0a4ac"), Color("6c7078"), Color("d0d4da")],   # concrete
-	3: [Color("c88a4a"), Color("8c5a2c"), Color("e8b070")],   # wood
-	4: [Color("7a6a5a"), Color("5a4a3e"), Color("a09080")],   # rock
-}
-const SPARK := [Color("ffffff"), Color("fff3a0"), Color("ffb23e")]
 ## Helmet / cap colours per sheet ([main, shade]); the shapes are drawn in code.
 const HELMET := {
 	"sq_moss": [Color("9cb04c"), Color("748a34")], "sq_hex": [Color("f4f2ea"), Color("cccac0")],
@@ -68,10 +61,6 @@ func watch() -> void:
 		if not tr.has("_fx"):
 			tr["_fx"] = true
 			impact(tr.x1, tr.y1, tr.x2, tr.y2)
-	for f in b.fx:
-		if f.kind == "boom" and f.t >= 0 and not f.has("_fx"):
-			f["_fx"] = true
-			blast(f.x, f.y, f.sc)
 
 func on_screen(x: float) -> bool:
 	return x > b.cam_x - 80 and x < b.cam_x + Battle.W + 80
@@ -95,58 +84,51 @@ func shot(u: Unit) -> void:
 	# brass flips out of the ejection port, back over the shoulder
 	add({"k": "brass", "x": u.x + f * 4, "y": u.y - u.h + 16, "vx": -f * randf_range(0.8, 2.0), "vy": randf_range(-3.2, -2.0),
 		"life": 70, "vr": randf_range(0.3, 0.6), "c": BRASS[randi() % 2], "g": 0.22, "bounce": 0.45})
-	for i in 3:
-		add({"k": "smoke", "x": tip.x + f * i * 3, "y": tip.y, "vx": f * randf_range(0.1, 0.5) + b.wind * 0.02, "vy": randf_range(-0.5, -0.2),
-			"life": 30 + i * 8, "g": -0.005, "s": 3.0 + i, "c": Color(0.78, 0.76, 0.74)})
+	# V3: the Sprite Fusion flash, sized to the gun
+	var sz: float = {"mg": 0.85, "snipe": 1.35, "rocket": 1.6, "beam": 1.1}.get(u.muzzle_kind, 1.0)
+	if u.type == "boss":
+		sz = 1.8
+	elif u.type == "mg":
+		sz = 1.15
+	b.vfx.add(SfMuzzle.new(tip.x, tip.y, muzzle_angle(u), sz, b.vfx.ground_fn(tip.y)))
+
+func muzzle_angle(u: Unit) -> float:
+	## The world direction the barrel points, matching how world_view draws the gun.
+	if u.type == "boss":
+		return u.aim_a + PI
+	if u.type == "mg":
+		return PI
+	return atan2(sin(u.gun_angle), u.face * cos(u.gun_angle))
 
 func impact(x1: float, y1: float, x2: float, y2: float) -> void:
+	## V2: a Sprite Fusion strike. On terrain it chips the surface in its own colour and glances
+	## off as a ricochet when the shot comes in shallow; on a body or in the open it is a hit.
 	if not on_screen(x2):
 		return
 	var dir := Vector2(x2 - x1, y2 - y1).normalized()
 	var m := 0
+	var hit := Vector2(x2, y2)
 	for k in 4:  # the tracer stops just short of the surface it hit
-		var p := Vector2(x2, y2) + dir * k * 2
-		m = b.T.mat(p.x, p.y)
+		hit = Vector2(x2, y2) + dir * k * 2
+		m = b.T.mat(hit.x, hit.y)
 		if m != 0:
 			break
-	var back := -dir
-	if m != 0:
-		var cols: Array = CHIPS.get(m, SPARK)
-		for i in 5:
-			var a := back.angle() + randf_range(-1.0, 1.0)
-			var sp := randf_range(1.5, 3.5)
-			add({"k": "chip", "x": x2, "y": y2, "vx": cos(a) * sp, "vy": sin(a) * sp - 1.0, "life": 26 + randi() % 14,
-				"c": cols[randi() % cols.size()], "s": 2.0 if i % 2 else 3.0, "g": 0.2, "vr": 0.4, "bounce": 0.3})
-		if m == 1 or m == 4:
-			add({"k": "smoke", "x": x2, "y": y2, "vx": back.x * 0.4, "vy": -0.4, "life": 26, "g": -0.004, "s": 4.0, "c": cols[2]})
-	else:
-		# a body or open air: a short white-hot spark burst
-		for i in 4:
-			var a := back.angle() + randf_range(-1.2, 1.2)
-			add({"k": "spark", "x": x2, "y": y2, "vx": cos(a) * randf_range(2, 4), "vy": sin(a) * randf_range(2, 4), "life": 8 + randi() % 6, "c": SPARK[i % 3], "g": 0.1})
-	add({"k": "star", "x": x2, "y": y2, "life": 5, "g": 0.0, "c": Color.WHITE})
+	var gf: Callable = b.vfx.ground_fn(y2)
+	if m == 0:
+		b.vfx.add(SfImpact.new(x2, y2, dir.angle(), gf, false, null, -PI / 2, 0.5))
+		return
+	var T: Terrain = b.T
+	var n := Vector2(float(T.solid(hit.x - 4, hit.y)) - float(T.solid(hit.x + 4, hit.y)), float(T.solid(hit.x, hit.y - 4)) - float(T.solid(hit.x, hit.y + 4)))
+	n = -dir if n.length() < 0.1 else n.normalized()
+	var glance := dir.dot(n) > -0.45
+	var sc: Color = Battle.MATCOL.get(m, Color("888888"))
+	b.vfx.add(SfImpact.new(x2, y2, dir.angle(), gf, glance, Sf.scale(sc, 1.1), n.angle(), 0.6))
 
 func pop_helmet(u: Unit) -> void:
 	var away := signf(u.vx) if absf(u.vx) > 0.5 else -float(u.face)
 	var hc: Array = HELMET[u.sheet]
 	add({"k": "helmet", "x": u.x, "y": u.y - u.h + 4, "vx": away * randf_range(1.5, 2.8), "vy": randf_range(-5.0, -3.8),
 		"life": 260, "vr": away * 0.35, "c": hc[0], "c2": hc[1], "g": 0.22, "bounce": 0.4})
-
-func blast(x: float, y: float, sc: float) -> void:
-	if not on_screen(x):
-		return
-	flashes.append({"x": x, "y": y, "t": 0, "sc": sc})
-	var m := 1
-	for k in 6:
-		m = b.T.mat(x, y + k * 4)
-		if m != 0:
-			break
-	var cols: Array = CHIPS.get(m, CHIPS[1])
-	for i in int(5 + sc * 4):
-		var a := -PI / 2 + randf_range(-1.1, 1.1)
-		var sp := randf_range(3.0, 6.5) * (0.7 + sc * 0.2)
-		add({"k": "chunk", "x": x, "y": y - 4, "vx": cos(a) * sp, "vy": sin(a) * sp, "life": 60 + randi() % 30,
-			"c": cols[randi() % cols.size()], "s": [3.0, 4.0, 5.0][randi() % 3], "g": 0.22, "vr": randf_range(-0.4, 0.4), "bounce": 0.25})
 
 func jet_bits(u: Unit) -> void:
 	for f in [-4.0, 4.0]:
@@ -181,22 +163,12 @@ func step() -> void:
 					p.vr = -p.vr
 		elif p.g == 0.0 and p.bounce > 0 and not b.T.solid(p.x, p.y + 2):
 			p.g = 0.22  # the ground under it went away
-		if p.k == "chunk" and p.life % 3 == 0 and absf(p.vx) + absf(p.vy) > 2:
-			add({"k": "smoke", "x": p.x, "y": p.y, "life": 18, "g": -0.01, "s": 2.0, "c": Color(0.35, 0.32, 0.3)})
 	bits = bits.filter(func(p): return p.life > 0 and p.y < Battle.WATER_Y + 4)
 	if bits.size() > 700:
 		bits = bits.slice(bits.size() - 700)
-	for f in flashes:
-		f.t += 1
-	flashes = flashes.filter(func(f): return f.t < 10)
 
 # ---------------------------------------------------------------- drawing
 func _draw() -> void:
-	for f in flashes:
-		var k: float = 1.0 - f.t / 10.0
-		var r: float = 40.0 * f.sc
-		draw_circle(Vector2(f.x, f.y - 6), r * (1.2 + f.t * 0.08), Color(1, 0.7, 0.35, 0.16 * k))
-		draw_circle(Vector2(f.x, f.y - 6), r * 0.6, Color(1, 0.9, 0.6, 0.30 * k))
 	for u in b.units:
 		if u.jetting and not u.dead and on_screen(u.x):
 			draw_jet(u)
@@ -216,19 +188,6 @@ func _draw() -> void:
 				var k: float = float(p.life) / p.max
 				var s: float = roundf(p.s / 2) * 2
 				draw_rect(Rect2(pos.x - s / 2, pos.y - s / 2, s, s), Color(p.c, 0.35 * k))
-			"chip", "chunk":
-				var s: float = p.s
-				var wide := int(p.rot) % 2 == 0
-				var r := Rect2(pos.x - s / 2, pos.y - s / 2, s if wide else s - 1, s - 1 if wide else s)
-				if p.k == "chunk":
-					draw_rect(r.grow(1), Color(C_DARK, a))
-				draw_rect(r, Color(p.c, a))
-			"spark":
-				draw_rect(Rect2(pos.x - 1, pos.y - 1, 2, 2), p.c)
-			"star":
-				var s: float = 3.0 + p.life
-				draw_rect(Rect2(pos.x - s, pos.y - 1, s * 2, 2), Color(1, 1, 0.8, 0.9))
-				draw_rect(Rect2(pos.x - 1, pos.y - s, 2, s * 2), Color(1, 1, 0.8, 0.9))
 			"flame":
 				var k: float = float(p.life) / p.max
 				var c := Color("fff3b0") if k > 0.7 else (Color("ffd23a") if k > 0.45 else (Color("ff7a3d") if k > 0.2 else Color("b8322a")))

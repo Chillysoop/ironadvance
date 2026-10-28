@@ -121,6 +121,7 @@ var world_w := 6400
 @onready var terrain_sprite: Sprite2D = $TerrainSprite
 @onready var chunk_layer: Node2D = $Chunks
 @onready var view = $WorldView
+@onready var vfx = $Vfx
 
 # ---------------------------------------------------------------- setup
 func setup(idx: int, custom := {}) -> void:
@@ -1366,6 +1367,7 @@ func sniper_act(e: Unit) -> void:
 	if e.fl.has("laser"):
 		var L := sniper_line(e)
 		e.muzzle = 4
+		e.muzzle_kind = "snipe"
 		Sfx.play("snipe")
 		fire_bullet(e, L.from.x, L.from.y, L.a, {"dmg": E.dmg, "range": E.range, "bounce": 0, "chip": 5}, false)
 		await wait(24)
@@ -2845,18 +2847,17 @@ func debris(x: float, y: float, m: int, slow := false) -> void:
 	else:
 		part({"x": x, "y": y, "vx": (randf() - .5) * 6, "vy": -randf() * 6 - 1, "life": 60, "max": 60, "c": c, "s": 3.0, "g": 0.25})
 
-func fireball(x: float, y: float, r: float) -> void:
-	# the big Metal Slug style sprite blast, plus embers and a shock ring
-	fx.append({"kind": "boom", "x": x, "y": y, "t": 0, "dur": 42, "sc": clampf(r / 24.0, 0.7, 3.2)})
-	if r > 40:
-		fx.append({"kind": "boom", "x": x + randf_range(-r, r) * 0.4, "y": y - r * 0.3, "t": -6, "dur": 42, "sc": clampf(r / 40.0, 0.6, 2.0)})
-	for i in int(r * 0.6):
-		var a := randf() * TAU
-		var s := randf() * r * 0.14 + 1
-		part({"x": x, "y": y, "vx": cos(a) * s, "vy": sin(a) * s - 1.5, "life": 24 + ri(0, 20), "max": 44, "c": pick([Color("fff3b0"), Color("ffb23e"), Color("ff7a3d")]), "s": float(ri(2, 3)), "g": 0.12, "fire": true})
-	for i in 6:
-		puff(x + (randf() - .5) * r, y + (randf() - .5) * r * 0.5 - 6, randf_range(1.5, 2.6))
-	part({"ring": true, "x": x, "y": y, "r": 4.0, "max": r * 1.25, "life": 14})
+func fireball(x: float, y: float, r: float, burn := false) -> void:
+	# V1: the Sprite Fusion pixel blast (vfx/sf_explosion.gd). The boom entry stays so the critters
+	# scatter and the effects layer still sees it, but the old sprite, embers and ring are not drawn.
+	fx.append({"kind": "boom", "x": x, "y": y, "t": 0, "dur": 42, "sc": clampf(r / 24.0, 0.7, 3.2), "sf": true})
+	if x > cam_x - 160 and x < cam_x + W + 160:
+		var m := 0
+		for k in 8:
+			m = T.mat(x, y + k * 4)
+			if m != 0:
+				break
+		vfx.add(SfExplosion.new(x, y, clampf(r / 48.0, 0.5, 2.0), vfx.ground_fn(y), MATCOL.get(m, Color("6a5a48")), 0.6 if burn else 0.3))
 
 # ---------------------------------------------------------------- sight & bullets
 func eye_of(u: Unit, x: float, y: float, face: int) -> Vector2:
@@ -4213,7 +4214,7 @@ func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> vo
 		owner.fl["blasts"] = spots
 	Sfx.play("bigboom" if r > 45 else "boom")
 	shake = minf(18, shake + r * 0.28)
-	fireball(x, y, r)
+	fireball(x, y, r, burn)
 	if dmg <= 0:
 		return
 	var bonus := 3 if owner != null and owner is Unit and owner.team == "squad" and owner.def.key == "vee" else 0
@@ -4901,6 +4902,7 @@ func fire_aim(u: Unit, c: Dictionary, p: Vector2, sc: bool) -> void:
 			break
 		Sfx.play("snipe" if c.get("pierce", false) else ("mg" if shots > 1 else "shot"))
 		u.muzzle = 4
+		u.muzzle_kind = "snipe" if c.get("pierce", false) else ("mg" if shots > 1 else "shot")
 		u.gun_target = atan2(sin(aa.a), cos(aa.a) * u.face)
 		u.pose = "recoil"; u.pose_t = 6
 		var m := muzzle(u)
@@ -5492,6 +5494,7 @@ func _act_rocket(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void
 		var a := base + ((i - 1) * 0.07 if n > 1 else 0.0)
 		Sfx.play("rocket")
 		u.muzzle = 4
+		u.muzzle_kind = "rocket"
 		u.pose = "recoil"; u.pose_t = 8
 		projs.append(mk_proj({"kind": "rocket", "x": hp_.x, "y": hp_.y, "vx": cos(a) * c.speed, "vy": sin(a) * c.speed, "grav": 0.0, "r": c.radius * (1.2 if sc else 1.0) * blast_scale(u), "dmg": int(round(c.dmg * (1.25 if sc else 1.0))), "owner": u, "trail": true, "homing": c.get("homing", false), "lizard": ks(u, "lizard"), "card": c, "x0": u.x}))
 		for k in 4:
@@ -7499,6 +7502,7 @@ func enemy_shoot(e: Unit, tg: Unit, spec: Dictionary) -> void:
 		e.gun_target = atan2(sin(ang), cos(ang) * e.face)
 		Sfx.play("mg" if shots > 1 else "shot")
 		e.muzzle = 4
+		e.muzzle_kind = "mg" if shots > 1 else "shot"
 		e.pose = "recoil"; e.pose_t = 6
 		fire_bullet(e, m.x, m.y, ang, {"dmg": spec.dmg, "range": spec.get("range", 460) + 240, "bounce": 0}, false)
 		await wait(7 if shots > 1 else 14)
@@ -7521,6 +7525,7 @@ func overwatch_check(e: Unit) -> void:
 			s.gun_target = atan2(sin(ang), cos(ang) * s.face)
 			Sfx.play("shot")
 			s.muzzle = 4
+			s.muzzle_kind = "shot"
 			var oc := Data.card("rifle")
 			oc["forcehead"] = s.fl.get("ow_crit", false)
 			oc["boomhit"] = ks(s, "claymore")
@@ -8201,6 +8206,7 @@ func fire_beam(e: Unit, ang: float) -> void:
 	e.face = 1 if cos(ang) >= 0 else -1
 	Sfx.play("snipe")
 	e.muzzle = 4
+	e.muzzle_kind = "beam"
 	for k in 3:
 		tracers.append({"x1": o.x, "y1": o.y + k - 1, "x2": bp.end.x, "y2": bp.end.y + k - 1, "c": Color("c47bff") if k != 1 else Color("9df25c"), "t": 14})
 	sparks(bp.end.x, bp.end.y, 5)

@@ -6,6 +6,7 @@ extends Node
 ## gear (click a slot to see what fits, drag and drop, deck changes, a fifth soldier at HQ),
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
+## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -651,6 +652,8 @@ func run() -> void:
 			await frames_wait(12)
 			await shot("fx_jet")
 			u.jetting = false
+		"sfvfx":
+			await sfvfx()
 		"bot":
 			await bot(mission_arg, 70)
 		"levels":
@@ -6959,3 +6962,76 @@ func biomes2_test() -> void:
 	await b.biome_round()
 	check(jg.hp < 40 and sq.hex.hp == hx0, "the jet hits the Jackal in its lane, not Hex up the tower (%d)" % jg.hp)
 	await shot("m7_jet")
+
+# ---------------------------------------------------------------- Sprite Fusion effects
+func vfx_cost(b: Battle) -> float:
+	## Milliseconds one repaint of every live effect takes.
+	var t0 := Time.get_ticks_usec()
+	b.vfx.paint()
+	return (Time.get_ticks_usec() - t0) / 1000.0
+
+func sfvfx() -> void:
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	var fx: Node = b.get_node("Effects")
+	var u: Unit = b.sel
+	var gx := u.x + 170
+	var gy := b.T.ground_at(gx)
+	# V1 blasts, small and big
+	b.explode(gx, gy - 4, 30, 0, null)
+	for f in [2, 4, 8, 16, 30]:
+		await frames_wait(f - (0 if f == 2 else [2, 4, 8, 16, 30][[2, 4, 8, 16, 30].find(f) - 1]))
+		print("[sfvfx] blast30 +%d live %d paint %.2f ms" % [f, b.vfx.list.size(), vfx_cost(b)])
+		await shot("sf_blast30_%02d" % f)
+	await frames_wait(90)
+	b.explode(gx + 60, b.T.ground_at(gx + 60) - 4, 90, 0, null, true)
+	var worst := 0.0
+	for i in 40:
+		await frames_wait(1)
+		worst = maxf(worst, vfx_cost(b))
+		if i in [3, 10, 24, 39]:
+			await shot("sf_blast90_%02d" % i)
+	print("[sfvfx] blast90 worst paint %.2f ms, fps %d" % [worst, Engine.get_frames_per_second()])
+	await frames_wait(200)
+	# light check: one bright glow straight onto the light layer
+	b.speed = 0.0
+	await frames_wait(2)
+	var lc: RID = b.get_node("VfxLight").get_canvas_item()
+	Sf.Px.new(lc, true, Rect2i(-9999, -9999, 99999, 99999)).glow(gx / 2.0, (gy - 60) / 2.0, 40, Color(1, 0.6, 0.3), 1.0)
+	var fc: RID = b.vfx.get_canvas_item()
+	Sf.Px.new(fc, false, Rect2i(-9999, -9999, 99999, 99999)).glow(gx / 2.0 + 90, (gy - 60) / 2.0, 40, Color(1, 0.6, 0.3), 1.0)
+	await frames_wait(2)
+	await shot("sf_lightcheck")
+	b.speed = 0.25  # at most one battle tick per frame, so two-tick flashes land on a screenshot
+	# V3 muzzle flashes per gun, V2 strikes
+	for k in ["shot", "mg", "snipe", "rocket"]:
+		u.muzzle_kind = k
+		u.gun_angle = -0.25
+		fx.shot(u)
+		await frames_wait(1)
+		await shot("sf_muzzle_" + k)
+		await frames_wait(20)
+	var tip: Vector2 = fx.gun_tip(u)
+	fx.impact(tip.x, tip.y, gx, gy + 1)                       # steep into the ground: a hit with chips
+	fx.impact(gx - 260, gy - 30, gx + 70, gy + 1)             # shallow: a ricochet
+	fx.impact(tip.x, tip.y, tip.x + 120, tip.y - 40)          # in the open: a bare hit
+	await frames_wait(1)
+	await shot("sf_impact_1")
+	await frames_wait(3)
+	await shot("sf_impact_3")
+	await frames_wait(8)
+	await shot("sf_impact_11")
+	b.speed = 1.0
+	# a real rifle shot through the battle code
+	var e := nearest_enemy(b, u)
+	b.select_card(force_card(u, "rifle"))
+	b.mouse = Vector2(e.x, e.y - e.h * 0.6)
+	await frames_wait(8)
+	b.commit_aim(b.mouse)
+	await until(func(): return u.muzzle > 0, 200)
+	await frames_wait(1)
+	await shot("sf_rifle")
+	await until(func(): return not b.busy)
+	print("[sfvfx] done, live effects ", b.vfx.list.size())
+
