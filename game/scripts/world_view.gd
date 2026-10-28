@@ -650,6 +650,8 @@ func draw_sprite(key: String, pos: Vector2, anchor: Vector2, alpha := 1.0, flip 
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 
 func draw_muzzle(p: Vector2, face: int, ang: float) -> void:
+	if b.vfx != null:
+		return  # V3: effects.gd starts a Sprite Fusion muzzle flash for every shot instead
 	var tx: Texture2D = Art.tex.muzzle
 	var fr := (b.t / 2) % 3
 	draw_circle(p + Vector2(face * 6, 0), 14, Color(1, 0.75, 0.35, 0.22))
@@ -1074,6 +1076,8 @@ func draw_fx() -> void:
 		var pos := Vector2(roundf(f.x), roundf(f.y))
 		match f.kind:
 			"boom":
+				if f.has("sf"):
+					continue  # drawn by the Sprite Fusion layer (vfx.gd)
 				var fr := clampi(int(f.t * 14 / f.dur), 0, 13)
 				var s: float = Art.PX * f.sc * 0.5
 				draw_set_transform(pos, 0, Vector2(s, s))
