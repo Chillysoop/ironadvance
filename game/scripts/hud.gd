@@ -691,7 +691,7 @@ class Overlay extends Control:
 		# boss bar
 		var boss = null
 		for u in b.units:
-			if u.type == "boss":
+			if u.type == "boss" or u.type == "hiveship":
 				boss = u
 		if boss == null or not b.boss_active:
 			for u in b.units:
@@ -704,10 +704,22 @@ class Overlay extends Control:
 			draw_rect(Rect2(bx - 2, 56, bw + 4, 12), ink)
 			draw_rect(Rect2(bx, 58, bw, 8), Color("2a0d3a"))
 			draw_rect(Rect2(bx, 58, bw * boss.hp / float(boss.max_hp), 8), Color("b06ae0"))
+		elif boss != null and boss.type == "hiveship" and b.boss_active and not boss.dead:
+			var bw := 360.0
+			var bx := 480 - bw / 2
+			var plated: bool = b.ship_plated(boss)
+			Art.text(self, "HIVE SHIP" + ("  PLATED: SHOOT THE PLATES DOWN, BLAST THE BELLY" if plated else "  HULL EXPOSED"), Vector2(bx, 52), 8, Color("c47bff") if plated else Color("9df25c"))
+			draw_rect(Rect2(bx - 2, 56, bw + 4, 12), ink)
+			draw_rect(Rect2(bx, 58, bw, 8), Color("2a0d3a"))
+			draw_rect(Rect2(bx, 58, bw * boss.hp / float(boss.max_hp), 8), Color("b06ae0"))
 		elif boss != null and b.boss_active and not boss.dead:
 			var bw := 360.0
 			var bx := 480 - bw / 2
-			Art.text(self, "IRON BOAR" + ("  ARMORED: CRUSH IT TO CRACK" if boss.plate > 0 else "  ARMOR CRACKED"), Vector2(bx, 52), 8, Color("9fb4c9") if boss.plate > 0 else Color("ffb23e"))
+			var bname := "VHARR BOAR" if boss.fl.get("vharr", false) else "IRON BOAR"
+			if boss.dome > 0:
+				Art.text(self, bname + "  DOMED: CRUSH OR MELEE IT", Vector2(bx, 52), 8, Color("9df25c"))
+			else:
+				Art.text(self, bname + ("  ARMORED: CRUSH IT TO CRACK" if boss.plate > 0 else "  ARMOR CRACKED"), Vector2(bx, 52), 8, Color("9fb4c9") if boss.plate > 0 else Color("ffb23e"))
 			draw_rect(Rect2(bx - 2, 56, bw + 4, 12), ink)
 			draw_rect(Rect2(bx, 58, bw, 8), Color("3a0d0d"))
 			draw_rect(Rect2(bx, 58, bw * boss.hp / float(boss.max_hp), 8), Color("ff4d3d"))

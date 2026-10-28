@@ -408,7 +408,10 @@ class Screen extends Control:
 				var lv: Dictionary = Run.dial_levels[id]
 				var segs: Array = lv.segments.filter(func(sg): return not sg in ["start", "camp", "yard", "arena", "pier"])
 				Art.text(self, " ".join(segs.map(func(sg): return sg.to_upper())), Vector2(cx, 438), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
-				Art.text(self, "BOSS HP %d   ARMOR %d" % [lv.boss_hp, lv.plate], Vector2(cx, 452), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+				if lv.get("boss", "") == "hiveship":
+					Art.text(self, "HIVE SHIP HP %d   2 HULL PLATES" % lv.boss_hp, Vector2(cx, 452), 8, Color("c47bff"), HORIZONTAL_ALIGNMENT_CENTER)
+				else:
+					Art.text(self, "BOSS HP %d   ARMOR %d" % [lv.boss_hp, lv.plate], Vector2(cx, 452), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 			# how each soldier's deck fits this biome
 			y += 38
 			for j in al.size():

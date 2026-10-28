@@ -146,7 +146,9 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	var enc: String = "" if tier < 1 else ["swarm", "nest"][randi() % 2]
 	if tier >= 1 and (id == "desert" or id == "mountain"):
 		enc = "queen"  # Q2: the Burrow Queen owns the sand and the scree
-	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "breach": breach, "encounter": enc,
+	# Q1: from level 2 the Hive Ship hangs over the delta and the harbor instead of a BOAR
+	var boss := "hiveship" if tier >= 1 and (id == "delta" or id == "harbor") else "boar"
+	return {"name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "breach": breach, "encounter": enc, "boss": boss,
 		"segments": ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")],
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
 
