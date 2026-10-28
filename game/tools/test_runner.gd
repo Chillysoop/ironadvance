@@ -2,7 +2,7 @@ extends Node
 ## Headless-ish test harness. Does nothing unless the game is launched with
 ##   godot --path . -- --iatest --scenario=<name> --out=<dir> [--speed=N]
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
-## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer),
+## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer), track (N7 K9 Handler),
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
@@ -747,6 +747,8 @@ func run() -> void:
 			await draft_test()
 		"bolt":
 			await bolt_test()
+		"track":
+			await track_test()
 		"pickups":
 			await pickups()
 		"bossloot":
@@ -5471,7 +5473,16 @@ func draft_test() -> void:
 	Run.level = {}
 	Run.roll_dial()
 	Run.pick_biome(Run.dial[0])
-	check(Run.level.get("specialist", "") == "", "no second specialist once every specialist class is freed")
+	check(Run.level.get("specialist", "") == "track", "level 2 holds the next locked specialist (got '%s')" % Run.level.get("specialist", ""))
+	Run.meta.unlocked.append("cls_track")
+	for k in Data.SPECIALISTS:
+		if not Run.meta.unlocked.has("cls_" + k):
+			Run.meta.unlocked.append("cls_" + k)
+	Run.spec_seen = []
+	Run.level = {}
+	Run.roll_dial()
+	Run.pick_biome(Run.dial[0])
+	check(Run.level.get("specialist", "") == "", "no specialist once every specialist class is freed")
 	Run.mission = 2
 	Run.spec_seen = []
 	Run.meta.unlocked.erase("cls_bolt")
@@ -5597,6 +5608,126 @@ func bolt_test() -> void:
 	check(bo.armor >= 8 and bo.armor > arm0 - 1, "Fortify gives armor (%d)" % bo.armor)
 	await frames_wait(10)
 	await shot("bolt_fortify")
+	Run.meta = keep
+	Run.save_meta()
+
+func track_test() -> void:
+	## N7 Track and Rex: Rex deploys with Track, only moves on dog cards, bites, fetches, guards,
+	## gets knocked out and comes back, and the Overdrives turn out the pack.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	if not Run.meta.unlocked.has("cls_track"):
+		Run.meta.unlocked.append("cls_track")
+	Run.meta["draft"] = ["moss", "hex", "vee", "track"]
+	Run.leave_campaign()
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var tr: Unit = b.squad().filter(func(u): return u.def.key == "track")[0]
+	var rx: Unit = b.rex_of(tr)
+	check(rx != null and rx.team == "ally" and rx.kind == "dog", "Rex deploys with Track")
+	var x := 700.0
+	while not flat_open(b, x, 300) and x < b.world_w - 600:
+		x += 20
+	for o in b.units:
+		if o.team == "enemy" and absf(o.x - x - 150) < 520:
+			o.gone = true
+	for o in b.squad():
+		if o != tr:
+			ground_unit(b, o, x - 160 - o.id * 3, 0)
+	cam_on(b, x + 100)
+	ground_unit(b, tr, x, 0)
+	ground_unit(b, rx, x - 16, 0)
+	await frames_wait(10)
+	# Sic 'Em: Rex leaps to the Jackal by the cursor and bites
+	var e := b.mk_enemy("grunt", x + 200, b.T.stand_y(x + 200, 0))
+	e.active = true
+	e.hp = 40; e.max_hp = 40
+	b.units.append(e)
+	var rx0 := rx.x
+	var si := force_card(tr, "sicem")
+	b.select_unit(tr); b.select_card(si)
+	b.mouse = Vector2(e.x, e.y - 10)
+	await frames_wait(4)
+	await shot("track_aim_sicem")
+	var hp0 := e.hp
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	await shot("track_sicem")
+	check(e.hp < hp0, "Sic 'Em: Rex bites the Jackal (%d -> %d)" % [hp0, e.hp])
+	check(absf(rx.x - e.x) < 60 and absf(rx.x - rx0) > 100, "Rex leapt over to it (%d -> %d)" % [rx0, rx.x])
+	# TAG TEAM: Sic 'Em then an AIM card is a headshot
+	var ai := force_card(tr, "rifle")
+	check(b.chain_ready(tr, tr.hand[ai]) == "TAG TEAM", "TAG TEAM is ready after Sic 'Em")
+	# Rex holds still while Track walks
+	var rxs := rx.x
+	ground_unit(b, tr, x + 40, 0)
+	await frames_wait(20)
+	check(absf(rx.x - rxs) < 2, "Rex stays put until Track gives a command")
+	# Whistle brings him back and draws a card
+	tr.energy = 3
+	var wi := force_card(tr, "whistle")
+	var h0 := tr.hand.size()
+	b.sel = tr; b.state = "player"; b.busy = false
+	b.play_self(wi)
+	await until(func(): return not b.busy, 1200)
+	check(absf(rx.x - tr.x) < 30, "Whistle: Rex runs back to Track (%d vs %d)" % [rx.x, tr.x])
+	check(tr.hand.size() == h0, "Whistle draws a card (%d -> %d)" % [h0, tr.hand.size()])
+	# Fetch: Rex grabs a scrip pickup and brings it home
+	var sc0: int = Run.scrip
+	b.drop_loot(x - 120, b.T.stand_y(x - 120, 0) - 6, {"type": "scrip", "n": 30}, 0.0)
+	await until(func(): return b.settled(), 600)
+	var fi := force_card(tr, "fetch")
+	b.select_unit(tr); b.select_card(fi)
+	b.mouse = Vector2(x - 120, b.T.stand_y(x - 120, 0) - 8)
+	b.commit_aim(b.mouse)
+	await until(func(): return not b.busy, 1200)
+	check(Run.scrip > sc0, "Fetch: Rex brings back the scrip (%d -> %d)" % [sc0, Run.scrip])
+	check(absf(rx.x - tr.x) < 40, "and trots back to Track")
+	# Guard: the next Jackal that shoots at the guarded soldier gets tackled instead
+	var hx: Unit = b.squad().filter(func(u): return u.def.key == "hex")[0]
+	ground_unit(b, hx, x + 60, 0)
+	tr.energy = 3
+	var gi := force_card(tr, "guard")
+	b.select_unit(tr); b.select_card(gi)
+	b.state = "player"; b.busy = false
+	b.play_on_target(hx)
+	await until(func(): return not b.busy, 1200)
+	check(rx.loot.guard == hx, "Guard: Rex stands by Hex")
+	await shot("track_guard")
+	var e2 := b.mk_enemy("grunt", x + 260, b.T.stand_y(x + 260, 0))
+	e2.active = true
+	b.units.append(e2)
+	var hhp := hx.hp
+	b.resolve(func(): await b.enemy_shoot(e2, hx, {"dmg": [5, 5]}))
+	await until(func(): return not b.busy, 1200)
+	check(e2.has_st("stun") or e2.dead, "the Jackal that went for Hex is tackled and Stunned")
+	check(hx.hp == hhp, "and its shot never comes (%d -> %d)" % [hhp, hx.hp])
+	# knocked out, and back at Track's side next turn
+	b.damage(rx, 99, e2)
+	check(rx.loot.ko and rx.gone, "Rex can be knocked out")
+	b.state = "player"; b.busy = false
+	b.resolve(func(): await b.dogs_new_turn())
+	await until(func(): return not b.busy, 1200)
+	check(not rx.loot.ko and not rx.gone and rx.hp == rx.max_hp and absf(rx.x - tr.x) < 40, "Best Friend: Rex is back beside Track")
+	# squad bullets go past Rex
+	check(b.unit_at_point(rx.x, rx.y - 6, tr, 200.0, {}) == null, "squad bullets pass Rex")
+	# Release the Hounds
+	var foes: Array = []
+	for k in 3:
+		var ek := b.mk_enemy("grunt", x + 300 + k * 50, b.T.stand_y(x + 300 + k * 50, 0))
+		ek.active = true
+		ek.hp = 40; ek.max_hp = 40
+		b.units.append(ek)
+		foes.append(ek)
+	tr.hand.append({"id": -9, "key": "hounds", "tier": Data.OD_TIER, "temp": true})
+	b.sel = tr; b.state = "player"; b.busy = false
+	b.play_self(tr.hand.size() - 1)
+	await until(func(): return not b.busy, 2400)
+	await shot("track_hounds")
+	check(foes.all(func(f): return f.hp < 40), "Release the Hounds bites three Jackals (%s)" % [foes.map(func(f): return f.hp)])
+	check(b.units.filter(func(o): return o.kind == "dog" and not o.gone).size() == 1, "the pack leaves, Rex stays")
+	check(Run.class_keys().has("track") and Data.SPECIALISTS.has("track"), "Track is a specialist you can free and draft")
 	Run.meta = keep
 	Run.save_meta()
 

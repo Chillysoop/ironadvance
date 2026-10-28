@@ -764,6 +764,303 @@ func fortify(u: Unit, c: Dictionary) -> void:
 			float_text(foe, "BOOT!", Color("ffd23a"), true)
 	await wait(20)
 
+# ---------------------------------------------------------------- N7 Track and Rex, K9 Handler
+func make_rex(u: Unit) -> Unit:
+	## Rex deploys beside Track. He is on the squad's side but never moves on his own.
+	var rx := mk_unit()
+	rx.team = "ally"; rx.kind = "dog"; rx.w = 18; rx.h = 14; rx.face = 1
+	rx.max_hp = 18 * (2 if ks(u, "k9vest") else 1); rx.hp = rx.max_hp
+	rx.loot = {"by": u, "guard": null, "ko": false, "tackled": {}}
+	rx.x = u.x - 16
+	var gy = T.stand_y(rx.x, u.y - 30)
+	rx.y = gy if gy != null else u.y
+	units.append(rx)
+	return rx
+
+func rex_of(u) -> Unit:
+	if not (u is Unit):
+		return null
+	for o in units:
+		if o.kind == "dog" and o.loot.get("by") == u and not o.loot.get("temp", false):
+			return o
+	return null
+
+func rex_ready(u) -> Unit:
+	## Rex, if he is on his feet.
+	var rx := rex_of(u)
+	return rx if rx != null and not rx.loot.ko and not rx.dead else null
+
+func dog_reach(u: Unit, c: Dictionary) -> float:
+	return c.get("reach", 260) * (1.5 if u.perk("longleash") else 1.0)
+
+func dog_target(u: Unit, c: Dictionary, p: Vector2) -> Dictionary:
+	## Where a Sic 'Em or Fetch sends Rex: the Jackal (or pickup) nearest the cursor within his reach.
+	var rx := rex_ready(u)
+	if rx == null:
+		return {"ok": false, "why": "REX IS DOWN"}
+	var reach := dog_reach(u, c)
+	var from := Vector2(rx.x, rx.y)
+	var tg = null
+	var bd := 70.0
+	for o in units:
+		if o.dead or o.gone or o.sunk:
+			continue
+		var fits: bool = (o.team == "enemy" and o.weight != "buried" and not is_boss(o)) if c.dog == "bite" else (o.kind == "loot" or o.kind == "crate" or (o.kind == "pow" and not o.freed))
+		if not fits:
+			continue
+		var d := Vector2(o.x - p.x, o.y - o.h / 2.0 - p.y).length()
+		if d < bd and from.distance_to(Vector2(o.x, o.y)) <= reach:
+			tg = o
+			bd = d
+	var to := p
+	if tg != null:
+		to = Vector2(tg.x - signf(tg.x - rx.x) * (tg.w / 2.0 + 8) if c.dog == "bite" else tg.x, tg.y)
+	elif from.distance_to(p) > reach:
+		to = from + (p - from).normalized() * reach
+	var gy = T.stand_y(to.x, to.y - 30)
+	if gy == null:
+		gy = T.stand_y(to.x, 0)
+	if gy == null or gy >= WATER_Y:
+		return {"ok": false, "why": "NO FOOTING", "rex": rx, "to": to}
+	return {"ok": true, "rex": rx, "tg": tg, "to": Vector2(to.x, gy)}
+
+func dog_leap(rx: Unit, to: Vector2) -> void:
+	rx.loot.guard = null
+	rx.walk = null; rx.vx = 0; rx.vy = 0
+	Sfx.play("toss", -6)
+	await leap_to(rx, to)
+	dust(rx.x, rx.y)
+
+func heel(u: Unit, rx: Unit) -> void:
+	## Rex runs back to Track's side.
+	var bx := u.x - u.face * 16.0
+	var gy = T.stand_y(bx, u.y - 30)
+	await dog_leap(rx, Vector2(bx, gy if gy != null else u.y))
+	rx.face = u.face
+
+func dog_bite(u: Unit, by: Unit, tg: Unit, dmg: Array, o := {}) -> void:
+	## One bite. Track's perks ride on every dog, his own Rex or the pack's.
+	if tg.dead:
+		return
+	by.face = 1 if tg.x >= by.x else -1
+	by.pose = "throw"; by.pose_t = 10
+	Sfx.play("slash", -4)
+	fx.append({"kind": "slash", "x": tg.x, "y": tg.y - tg.h / 2.0, "t": 0, "dur": 10, "sc": 1.0, "face": by.face})
+	var d := ri(dmg[0], dmg[1]) + (3 if u.perk("bigdog") else 0)
+	if o.get("double", false):
+		d *= 2
+	damage(tg, d, u, {"melee": true})
+	if u.perk("alpha") or o.get("stun", false):
+		add_status(tg, "stun", 1, u)
+	if u.perk("markbite") or o.get("mark", false):
+		add_status(tg, "mark", 2, u)
+	if o.get("knock", 0) > 0 and not tg.dead and not tg.heavy and not tg.is_prop() and not tg.immovable:
+		tg.vx = by.face * o.knock * kb(tg); tg.vy = -3.0; tg.air = true; tg.walk = null; tg.bumped = null; tg.last_hit_by = u
+	await wait(10)
+
+func _act_dog(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
+	var dt := dog_target(u, c, p)
+	spend_card(u, idx, c)
+	var rx: Unit = dt.rex
+	var hunt: bool = u.fl.get("hunt", false)
+	u.fl.erase("hunt")
+	await dog_leap(rx, dt.to)
+	if c.dog == "bite":
+		u.attacked = true
+		if dt.tg != null:
+			for k in (2 if u.perk("secondbite") else 1):
+				await dog_bite(u, rx, dt.tg, c.dmg, {"knock": c.knock, "double": hunt, "mark": hunt})
+		else:
+			float_text(rx, "GRRR", Color("e8dcc2"))
+		return
+	# Fetch: grab everything within a few steps of the spot, then trot back
+	var got := 0
+	for o in units.duplicate():
+		if o.dead or o.gone or absf(o.x - rx.x) > 40 or absf(o.y - rx.y) > 40:
+			continue
+		if o.kind == "loot":
+			collect(u, o)
+			got += 1
+		elif o.kind == "crate":
+			open_crate(o, false)
+			got += 1
+		elif o.kind == "pow" and not o.freed:
+			o.freed = true
+			o.dead_t = 0
+			float_text(o, "GOOD DOG!", Color("62d26f"), true)
+			pow_queue.append({"pow": o, "u": u})
+			got += 1
+	if u.perk("pockets"):
+		draw_cards(u, 1)
+	if u.perk("scrounger"):
+		give_scrip(10, rx.x, rx.y - 20)
+	float_text(rx, "FETCHED!" if got else "SNIFF...", Color("62d26f") if got else Color("9aa2ae"))
+	await wait(12)
+	if got:
+		# the loot dropped by crates lands near him: one more sweep before heading home
+		await wait(20)
+		for o in units.duplicate():
+			if o.kind == "loot" and not o.gone and absf(o.x - rx.x) < 60 and absf(o.y - rx.y) < 60:
+				collect(u, o)
+	await heel(u, rx)
+
+func rex_guard(u: Unit, tg: Unit) -> void:
+	var rx := rex_ready(u)
+	if rx == null:
+		return
+	var bx := tg.x + (16.0 if tg != u else -u.face * 16.0)
+	var gy = T.stand_y(bx, tg.y - 30)
+	await dog_leap(rx, Vector2(bx, gy if gy != null else tg.y))
+	rx.loot.guard = tg
+	rx.loot.tackled = {}
+	rx.face = 1
+	float_text(rx, "ON GUARD", Color("53d4e2"), true)
+
+func guard_tackle(e: Unit, tg: Unit) -> bool:
+	## Guard: a Jackal lines up a shot on the guarded squadmate, and Rex hits it first.
+	if e.team != "enemy" or is_boss(e) or tg == null or tg.team != "squad":
+		return false
+	for rx in units:
+		if rx.kind != "dog" or rx.loot.get("temp", false) or rx.loot.ko or rx.dead or rx.gone:
+			continue
+		var by: Unit = rx.loot.by
+		var g = rx.loot.guard
+		if g == null and by.perk("watchdog") and not by.dead:
+			g = by
+		if g != tg or rx.loot.tackled.has(e.id):
+			continue
+		banner("REX!", Color("ffd23a"))
+		var spot := Vector2(e.x - signf(e.x - rx.x) * (e.w / 2.0 + 8), e.y)
+		var gy = T.stand_y(spot.x, spot.y - 30)
+		var keep = rx.loot.guard
+		await dog_leap(rx, Vector2(spot.x, gy if gy != null else e.y))
+		await dog_bite(by, rx, e, [4 + (6 if by.perk("hardtackle") else 0), 4 + (6 if by.perk("hardtackle") else 0)], {"stun": true, "knock": 8 if by.perk("hardtackle") else 0})
+		float_text(e, "TACKLED!", Color("ffd23a"), true)
+		if by.perk("loyal"):
+			rx.loot.tackled[e.id] = true
+			rx.loot.guard = keep
+			var gy2 = T.stand_y(g.x + 16, g.y - 30)
+			await leap_to(rx, Vector2(g.x + 16, gy2 if gy2 != null else g.y))
+		return true
+	return false
+
+func release_hounds(u: Unit, c: Dictionary, n: int) -> void:
+	## Release the Hounds / Wolfpack / Skyfall / K9 Strike: each dog (or the hawk) takes a different Jackal.
+	var hawk: bool = c.get("hawk", false)
+	banner("SKYFALL!" if hawk else "RELEASE THE HOUNDS!", Color("ffb23e"))
+	Sfx.play("alarm")
+	var foes := units.filter(func(e): return e.team == "enemy" and not e.dead and not e.gone and not e.sunk and e.weight != "buried" and e.x > cam_x - 20 and e.x < cam_x + W + 20)
+	foes.sort_custom(func(a, b2): return absf(a.x - u.x) < absf(b2.x - u.x))
+	for e in foes.slice(0, n):
+		if e.dead:
+			continue
+		if hawk:
+			await hawk_dive(u, e, 6)
+			continue
+		var dg := mk_unit()
+		dg.team = "ally"; dg.kind = "dog"; dg.w = 18; dg.h = 14; dg.hp = 1; dg.max_hp = 1
+		dg.loot = {"by": u, "temp": true, "ko": false, "guard": null, "tackled": {}}
+		dg.x = u.x; dg.y = u.y
+		units.append(dg)
+		var gy = T.stand_y(e.x - signf(e.x - u.x) * (e.w / 2.0 + 8), e.y - 30)
+		await leap_to(dg, Vector2(e.x - signf(e.x - u.x) * (e.w / 2.0 + 8), gy if gy != null else e.y))
+		await dog_bite(u, dg, e, [8, 10], {"stun": c.get("hstun", false), "mark": c.get("hmark", false), "knock": 4})
+		dg.gone = true
+		dg.dead = true
+		puff(dg.x, dg.y - 6, 1.0)
+	await wait(12)
+
+func hawk_dive(u: Unit, e: Unit, dmg: int) -> void:
+	## The hawk stoops out of the sky: a streak down onto the Jackal, damage and a Mark.
+	var sx := e.x - 60.0
+	tracer(sx, e.y - 220, e.x, e.y - e.h / 2.0, Color("e8dcc2"))
+	Sfx.play("toss", -2)
+	await wait(8)
+	var d := dmg + (6 if u.perk("talons") else 0)
+	if d > 0:
+		damage(e, d, u, {"melee": true})
+	add_status(e, "mark", 2, u)
+	float_text(e, "HAWK!", Color("e8dcc2"))
+	await wait(8)
+
+func supply_run(u: Unit) -> void:
+	var rx := rex_ready(u)
+	if rx == null:
+		rx = rex_of(u)
+		if rx == null:
+			return
+		revive_rex(u, rx)
+	banner("SUPPLY RUN!", Color("62d26f"))
+	var goods := units.filter(func(o): return not o.dead and not o.gone and (o.kind == "loot" or o.kind == "crate") and o.x > cam_x - 20 and o.x < cam_x + W + 20)
+	goods.sort_custom(func(a, b2): return a.x < b2.x)
+	for o in goods.slice(0, 10):
+		if o.gone or o.dead:
+			continue
+		var gy = T.stand_y(o.x, o.y - 30)
+		await dog_leap(rx, Vector2(o.x, gy if gy != null else o.y))
+		if o.kind == "crate":
+			open_crate(o, false)
+			await wait(16)
+		elif not o.gone:
+			collect(u, o)
+	for o in units.duplicate():
+		if o.kind == "loot" and not o.gone and absf(o.x - rx.x) < 80:
+			collect(u, o)
+	await heel(u, rx)
+
+func revive_rex(u: Unit, rx: Unit) -> void:
+	## Best Friend: a knocked-out Rex is back at Track's side.
+	rx.loot.ko = false
+	rx.loot.guard = null
+	rx.gone = false
+	rx.dead = false
+	rx.hp = rx.max_hp
+	rx.x = u.x - u.face * 16.0
+	var gy = T.stand_y(rx.x, u.y - 30)
+	rx.y = gy if gy != null else u.y
+	rx.zip = null; rx.vx = 0; rx.vy = 0; rx.air = false
+	puff(rx.x, rx.y - 6, 1.2)
+	float_text(rx, "REX IS BACK", Color("62d26f"))
+
+func rex_hurt(rx: Unit, amt: int) -> void:
+	if rx.loot.get("temp", false):
+		rx.gone = true
+		rx.dead = true
+		return
+	if ks(rx.loot.by, "k9vest"):
+		amt = maxi(0, amt - 3)
+	if amt <= 0:
+		float_text(rx, "VEST", Color("9fb4c9"))
+		return
+	rx.hp -= amt
+	rx.flash = 8
+	float_text(rx, "-%d" % amt, Color("ff4d3d"))
+	if rx.hp <= 0:
+		rx.hp = 0
+		rx.loot.ko = true
+		rx.loot.guard = null
+		rx.gone = true
+		puff(rx.x, rx.y - 6, 1.5)
+		float_at(rx.x, rx.y - 26, "REX KNOCKED OUT", Color("ff7a3d"), true)
+		log_msg("Rex is knocked out. He'll be back at Track's side next turn.")
+
+func dogs_new_turn() -> void:
+	## Start of the squad's turn: Rex shakes off a knockout or catches up, and the Hawk Hood marks a Jackal.
+	for u in squad_alive():
+		if u.def.key != "track" and not ks(u, "hawkhood"):
+			continue
+		var rx := rex_of(u)
+		if rx != null and (rx.loot.ko or absf(rx.x - u.x) > 560 or rx.sunk):
+			rx.sunk = false
+			revive_rex(u, rx)
+		if ks(u, "hawkhood"):
+			var best = null
+			for e in units:
+				if e.team == "enemy" and not e.dead and not e.gone and e.x > cam_x - 20 and e.x < cam_x + W + 20 and (best == null or absf(e.x - u.x) < absf(best.x - u.x)):
+					best = e
+			if best != null:
+				await hawk_dive(u, best, 0)
+
 func spec_placed() -> bool:
 	## true when this level has no specialist (X2), or its POW is already on the map
 	return mission.get("specialist", "") == "" or units.any(func(p): return p.fl.has("specialist"))
@@ -824,6 +1121,8 @@ func deploy_unit(s: Dictionary, x: float, y = null) -> Unit:
 	if y != null:
 		u.y = y
 	units.append(u)
+	if s.def.key == "track":
+		make_rex(u)  # N7: Rex deploys at Track's side
 	return u
 
 func mk_unit() -> Unit:
@@ -1221,6 +1520,15 @@ func chain_ready(u: Unit, inst: Dictionary) -> String:
 				return "DEATH FROM ABOVE"
 			if c.has("radius") and u.fl.get("molotov", false) and inst.key != "molotov":
 				return "ACCELERANT"
+		"track":
+			if last == "sicem" and c.type == "AIM":
+				return "TAG TEAM"
+			if last == "fetch" and inst.key == "whistle":
+				return "GOOD BOY"
+			if Data.is_attack(c) and u.fl.has("guarded") and not u.fl.has("onguard"):
+				return "ON GUARD"
+			if last == "whistle" and inst.key == "sicem":
+				return "THE HUNT"
 		"bolt":
 			if c.type == "AIM" and u.fl.get("sentried", false) and not u.fl.has("covered"):
 				return "COVERING FIRE"
@@ -1339,7 +1647,7 @@ func unit_at_point(x: float, y: float, shooter, travelled: float, skip: Dictiona
 			continue
 		if shooter != null and u != shooter and u.team != "" and u.team == shooter.team and not at_war(u, shooter):
 			continue  # bullets slip past teammates, explosions don't (in a BREACH the two factions aren't teammates)
-		if u.kind == "slug" or ((u.kind == "truck" or u.kind == "sentry") and shooter != null and shooter.team == "squad"):
+		if u.kind == "slug" or ((u.kind == "truck" or u.kind == "sentry" or u.kind == "dog") and shooter != null and shooter.team == "squad"):
 			continue
 		if x >= u.x - u.w / 2.0 and x <= u.x + u.w / 2.0 and y >= u.y - u.h and y <= u.y:
 			return u
@@ -1714,6 +2022,9 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 		return
 	if tg.kind == "rivet":
 		drop_girder(tg, own)
+		return
+	if tg.kind == "dog":
+		rex_hurt(tg, amt)
 		return
 	if tg.kind == "sentry":
 		tg.hp -= amt
@@ -2685,6 +2996,8 @@ func card_cost(u: Unit, inst: Dictionary) -> int:
 		cost = 0
 	if c.get("girder", false) and ks(u, "rivetdriver"):
 		cost = 0
+	if (inst.key == "sicem" and ks(u, "chokechain")) or (inst.key == "fetch" and ks(u, "treatbag")):
+		cost = 0
 	if is_build(c) and ks(u, "magnetglove") and not u.fl.get("built", false):
 		cost = 0
 	return cost
@@ -2757,6 +3070,18 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 			c["cover"] = true
 		"DOUBLE STACK":
 			u.fl["stacked"] = true
+		"TAG TEAM":
+			c["forcehead"] = true
+		"GOOD BOY":
+			u.fl["goodboy"] = true
+		"ON GUARD":
+			u.fl["onguard"] = true
+			var gt = u.fl.guarded
+			if gt is Unit and not gt.dead:
+				gt.armor += 5
+				float_text(gt, "+5 ARMOR", Color("9fb4c9"), true)
+		"THE HUNT":
+			u.fl["hunt"] = true
 	u.seq.append([inst.key, c.type])
 	if inst.key == "molotov":
 		u.fl["molotov"] = true
@@ -2961,6 +3286,14 @@ func commit_aim(p: Vector2) -> void:
 			return
 		if c.get("girder", false):
 			resolve(func(): await _act_girder(u, idx, c, p))
+			return
+		if c.has("dog"):
+			var dt := dog_target(u, c, p)
+			if not dt.ok:
+				float_text(u, dt.why, Color("ff7a3d"))
+				Sfx.play("deny")
+				return
+			resolve(func(): await _act_dog(u, idx, c, p))
 			return
 		if c.get("drill", false):
 			if u.move_left + c.get("reach", 0) < 4:
@@ -3443,6 +3776,8 @@ func _act_rush(u: Unit, idx: int, p: Vector2) -> void:
 	await until(func(): return not u.air or u.dead)
 	u.rushing = false
 	u.fl.erase("stab")
+	if c.get("pack", false) and not u.dead:
+		await release_hounds(u, c, 2)
 	if c.get("cannon", false) and not u.dead:
 		explode(u.x, u.y - 8, 54, 18, u)
 		float_text(u, "CANNONBALL!", Color("ffb23e"), true)
@@ -3527,6 +3862,9 @@ func heal_amount(u: Unit, c: Dictionary) -> int:
 
 func _act_ally(u: Unit, idx: int, c: Dictionary, tg: Unit) -> void:
 	spend_card(u, idx, c)
+	if c.get("guard", false):
+		await rex_guard(u, tg)
+		u.fl["guarded"] = tg
 	if c.has("plate"):
 		tg.armor += c.plate
 		float_text(tg, "+%d ARMOR" % c.plate, Color("9fb4c9"), true)
@@ -3658,6 +3996,33 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 			if sy != null:
 				make_sentry(u, sx, sy, 16, [5, 6])
 		Sfx.play("power")
+	if c.get("whistle", false):
+		var rx := rex_ready(u)
+		if rx != null:
+			Sfx.play("select")
+			float_text(u, "HERE, BOY!", Color("e8dcc2"))
+			await heel(u, rx)
+		if u.fl.get("goodboy", false):
+			u.fl.erase("goodboy")
+			u.energy += 1
+			float_text(u, "+1 ENERGY", Color("ffb23e"))
+		draw_cards(u, 2 if u.perk("huntcall") else 1)
+	if c.has("hounds"):
+		await release_hounds(u, c, c.hounds)
+	if c.get("supplyrun", false):
+		await supply_run(u)
+	if c.has("meddog"):
+		banner("MED DOG!", Color("62d26f"))
+		Sfx.play("coin")
+		for s in squad_alive():
+			s.hp = mini(s.max_hp, s.hp + c.meddog)
+			s.energy += 1
+			float_text(s, "+%d HP" % c.meddog, Color("62d26f"), true)
+	if c.has("hmark"):
+		for s in squad_alive():
+			if s.def.key == "moss":
+				s.hand.append({"id": -2, "key": "snipe", "tier": Data.base_tier("snipe"), "temp": true, "free": true})
+				float_text(s, "FREE LONG SHOT", Color("53d4e2"), true)
 	if c.get("surge", false):
 		Sfx.play("power")
 		for s in squad_alive():
@@ -3672,6 +4037,8 @@ func melee_valid(u: Unit, tg, c: Dictionary) -> bool:
 	return tg != null and not tg.dead and (tg.team == "enemy" or tg.is_prop()) and absf(tg.x - u.x) <= c.range + tg.w / 2.0 and absf(tg.y - u.y) <= 30
 
 func ally_valid(u: Unit, tg, c: Dictionary) -> bool:
+	if c.get("guard", false) and rex_ready(u) == null:
+		return false
 	return tg != null and tg.team == "squad" and not tg.dead and absf(tg.x - u.x) <= c.range and absf(tg.y - u.y) <= 80
 
 func ladder_at(p: Vector2):
@@ -4847,10 +5214,13 @@ func start_player_turn() -> void:
 	banner("ROUND %d" % round_n, Color.WHITE, ("WIND %s %d" % [">>" if wind > 0 else "<<", absi(wind)]) if wind else "NO WIND")
 	log_msg("Round %d. Alert %d/10.%s" % [round_n, alert, " The line has stalled: alert is rising." if stalled() else ""])
 	ui_dirty = true
-	if units.any(func(o): return o.kind == "sentry" and not o.dead and o.loot.by is Unit and o.loot.by.perk("autoloader")):
-		resolve(func(): await sentries_fire())  # Autoloader: the sentries open the round too
-	else:
-		resolve(func(): await wait(1))
+	var autoload := units.any(func(o): return o.kind == "sentry" and not o.dead and o.loot.by is Unit and o.loot.by.perk("autoloader"))
+	resolve(func():
+		await dogs_new_turn()
+		if autoload:
+			await sentries_fire()  # Autoloader: the sentries open the round too
+		else:
+			await wait(1))
 
 func full_move(s: Unit) -> float:
 	## B5: light weapons add movement, heavy ones take some away.
@@ -5218,6 +5588,8 @@ func best_shot(e: Unit, targets: Array, rng: float):
 
 func enemy_shoot(e: Unit, tg: Unit, spec: Dictionary) -> void:
 	e.st.erase("cloak")
+	if await guard_tackle(e, tg):
+		return
 	var shots: int = spec.get("shots", 1)
 	for s in shots:
 		if tg.dead or e.dead:

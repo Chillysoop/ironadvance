@@ -170,6 +170,18 @@ const CARDS := {
 	"junkcannon": {"name": "Junk Cannon", "type": "LINE", "cost": 0, "od": true, "radius": 44, "dmg": 20, "speed": 8.0, "junk": true, "text": "Fires a ton of scrap. Big blast, and it lands as a heap of steel.", "rarity": 5},
 	"buildcrew": {"name": "Build Crew", "type": "SELF", "cost": 0, "od": true, "duo": true, "fortify": 8, "range": 220, "rook_wall": true, "text": "Bolt walls up the squad while Rook kicks a Jackal into a fresh wall.", "rarity": 5},
 	"demoteam": {"name": "Demo Team", "type": "ARC", "cost": 0, "od": true, "duo": true, "beacon": true, "rain": 3, "barrage": 4, "wind": 0.4, "text": "Bolt drops three girders and Vee walks four shells across them.", "rarity": 5},
+	# N7 Track and Rex, K9 Handler: Rex never moves on his own, only when Track plays a dog card
+	"sicem": {"name": "Sic 'Em", "type": "LINE", "cost": 1, "dog": "bite", "reach": 260, "dmg": [6, 8], "knock": 5, "text": "Rex leaps at the Jackal by the cursor and bites. Knocks them back, maybe off a ledge.", "rarity": 0, "up": {"dmg": [9, 11]}},
+	"fetch": {"name": "Fetch!", "type": "LINE", "cost": 1, "dog": "fetch", "reach": 300, "text": "Rex runs to the cursor and brings back loot, a crate's contents, or a prisoner.", "rarity": 0, "up": {"reach": 420}},
+	"guard": {"name": "Guard", "type": "ALLY", "cost": 1, "guard": true, "range": 260, "text": "Rex stands by a squadmate. The first Jackal that shoots at them gets tackled and Stunned instead.", "rarity": 1, "up": {"range": 400}},
+	"whistle": {"name": "Whistle", "type": "SELF", "cost": 0, "whistle": true, "text": "Rex runs back to Track's side. Draw a card.", "rarity": 0},
+	"hounds": {"name": "Release the Hounds", "type": "SELF", "cost": 0, "od": true, "hounds": 3, "text": "Three dogs burst out and each bites a different Jackal.", "rarity": 5},
+	"wolfpack": {"name": "Wolfpack", "type": "SELF", "cost": 0, "od": true, "hounds": 5, "hstun": true, "text": "Five dogs, and every bite Stuns.", "rarity": 5},
+	"supplyrun": {"name": "Supply Run", "type": "SELF", "cost": 0, "od": true, "supplyrun": true, "text": "Rex fetches every pickup and crate on screen.", "rarity": 5},
+	"stampede": {"name": "Stampede", "type": "LINE", "cost": 0, "od": true, "rush": true, "stab": 10, "pack": true, "text": "Track charges with the pack: 10 damage to every body he passes, then two dogs bite.", "rarity": 5},
+	"skyfall": {"name": "Skyfall", "type": "SELF", "cost": 0, "od": true, "hounds": 4, "hawk": true, "text": "The hawk dives on four Jackals: 6 damage and Marked.", "rarity": 5},
+	"meddog": {"name": "Med Dog", "type": "SELF", "cost": 0, "od": true, "duo": true, "meddog": 12, "text": "Rex runs Hex's kit to everyone: heal 12 each and +1 energy.", "rarity": 5},
+	"k9strike": {"name": "K9 Strike", "type": "SELF", "cost": 0, "od": true, "duo": true, "hounds": 3, "hmark": true, "text": "Dogs pin three Jackals and Mark them, and Moss gets a free Long Shot.", "rarity": 5},
 }
 # ---------------------------------------------------------------- combos (C1, C3, C5, C6)
 const MOMENTUM := 3          # every 3rd card a soldier plays in a turn refunds 1 energy
@@ -219,7 +231,7 @@ const NICK_KILLS := 10  # D4: kills that earn a card a nickname
 const CARD_NICKS := ["Old Faithful", "The Closer", "Sweet Talker", "Big Iron", "Last Call", "House Rules"]
 const FAB_PRICE := 70
 
-const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush", "bolt": "fortify"}
+const OD := {"moss": "ricochet", "hex": "surge", "vee": "cluster", "rook": "rush", "bolt": "fortify", "track": "hounds"}
 # Metal Slug letter drops: 3 temporary cards in the collector's hand for the rest of the mission.
 const LETTERS := {"H": "hmg", "R": "bazooka", "F": "flameshot", "S": "shotgun", "L": "lasergun", "C": "chaser",
 	"D": "dropshot", "T": "thundershot", "Z": "zantetsu", "G": "superhmg"}
@@ -282,6 +294,10 @@ const ITEMS := {
 	"rebar": {"name": "Rebar Spool", "slot": "armor", "keystone": "bolt", "stats": {"hp": 4}, "text": "KEYSTONE: your walls are twice as big."},
 	"rivetdriver": {"name": "Rivet Driver", "slot": "weapon", "keystone": "bolt", "cards": ["girder", "girder"], "text": "KEYSTONE: adds 2 Girders. Girders cost 0."},
 	"magnetglove": {"name": "Magnet Glove", "slot": "kit", "keystone": "bolt", "stats": {"luck": 1}, "text": "KEYSTONE: your first build each turn refunds its energy."},
+	"chokechain": {"name": "Choke Chain", "slot": "weapon", "keystone": "track", "cards": ["sicem"], "text": "KEYSTONE: adds a Sic 'Em. Sic 'Em costs 0."},
+	"treatbag": {"name": "Treat Bag", "slot": "kit", "keystone": "track", "stats": {"luck": 1}, "text": "KEYSTONE: Fetch costs 0."},
+	"k9vest": {"name": "K9 Vest", "slot": "armor", "keystone": "track", "stats": {"hp": 4}, "text": "KEYSTONE: Rex has double HP and shrugs off 3 damage from every hit."},
+	"hawkhood": {"name": "Hawk Hood", "slot": "kit", "keystone": "track", "stats": {"armor_turn": 1}, "text": "KEYSTONE: every turn the hawk dives on the Jackal nearest Track and Marks it."},
 	"jetboots": {"name": "Jet Boots", "slot": "kit", "stats": {"jet": 90}, "text": "Press J, then hold the mouse to fly toward the cursor. Fuel refills each turn you start on the ground."},
 	"guidance": {"name": "Guidance Chip", "slot": "kit", "stats": {"aim_dmg": 1}, "text": "Rockets think for themselves."},
 	"napalmmix": {"name": "Napalm Mix", "slot": "kit", "stats": {"blast": 0.06}, "text": "Sticky, smelly, very flammable."},
@@ -413,6 +429,11 @@ const SQUAD_DEFS := [
 	 "deck": ["sandbags", "sandbags", "sentry", "girder", "rivetgun", "rivetgun", "pistol", "sprint", "drill"],
 	 "pool": ["sandbags", "sentry", "girder", "jumppad", "rivetgun", "wrench", "weld", "shotgun", "pistol", "sprint", "digin", "frag", "roll", "rally", "shapedcharge"],
 	 "trait": ["Toolbelt", "Everything Bolt builds is 50% bigger, and his sentries have 50% more HP."], "bio": "Built a bridge under fire once. Still sends the invoice."},
+	# N7: Track fights with Rex, who only moves when Track plays a dog card
+	{"key": "track", "name": "TRACK", "cls": "K9 Handler", "hp": 25, "dodge": 10, "spd": 195,
+	 "deck": ["sicem", "sicem", "fetch", "whistle", "rifle", "rifle", "pistol", "sprint", "drill"],
+	 "pool": ["sicem", "fetch", "guard", "whistle", "rifle", "pistol", "burst", "shotgun", "sprint", "roll", "digin", "smoke", "frag", "rally", "tagshot"],
+	 "trait": ["Best Friend", "Rex deploys with Track. If Rex is knocked out he's back at Track's side next turn."], "bio": "Raised Rex from a pup. Talks to him more than to people."},
 ]
 # X1: the four you start with. Everyone else is a specialist you free once to unlock (X2).
 const BASE_CLASSES := ["moss", "hex", "vee", "rook"]
@@ -420,6 +441,7 @@ const BASE_CLASSES := ["moss", "hex", "vee", "rook"]
 # rest of that run, and their class goes into the squad draft for good.
 const SPECIALISTS := {
 	"bolt": {"pow": "Sgt. Bolt", "text": "A combat engineer the Jackals grabbed fixing their own bridge."},
+	"track": {"pow": "Cpl. Track", "text": "A K9 handler caught behind the lines. Rex wouldn't leave him."},
 }
 const RESCUES_PER_RUN := 2  # at most this many specialists turn up in one run (level 1 and level 2)
 
@@ -537,11 +559,33 @@ const BRANCHES := {
 			{"id": "scraparmor", "name": "Scrap Armor", "text": "Bolt gains 3 armor every time he builds something."},
 			{"id": "recycler", "name": "Recycler", "text": "Every build card Bolt plays draws a card."}]},
 	],
+	"track": [
+		{"id": "packleader", "name": "Pack Leader", "od": "wolfpack", "keystone": "chokechain",
+		 "chain": {"name": "TAG TEAM", "text": "Sic 'Em, then any AIM card: a guaranteed headshot."},
+		 "perks": [{"id": "bigdog", "name": "Big Dog", "text": "Rex's bites deal +3 damage."},
+			{"id": "secondbite", "name": "Second Helping", "text": "Sic 'Em bites twice."},
+			{"id": "alpha", "name": "Alpha", "text": "Rex's bites Stun."}]},
+		{"id": "retriever", "name": "Retriever", "od": "supplyrun", "keystone": "treatbag",
+		 "chain": {"name": "GOOD BOY", "text": "Fetch, then Whistle: +1 energy."},
+		 "perks": [{"id": "longleash", "name": "Long Leash", "text": "Fetch and Sic 'Em reach 50% farther."},
+			{"id": "pockets", "name": "Deep Pockets", "text": "Every Fetch draws a card."},
+			{"id": "scrounger", "name": "Scrounger", "text": "Every Fetch digs up 10 scrip."}]},
+		{"id": "guarddog", "name": "Guard Dog", "od": "stampede", "keystone": "k9vest",
+		 "chain": {"name": "ON GUARD", "text": "Guard, then any attack card: the guarded squadmate gets 5 armor."},
+		 "perks": [{"id": "hardtackle", "name": "Hard Tackle", "text": "Guard tackles deal +6 damage and throw the Jackal back."},
+			{"id": "watchdog", "name": "Watchdog", "text": "When Rex isn't guarding anyone, he guards Track."},
+			{"id": "loyal", "name": "Loyal", "text": "Rex keeps guarding after a tackle, once per Jackal."}]},
+		{"id": "falconer", "name": "Falconer", "od": "skyfall", "keystone": "hawkhood",
+		 "chain": {"name": "THE HUNT", "text": "Whistle, then Sic 'Em: the bite deals double and Marks."},
+		 "perks": [{"id": "markbite", "name": "Marked Prey", "text": "Rex's bites Mark."},
+			{"id": "huntcall", "name": "Hunting Call", "text": "Whistle draws 2 cards instead of 1."},
+			{"id": "talons", "name": "Talons", "text": "Hawk dives deal +6 damage."}]},
+	],
 }
 const PERK_TIER := ["MINOR", "MAJOR", "CAPSTONE"]
 
 # Legendary keystone items live in ITEMS (one per archetype). Anyone can wear one, which makes hybrids.
-const KEYSTONE_IDS := ["tungsten", "varga", "claymore", "twinrev", "overcharger", "canister", "weathervane", "medrig", "howitzer", "lizard", "fuelpack", "detbox", "gauntlet", "riotshield", "ammobelt", "zantetsu", "turretcore", "rebar", "rivetdriver", "magnetglove"]
+const KEYSTONE_IDS := ["tungsten", "varga", "claymore", "twinrev", "overcharger", "canister", "weathervane", "medrig", "howitzer", "lizard", "fuelpack", "detbox", "gauntlet", "riotshield", "ammobelt", "zantetsu", "turretcore", "rebar", "rivetdriver", "magnetglove", "chokechain", "treatbag", "k9vest", "hawkhood"]
 
 # Branching card upgrades (P3): the Gunsmith adds up to 2 mods per card. A cost cut is one option.
 const MAX_MODS := 2
@@ -585,6 +629,8 @@ const DUOS := [
 	{"pair": ["hex", "vee"], "card": "firestorm", "holder": "vee"},
 	{"pair": ["bolt", "rook"], "card": "buildcrew", "holder": "bolt"},
 	{"pair": ["bolt", "vee"], "card": "demoteam", "holder": "bolt"},
+	{"pair": ["hex", "track"], "card": "meddog", "holder": "track"},
+	{"pair": ["moss", "track"], "card": "k9strike", "holder": "track"},
 ]
 const DUO_RANGE := 120.0
 
@@ -1334,7 +1380,7 @@ func stat_line(c: Dictionary) -> String:
 	return ""
 
 func is_attack(c: Dictionary) -> bool:
-	return c.type == "AIM" or c.type == "MELEE" or (c.type == "ARC" and not c.get("smoke", false) and not c.get("beacon", false)) or (c.type == "LINE" and not c.get("grapple", false) and not c.get("rush", false) and not c.get("jump", false))
+	return c.type == "AIM" or c.type == "MELEE" or (c.type == "ARC" and not c.get("smoke", false) and not c.get("beacon", false)) or (c.type == "LINE" and not c.get("grapple", false) and not c.get("rush", false) and not c.get("jump", false) and c.get("dog", "bite") == "bite")
 
 func relic_text(id: String, t: int) -> String:
 	## Squad gear text at a given rarity tier.
