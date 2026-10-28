@@ -351,6 +351,8 @@ const SHOP_PRICE := [45, 70, 100]
 const DOG_TAGS := 2        # going down spends a tag; going down with none left is KIA for good
 const RECRUIT_PRICE := 80
 const TAG_PRICE := 70
+# F3: a Jackal who surrendered in a BREACH and was walked out signs up as a recruit with this trait
+const DEFECTOR_TRAIT := {"id": "defector", "name": "Defector", "text": "Ex-Jackal: knows their tricks. +3 max HP and +4 dodge."}
 const CALLSIGNS := ["BISHOP", "DUKE", "FLINT", "GUNNER", "HAWK", "JINX", "KNOX", "LUCKY", "MAVERICK", "NOVA",
 	"ONYX", "PATCH", "RAZOR", "SARGE", "SPUD", "TANK", "VIPER", "WREN", "YANK", "ZERO", "BLUE", "CROW", "DIESEL", "ROACH"]
 # Recruit traits: shown before you hire, never rolled after.
@@ -680,6 +682,8 @@ const ETYPES := {
 	"mortarcrew": {"name": "Mortar Crew", "hp": 18, "arc": true, "heavyArc": true, "dmg": 12, "radius": 46, "range": 900, "speed": 0, "score": 250, "w": 18, "h": 34, "note": "Shells your cover from long range. Sits still. Something is hanging over it."},
 	# Vharr aliens. Like the Jackals they move and attack in the same enemy phase, and
 	# "weight" sets how physics moves them: light flies twice as far, hover holds altitude on a pod.
+	# H7: a Jackal carrying a stolen Squid ray, the pact in action on level 1
+	"gatetrooper": {"name": "Gate Trooper", "sheet": "en_grunt", "hp": 14, "dmg": 5, "range": 520, "speed": 100, "prefer": 300, "score": 175, "w": 16, "h": 34, "note": "A Jackal with a stolen Vharr ray. It goes through one thin wall and hits everything on the line, Jackals included."},
 	"skitter": {"name": "Skitter", "faction": "vharr", "weight": "light", "hp": 6, "dmg": 4, "leap": 240, "speed": 140, "climb": true, "pack": 3, "score": 60, "w": 28, "h": 18, "note": "Comes in packs. Scrambles up walls and pounces from 240px. Light: flies twice as far when knocked."},
 	"squid": {"name": "Squid Trooper", "faction": "vharr", "weight": "hover", "hp": 8, "pod": 8, "dmg": 4, "range": 520, "speed": 110, "prefer": 300, "alt": 110, "score": 150, "w": 36, "h": 46, "note": "Hovers on a saucer pod. Its ray goes through one thin wall and hits everything on the line. Break the pod and it drops."},
 	"blinker": {"name": "Blinker", "faction": "vharr", "hp": 10, "dmg": 7, "knock": 4.5, "speed": 60, "score": 175, "w": 22, "h": 60, "note": "Teleports behind the nearest soldier within 360px and claws them."},

@@ -361,6 +361,12 @@ func draw_unit(u: Unit) -> void:
 			Art.draw_char(self, u.sheet, a[0], a[1], pos + kick + o, u.face, true, rot, u.alpha * rim.a, u.gun_angle, false, 1.0, Color(rim, 1.0))
 	var sc := 1.0 + 0.1 * maxi(0, u.fl.get("swell", 0)) if u.type == "bloater" else (1.9 if u.type == "queen" else 1.0)
 	Art.draw_char(self, u.sheet, a[0], a[1], pos + kick, u.face, white, rot, u.alpha, u.gun_angle, a[2], sc)
+	if not u.dead and u.type == "gatetrooper":
+		# the stolen ray: a violet coil glowing on the rifle
+		var mo := Art.muzzle_offset(u.sheet, a[0], a[1], u.gun_angle)
+		var gp := pos + kick + Vector2(mo.x * u.face * 0.7, mo.y)
+		draw_circle(gp, 3.5 + sin(b.t / 5.0), Color(C_ALIEN, 0.45))
+		draw_rect(Rect2(gp.x - 2, gp.y - 2, 4, 4), C_ALIEN)
 	if not u.dead and (u.elite == "thrall" or u.fl.get("thrall", false)):
 		# parasite veins showing through the Jackal's skin
 		for k in 3:

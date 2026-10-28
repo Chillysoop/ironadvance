@@ -495,7 +495,8 @@ func mk_enemy(type: String, x: float, y) -> Unit:
 	u.heavy = E.get("heavy", false); u.shield = E.get("shield", false)
 	u.weight = E.get("weight", "")
 	u.pod = int(round(E.get("pod", 0) * mission.hp_mul))
-	u.sheet = "en_" + type if Art.meta.has("en_" + type) else ""
+	var sk: String = E.get("sheet", "en_" + type)
+	u.sheet = sk if Art.meta.has(sk) else ""
 	return u
 
 const ALIENS := ["skitter", "squid", "blinker"]
@@ -508,6 +509,8 @@ func cast_foot(n: int) -> String:
 	var pool: Array = Data.BIOME_ALIENS.get(mission.get("biome", ""), ALIENS)
 	var tier := 2 if mission.get("finale", false) else mission_idx
 	if tier == 0:
+		if n % 8 == 5:
+			return "gatetrooper"  # H7: a Jackal with a stolen Vharr ray
 		return "grunt" if n % 4 != 3 else pool[(n / 4) % pool.size()]
 	if tier >= 2 and n == 1:
 		return "overseer"  # from level 3 an Overseer runs the Jackals that are left
@@ -1511,6 +1514,20 @@ func kill(tg: Unit, src) -> void:
 		float_text(tg, ("x%d " % mult if mult > 1 else "") + "+%d" % (base * mult), Color("ffb23e"), true)
 		float_at(tg.x, tg.y - tg.h - 34, pick(Data.SCREAMS), Color("ffe9c0"))
 		Sfx.play("scream", -6)
+		if src is Unit and src.team == "enemy" and src != tg and at_war(src, tg):
+			# F2 TURNCOAT: one faction killed the other. Whoever set it up gets the kill's XP, or the squad shares it.
+			var setter = null
+			for h in [tg.last_hit_by, src.last_hit_by]:
+				if setter == null and h is Unit and h.team == "squad" and not h.dead:
+					setter = h
+			if setter != null:
+				give_xp(setter, 4 + base / 50)
+				gain_adr(setter, 8)
+				float_text(setter, "TURNCOAT KILL", Color("ffd23a"))
+			else:
+				for h in squad_alive():
+					give_xp(h, 2)
+			stats["turncoat"] = int(stats.get("turncoat", 0)) + 1
 		var marked: bool = src is Unit and src.team == "squad" and src.carry == "yellow"
 		give_scrip(int(maxi(2, base / 25) * (1.5 if Run.has_cmd("warchest") else 1.0)) * (2 if marked else 1), tg.x, tg.y - tg.h - 50)
 		if tg.has_st("toxic") and squad_alive().any(func(h): return h.perk("pandemic")):
@@ -1691,6 +1708,8 @@ func feed_kill(tg: Unit, src) -> void:
 		stamp = "HEADSHOT!"
 	elif tg.air and how in ["FALL", "SLAM"]:
 		stamp = "SPLAT!"
+	if src is Unit and src.team == "enemy" and src != tg and at_war(src, tg):
+		stamp = "TURNCOAT!"
 	if state == "player" and combo >= 1 and tg.team == "enemy":
 		stamp = (stamp + " " if stamp != "" else "") + ["", "", "DOUBLE!", "TRIPLE!", "MULTI KILL!"][mini(combo + 1, 4)]
 	feed.append({"killer": killer, "kc": kc, "how": how, "victim": victim, "vc": Color("ff7a3d") if tg.team == "enemy" else Color("53d4e2"), "stamp": stamp.strip_edges(), "t": 0})
@@ -3627,6 +3646,10 @@ func post_action() -> void:
 		await check_push(front[0])
 	while pow_queue.size():
 		var q: Dictionary = pow_queue.pop_front()
+		if q.pow.fl.get("defector", false):
+			sign_defector(q.pow)
+			give_xp(q.u, 8)
+			continue
 		banner("POW RESCUED!", Color("62d26f"), "+500  +25$")
 		score += 500
 		stats.pows += 1
@@ -4137,7 +4160,10 @@ func enemy_phase() -> void:
 		await wait(10)
 	acting = null
 	while pow_queue.size():
-		pow_queue.pop_front()
+		var q2: Dictionary = pow_queue.pop_front()
+		if q2.pow.fl.get("defector", false):
+			sign_defector(q2.pow)
+			continue
 		score += 500
 		stats.pows += 1
 	await check_detour()
@@ -4603,6 +4629,11 @@ func enemy_act(e: Unit) -> void:
 	if e.type == "vgate":
 		await vgate_act(e)
 		return
+	if await surrender(e):
+		return
+	if e.type == "gatetrooper":
+		await trooper_act(e)
+		return
 	if await jackal_nade(e):
 		return
 	var pad = pad_in_reach(e, E.get("speed", 0)) if not e.hold and E.get("speed", 0) > 0 and not E.get("static", false) else null
@@ -4936,8 +4967,8 @@ func beam_path(e: Unit, ang: float, rng := -1.0, from = null) -> Dictionary:
 	return {"end": o + dv * R, "hits": hits}
 
 func fire_beam(e: Unit, ang: float) -> void:
-	var E: Dictionary = Data.ETYPES.squid
-	var bp := beam_path(e, ang)
+	var E: Dictionary = Data.ETYPES[e.type]
+	var bp := beam_path(e, ang, E.range)
 	if debug:
 		print("[beam] from ", e.center(), " to ", bp.end, " hits ", bp.hits.map(func(h): return h.team + ":" + h.type))
 	var o := e.center()
@@ -4950,6 +4981,62 @@ func fire_beam(e: Unit, ang: float) -> void:
 	for u in bp.hits:
 		damage(u, int(round(E.dmg * (1 + alert * 0.06))), e, {})
 	await wait(14)
+
+func trooper_act(e: Unit) -> void:
+	## H7 Gate Trooper: walk in to its preferred range like any Jackal, then fire the stolen ray.
+	var E: Dictionary = Data.ETYPES.gatetrooper
+	var tg = nearest_squad(e)
+	if tg == null:
+		return
+	if not e.hold:
+		var x0 := e.x
+		await enemy_advance(e, tg.x + (E.prefer if e.x >= tg.x else -E.prefer), E.speed, func():
+			return absf(e.x - x0) >= 40 and best_shot(e, foes_of(e), E.range) != null)
+	if e.dead or e.air:
+		return
+	var b = best_shot(e, foes_of(e), E.range)
+	if b != null:
+		var c := e.center()
+		e.face = 1 if b.t.x >= e.x else -1
+		e.pose = "recoil"; e.pose_t = 8
+		await wait(8)
+		await fire_beam(e, atan2(b.t.y - b.t.h / 2.0 - c.y, b.t.x - c.x))
+
+func sign_defector(p: Unit) -> void:
+	## F3: a walked-out defector joins the recruit pool and is offered first at the next hire.
+	Run.defectors.append(p.pow_name)
+	banner("DEFECTOR!", Color("ffd23a"), "%s WANTS TO JOIN THE SQUAD" % p.pow_name)
+	log_msg("%s, an ex-Jackal, will be first in line at the next hire. Defector: +3 max HP, +4 dodge." % p.pow_name)
+	score += 300
+	Sfx.play("coin")
+
+func surrender(e: Unit) -> bool:
+	## F3: in a BREACH a cornered Jackal gives up instead of fighting: hurt, alone, with a soldier
+	## close. Walk over him like a POW and he signs up as a recruit. One per level.
+	if not breach or faction(e) != "jackal" or e.elite != "" or is_thrall(e) or e.fl.get("turned", false) or stats.get("defectors", 0) >= 1:
+		return false
+	if not e.type in ["grunt", "shield", "sapper", "engineer", "jetter", "gatetrooper"] or e.hp > e.max_hp * 0.4:
+		return false
+	if not squad_alive().any(func(s): return absf(s.x - e.x) < 180 and absf(s.y - e.y) < 80):
+		return false
+	if units.any(func(o): return o != e and o.team == "enemy" and o.active and not o.dead and faction(o) == "jackal" and absf(o.x - e.x) < 260):
+		return false
+	stats["defectors"] = int(stats.get("defectors", 0)) + 1
+	var names: Array = Data.CALLSIGNS.filter(func(c): return not Run.soldiers.any(func(s): return s.def.name == c) and not Run.defectors.has(c))
+	e.team = "neutral"
+	e.kind = "pow"
+	e.active = false
+	e.walk = null
+	e.st.clear()
+	e.shield = false
+	e.fl["defector"] = true
+	e.pow_name = names[randi() % names.size()] if names.size() else "TURNCOAT"
+	e.face = -1
+	float_text(e, "DON'T SHOOT! I QUIT!", Color("ffd23a"), true)
+	log_msg("A cornered Jackal throws down his rifle. Walk him out like a POW and he'll sign up with you.")
+	Sfx.play("deny")
+	await wait(20)
+	return true
 
 func squid_act(e: Unit) -> void:
 	## Glide to its preferred range, then fire the ray at the nearest target.
