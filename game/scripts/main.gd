@@ -477,6 +477,7 @@ class Screen extends Control:
 		for line in CardView.wrap_text(txt, 620, 16):
 			Art.text(self, line, Vector2(480, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 			y += 16
+		y += 4  # room between the last line of the brief and the GOOD FOR / ROUGH ON line
 		if jb == "push":
 			Art.text(self, "IRON BOAR HP %d   ARMOR %d   JACKALS +%d%% HP" % [m.boss_hp, m.plate, roundi((m.hp_mul - 1) * 100)], Vector2(480, y + 14), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_CENTER)
 		else:
