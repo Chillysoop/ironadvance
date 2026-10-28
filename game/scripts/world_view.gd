@@ -383,6 +383,21 @@ func draw_unit(u: Unit) -> void:
 	if u.type == "burrow":
 		draw_burrow(u, pos, white)
 		return
+	if u.type == "jdog":
+		draw_dog(u, pos, white)
+		return
+	if u.type == "gunship":
+		draw_gunship(u, pos, white)
+		return
+	if u.type == "dicokka":
+		draw_dicokka(u, pos, white)
+		return
+	if u.type == "jsniper" and not u.dead and u.fl.has("laser"):
+		# E1: the laser is always on, so you can see exactly where the next shot goes
+		var L: Dictionary = b.sniper_line(u)
+		draw_line(L.from, L.to, Color(1, 0.15, 0.1, 0.35), 3.0)
+		draw_line(L.from, L.to, Color(1, 0.25, 0.2, 0.9), 1.0)
+		draw_circle(L.to, 2.5 + (b.t / 6) % 2, Color("ff4d3d"))
 	if u.type == "mg":
 		var pa := pick_anim(u)
 		Art.draw_char(self, u.sheet, "idle" if not u.dead else "die", pa[1], pos + Vector2(4, -8), -1, white, 0, u.alpha, u.gun_angle, not u.dead)
@@ -761,9 +776,52 @@ func draw_vehicle(type: String, pos: Vector2, face: int, white: bool, moving: bo
 			for wx in [-16, -8, 0, 8, 16]:
 				draw_circle(pos + Vector2(wx + (ph * 2.0), -4), 2.5, Color("4a4a4a"))
 
+func draw_gunship(u: Unit, pos: Vector2, white: bool) -> void:
+	## E7: a Jackal attack helicopter. Its marked strafing strip is drawn on the ground under it.
+	if u.fl.has("strafe") and not u.dead:
+		var x: float = u.fl.strafe.x0
+		while x <= u.fl.strafe.x1:
+			var gy = b.T.stand_y(x, 0)
+			if gy != null:
+				draw_rect(Rect2(x - 3, gy - 3, 6, 3), Color(1, 0.3, 0.24, 0.55 + 0.3 * float((b.t / 8) % 2)))
+			x += 10
+		var gy0 = b.T.stand_y((u.fl.strafe.x0 + u.fl.strafe.x1) / 2.0, 0)
+		if gy0 != null:
+			Art.text(self, "STRAFE", Vector2((u.fl.strafe.x0 + u.fl.strafe.x1) / 2.0, gy0 - 14), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+	var c := Color.WHITE if white else Color("bca064")
+	var dk := c.darkened(0.4)
+	var f := float(u.face)
+	var rot := 0.0 if not u.dead else u.rot
+	draw_set_transform(pos + Vector2(0, -u.h / 2.0), rot, Vector2.ONE)
+	draw_rect(Rect2(-24, -10, 44, 18), C_DARK)
+	draw_rect(Rect2(-23, -9, 42, 16), c)
+	draw_rect(Rect2(-23, 1, 42, 6), dk)
+	draw_rect(Rect2(10 * f - (0 if f > 0 else 8), -7, 8, 7), Color("9fd6ff") if not white else Color.WHITE)
+	draw_rect(Rect2(-f * 22 - (24 if f > 0 else 0), -5, 24, 5), C_DARK)
+	draw_rect(Rect2(-f * 46 - 3, -12, 6, 12), C_DARK)
+	draw_rect(Rect2(-14, 7, 28, 3), C_DARK)
+	draw_rect(Rect2(-2, -14, 4, 4), C_DARK)
+	var sp: float = 34.0 * absf(sin(b.t * 0.6)) + 6
+	draw_rect(Rect2(-sp, -16, sp * 2, 2), C_DARK)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+
+func draw_dicokka(u: Unit, pos: Vector2, white: bool) -> void:
+	## E8: a squat Jackal tank. Flipped, it lies on its back with its tracks in the air.
+	var col := Color("a89058")
+	if u.fl.get("flipped", 0) > 0:
+		draw_set_transform(pos + Vector2(0, -13), PI, Vector2.ONE)
+		draw_vehicle("tank", Vector2(0, 13), u.face, white, false, true, col)
+		draw_set_transform_matrix(Transform2D.IDENTITY)
+		Art.text(self, "FLIPPED", pos + Vector2(0, -34), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		return
+	draw_vehicle("tank", pos, u.face, white, u.walk != null, true, col)
+	draw_rect(Rect2(pos.x - 4, pos.y - 30, 8, 5), C_DARK)
+	draw_rect(Rect2(pos.x - 3, pos.y - 29, 6, 3), Color("d84a3a"))
+
 func draw_dog(u: Unit, pos: Vector2, white: bool) -> void:
 	## N7: Rex, a tan shepherd in a red collar. The pack's extra dogs are a shade darker.
-	var fur := Color.WHITE if white else (Color("8a6a44") if u.loot.get("temp", false) else Color("c09a64"))
+	var jd := u.type == "jdog"
+	var fur := Color.WHITE if white else (Color("4e4640") if jd else (Color("8a6a44") if u.loot.get("temp", false) else Color("c09a64")))
 	var dark := fur.darkened(0.45)
 	var f := float(u.face)
 	var run := u.air or u.zip != null
@@ -784,8 +842,8 @@ func draw_dog(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_rect(Rect2(hx + (3 if f > 0 else -7), pos.y - 14, 4, 3), dark)
 	draw_rect(Rect2(hx + (-2 if f > 0 else 0), pos.y - 20, 2, 4), dark)
 	draw_rect(Rect2(hx + (1 if f > 0 else -2), pos.y - 15, 1, 1), C_DARK)
-	draw_rect(Rect2(hx - 3, pos.y - 11, 6, 2), Color("d63a2a"))
-	if u.loot.get("temp", false):
+	draw_rect(Rect2(hx - 3, pos.y - 11, 6, 2), Color("d63a2a") if not jd else Color("c9d1da"))
+	if jd or u.loot.get("temp", false):
 		return
 	if u.loot.get("guard") is Unit and b.t % 60 < 40:
 		Art.text(self, "GUARD", pos + Vector2(0, -30), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)

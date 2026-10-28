@@ -763,6 +763,8 @@ func run() -> void:
 			await newclasses_test()
 		"identity":
 			await identity_test()
+		"jackals2":
+			await jackals2_test()
 		"pickups":
 			await pickups()
 		"bossloot":
@@ -6197,6 +6199,148 @@ func identity_test() -> void:
 	else:
 		b.drown(rk)
 		check(not rk.dead, "Lifeguard: swims to shore instead of drowning")
+
+func j2_enemy(b: Battle, type: String, x: float) -> Unit:
+	var e := b.mk_enemy(type, x, b.T.stand_y(x, 0))
+	e.active = true
+	b.units.append(e)
+	return e
+
+func jackals2_test() -> void:
+	## E1 sniper, E2 flametrooper, E3 paratroopers, E4 hounds, E5 shield wall, E7 gunship, E8 Di-Cokka.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	var sq := {}
+	for u in b.squad():
+		sq[u.def.key] = u
+	var x := 900.0
+	flat_strip(b, x - 200, 900)
+	for o in b.units:
+		if o.team != "squad" and absf(o.x - x - 250) < 800:
+			o.gone = true
+	var mo: Unit = sq.moss
+	ground_unit(b, mo, x, 0)
+	ground_unit(b, sq.hex, x - 60, 0)
+	ground_unit(b, sq.vee, x - 90, 0)
+	ground_unit(b, sq.rook, x - 120, 0)
+	cam_on(b, x + 200)
+	await frames_wait(6)
+	# E1: the laser goes on first, the shot comes down it next turn
+	var sn := j2_enemy(b, "jsniper", x + 400)
+	sn.hp = 60; sn.max_hp = 60
+	await b.sniper_act(sn)
+	check(sn.fl.has("laser"), "E1: the sniper lays his laser on a soldier")
+	await shot("j2_laser")
+	var hp0 := mo.hp
+	await b.sniper_act(sn)
+	await frames_wait(4)
+	check(mo.hp < hp0, "and fires down it next turn (%d -> %d)" % [hp0, mo.hp])
+	b.build_cells(x + 60, mo.y - 70, 16, 70, 2)
+	hp0 = mo.hp
+	await b.sniper_act(sn)
+	await frames_wait(4)
+	check(mo.hp == hp0, "a wall in the laser's way stops the shot")
+	sn.gone = true
+	b.T.carve(x + 68, mo.y - 30, 30, null)
+	# E2: the flametrooper's cone, and his fuel tank from behind
+	mo.hp = mo.max_hp
+	var fl := j2_enemy(b, "flamer", x + 70)
+	fl.hp = 60; fl.max_hp = 60
+	fl.face = -1
+	await b.flamer_act(fl)
+	check(mo.hp < mo.max_hp and mo.has_st("burn"), "E2: the cone of fire sets Moss Burning (%d)" % mo.hp)
+	var vx: Unit = sq.vee
+	ground_unit(b, vx, fl.x + 140, 0)
+	fl.face = -1
+	var a := atan2(fl.y - 20 - (vx.y - 20), fl.x - vx.x)
+	b.fire_bullet(vx, vx.x - 10, vx.y - 20, a, {"dmg": [2, 2], "range": 400, "bounce": 0}, false)
+	await frames_wait(8)
+	check(fl.fl.get("tank_gone", false) and fl.hp < 50, "a shot in the back blows his fuel tank (%d)" % fl.hp)
+	fl.gone = true
+	# E3: troopers hang under chutes through your turn; shoot the chute and they drop
+	await b.plane_drop(2)
+	var paras: Array = b.units.filter(func(o): return o.fl.get("chute", false))
+	check(paras.size() == 2, "E3: a plane drops two troopers on chutes")
+	var py: float = paras[0].y
+	await frames_wait(30)
+	check(absf(paras[0].y - py) < 1, "they hang there until the Jackal phase")
+	await shot("j2_chutes")
+	var pt: Unit = paras[0]
+	var pa := atan2(pt.y - 50 - (mo.y - 24), pt.x - mo.x)
+	paras[1].gone = true
+	b.fire_bullet(mo, mo.x + 10, mo.y - 24, pa, {"dmg": [3, 3], "range": 900, "bounce": 0}, false)
+	check(not pt.para, "a round through the chute cuts it")
+	await until(func(): return not pt.air or pt.dead, 600)
+	check(pt.dead or pt.hp < pt.max_hp, "and the drop hurts (%d/%d)" % [pt.hp, pt.max_hp])
+	for o in paras:
+		o.gone = true
+	# E4: a hound pins whoever it bites
+	var hd := j2_enemy(b, "jdog", sq.hex.x + 120)
+	await b.skitter_act(hd)
+	var pinned := b.squad().filter(func(s): return s.has_st("pinned"))
+	check(pinned.size() >= 1, "E4: a Jackal Hound bites and PINS a soldier")
+	hd.gone = true
+	# E5: the shield wall
+	var w0 := j2_enemy(b, "wallshield", x + 260)
+	var ws: Array = [w0]
+	w0.fl["wall"] = w0.id
+	for k in 2:
+		var m := j2_enemy(b, "wallshield", x + 280 + k * 20)
+		m.fl["wall"] = w0.id
+		ws.append(m)
+	for m in ws:
+		m.hp = 60; m.max_hp = 60; m.face = -1
+	check(b.wall_locked(w0), "E5: three Riot Jackals lock into a Shield Wall")
+	ground_unit(b, mo, x, 0)
+	b.fire_bullet(mo, mo.x + 10, mo.y - 20, atan2(w0.y - 20 - (mo.y - 20), w0.x - mo.x - 10), {"dmg": [20, 20], "range": 600, "bounce": 0}, false)
+	check(w0.hp >= 57, "the wall stops 90%% from the front (%d)" % w0.hp)
+	ws[2].x += 200
+	ws[1].x += 120
+	check(not b.wall_locked(w0), "blow them out of line and the wall breaks")
+	await shot("j2_wall")
+	for m in ws:
+		m.gone = true
+	# E7: the gunship marks a strip, rakes it next turn, and a body in the rotor hurts it
+	var g := j2_enemy(b, "gunship", x + 200)
+	b.place_alien(g)
+	await b.gunship_act(g)
+	check(g.fl.has("strafe"), "E7: the gunship marks a strafing strip by the nearest soldier")
+	await shot("j2_gunship")
+	var tgt: Unit = b.squad().filter(func(s): return s.x >= g.fl.strafe.x0 and s.x <= g.fl.strafe.x1)[0]
+	var th := tgt.hp
+	await b.gunship_act(g)
+	check(tgt.hp < th, "and rakes it next turn (%d -> %d)" % [th, tgt.hp])
+	var gh := g.hp
+	var body := j2_enemy(b, "grunt", g.x)
+	body.x = g.x; body.y = g.y - g.h + 2; body.air = true; body.vy = -1.0; body.last_hit_by = sq.rook
+	await frames_wait(3)
+	check(g.hp <= gh - 18, "a body thrown into the rotor does 18 (%d -> %d)" % [gh, g.hp])
+	body.gone = true
+	b.damage(g, 999, sq.rook)
+	await until(func(): return g.gone, 900)
+	check(g.gone, "shot down, it crashes and crushes")
+	# E8: Di-Cokka armor, soft spots and the flip
+	var dk := j2_enemy(b, "dicokka", x + 320)
+	dk.face = -1
+	ground_unit(b, mo, x, 0)
+	var h0 := dk.hp
+	b.damage(dk, 10, mo)
+	check(h0 - dk.hp == 3, "E8: Di-Cokka's front armor stops 70%% (%d)" % (h0 - dk.hp))
+	ground_unit(b, sq.hex, dk.x + 120, 0)
+	h0 = dk.hp
+	b.damage(dk, 10, sq.hex)
+	check(h0 - dk.hp == 15, "hits from behind do +50%% (%d)" % (h0 - dk.hp))
+	dk.vy = -7.0; dk.air = true; dk.last_hit_by = sq.rook
+	await until(func(): return not dk.air, 600)
+	check(dk.fl.get("flipped", 0) > 0, "knocked into the air it lands FLIPPED")
+	await shot("j2_flipped")
+	h0 = dk.hp
+	b.damage(dk, 5, mo)
+	check(h0 - dk.hp == 10, "flipped it takes double (%d)" % (h0 - dk.hp))
 
 func nc_battle(draft: Array) -> Battle:
 	for k in draft:
