@@ -597,7 +597,7 @@ class Tag extends Control:
 		var m: Dictionary = Art.meta[u.sheet]
 		draw_texture_rect_region(Art.tex[u.sheet], Rect2(x0 + 11, 1, 22, 22), Rect2(4, 2, 11, 11) if m.frame[0] == 24 else Rect2(6, 3, 11, 11))
 		if u.dead:
-			draw_texture_rect(Art.tex.ic_skull, Rect2(x0 + 16, 6, 12, 12), false)
+			draw_texture_rect(Art.tex.ic8_skull, Rect2(x0 + 16, 6, 12, 12), false)
 		Art.draw_tags(self, Vector2(x0 + 20, 16), u.s.tags, 0.75)
 		Art.text(self, u.def.name, Vector2(x0 + 36, 11), 8, Color.WHITE if not u.dead else Color("8a7a7a"))
 		Art.text(self, "LV%d" % u.s.lvl, Vector2(x0 + w - 4, 11), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
@@ -853,7 +853,7 @@ class Overlay extends Control:
 				if spend:
 					a = 0.3 + 0.7 * float(b.t % 20 < 10)
 				draw_rect(Rect2(bx + 1, by + 1, 16, 12), Color(0.4, 0.33, 0.08, a))
-				draw_texture_rect(Art.tex.ic_bolt, Rect2(bx + 3, by + 1, 12, 12), false, Color(1, 1, 1, a))
+				draw_texture_rect(Art.tex.ic8_bolt, Rect2(bx + 3, by + 1, 12, 12), false, Color(1, 1, 1, a))
 			else:
 				draw_rect(Rect2(bx + 1, by + 1, 16, 12), Color("2b2f35"))
 		# C1 momentum: three purple pips, the third card played this turn refunds an energy
@@ -927,7 +927,7 @@ class Overlay extends Control:
 			draw_texture_rect_region(hz, Rect2(x, 32, 32, 4), Rect2(0, 2, 32, 4))
 		Art.text(self, "SCORE", Vector2(14, 14), 8, Color("ffb23e"))
 		Art.text(self, str(b.score).pad_zeros(7), Vector2(14, 28), 8, Color.WHITE)
-		draw_texture_rect(Art.tex.ic_coin, Rect2(90, 18, 10, 10), false)
+		draw_texture_rect(Art.tex.ic8_coin, Rect2(90, 18, 10, 10), false)
 		Art.text(self, "%d" % Run.scrip, Vector2(104, 28), 8, Color("ffd23a"))
 		Art.text(self, "M%d %s" % [b.mission_idx + 1, b.mission.name], Vector2(150, 14), 8, Color("e8dcc2"))
 		# alert siren bulbs
@@ -944,7 +944,7 @@ class Overlay extends Control:
 		if b.stalled() and b.state != "title":
 			Art.text(self, "STALLED!", Vector2(info_x, 15), 8, Color("ff4d3d") if b.t % 40 < 20 else Color("ff7a3d"))
 		if b.radio_t != null and b.state != "title":
-			draw_texture_rect(Art.tex.ic_radio, Rect2(info_x, 18, 10, 10), false)
+			draw_texture_rect(Art.tex.ic8_radio, Rect2(info_x, 18, 10, 10), false)
 			Art.text(self, "BACKUP %d" % b.radio_t, Vector2(info_x + 14, 28), 8, Color("ff4d3d") if b.radio_t <= 1 and b.t % 30 < 15 else Color("ffd23a"))
 		# wind sock
 		var wx := 700.0

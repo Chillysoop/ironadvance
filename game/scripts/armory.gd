@@ -553,7 +553,7 @@ func _draw() -> void:
 	Art.text(self, "ARMORY", Vector2(24, 50), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 	Art.text(self, "Drag gear onto a soldier, or click a slot to see what fits. Weapons put their cards in the deck.", Vector2(150, 48), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	var sc := "%d SCRIP" % Run.scrip
-	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 8) - 14, 38, 10, 10), false)
+	draw_texture_rect(Art.tex.ic8_coin, Rect2(936 - Art.text_width(sc, 8) - 14, 38, 10, 10), false)
 	Art.text(self, sc, Vector2(936, 48), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
 	for i in Run.soldiers.size():
 		var s: Dictionary = Run.soldiers[i]

@@ -693,6 +693,23 @@ def sf_vharr():
         im.save(os.path.join(OUT, 'sprites', 'vh_%s.png' % k))
         flash_white(im).save(os.path.join(OUT, 'sprites', 'vh_%s_w.png' % k))
 
+def sf_icons():
+    """16x16 UI icons from Sprite Fusion (tools/sf_src/icons), replacing the 8x8 ones ui() draws.
+    Each is centred on a 16x16 canvas; anything taller keeps its bottom 16 rows. The 8x8 ones stay
+    as ic8_* for the spots that draw icons smaller than 16 (energy pips, plates, inline coins)."""
+    for f in sorted(os.listdir(os.path.join(SF_SRC, 'icons'))):
+        if not f.endswith('.png'):
+            continue
+        im = sf_clean([Image.open(os.path.join(SF_SRC, 'icons', f)).convert('RGBA')], 10)[0]
+        im = im.crop(im.getbbox())
+        if im.height > 16:
+            im = im.crop((0, im.height - 16, im.width, im.height))
+        dest = os.path.join(OUT, 'ui', 'ic_' + f)
+        Image.open(dest).save(os.path.join(OUT, 'ui', 'ic8_' + f))
+        out = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+        out.alpha_composite(im, ((16 - im.width) // 2, (16 - im.height) // 2))
+        out.save(dest)
+
 # ---------------------------------------------------------------- big pieces: brute, POW, boss, MG nest
 def brute_frames():
     pal = palette(ENEMY_PAL['brute'])
@@ -2257,6 +2274,7 @@ def main():
     critters()
     decor()
     ui()
+    sf_icons()
     with open(os.path.join(OUT, 'sprites', 'meta.json'), 'w') as f:
         json.dump(meta, f, indent=1)
     print('art generated')

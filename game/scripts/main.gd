@@ -643,7 +643,7 @@ class Screen extends Control:
 			# X2: a specialist is held somewhere in this level
 			var D: Dictionary = Run.class_def(m.specialist)
 			Art.text(self, "SPECIALIST POW: %s THE %s IS HELD HERE. FREE THEM TO UNLOCK THE CLASS." % [D.name, D.cls.to_upper()], Vector2(480, y + 86), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
-		draw_texture_rect(Art.tex.ic_coin, Rect2(410, y + 30, 10, 10), false)
+		draw_texture_rect(Art.tex.ic8_coin, Rect2(410, y + 30, 10, 10), false)
 		Art.text(self, "%d SCRIP" % Run.scrip, Vector2(426, y + 40), 8, Color("ffd23a"))
 		squad_line(370, "idle")
 		draw_extras(m)  # over the squad, so no rifle pokes through the boards

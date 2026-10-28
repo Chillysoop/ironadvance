@@ -589,7 +589,7 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			draw_circle(p + Vector2(0, -4), 9, Color("ffd23a") if b.t % 20 < 14 else Color("ffb23e"))
 			Art.text(self, L.key, p + Vector2(1, 1), 16, Color("8a1a0a"), HORIZONTAL_ALIGNMENT_CENTER)
 		"scrip":
-			draw_texture_rect(Art.tex.ic_coin, Rect2(p.x - 6, p.y - 10, 12, 12), false)
+			draw_texture_rect(Art.tex.ic8_coin, Rect2(p.x - 6, p.y - 10, 12, 12), false)
 		"gun":
 			# B4: a dropped Jackal weapon, one shot of it for whoever grabs it
 			draw_circle(p + Vector2(0, -4), 10, Color(1, 0.82, 0.23, 0.2 + 0.15 * sin(b.t / 6.0)))
@@ -929,16 +929,16 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 		draw_rect(Rect2(x - w / 2 - 2, y + 10, w + 4, 4), Color(C_DARK, 0.85))
 		draw_rect(Rect2(x - w / 2, y + 11, roundf(w * u.fuel / float(u.fuel_max)), 2), Color("53d4e2") if u.fuel > 0 else Color("4a505a"))
 	if u.adr >= 50:
-		draw_texture_rect(Art.tex.ic_flame, Rect2(x + w / 2 + 2, y - 2, 8, 8), false)
+		draw_texture_rect(Art.tex.ic8_flame, Rect2(x + w / 2 + 2, y - 2, 8, 8), false)
 	if u.armor > 0:
-		draw_texture_rect(Art.tex.ic_shield, Rect2(x - w / 2 - 12, y - 1, 8, 8), false)
+		draw_texture_rect(Art.tex.ic8_shield, Rect2(x - w / 2 - 12, y - 1, 8, 8), false)
 		Art.text(self, str(u.armor), Vector2(x - w / 2 - 14, y + 7), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_RIGHT)
 	if u.overwatch > 0:
 		Art.text(self, "OW", Vector2(x, y + 18), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 	draw_statuses(u, x, y + (28 if u.overwatch > 0 else 18))
 	if b.state == "player":
 		for i in u.energy:
-			draw_texture_rect(Art.tex.ic_bolt, Rect2(x - u.energy * 4.5 + i * 9, y - 12 - u.h - 8, 8, 8), false)
+			draw_texture_rect(Art.tex.ic8_bolt, Rect2(x - u.energy * 4.5 + i * 9, y - 12 - u.h - 8, 8, 8), false)
 	if b.inspect and b.state == "player":
 		var info := "%s  %dE  MOVE %d  ADR %d%s" % [u.def.name, u.energy, int(maxf(0, u.move_left)), u.adr, "  OW" if u.overwatch > 0 else ""]
 		var tw := Art.text_width(info, 8) + 6
