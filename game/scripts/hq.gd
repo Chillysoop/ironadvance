@@ -30,7 +30,7 @@ var dial_btn: Control = null
 var news: Array = []        # campaign: what happened since the last op, shown on arrival
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if arrived:
 		Sfx.play("power")
 	build()
@@ -582,7 +582,10 @@ func _draw() -> void:
 func draw_news() -> void:
 	## Campaign: the after-op report, fading out after a few seconds.
 	var a := clampf((420 - t) / 60.0, 0, 1)
-	var r := Rect2(250, 132, 460, 20 + news.size() * 16)
+	var w := 460.0
+	for line in news:
+		w = maxf(w, Art.text_width(line, 16, true) + 24)
+	var r := Rect2(480 - w / 2, 132, w, 20 + news.size() * 16)
 	draw_rect(r, Color(0.05, 0.035, 0.03, 0.9 * a))
 	draw_rect(r, Color(0.38, 0.82, 0.44, a), false, 2)
 	for i in news.size():
@@ -636,7 +639,7 @@ func draw_troop_card(s: Dictionary, x: float) -> void:
 	Art.text(self, "%s  %s" % [s.def.name, s.def.cls.to_upper()], r.position + Vector2(8, 16), 8, Color.WHITE)
 	Art.text(self, "HP %d/%d   DECK %d   LV%d" % [s.hp, Run.eff_max_hp(s), s.deck.size(), s.lvl], r.position + Vector2(8, 32), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 	var al := Services.alert(s)
-	var tip: String = {"FUSE": "3 copies ready to fuse", "EVOLVE": "a card can evolve", "HURT": "hurt: patch up at the QM"}.get(al, "")
+	var tip: String = {"FUSE": "3 copies ready to fuse", "EVOLVE": "a card can evolve", "HURT": "hurt: patch up at the Doc's Lab"}.get(al, "")
 	if tip != "":
 		Art.text(self, tip, r.position + Vector2(8, 46), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 	Art.text(self, "Click or press %d for the Dossier" % (Run.soldiers.find(s) + 1), r.position + Vector2(8, 62), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)

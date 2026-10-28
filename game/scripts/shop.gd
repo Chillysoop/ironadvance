@@ -34,7 +34,7 @@ var shelf_pick := -1
 var bark := -1              # Q6: which Quartermaster line is showing, -1 for none
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	# the shelf stays put for the whole HQ visit, so leaving and coming back is not a free restock
 	if Run.qm_cache.get("mission", -1) == Run.mission:
 		stock_cards = Run.qm_cache.cards
@@ -294,7 +294,10 @@ func _draw() -> void:
 			Art.text(self, "COMPANY: %d OF %d SOLDIERS" % [Run.company().size(), Data.COMPANY_MAX], Vector2(24, 140), 8, Color("62d26f"))
 		else:
 			Art.text(self, "%d KILLED IN ACTION THIS RUN" % fallen if fallen else "THE SQUAD IS AT FULL STRENGTH", Vector2(24, 140), 8, Color("ff4d3d") if fallen else Color("62d26f"))
-		Art.text(self, "Lose the last dog tag and a soldier is gone for good. %d names on the Memorial; recruits of a fallen soldier's class can inherit one of their abilities." % Run.meta.memorial.size(), Vector2(24, 250), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		var lore := "Lose the last dog tag and a soldier is gone for good. %d names on the Memorial; recruits of a fallen soldier's class can inherit one of their abilities." % Run.meta.memorial.size()
+		var lines: Array = CardView.wrap_text(lore, 900, 16)
+		for i in lines.size():
+			Art.text(self, lines[i], Vector2(24, 250 + i * 16 - (lines.size() - 1) * 8), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		# U3: the squad's looks, each with its restyle buttons below
 		Art.text(self, "SQUAD LOOKS: FREE", Vector2(24, 352), 8, Color("53d4e2"))
 		for i in Run.soldiers.size():
@@ -536,7 +539,7 @@ func reroll() -> void:
 class Chooser extends Control:
 	var title := ""
 	func _ready() -> void:
-		set_anchors_preset(Control.PRESET_FULL_RECT)
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		mouse_filter = Control.MOUSE_FILTER_STOP
 	func _draw() -> void:
 		draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.86))
@@ -546,7 +549,7 @@ class Bark extends Control:
 	## Q6: the Quartermaster explains the tent once per run. Click to go on; SKIP or NEVER AGAIN.
 	var shop
 	func _ready() -> void:
-		set_anchors_preset(Control.PRESET_FULL_RECT)
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		var x := 560.0
 		for b in [["NEXT", 0], ["SKIP", 1], ["DON'T SHOW AGAIN", 2]]:
@@ -600,7 +603,7 @@ class TilePicker extends Control:
 	var hover := -1
 	var t := 0
 	func _ready() -> void:
-		set_anchors_preset(Control.PRESET_FULL_RECT)
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		var cancel := HudScript.PixButton.new()
 		cancel.text = "CANCEL"

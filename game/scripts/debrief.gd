@@ -18,7 +18,7 @@ var no_command := false
 var unlock := ""
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var n := clampi(medals.size(), 1, 3) + (1 if Run.has_cmd("decorated") else 0)
 	if medals.size() >= 2:
@@ -137,7 +137,7 @@ func _draw() -> void:
 		draw_texture_rect(hz, Rect2(x, 0, 32, 8), false)
 	if stage == "command":
 		Art.text(self, "COMMAND", Vector2(480, 62), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
-		Art.text(self, "Pick one order for the whole squad. It lasts the rest of the run.", Vector2(480, 88), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		Art.text(self, "Pick one order for the whole squad. It lasts the rest of the %s." % ("war" if Run.campaign() else "run"), Vector2(480, 88), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 		if Run.cmd.size():
 			Art.text(self, "STANDING ORDERS: " + ", ".join(Run.cmd.map(func(c): return Data.COMMANDS.filter(func(x): return x.id == c)[0].name)), Vector2(480, 140), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 		return
