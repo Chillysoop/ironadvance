@@ -5387,6 +5387,7 @@ func hang_up(u: Unit) -> void:
 	if u.dead or not u.air or u.team != "squad" or state != "player" or not can_shoot(u):
 		return
 	u.hang = true
+	u.fl["hang_v"] = Vector2(u.vx, u.vy)  # the arc picks up where it paused once they let go
 	u.vx = 0.0
 	u.vy = 0.0
 	u.fl["hung_shot"] = false
@@ -5395,7 +5396,10 @@ func hang_up(u: Unit) -> void:
 func drop_hang(u) -> void:
 	if u is Unit and u.hang:
 		u.hang = false
-		u.vy = 0.5
+		var v: Vector2 = u.fl.get("hang_v", Vector2.ZERO)
+		u.fl.erase("hang_v")
+		u.vx = v.x
+		u.vy = v.y if v != Vector2.ZERO else 0.5
 
 func drop_all_hangs() -> void:
 	for u in squad():
@@ -9517,6 +9521,9 @@ func physics(u: Unit) -> void:
 		if u.vx == 0 and u.vy == 0 and not u.dead:
 			return
 		u.hang = false
+		var hv: Vector2 = u.fl.get("hang_v", Vector2.ZERO)
+		u.fl.erase("hang_v")
+		u.vx += hv.x; u.vy += hv.y  # a knock mid-hang adds to the arc instead of wiping it
 	if u.weight == "hover" and not u.dead:
 		hover_physics(u)
 		return
