@@ -295,6 +295,15 @@ func draw_unit(u: Unit) -> void:
 	if u.type == "boss":
 		draw_boss(u, pos, white)
 		return
+	if u.type == "hiveship":
+		draw_hiveship(u, pos, white)
+		return
+	if u.type == "shipplate":
+		draw_shipplate(u, pos, white)
+		return
+	if u.type == "droppod":
+		draw_droppod(pos, white, false)
+		return
 	if u.type == "hive":
 		draw_hive(u, pos, white)
 		return
@@ -529,6 +538,8 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 	var ph := int(u.tread / 3) % 2
 	var row := (0 if u.plate > 0 else 1) + (2 if white else 0)
 	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
+	if u.fl.get("vharr", false) and not u.dead:
+		mod = Color(0.86, 0.78, 1.08, u.alpha)  # Q3: refit in Vharr violet
 	# barrel behind the turret
 	var pv := b.boss_pivot(u)
 	var bt: Texture2D = Art.tex.boss_barrel
@@ -543,6 +554,15 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 		b.puff(u.x + randf_range(-40, 40), u.y - 60, 1.8)
 	if u.cracked and not u.dead and b.t % 10 == 0:
 		b.puff(u.x + randf_range(-20, 30), u.y - 50, 1.0)
+	if u.fl.get("vharr", false) and not u.dead:
+		# ooze vents along the hull, and the dome over the turret when it's up
+		for k in 3:
+			draw_rect(Rect2(pos.x - 30 + k * 22, pos.y - 30, 4, 3), Color(C_OOZE, 0.6 + 0.3 * sin(b.t / 6.0 + k)))
+		if u.dome > 0:
+			var c := pos + Vector2(0, -44)
+			draw_circle(c, 58, Color(C_OOZE, 0.12 + 0.05 * sin(b.t / 8.0)))
+			draw_arc(c, 58, PI, TAU, 32, Color(C_OOZE, 0.75), 2.0)
+			draw_arc(c, 52, -2.4, -1.6, 8, Color(1, 1, 1, 0.5), 2.0)
 
 func draw_relay(u: Unit, pos: Vector2) -> void:
 	## W3: a radio mast. Blinks red until a soldier ends a turn on it, then flies a green pennant.
@@ -596,7 +616,7 @@ func draw_wreck(u: Unit, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox"] or u.type == "boss" or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox"] or b.is_boss(u) or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -718,6 +738,8 @@ func draw_projs() -> void:
 				draw_rect(Rect2(-14 - (b.t % 3) * 2, -2, 6 + (b.t % 3) * 2, 4), Color("ffb23e"))
 				draw_rect(Rect2(-12, -1, 4, 2), Color("fff3b0"))
 				draw_set_transform_matrix(Transform2D.IDENTITY)
+			"droppod":
+				draw_droppod(pos + Vector2(0, 12), false, true)
 			"bomb":
 				draw_rect(Rect2(pos.x - 5, pos.y - 11, 10, 16), C_DARK)
 				draw_rect(Rect2(pos.x - 4, pos.y - 10, 8, 14), Color("3a3a3a"))
@@ -904,6 +926,8 @@ func draw_targeting() -> void:
 				elif hh.head: lab = "HEAD!"
 				elif tg.shield and hh.dx > 0: lab = "SHIELD"
 				elif tg.type == "boss" and tg.plate > 0: lab = "ARMOR"
+				elif tg.type == "hiveship" and b.ship_plated(tg): lab = "ARMOR: HIT THE PLATES"
+				elif tg.type == "shipplate": lab = "DROP IT"
 				Art.text(self, lab, Vector2(tg.x, tg.y - tg.h - 22), 16 if hh.head else 8, col, HORIZONTAL_ALIGNMENT_CENTER)
 			if seen.is_empty() and not cut_short:
 				var ls: Array = tr.segs[-1]
@@ -1026,6 +1050,61 @@ func draw_brackets(r: Rect2, col: Color) -> void:
 		var sy := 1.0 if corner.y == r.position.y else -1.0
 		draw_line(corner, corner + Vector2(l * sx, 0), col, 2.0)
 		draw_line(corner, corner + Vector2(0, l * sy), col, 2.0)
+
+func ellipse(c: Vector2, rx: float, ry: float, col: Color) -> void:
+	var pts := PackedVector2Array()
+	for i in 28:
+		var a := TAU * i / 28.0
+		pts.append(c + Vector2(cos(a) * rx, sin(a) * ry))
+	draw_colored_polygon(pts, col)
+
+func draw_hiveship(u: Unit, pos: Vector2, white: bool) -> void:
+	## Q1: a violet saucer as wide as a house, ribbed, rim lights chasing round, a glowing belly port.
+	var a := u.alpha
+	var hull := Color.WHITE if white else Color("5a2a7a")
+	var c := pos + Vector2(0, -18)
+	ellipse(c + Vector2(0, 2), 80, 18, Color(C_DARK, a))
+	ellipse(c, 78, 16, Color(hull, a))
+	ellipse(c + Vector2(0, -4), 70, 9, Color(Color("7d3cb0") if not white else Color.WHITE, a))
+	ellipse(c + Vector2(0, -16), 30, 14, Color(C_DARK, a))
+	ellipse(c + Vector2(0, -17), 28, 12, Color(Color("b06ae0") if not white else Color.WHITE, a))
+	ellipse(c + Vector2(-8, -21), 10, 5, Color(1, 1, 1, 0.35 * a))
+	for k in 5:
+		draw_line(c + Vector2(-56 + k * 28, -6), c + Vector2(-52 + k * 26, 10), Color(Color("3a1450"), a), 2.0)
+	for k in 10:
+		var on := (b.t / 6 + k) % 5 == 0
+		draw_circle(c + Vector2(-72 + k * 16, 6 - absf(k - 4.5) * 0.8), 2.5 if on else 1.5, Color(C_OOZE, a * (1.0 if on else 0.5)))
+	var beat := 0.5 + 0.5 * sin(b.t / 8.0)
+	draw_circle(pos + Vector2(0, -4), 9, Color(C_DARK, a))
+	draw_circle(pos + Vector2(0, -4), 6 + beat * 2, Color(C_OOZE, (0.5 + 0.4 * beat) * a))
+
+func draw_shipplate(u: Unit, pos: Vector2, white: bool) -> void:
+	## A riveted hull plate on two tethers up to the ship's belly.
+	var sh = u.fl.get("ship")
+	if sh != null and not sh.gone:
+		for k in [-1, 1]:
+			var top := Vector2(sh.x + u.fl.dx * 0.6 + k * 8, sh.y - 6)
+			draw_line(pos + Vector2(k * 16, -u.h), top, Color("e05a8a"), 2.0)
+			draw_line(pos + Vector2(k * 16, -u.h), top, Color(C_OOZE, 0.5), 1.0)
+	var w := u.w
+	draw_rect(Rect2(pos.x - w / 2 - 1, pos.y - u.h - 1, w + 2, u.h + 2), C_DARK)
+	draw_rect(Rect2(pos.x - w / 2, pos.y - u.h, w, u.h), Color.WHITE if white else Color("7d8590"))
+	draw_rect(Rect2(pos.x - w / 2, pos.y - u.h, w, 2), Color("c9d1da"))
+	for k in 4:
+		draw_rect(Rect2(pos.x - w / 2 + 4 + k * 12, pos.y - 6, 2, 2), Color("3a3f46"))
+
+func draw_droppod(pos: Vector2, white: bool, falling: bool) -> void:
+	## A Vharr drop pod: a dark violet capsule with an ooze seam, still smoking.
+	if falling:
+		for k in 3:
+			draw_circle(pos + Vector2(0, -30 - k * 8 - (b.t % 4)), 5 - k, Color(Color("c47bff"), 0.5 - k * 0.12))
+	draw_rect(Rect2(pos.x - 11, pos.y - 26, 22, 26), C_DARK)
+	draw_rect(Rect2(pos.x - 10, pos.y - 25, 20, 24), Color.WHITE if white else Color("4a1f6e"))
+	draw_rect(Rect2(pos.x - 7, pos.y - 28, 14, 4), C_DARK)
+	draw_rect(Rect2(pos.x - 1, pos.y - 24, 2, 22), Color(C_OOZE, 0.6 + 0.3 * sin(b.t / 5.0)))
+	draw_rect(Rect2(pos.x - 8, pos.y - 22, 3, 3), Color("b06ae0"))
+	if not falling and b.t % 14 == 0:
+		b.puff(pos.x + randf_range(-8, 8), pos.y - 24, 0.6)
 
 func draw_hive(u: Unit, pos: Vector2, white: bool) -> void:
 	## Hive Pod: a ribbed violet egg sac, its glow quickening as the hatch timer runs down.
@@ -1153,12 +1232,16 @@ func draw_hover() -> void:
 	if h.team == "enemy":
 		var E: Dictionary = Data.ETYPES[h.type]
 		lines = [E.name.to_upper(), "HP %d/%d" % [h.hp, h.max_hp], E.note]
-		if h.weight == "hover":
+		if h.weight == "hover" and h.pod > 0:
 			lines.append("POD %d: soaks damage first. Break it and it drops." % h.pod)
 		elif h.weight == "light":
 			lines.append("LIGHT: knockback sends it twice as far.")
 		if h.type == "boss":
 			lines.append("ARMOR PLATE %d" % h.plate if h.plate > 0 else "ARMOR CRACKED: TAKES +30%")
+			if h.fl.get("vharr", false):
+				lines.append("VHARR REFIT: a dome every third turn (crushing and melee go through it), and a tongue that yanks the nearest soldier in a clear line.")
+		if h.type == "hiveship":
+			lines.append("HULL PLATES UP: shots do 40%" if b.ship_plated(h) else "HULL EXPOSED: TAKES +30%")
 		if h.elite != "":
 			lines.append("ELITE %s: %s Drops an item." % [Data.ELITES[h.elite].name, Data.ELITES[h.elite].text])
 		for k in h.st:

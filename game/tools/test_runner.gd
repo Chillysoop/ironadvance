@@ -768,6 +768,8 @@ func run() -> void:
 			await aliens5()
 		"warmap":
 			await warmap()
+		"aliens6":
+			await aliens6()
 		"playtest":
 			await playtest()
 		"straggler":
@@ -1921,6 +1923,119 @@ func aliens5() -> void:
 	var loot0 := b.units.filter(func(u): return u.kind == "loot").size()
 	b.kill(q, s)
 	check(b.units.filter(func(u): return u.kind == "loot").size() > loot0, "she drops loot when she dies")
+
+func aliens6() -> void:
+	## Q1 Hive Ship over the delta and the harbor, its hull plates and drop pods; Q3 Vharr Boar in the finale.
+	Run.new_run()
+	check(Run.make_level("delta", 1).boss == "hiveship" and Run.make_level("harbor", 2).boss == "hiveship", "the delta and the harbor bring the Hive Ship from level 2")
+	check(Run.make_level("delta", 0).boss == "boar" and Run.make_level("desert", 1).boss == "boar", "level 1 and other biomes keep the BOAR")
+	Run.level = Run.make_level("delta", 1)
+	var b: Battle = main.start_battle(1, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var ships := b.units.filter(func(u): return u.type == "hiveship")
+	check(ships.size() == 1 and not b.units.any(func(u): return u.type == "boss"), "the arena holds a Hive Ship, not a BOAR")
+	check(b.units.filter(func(u): return u.type == "shipplate").size() == 2, "two hull plates hang under it")
+	if ships.is_empty():
+		return
+	check(ships[0].max_hp == Run.level.boss_hp, "it has the level's boss HP (%d)" % ships[0].max_hp)
+	b.speed = 2.0
+	var x0 := 600.0
+	flat_strip(b, x0 - 160, 900)
+	var s := alien_field(b, x0)
+	var sh := spawn_alien(b, "hiveship", x0 + 260)
+	sh.hp = 200; sh.max_hp = 200
+	b.hang_plates(sh)
+	sh.active = false
+	b.activate_enemies()
+	await frames_wait(30)
+	check(b.boss_active, "the ship counts as the level boss")
+	var gy = b.T.stand_y(sh.x, 0)
+	check(gy - sh.y > 180, "it floats high over the ground (%d px)" % int(gy - sh.y))
+	var pl: Array = b.units.filter(func(u): return u.type == "shipplate" and not u.dead)
+	check(pl.size() == 2 and absf(pl[0].y - sh.y - 16) < 2, "the plates hang just under its belly")
+	var hp0 := sh.hp
+	b.damage(sh, 10, s, {})
+	check(hp0 - sh.hp == 4, "plated, a shot does 40%% (%d)" % (hp0 - sh.hp))
+	hp0 = sh.hp
+	b.damage(sh, 10, s, {"blast": true})
+	check(hp0 - sh.hp == 10, "a blast in the belly does full damage (%d)" % (hp0 - sh.hp))
+	# a Jackal under a plate gets the plate on its head
+	var p0: Unit = pl[0]
+	var j := b.mk_enemy("grunt", p0.x, b.T.stand_y(p0.x, 0))
+	j.active = true
+	b.units.append(j)
+	var jh := j.hp
+	hp0 = sh.hp
+	var c0 := b.T.chunks.size()
+	b.damage(p0, 99, s, {})
+	check(p0.dead and b.T.chunks.size() > c0, "a plate shot off its tethers falls")
+	await until(func(): return b.settled(), 900)
+	await shot("alien6_plate_fall")
+	check(j.hp < jh, "and crushes the Jackal under it (hp %d -> %d)" % [jh, j.hp])
+	check(sh.hp == hp0 and not sh.dead, "the falling plate doesn't hit the ship")
+	b.kill(pl[1], s)
+	await until(func(): return b.settled(), 900)
+	hp0 = sh.hp
+	b.damage(sh, 10, s, {})
+	check(hp0 - sh.hp == 13, "with the plates gone the hull takes +30%% (%d)" % (hp0 - sh.hp))
+	# its turn: glide, sweep the ray, drop a pod
+	for u in b.units:
+		if u.team == "enemy" and u != sh:
+			u.dead = true; u.gone = true
+	s = alien_field(b, x0)
+	b.units.append(sh)  # alien_field cleared it; put it back
+	sh.dead = false; sh.gone = false; sh.active = true
+	var tot := func(): return b.squad_alive().reduce(func(a, u): return a + u.hp, 0)
+	var sq0: int = tot.call()
+	await b.enemy_act(sh)
+	await until(func(): return b.settled(), 1200)
+	await shot("alien6_ship_turn")
+	check(tot.call() < sq0, "the ray and the pod hurt the squad (hp %d -> %d)" % [sq0, tot.call()])
+	check(absf(sh.x - s.x) < 160, "the ship glides over the squad (%d px away)" % int(absf(sh.x - s.x)))
+	var pods := b.units.filter(func(u): return u.type == "droppod" and not u.dead)
+	check(pods.size() == 1, "a drop pod lands closed")
+	if pods.size():
+		var n0 := b.units.size()
+		var cargo: Array = pods[0].fl.cargo
+		await b.enemy_act(pods[0])
+		await until(func(): return b.settled(), 1200)
+		var out: Array = b.units.slice(n0).map(func(u): return u.type)
+		check(pods[0].gone and out.slice(0, cargo.size()) == cargo, "next phase it opens and the Vharr come out (%s)" % str(out))
+	b.kill(sh, s)
+	check(b.boss_dead and sh.gone, "killing the ship wins the level")
+	# Q3: the finale BOAR
+	Run.new_run()
+	Run.start_finale()
+	var b2: Battle = main.start_battle(3, Run.level)
+	await until(func(): return b2.state == "player" and not b2.busy)
+	var bos := b2.units.filter(func(u): return u.type == "boss")
+	check(bos.size() == 1 and bos[0].fl.get("vharr", false), "the finale BOAR is the Vharr refit")
+	if bos.is_empty():
+		return
+	var bo: Unit = bos[0]
+	b2.speed = 2.0
+	flat_strip(b2, bo.x - 500, 560)
+	var s2 := alien_field(b2, bo.x - 300)
+	b2.units.append(bo)
+	bo.dead = false; bo.gone = false; bo.active = true; bo.y = b2.T.stand_y(bo.x, 0)
+	var sx := s2.x
+	await b2.enemy_act(bo)
+	await until(func(): return b2.settled(), 1200)
+	await shot("alien6_vboar")
+	check(bo.dome == 1, "it raises its dome")
+	check(s2.x > sx + 60 or s2.dead, "its tongue yanks the soldier in (x %d -> %d)" % [int(sx), int(s2.x)])
+	var bh := bo.hp
+	var pl0 := bo.plate
+	b2.damage(bo, 10, s2, {})
+	check(bo.hp == bh and bo.plate == pl0, "the dome stops a shot")
+	b2.crush(bo, 6, s2, 0, 0)
+	check(bo.cracked and bo.hp < bh, "crushing goes through the dome and cracks it")
+	b2.start_player_turn()
+	await until(func(): return b2.state == "player" and not b2.busy, 600)
+	b2.state = "enemy"
+	bo.dome = 0
+	await b2.vboar_tricks(bo)
+	check(bo.dome == 0, "the dome needs time to come back")
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.
