@@ -71,7 +71,10 @@ func show_slots() -> void:
 		Sfx.play("start")
 		if fresh or not Run.load_campaign(slot):
 			Run.new_campaign(slot)
-		show_hq(false))
+		if Run.camp.get("done", false):
+			show_ending()
+		else:
+			show_hq(false))
 	p.back.connect(show_title)
 	open(p)
 
@@ -85,6 +88,16 @@ func show_war_room() -> void:
 	w.back.connect(func(): show_hq(false))
 	w.quit.connect(show_title)
 	open(w)
+
+func show_ending() -> void:
+	## S5: the war is over. Service records, the Memorial, and a Second Tour.
+	clear()
+	var e: Control = WarRoomScript.EndingScreen.new()
+	e.tour.connect(func(vet: Dictionary):
+		Run.second_tour(vet)
+		show_hq(false))
+	e.title.connect(show_title)
+	open(e)
 
 func show_radio(lines: Array, then: Callable) -> void:
 	## S2: radio chatter, then on to whatever comes next.
@@ -118,7 +131,10 @@ func campaign_home(st := {}) -> void:
 	if inc.rookies.size():
 		news.append("Command sent replacements: %s." % ", ".join(inc.rookies))
 	var home := func():
-		if Run.pending_picks().size():
+		if Run.camp.get("done", false):
+			Run.save_campaign()
+			show_ending()
+		elif Run.pending_picks().size():
 			show_picks(func(): show_hq(true); screen.news = news)
 		else:
 			show_hq(true)
