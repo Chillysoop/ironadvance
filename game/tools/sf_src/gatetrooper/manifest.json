@@ -1,0 +1,50 @@
+[
+ {
+  "op": "style",
+  "prompt": "A Jackal Gate Trooper for a side-view run-and-gun game, facing right, full body, standing: a Jackal soldier in khaki fatigues who stole alien tech, wearing a dark purple Vharr crystal helmet with a glowing green visor and a small glowing purple-green alien power pack on his back. Like the references, draw NO arms on the body (the gun and arm are a separate sprite), same chunky black outline, palette, head size and proportions.",
+  "refs": [
+   "en_grunt idle 0",
+   "en_shield idle 0",
+   "en_mg idle 0",
+   "en_flamer idle 0",
+   "en_blinker idle 0"
+  ],
+  "size": 24,
+  "outputs": [
+   "still.png (option 1 of 9)"
+  ],
+  "asset_ids": [
+   "09245f15-54e8-4280-9638-ce078bfedcef"
+  ]
+ },
+ {
+  "op": "animate",
+  "prompt": "Side-view run cycle to the right: clear alternating leg strides with knees lifting, slight body bob, helmet and backpack stay rigid, no arms appear. Seamless loop.",
+  "refs": [
+   "still.png"
+  ],
+  "frames": 8,
+  "colors": 20,
+  "outputs": [
+   "run.png"
+  ],
+  "asset_ids": [
+   "efc2cb1a-29d8-42a5-aee9-6534b45dfc87"
+  ]
+ },
+ {
+  "op": "animate",
+  "prompt": "Subtle idle breathing: body bobs down one pixel and back, visor glow and power pack pulse brighter and dimmer. Feet stay planted, no arms appear. Seamless loop.",
+  "refs": [
+   "still.png"
+  ],
+  "frames": 6,
+  "colors": 20,
+  "outputs": [
+   "idle.png"
+  ],
+  "asset_ids": [
+   "a4947316-93a7-453a-a97c-d12a8fe31bc6"
+  ]
+ }
+]
