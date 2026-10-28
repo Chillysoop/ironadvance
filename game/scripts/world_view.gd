@@ -217,6 +217,17 @@ func draw_unit(u: Unit) -> void:
 		"dog":
 			draw_dog(u, pos, white)
 			return
+		"ride", "hulk":
+			# R1: a parked Jackal vehicle anyone can climb into; N3: an ejected one charging to blow
+			var vc := Color("bca064")
+			var moving: bool = u.kind == "hulk"
+			draw_vehicle(u.loot.type, pos, u.face, white, moving, false, vc)
+			draw_vehicle(u.loot.type, pos, u.face, white, moving, true, vc)
+			if u.kind == "ride" and b.t % 60 < 44:
+				Art.text(self, "HIJACK " + Data.VEHICLES[u.loot.type].name, pos + Vector2(0, -Data.VEHICLES[u.loot.type].seat - 26), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif u.kind == "hulk" and b.t % 8 < 4:
+				draw_rect(Rect2(pos.x - 2, pos.y - 30, 4, 4), Color("ff4d3d"))
+			return
 		"rivet":
 			# N2: the bolt a girder hangs from. Shoot it and the beam drops.
 			draw_rect(Rect2(pos.x - 4, pos.y - 9, 8, 8), C_DARK)
@@ -377,6 +388,13 @@ func draw_unit(u: Unit) -> void:
 		return
 	if u.sheet == "":
 		return
+	var seat := 0.0
+	var vcol := Color("6a7a40") if u.team == "squad" else Color("bca064")
+	if u.mech != null and not u.dead:
+		# N3/R1/E6: the vehicle's legs or wheels go behind the driver, who sits up in it
+		draw_vehicle(u.mech.type, pos, u.face, white, u.walk != null or u.air, false, vcol)
+		seat = Data.VEHICLES[u.mech.type].seat
+		pos.y -= seat
 	var a := pick_anim(u)
 	var rot := 0.0
 	if u.air and not u.para and not u.dead and Vector2(u.vx, u.vy).length() > 3 and not u.leaping and not u.jumping:
@@ -413,6 +431,13 @@ func draw_unit(u: Unit) -> void:
 			Art.draw_char(self, u.sheet, a[0], a[1], pos + kick + o, u.face, true, rot, u.alpha * rim.a, u.gun_angle, false, 1.0, Color(rim, 1.0))
 	var sc := 1.0 + 0.1 * maxi(0, u.fl.get("swell", 0)) if u.type == "bloater" else (1.9 if u.type == "queen" else 1.0)
 	Art.draw_char(self, u.sheet, a[0], a[1], pos + kick, u.face, white, rot, u.alpha, u.gun_angle, a[2], sc)
+	if seat > 0:
+		pos.y += seat
+		draw_vehicle(u.mech.type, pos, u.face, white, u.walk != null or u.air, true, vcol)
+		if u.team == "squad" and u.mech.max > 0:
+			draw_rect(Rect2(pos.x - 15, pos.y + 3, 30, 4), C_DARK)
+			draw_rect(Rect2(pos.x - 14, pos.y + 4, 28.0 * maxi(0, u.mech.hp) / u.mech.max, 2), Color("ffb23e"))
+		pos.y -= seat
 	if not u.dead and u.type == "gatetrooper":
 		# the stolen ray: a violet coil glowing on the rifle
 		var mo := Art.muzzle_offset(u.sheet, a[0], a[1], u.gun_angle)
@@ -672,6 +697,56 @@ func draw_sentry(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_rect(Rect2(pos.x - 10, pos.y - 26, 20, 4), C_DARK)
 	draw_rect(Rect2(pos.x - 9, pos.y - 25, 18.0 * u.hp / maxf(1, u.max_hp), 2), Color("62d26f"))
 
+func draw_vehicle(type: String, pos: Vector2, face: int, white: bool, moving: bool, front: bool, col: Color) -> void:
+	## N3/R1/E6 vehicles, drawn in two layers around the driver: legs or wheels behind, hull in front.
+	var f := float(face)
+	var c := Color.WHITE if white else col
+	var dk := c.darkened(0.4)
+	var ph := sin(b.t * 0.25) if moving else 0.0
+	match type:
+		"walker":
+			if not front:
+				for side in [-1.0, 1.0]:
+					var sw: float = ph * 4.0 * side
+					var hip: Vector2 = pos + Vector2(side * 7, -20)
+					var knee: Vector2 = pos + Vector2(side * 11 + sw * 0.5, -10)
+					var foot: Vector2 = pos + Vector2(side * 8 + sw, 0)
+					draw_line(hip, knee, C_DARK, 5.0)
+					draw_line(knee, foot, C_DARK, 5.0)
+					draw_line(hip, knee, dk, 3.0)
+					draw_line(knee, foot, dk, 3.0)
+					draw_rect(Rect2(foot.x - 5, foot.y - 3, 10, 3), C_DARK)
+				return
+			draw_rect(Rect2(pos.x - 15, pos.y - 31, 30, 15), C_DARK)
+			draw_rect(Rect2(pos.x - 14, pos.y - 30, 28, 13), c)
+			draw_rect(Rect2(pos.x - 14, pos.y - 21, 28, 4), dk)
+			draw_rect(Rect2(pos.x + (8 if f > 0 else -14), pos.y - 28, 6, 5), Color("9fd6ff") if not white else Color.WHITE)
+			draw_rect(Rect2(pos.x + (14 if f > 0 else -26), pos.y - 22, 12, 4), C_DARK)
+			draw_rect(Rect2(pos.x - 4, pos.y - 17, 8, 3), C_DARK)
+		"bike":
+			if not front:
+				draw_circle(pos + Vector2(-11 * f, -5), 5.5, C_DARK)
+				draw_circle(pos + Vector2(-11 * f, -5), 2.5, Color("6a6a6a"))
+				return
+			draw_line(pos + Vector2(-11 * f, -6), pos + Vector2(10 * f, -6), C_DARK, 4.0)
+			draw_line(pos + Vector2(-11 * f, -6), pos + Vector2(10 * f, -6), c, 2.0)
+			draw_rect(Rect2(pos.x - 7, pos.y - 11, 12, 5), c)
+			draw_line(pos + Vector2(10 * f, -6), pos + Vector2(7 * f, -16), C_DARK, 2.0)
+			draw_circle(pos + Vector2(11 * f, -5), 5.5, C_DARK)
+			draw_circle(pos + Vector2(11 * f, -5), 2.5, Color("6a6a6a"))
+		"tank":
+			if not front:
+				return
+			draw_rect(Rect2(pos.x - 11, pos.y - 25, 22, 9), C_DARK)
+			draw_rect(Rect2(pos.x - 10, pos.y - 24, 20, 7), c)
+			draw_rect(Rect2(pos.x + (10 if f > 0 else -30), pos.y - 23, 20, 4), C_DARK)
+			draw_rect(Rect2(pos.x - 22, pos.y - 18, 44, 11), C_DARK)
+			draw_rect(Rect2(pos.x - 21, pos.y - 17, 42, 9), c)
+			draw_rect(Rect2(pos.x - 21, pos.y - 11, 42, 3), dk)
+			draw_rect(Rect2(pos.x - 23, pos.y - 8, 46, 8), C_DARK)
+			for wx in [-16, -8, 0, 8, 16]:
+				draw_circle(pos + Vector2(wx + (ph * 2.0), -4), 2.5, Color("4a4a4a"))
+
 func draw_dog(u: Unit, pos: Vector2, white: bool) -> void:
 	## N7: Rex, a tan shepherd in a red collar. The pack's extra dogs are a shade darker.
 	var fur := Color.WHITE if white else (Color("8a6a44") if u.loot.get("temp", false) else Color("c09a64"))
@@ -736,7 +811,7 @@ func draw_wreck(u: Unit, pos: Vector2) -> void:
 
 # ---------------------------------------------------------------- in-world HUD plates
 func draw_plate(u: Unit) -> void:
-	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog"] or b.is_boss(u) or not on_screen(u.x, 40):
+	if u.dead or u.gone or u.sunk or u.kind in ["pow", "fuel", "charge", "barrel", "crate", "strongbox", "loot", "cache", "relay", "slug", "mine", "wreck", "pad", "jbox", "sentry", "rivet", "dog", "ride", "hulk"] or b.is_boss(u) or not on_screen(u.x, 40):
 		return
 	var x := roundf(u.x)
 	if u.team == "squad":
@@ -1170,7 +1245,7 @@ func draw_targeting() -> void:
 					Art.text(self, "ROLL %dpx" % int(absf(sim.x - u.x)), Vector2(sim.x, sim.y - u.h - 8), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 				else:
 					Art.text(self, "NO ROOM TO ROLL", Vector2(u.x, u.y - u.h - 8), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
-			elif c.get("jump", false) or c.get("rush", false):
+			elif c.get("jump", false) or c.get("rush", false) or c.get("eject", false):
 				var v := b.jump_vel(u, m, c.get("jpow", 1.0)) if c.get("jump", false) else b.rush_vel(u, m)
 				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50)
 				for i in sim.pts.size():
@@ -1478,6 +1553,9 @@ func draw_hover() -> void:
 		lines = ["FUEL BARREL", "Explodes when hit. Blast 44."]
 	elif h.kind == "sentry":
 		lines = ["SENTRY GUN  HP %d/%d" % [h.hp, h.max_hp], "Shoots the nearest enemy along its laser", "at the end of your turn. Your shots pass it."]
+	elif h.kind == "ride":
+		var V: Dictionary = Data.VEHICLES[h.loot.type]
+		lines = ["PARKED JACKAL " + V.name, "Walk onto it to drive it. It soaks every hit", "until it breaks, and its guns go in your hand."]
 	elif h.kind == "dog":
 		var g = h.loot.get("guard")
 		lines = ["REX  HP %d/%d" % [h.hp, h.max_hp], "Moves only when Track plays a dog card.", "GUARDING " + g.def.name if g is Unit else "Your shots pass him."]

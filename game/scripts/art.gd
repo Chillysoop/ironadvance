@@ -38,6 +38,7 @@ const SQUAD_PAL := {
 	"vee": {"hat": ["ff5a40", "d63a2a", "8c2418"], "shirt": ["c89c5c", "a07a40", "6a5028"], "pants": ["6a5a3a", "4e4228", "322a18"]},
 	"rook": {"hat": ["6c9cf0", "3c6ad0", "22408c"], "shirt": ["6a8c4c", "4c6a34", "30461e"], "pants": ["5a6a40", "42502c", "2a321a"]},
 	"bolt": {"hat": ["ffc23a", "e09a1c", "8a5a10"], "shirt": ["4a5a78", "36425a", "222a3a"], "pants": ["5a5048", "423a34", "2a2420"]},
+	"gears": {"hat": ["ff9a3a", "d6741c", "8a4410"], "shirt": ["6a6e76", "4e5258", "30333a"], "pants": ["4a4038", "36302a", "221e1a"]},
 	"track": {"hat": ["8a5a34", "6a4224", "3e2614"], "shirt": ["b8a87c", "94845a", "625638"], "pants": ["4a5a3a", "36442a", "222c1a"]},
 }
 const LOOK_HEADS := ["helmet", "boonie", "bandana", "beret", "hardhat", "shades"]
@@ -56,7 +57,7 @@ const LOOK_COLORS := [
 const LOOK_NAMES := ["OLIVE", "TAN", "GUNMETAL", "RED", "NAVY", "WHITE", "ORANGE", "PURPLE", "BLACK", "TEAL"]
 
 func base_head(cls: String) -> String:
-	return {"moss": "boonie", "hex": "medic", "vee": "bandana", "rook": "shades", "bolt": "hardhat", "track": "beret"}.get(cls, "helmet")
+	return {"moss": "boonie", "hex": "medic", "vee": "bandana", "rook": "shades", "bolt": "hardhat", "track": "beret", "gears": "helmet"}.get(cls, "helmet")
 
 func look_sheet(s: Dictionary) -> String:
 	## The sheet key for a soldier record, built (and cached) the first time a look needs it.

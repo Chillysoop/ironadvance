@@ -250,6 +250,7 @@ func setup(idx: int, custom := {}) -> void:
 			make_specialist(p)
 			units.append(p)
 	place_encounter(mission.get("encounter", ""))
+	place_vehicles()
 	place_job()
 	spawn_map_loot()
 	sel = null
@@ -1061,6 +1062,236 @@ func dogs_new_turn() -> void:
 			if best != null:
 				await hawk_dive(u, best, 0)
 
+# ---------------------------------------------------------------- N3 Gears, R1 hijacked vehicles, E6 Jackal Walker
+func mech_max(u: Unit, type: String, own: bool) -> int:
+	var hp := float(Data.VEHICLES[type].hp)
+	if u.team == "squad":
+		if own and u.perk("armorplate"):
+			hp += 15
+		if own and ks(u, "jumpjets"):
+			hp += 20
+		if squad_alive().any(func(o): return ks(o, "toolkit")):
+			hp *= 1.5
+	return int(hp)
+
+func mount(u: Unit, type: String, hp := -1, own := false) -> void:
+	## Climb into a vehicle. Its HP soaks every hit until it breaks; a hijacker gets its cards in hand.
+	if u.mech != null:
+		return
+	var V: Dictionary = Data.VEHICLES[type]
+	var mx := mech_max(u, type, own)
+	u.mech = {"type": type, "hp": mx if hp < 0 else mini(hp, mx), "max": mx, "own": own, "h0": u.h, "w0": u.w}
+	u.h += V.seat
+	u.w = maxf(u.w, 26.0)
+	u.heavy = true
+	if not own:
+		mech_cards(u)
+
+func mech_cards(u: Unit) -> void:
+	## A hijacked vehicle's own guns go in the driver's hand, and come back every turn.
+	if u.mech == null or u.mech.own:
+		return
+	for k in Data.VEHICLES[u.mech.type].cards:
+		if not u.hand.any(func(h): return h.key == k and h.get("mechtemp", false)):
+			u.hand.append({"id": -7, "key": k, "tier": Data.base_tier(k), "temp": true, "mechtemp": true})
+
+func dismount(u: Unit, launch := true) -> void:
+	if u.mech == null:
+		return
+	u.hand = u.hand.filter(func(h): return not h.get("mechtemp", false))
+	u.h = u.mech.h0
+	u.w = u.mech.w0
+	u.heavy = u.immovable
+	u.mech = null
+	if launch:
+		u.vx = -u.face * 1.5; u.vy = -6.0; u.air = true; u.walk = null; u.bumped = {}; u.jumping = true
+	ui_dirty = true
+
+func mech_hit(u: Unit, amt: int) -> void:
+	## The vehicle takes the hit instead of the driver. At 0 it falls apart and the driver tumbles out.
+	if u.mech.own and u.perk("reactive"):
+		amt = maxi(1, amt - 2)
+	u.mech.hp -= amt
+	u.flash = 8
+	sparks(u.x, u.y - 12, 3)
+	float_text(u, "-%d %s" % [amt, Data.VEHICLES[u.mech.type].name], Color("ffb23e"))
+	if u.mech.hp <= 0:
+		var nm: String = Data.VEHICLES[u.mech.type].name
+		for k in 8:
+			debris(u.x + randf_range(-12, 12), u.y - randf_range(4, 20), 2)
+		puff(u.x, u.y - 10, 2.0)
+		Sfx.play("boom", -6)
+		dismount(u)
+		float_text(u, nm + " WRECKED", Color("ff7a3d"), true)
+		log_msg("%s's %s is wrecked. %s" % [u.def.name, nm.to_lower(), "Patch Job puts him back in one." if u.def.key == "gears" else "They're on foot."])
+	ui_dirty = true
+
+func mech_ok(u: Unit, c: Dictionary) -> String:
+	## Why this card can't be played right now ("" when it can).
+	if c.get("mech", false) and u.mech == null:
+		return "NEEDS A VEHICLE"
+	if c.get("patch", false) and u.mech != null:
+		return "ALREADY DRIVING"
+	if c.get("ridealong", false) or c.has("refit"):
+		return ""
+	return ""
+
+func _act_eject(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
+	## Eject!: the driver pops out, the empty vehicle charges at the cursor and blows.
+	spend_card(u, idx, c)
+	u.attacked = true
+	var type: String = u.mech.type
+	var v := rush_vel(u, p)
+	var hk := mk_unit()
+	hk.team = "neutral"; hk.kind = "hulk"; hk.x = u.x; hk.y = u.y; hk.w = 26; hk.h = 24; hk.hp = 1; hk.max_hp = 1; hk.heavy = true
+	hk.face = 1 if p.x >= u.x else -1
+	hk.loot = {"type": type, "by": u}
+	hk.y = u.y - 2
+	hk.vx = v.vx; hk.vy = v.vy; hk.air = true; hk.bumped = {u.id: true}; hk.last_hit_by = u; hk.rushing = true
+	dismount(u)
+	units.append(hk)
+	banner("EJECT!", Color("ffb23e"))
+	Sfx.play("power")
+	if u.perk("softlanding"):
+		u.armor += 8
+		float_text(u, "+8 ARMOR", Color("9fb4c9"))
+	if ks(u, "ejectseat"):
+		draw_cards(u, 2)
+		u.energy += 1
+	var t0 := t
+	await until(func(): return not hk.air or t - t0 > 240 or units.any(func(e): return e.team == "enemy" and not e.dead and not e.gone and absf(e.x - hk.x) < e.w / 2.0 + 12 and hk.y > e.y - e.h - 6 and hk.y - 24 < e.y))
+	hk.gone = true
+	var r: float = c.radius * (1.5 if u.perk("biggerboom") else 1.0) * blast_scale(u)
+	explode(hk.x, hk.y - 10, r, c.dmg, u)
+	for k in 10:
+		debris(hk.x + randf_range(-14, 14), hk.y - randf_range(4, 24), 2)
+	await wait(20)
+	if c.get("rebuild", false) and not u.dead:
+		await until(func(): return not u.air or u.dead)
+		mount(u, "walker", -1, true)
+		float_text(u, "FRESH WALKER", Color("62d26f"), true)
+
+func patch_job(u: Unit) -> void:
+	mount(u, "tank" if ks(u, "treads") else "walker", -1, true)
+	for k in 6:
+		sparks(u.x + randf_range(-12, 12), u.y - randf_range(4, 30), 2)
+	float_text(u, "PATCH JOB", Color("62d26f"), true)
+	Sfx.play("ping")
+
+func ride_along(u: Unit) -> void:
+	var rk = null
+	for s in squad_alive():
+		if s.def.key == "rook":
+			rk = s
+	banner("RIDE ALONG!", Color("ffb23e"))
+	if rk != null:
+		var gy = T.stand_y(u.x - u.face * 22.0, u.y - 40)
+		await leap_to(rk, Vector2(u.x - u.face * 22.0, gy if gy != null else u.y))
+		rk.armor += 6
+		float_text(rk, "+6 ARMOR", Color("9fb4c9"), true)
+		rk.hand.append({"id": -2, "key": "burst", "tier": Data.base_tier("burst"), "temp": true, "free": true})
+	u.armor += 6
+	float_text(u, "+6 ARMOR", Color("9fb4c9"), true)
+	u.hand.append({"id": -2, "key": "vulcan", "tier": Data.base_tier("vulcan"), "temp": true, "free": true})
+
+func field_refit(u: Unit, heal: int) -> void:
+	banner("FIELD REFIT!", Color("62d26f"))
+	if u.mech != null:
+		u.mech.hp = u.mech.max
+	else:
+		patch_job(u)
+	for s in squad_alive():
+		s.hp = mini(s.max_hp, s.hp + heal)
+		float_text(s, "+%d HP" % heal, Color("62d26f"), true)
+	Sfx.play("coin")
+
+func vehicles_new_turn() -> void:
+	## Start of the squad's turn: hijackers get their vehicle's guns back, Tune-Up repairs.
+	var tune := squad_alive().any(func(o): return o.perk("tuneup"))
+	for s in squad_alive():
+		if s.mech == null:
+			continue
+		mech_cards(s)
+		if tune and s.mech.hp < s.mech.max:
+			s.mech.hp = mini(s.mech.max, s.mech.hp + 6)
+			float_text(s, "TUNE-UP +6", Color("62d26f"))
+
+func hijack(u: Unit, r: Unit) -> void:
+	## R1: walk onto a parked vehicle and you're driving it.
+	r.gone = true
+	mount(u, r.loot.type, r.loot.get("hp", -1))
+	banner("HIJACKED!", Color("ffb23e"), Data.VEHICLES[r.loot.type].name)
+	Sfx.play("power")
+	if squad_alive().any(func(o): return o.perk("hotwire")):
+		u.energy += 1
+		u.hand.append({"id": -2, "key": "vulcan", "tier": Data.base_tier("vulcan"), "temp": true, "free": true})
+		float_text(u, "HOTWIRED +1", Color("ffb23e"))
+	log_msg("%s takes the %s. Its HP soaks every hit until it breaks." % [u.def.name, Data.VEHICLES[r.loot.type].name.to_lower()])
+	ui_dirty = true
+
+func park_ride(x: float, type: String, hp := -1) -> Unit:
+	var gy = T.stand_y(x, 0)
+	if gy == null or gy >= WATER_Y - 4:
+		return null
+	var r := mk_unit()
+	r.team = "neutral"; r.kind = "ride"; r.x = x; r.y = gy; r.w = 30; r.h = 24; r.face = -1
+	r.loot = {"type": type, "hp": hp}
+	units.append(r)
+	return r
+
+func place_vehicles() -> void:
+	## R1: a parked Jackal vehicle in the first stretch, and E6: a Jackal Walker guarding the second
+	## half of it. Neither in a breach, a detour yard or the finale harbor.
+	if T.stretches.is_empty() or mission.get("finale", false) or mission.get("tutorial", false):
+		return
+	var st: Array = T.stretches[0]
+	var w: float = st[1] - st[0]
+	park_ride(st[0] + w * 0.3, pick(["bike", "walker", "tank"]))
+	if mission.get("walker", false):
+		var x: float = st[0] + w * 0.75
+		var y = T.stand_y(x, 0)
+		if y != null and y < WATER_Y - 4:
+			var e := mk_enemy("jwalker", x, y)
+			e.mech = {"type": "walker", "hp": 0, "max": 0, "own": false, "h0": 34, "w0": 16}
+			units.append(e)
+
+func leg_check() -> void:
+	## E6: a Jackal Walker with the ground blown out under one leg topples that way and crushes.
+	for e in units.duplicate():
+		if e.type != "jwalker" or e.dead or e.gone or e.air:
+			continue
+		var l := T.solid(e.x - 13, e.y + 3)
+		var r := T.solid(e.x + 13, e.y + 3)
+		if l == r:
+			continue
+		var dir := -1.0 if not l else 1.0
+		banner("WALKER TOPPLED!", Color("ffd23a"))
+		Sfx.play("bigboom")
+		shake += 8
+		e.face = int(dir)
+		var by = e.last_hit_by if e.last_hit_by is Unit and e.last_hit_by.team == "squad" else (squad_alive()[0] if squad_alive().size() else null)
+		for o in units.duplicate():
+			if o == e or o.dead or o.gone or o.is_pickup() or o.kind in ["pow", "ride", "rivet", "loot"]:
+				continue
+			var dx: float = (o.x - e.x) * dir
+			if dx > 4 and dx < 84 and absf(o.y - e.y) < 50:
+				damage(o, 25, by, {"crush": true})
+				float_text(o, "CRUSHED", Color("ffd23a"))
+		for k in 10:
+			dust(e.x + dir * randf_range(10, 80), e.y)
+		kill(e, by)
+		await wait(30)
+
+func walker_wreck(e: Unit) -> void:
+	## A dead Jackal Walker leaves its walker behind, banged up but drivable.
+	e.gone = true
+	for k in 10:
+		debris(e.x + randf_range(-14, 14), e.y - randf_range(4, 40), 2)
+	puff(e.x, e.y - 20, 2.5)
+	var r := park_ride(e.x, "walker", 18)
+	if r != null:
+		float_at(r.x, r.y - 40, "WALKER UP FOR GRABS", Color("ffb23e"), true)
+
 func spec_placed() -> bool:
 	## true when this level has no specialist (X2), or its POW is already on the map
 	return mission.get("specialist", "") == "" or units.any(func(p): return p.fl.has("specialist"))
@@ -1123,6 +1354,8 @@ func deploy_unit(s: Dictionary, x: float, y = null) -> Unit:
 	units.append(u)
 	if s.def.key == "track":
 		make_rex(u)  # N7: Rex deploys at Track's side
+	if s.def.key == "gears":
+		mount(u, "tank" if ks(u, "treads") else "walker", -1, true)  # N3: Gears deploys in his walker
 	return u
 
 func mk_unit() -> Unit:
@@ -1520,6 +1753,15 @@ func chain_ready(u: Unit, inst: Dictionary) -> String:
 				return "DEATH FROM ABOVE"
 			if c.has("radius") and u.fl.get("molotov", false) and inst.key != "molotov":
 				return "ACCELERANT"
+		"gears":
+			if last == "vulcan" and inst.key == "stomp":
+				return "WALK THE LINE"
+			if inst.key == "mcannon" and u.fl.get("cannoned", false) and not u.fl.has("broadside"):
+				return "BROADSIDE"
+			if last == "eject" and inst.key == "patchjob":
+				return "BAIL OUT"
+			if last == "patchjob" and Data.is_attack(c):
+				return "PIT STOP"
 		"track":
 			if last == "sicem" and c.type == "AIM":
 				return "TAG TEAM"
@@ -1639,7 +1881,7 @@ func unit_at_point(x: float, y: float, shooter, travelled: float, skip: Dictiona
 			if x >= u.x - u.w / 2.0 and x <= u.x + u.w / 2.0 and y >= u.y - u.h and y <= u.y:
 				return u
 			continue
-		if u.dead or u.gone or u.sunk or u.kind == "pow" or u.is_pickup() or u.weight == "buried" or u.fl.get("phased", false):
+		if u.dead or u.gone or u.sunk or u.kind == "pow" or u.kind == "ride" or u.kind == "hulk" or u.is_pickup() or u.weight == "buried" or u.fl.get("phased", false):
 			continue
 		if u.has_st("cloak") and shooter != null and shooter.team != u.team:
 			continue  # PREDATOR: rounds pass right through the shimmer
@@ -1969,7 +2211,7 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 			float_text(tg, "CLANK", Color("c9d1da"))
 			sparks(tg.x, tg.y - 8, 4)
 		return
-	if tg.kind == "loot" or tg.kind == "cache" or tg.kind == "relay" or tg.kind == "slug" or tg.kind == "pad":
+	if tg.kind == "loot" or tg.kind == "cache" or tg.kind == "relay" or tg.kind == "slug" or tg.kind == "pad" or tg.kind == "ride" or tg.kind == "hulk":
 		return
 	if src is Unit and src != tg and src.has_st("berserk") and not o.get("status", false):
 		amt *= 2
@@ -1978,6 +2220,9 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 		return
 	if tg.has_st("vest"):
 		amt = int(ceil(amt / 2.0))
+	if tg.team == "squad" and tg.mech != null:
+		mech_hit(tg, amt)  # N3/R1: the vehicle takes it
+		return
 	if own != null and tg.team == "enemy" and not o.get("status", false) and own.payback > 0:
 		amt += own.payback
 		float_text(tg, "PAYBACK +%d" % own.payback, Color("9fb4c9"), true)
@@ -2274,6 +2519,8 @@ func kill(tg: Unit, src) -> void:
 	feed_kill(tg, src)
 	if tg.type == "shipplate":
 		drop_plate(tg, src)
+	elif tg.type == "jwalker":
+		walker_wreck(tg)
 	elif tg.type == "droppod" or tg.type == "vgate":
 		tg.gone = true
 		for i in 8:
@@ -2996,6 +3243,14 @@ func card_cost(u: Unit, inst: Dictionary) -> int:
 		cost = 0
 	if c.get("girder", false) and ks(u, "rivetdriver"):
 		cost = 0
+	if inst.key in ["stomp", "mcannon"] and u.perk("crusher"):
+		cost = maxi(0, cost - 1)
+	if inst.key == "stomp" and ks(u, "jumpjets"):
+		cost = 0
+	if inst.key == "patchjob" and u.perk("quickpatch"):
+		cost = maxi(0, cost - 1)
+	if inst.key == "mcannon" and u.def.key == "gears" and u.fl.get("cannoned", false) and not u.fl.has("broadside"):
+		cost = 0
 	if (inst.key == "sicem" and ks(u, "chokechain")) or (inst.key == "fetch" and ks(u, "treatbag")):
 		cost = 0
 	if is_build(c) and ks(u, "magnetglove") and not u.fl.get("built", false):
@@ -3082,6 +3337,12 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 				float_text(gt, "+5 ARMOR", Color("9fb4c9"), true)
 		"THE HUNT":
 			u.fl["hunt"] = true
+		"WALK THE LINE", "PIT STOP":
+			u.energy += 1
+		"BROADSIDE":
+			u.fl["broadside"] = true
+		"BAIL OUT":
+			u.energy += u.last_cost
 	u.seq.append([inst.key, c.type])
 	if inst.key == "molotov":
 		u.fl["molotov"] = true
@@ -3089,6 +3350,13 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 		u.fl["bagged"] = true
 	if inst.key == "sentry":
 		u.fl["sentried"] = true
+	if inst.key == "mcannon":
+		u.fl["cannoned"] = true
+	if u.perk("bigbore") and inst.key in ["mcannon", "tankshell"]:
+		c.radius = c.radius + 10
+	if u.perk("heavystomp") and inst.key == "stomp":
+		c.dmg = [c.dmg[0] + 6, c.dmg[1] + 6]
+		c["sweep"] = true
 	if is_build(c):
 		u.fl["built"] = true
 	if inst.key == "pistol" and u.perk("cylinder"):
@@ -3270,6 +3538,14 @@ func commit_aim(p: Vector2) -> void:
 	var c := Data.card(inst)
 	var idx := card_idx
 	var sc: bool = u.adr >= 50 and not inst.get("od", false)
+	var why := mech_ok(u, c)
+	if why != "":
+		float_text(u, why, Color("ff7a3d"))
+		Sfx.play("deny")
+		return
+	if c.get("eject", false):
+		resolve(func(): await _act_eject(u, idx, c, p))
+		return
 	if c.type == "AIM":
 		resolve(func(): await _act_aim(u, idx, c, p, sc))
 		return
@@ -3812,6 +4088,11 @@ func play_on_target(tg: Unit) -> void:
 	var inst: Dictionary = u.hand[idx]
 	var c := Data.card(inst)
 	var sc: bool = u.adr >= 50 and not inst.get("od", false)
+	var why := mech_ok(u, c)
+	if why != "":
+		float_text(u, why, Color("ff7a3d"))
+		Sfx.play("deny")
+		return
 	if c.type == "MELEE":
 		if not melee_valid(u, tg, c):
 			return
@@ -3917,6 +4198,11 @@ func play_self(idx: int) -> void:
 	var c := Data.card(inst)
 	if u.energy < card_cost(u, inst) or busy:
 		return
+	var why := mech_ok(u, c)
+	if why != "":
+		float_text(u, why, Color("ff7a3d"))
+		Sfx.play("deny")
+		return
 	resolve(func(): await _act_self(u, idx, c))
 
 func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
@@ -3952,6 +4238,18 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 			float_text(s, "OVERWATCH +%d" % c.ownet, Color("53d4e2"))
 	if c.get("slug", false):
 		call_slug(u)
+		if c.has("slugturns"):
+			units.back().loot.turns = maxi(units.back().loot.turns, c.slugturns)
+	if c.has("squadarmor"):
+		for s in squad_alive():
+			s.armor += c.squadarmor
+			float_text(s, "+%d ARMOR" % c.squadarmor, Color("9fb4c9"))
+	if c.get("patch", false):
+		patch_job(u)
+	if c.get("ridealong", false):
+		await ride_along(u)
+	if c.has("refit"):
+		field_refit(u, c.refit)
 	if c.has("blink"):
 		await vharr_blink(u, c.blink)
 	if c.has("gwell"):
@@ -4147,6 +4445,12 @@ func make_camp(c: Dictionary) -> void:
 			var add := int(ceil(s.max_hp * Data.CAMP_HEAL)) + (5 if Run.hq("mess") >= 1 else 0)
 			s.hp = mini(s.max_hp, s.hp + add)
 			float_text(s, "+%d" % add, Color("62d26f"))
+		if not s.dead and s.def.key == "gears":
+			# Grease Monkey: the walker is rebuilt to full at every camp
+			if s.mech == null:
+				patch_job(s)
+			else:
+				s.mech.hp = s.mech.max
 	await wait(30)
 	if c == T.camps[0] and T.yard.size() and mission.has("detours"):
 		await pick_detour()
@@ -4643,6 +4947,7 @@ func apply_level_option(u: Unit, o: Dictionary) -> void:
 
 func post_action() -> void:
 	refresh_mounts()
+	await leg_check()
 	var front: Array = squad_alive().filter(func(s): return not s.air)
 	front.sort_custom(func(a, b): return a.x > b.x)
 	if front.size() and not boss_dead:
@@ -5178,7 +5483,12 @@ func start_player_turn() -> void:
 			grant_overdrive(s)
 	refresh_duos()
 	refresh_mounts()
+	vehicles_new_turn()
 	var al0 := squad_alive()
+	if round_n == 1:
+		for s in al0:
+			if s.perk("motorpool"):
+				s.hand.append({"id": -3, "key": "slugcall", "tier": Data.OD_TIER, "temp": true})
 	if round_n == 1 and Run.campaign() and Run.hq("hangar") >= 1 and al0.size():
 		# B4 Hangar: the Slug rolls out with the squad
 		call_slug(al0[0])
@@ -5225,6 +5535,8 @@ func start_player_turn() -> void:
 func full_move(s: Unit) -> float:
 	## B5: light weapons add movement, heavy ones take some away.
 	var mv: float = s.def.spd + s.s.bonus.move + int(s.g("move")) + (60 if s.perk("charge") else 0) + int(s.g("light")) - int(s.g("heavy"))
+	if s.mech != null:
+		mv += Data.VEHICLES[s.mech.type].move + (60 if s.perk("legservos") else 0)
 	return roundf(mv * 0.6) if s.carry == "colors" else mv
 
 func jet_fuel(u: Unit) -> int:
@@ -5562,6 +5874,7 @@ func enemy_phase() -> void:
 		banner("AIRSTRIKE INBOUND", Color("ff4d3d"), "MOVE OFF THE MARKERS")
 		Sfx.play("alarm")
 		await wait(40)
+	await leg_check()
 	if squad_alive().is_empty():
 		game_over()
 		return
@@ -7433,6 +7746,8 @@ func step() -> void:
 					Sfx.play("select")
 				if p.kind == "wreck" and not p.stripped and absf(p.x - u.x) < 28 and absf(p.y - u.y) < 30:
 					strip_wreck(p, u)
+				if p.kind == "ride" and not p.gone and u.mech == null and absf(p.x - u.x) < 22 and absf(p.y - u.y) < 30:
+					hijack(u, p)
 				if p.kind == "pow" and not p.freed and absf(p.x - u.x) < 26 and absf(p.y - u.y) < 30:
 					p.freed = true
 					p.dead_t = 0
@@ -7617,7 +7932,7 @@ func physics(u: Unit) -> void:
 		u.vx = u.vault.vx  # clear the wall top before moving over it
 	if u.para:
 		u.vx = sin(t / 30.0 + u.id) * 0.4
-	if (not u.dead or u.is_body()) and not u.is_prop():
+	if (not u.dead or u.is_body()) and not u.is_prop() and u.kind != "hulk":
 		body_collisions(u)
 	var n := maxi(1, int(ceil(maxf(absf(u.vx), absf(u.vy)) / 2.0)))
 	for i in n:

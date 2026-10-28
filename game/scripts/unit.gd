@@ -58,6 +58,7 @@ var freed := false
 var detour := false    # spawned by the camp detour (its guards, prisoners and wrecks)
 var stripped := false  # a salvage wreck someone already stripped
 var pow_name := ""
+var mech = null       # N3/R1: the vehicle this unit drives {type, hp, max, own, h0, w0}, or null
 var planted := false
 var built := 0
 var dragged := false
