@@ -210,7 +210,7 @@ func build_deck() -> void:
 		var cv := CardView.new()
 		cv.opt = Services.next_tier(c) if show_up and Run.upgradable(c) and not Services.is_od(c) else c
 		cv.size = Vector2(CW, CH)
-		cv.position = Vector2(MID.position.x + (i % 7) * (CW + 5), MID.position.y + 66 + (i / 7) * (CH + 18))
+		cv.position = Vector2(MID.position.x + (i % 7) * (CW + 5), MID.position.y + 66 + (i / 7) * (CH + 24))  # room for the rarity label and a fuse badge
 		cv.selected = sel == c
 		cv.corner = Services.src_tag(c)
 		var g := Services.fuse_group(me, c).size()
@@ -823,7 +823,10 @@ func draw_deck(me: Dictionary) -> void:
 	if sel == null:
 		var hint := "Pick a card to Polish, Mod, Fuse, Evolve or Burn it. You see the result before you pay."
 		draw_rect(Rect2(MID.position.x, MID.end.y - 86, MID.size.x, 86), Color(0.05, 0.035, 0.03, 0.7))
-		Art.text(self, hint, Vector2(MID.get_center().x, MID.end.y - 38), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
+		# wrapped to the middle panel so it never runs into the side column's buttons
+		var hl := CardView.wrap_text(hint, MID.size.x - 24, 16)
+		for i in hl.size():
+			Art.text(self, hl[i], Vector2(MID.get_center().x, MID.end.y - 38 - (hl.size() - 1) * 7 + i * 14), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
 
 func draw_gear(me: Dictionary) -> void:
 	var x := MID.position.x

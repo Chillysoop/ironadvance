@@ -234,7 +234,7 @@ func _draw() -> void:
 			break
 		var line: String = bl[i]
 		if i < bl.size() - 1 and y + lh > bottom:
-			line += "..."
+			line = line.trim_suffix(".") + "..."
 			cut = true
 		Art.text(self, line, Vector2(w / 2.0, y + 2), 16, Color("3a3024") if not dim else Color("4a4030"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
 		y += lh
@@ -274,9 +274,10 @@ func _draw() -> void:
 		Art.text(self, corner, Vector2(1, -3), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 1)
 	if badge != "":
 		var bw := Art.text_width(badge, 8) + 8
-		draw_rect(Rect2(w - bw + 4, -7, bw, 13), INK)
-		draw_rect(Rect2(w - bw + 5, -6, bw - 2, 11), Color("8b63d9"))
-		Art.text(self, badge, Vector2(w + 4 - bw / 2.0, 4), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 1)
+		# sits on the top edge, above the type banner, so it never covers the type or the rarity gem
+		draw_rect(Rect2(w - bw + 4, -12, bw, 13), INK)
+		draw_rect(Rect2(w - bw + 5, -11, bw - 2, 11), Color("8b63d9"))
+		Art.text(self, badge, Vector2(w + 4 - bw / 2.0, -1), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 1)
 	if label_top != "":
 		Art.text(self, label_top, Vector2(w / 2.0, -6), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 	if no_move:
