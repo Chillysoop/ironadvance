@@ -18,6 +18,8 @@ var held := {}           # textures must stay referenced until the frame renders
 var go_btn: Control = null
 var threat_btn: Control = null
 var company_open := false  # C1: the roster overlay where you pick who deploys
+var book_open := false     # W12: the War Book overlay (the act's challenges)
+var fort_btn: Control = null
 var msg := ""
 
 func _ready() -> void:
@@ -34,17 +36,17 @@ func build() -> void:
 	bk.text = "<< HQ"
 	bk.color = Color("9aa2ae")
 	bk.small = true
-	bk.size = Vector2(110, 32)
+	bk.size = Vector2(90, 32)
 	bk.position = Vector2(16, 494)
 	bk.pressed.connect(func(): Sfx.play("click"); back.emit())
 	add_child(bk)
 	var th := HudScript.PixButton.new()
 	th.small = true
-	th.size = Vector2(200, 32)
-	th.position = Vector2(136, 494)
+	th.size = Vector2(150, 32)
+	th.position = Vector2(114, 494)
 	th.color = Color("ff7a3d") if Run.threat > 0 else Color("9aa2ae")
 	th.text = "THREAT %d" % Run.threat
-	th.sub = "+%d%% PAY" % roundi(Run.threat * Data.CAMP_THREAT_PAY * 100) if Run.threat > 0 else "OPTIONAL, MORE PAY"
+	th.sub = "+%d%% PAY" % roundi(Run.threat * Data.CAMP_THREAT_PAY * 100) if Run.threat > 0 else "OPTIONAL"
 	th.pressed.connect(func():
 		# P3: pick a threat level per op; each level stacks on the ones below it
 		Run.threat = (Run.threat + 1) % (Data.THREATS.size() + 1)
@@ -67,8 +69,17 @@ func build() -> void:
 	cb.color = Color("53d4e2")
 	cb.text = "DONE" if company_open else "COMPANY"
 	cb.sub = "" if company_open else "SQUAD %d OF %d" % [Run.soldiers.size(), Run.company().size()]
-	cb.pressed.connect(func(): Sfx.play("click"); company_open = not company_open; msg = ""; build())
+	cb.pressed.connect(func(): Sfx.play("click"); company_open = not company_open; book_open = false; msg = ""; build())
 	add_child(cb)
+	var wb := HudScript.PixButton.new()
+	wb.small = true
+	wb.size = Vector2(120, 32)
+	wb.position = Vector2(272, 494)
+	wb.color = Color("ffb23e")
+	wb.text = "DONE" if book_open else "WAR BOOK"
+	wb.sub = "" if book_open else "%d/3 DONE" % challenges_done()
+	wb.pressed.connect(func(): Sfx.play("click"); book_open = not book_open; company_open = false; build())
+	add_child(wb)
 	var sc := Run.sector(sel)
 	var go := HudScript.PixButton.new()
 	go.size = Vector2(250, 40)
@@ -82,7 +93,7 @@ func build() -> void:
 		go.pressed.connect(func(): Sfx.play("start"); attack.emit(sc, false))
 	elif Run.sector_held(sc.id) and Run.bonus_at(sc) != "":
 		go.text = "BONUS OP"
-		go.sub = "PAYS EPIC GEAR"
+		go.sub = {"salvage": "PAYS %d SALVAGE" % Data.BONUS_SALVAGE, "defector": "PAYS A RECRUIT", "crash": "LAB KILLS COUNT DOUBLE"}.get(Data.BONUS_OPS[Run.bonus_at(sc)].get("pay", ""), "PAYS EPIC GEAR")
 		go.color = Color("c47bff")
 		go.pressed.connect(func(): Sfx.play("start"); attack.emit(sc, false))
 	elif Run.sector_held(sc.id):
@@ -97,6 +108,31 @@ func build() -> void:
 		go.disabled = true
 	add_child(go)
 	go_btn = go
+	fort_btn = null
+	if not sc.is_empty() and Run.sector_held(sc.id) and sc.id != "lz" and not sc.get("stronghold", false):
+		# W4: fortify a held sector with scrip
+		go.size = Vector2(160, 40)
+		if go.sub == "HALF PAY, NOBODY DIES":
+			go.sub = "HALF PAY, SAFE"
+		var fb := HudScript.PixButton.new()
+		fb.small = true
+		fb.size = Vector2(84, 40)
+		fb.position = Vector2(566, 490)
+		fb.color = Color("c9a46a")
+		var f := Run.fort(Run.sec_key(sc.id))
+		fb.text = "FORTIFY"
+		fb.sub = "MAX" if f >= Data.FORTIFY_COST.size() else "%d SCRIP" % Data.FORTIFY_COST[f]
+		fb.disabled = Run.fortify_block(sc) != ""
+		fb.pressed.connect(func():
+			if Run.fortify(sc):
+				Sfx.play("levelup")
+				build())
+		add_child(fb)
+		fort_btn = fb
+
+func challenges_done() -> int:
+	var a := int(Run.camp.get("act", 0))
+	return Data.ACT_CHALLENGES[a].filter(func(id): return Run.camp.get("chal", {}).has("%d:%s" % [a, id])).size()
 
 func node_pos(sc: Dictionary) -> Vector2:
 	return Vector2(sc.at[0], sc.at[1])
@@ -122,6 +158,8 @@ func _gui_input(ev: InputEvent) -> void:
 				Sfx.play("deny" if msg != "" else "select")
 				build()
 				return
+		return
+	if book_open:
 		return
 	if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 		for sc in Run.act().sectors:
@@ -213,6 +251,16 @@ func _draw() -> void:
 		draw_rect(r.grow(-2), col)
 		if sc.id == sel:
 			draw_rect(r.grow(3), Color.WHITE, false, 2)
+		var fr := Run.fort(Run.sec_key(sc.id)) if st == "held" else 0
+		if fr > 0:
+			# W4: sandbags along the bottom and a flag per rank
+			for k in 4:
+				draw_rect(Rect2(r.position.x - 4 + k * (sz + 8) / 4.0, r.end.y - 3, (sz + 8) / 4.0 - 1, 6), Color("c9a46a"))
+				draw_rect(Rect2(r.position.x - 4 + k * (sz + 8) / 4.0, r.end.y - 3, (sz + 8) / 4.0 - 1, 6), Color(0.05, 0.035, 0.03), false, 1)
+			for k in fr:
+				var fx := r.position.x + 2 + k * 8
+				draw_line(Vector2(fx, r.position.y), Vector2(fx, r.position.y - 12), Color(0.05, 0.035, 0.03), 2)
+				draw_rect(Rect2(fx + 1, r.position.y - 12, 6, 4), Color("62d26f"))
 		if Run.bonus_at(sc) != "":
 			# P2: a bonus op waiting on this sector
 			var bp := p + Vector2(sz / 2 + 4, -sz / 2 - 4)
@@ -224,12 +272,12 @@ func _draw() -> void:
 		# a soft plate under the name and perk, so a link running past never cuts through the words
 		var what_w := 0.0
 		if sc.has("perk") or sc.has("hold"):
-			what_w = Art.text_width(Data.SECTOR_PERKS[sc.perk].name if sc.has("perk") else hold_text(sc.hold), 16, true)
+			what_w = Art.text_width(Data.SECTOR_PERKS[sc.perk].name if sc.has("perk") else hold_text(Run.hold_pay(sc, Run.fort(Run.sec_key(sc.id)))), 16, true)
 		var pw := maxf(Art.text_width(sc.name, 8), what_w) + 8
 		draw_rect(Rect2(p.x - pw / 2, p.y + sz / 2 + 4, pw, 32.0 if what_w > 0 else 14.0), Color(0.06, 0.1, 0.12, 0.55))
 		Art.text(self, sc.name, p + Vector2(0, sz / 2 + 14), 8, Color.WHITE if st != "locked" else Color("8a929c"), HORIZONTAL_ALIGNMENT_CENTER)
 		if sc.has("perk") or sc.has("hold"):
-			var what: String = Data.SECTOR_PERKS[sc.perk].name if sc.has("perk") else hold_text(sc.hold)
+			var what: String = Data.SECTOR_PERKS[sc.perk].name if sc.has("perk") else hold_text(Run.hold_pay(sc, Run.fort(Run.sec_key(sc.id))))
 			Art.text(self, what, p + Vector2(0, sz / 2 + 30), 16, Color("62d26f") if st == "held" else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 	var need := int(A.need)
 	# C2: say what taking them unlocks
@@ -247,6 +295,8 @@ func _draw() -> void:
 	draw_side()
 	if company_open:
 		draw_company()
+	elif book_open:
+		draw_book()
 
 func draw_company() -> void:
 	## C1: the whole company with each soldier's fit for the picked sector. Click to put them in or out.
@@ -283,6 +333,28 @@ func draw_company() -> void:
 			# a row above IN SQUAD / BENCH, so "GREAT" doesn't read as part of "GREAT IN SQUAD"
 			Art.text(self, "FIT " + f.to_upper(), Vector2(r.position.x + 8, r.end.y - 22), 8, {"great": Color("62d26f"), "ok": Color("e8dcc2"), "rough": Color("ff7a5a")}[f])
 
+func draw_book() -> void:
+	## W12: the War Book. This act's three challenges, each paid once.
+	draw_rect(MAP, Color(0.04, 0.05, 0.06, 0.97))
+	draw_rect(MAP, Color("ffb23e"), false, 2)
+	var a := int(Run.camp.get("act", 0))
+	Art.text(self, "WAR BOOK  ACT %s CHALLENGES" % Run.act().roman, Vector2(MAP.position.x + 12, MAP.position.y + 22), 8, Color("ffb23e"))
+	Art.text(self, "Optional. Each pays %d salvage, %d bio and a Legendary item, once." % [Data.CHALLENGE_PAY.salvage, Data.CHALLENGE_PAY.bio], Vector2(MAP.end.x - 12, MAP.position.y + 22), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
+	var ids: Array = Data.ACT_CHALLENGES[a]
+	for i in ids.size():
+		var id: String = ids[i]
+		var done: bool = Run.camp.get("chal", {}).has("%d:%s" % [a, id])
+		var r := Rect2(MAP.position.x + 12, MAP.position.y + 40 + i * 70, MAP.size.x - 24, 62)
+		draw_rect(r, Color("1e2a22") if done else Color("1e2126"))
+		draw_rect(r, Color("62d26f") if done else Color("3a4048"), false, 2)
+		draw_rect(Rect2(r.position.x + 14, r.position.y + 18, 24, 24), Color(0.05, 0.035, 0.03))
+		if done:
+			draw_line(Vector2(r.position.x + 18, r.position.y + 30), Vector2(r.position.x + 24, r.position.y + 37), Color("62d26f"), 3)
+			draw_line(Vector2(r.position.x + 24, r.position.y + 37), Vector2(r.position.x + 35, r.position.y + 22), Color("62d26f"), 3)
+		Art.text(self, Data.CHALLENGES[id].name, Vector2(r.position.x + 52, r.position.y + 26), 8, Color("62d26f") if done else Color("ffd23a"))
+		Art.text(self, Run.challenge_text(id), Vector2(r.position.x + 52, r.position.y + 48), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		Art.text(self, "DONE" if done else "OPEN", Vector2(r.end.x - 14, r.position.y + 26), 8, Color("62d26f") if done else Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)
+
 func hold_text(h: Dictionary) -> String:
 	var parts: Array = []
 	for k in h:
@@ -318,22 +390,30 @@ func draw_side() -> void:
 		var B: Dictionary = Data.BONUS_OPS[Run.bonus_at(sc)]
 		Art.text(self, "BONUS: " + B.name, Vector2(x, y), 8, Color("c47bff"))
 		y += 6
-		for line in CardView.wrap_text(B.text + " %d ops left." % int(Run.camp.bonus.left), SIDE.size.x - 24, 16):
+		for line in CardView.wrap_text(Run.bonus_text(Run.bonus_at(sc)) + " %d ops left." % int(Run.camp.bonus.left), SIDE.size.x - 24, 16):
 			y += 16
 			Art.text(self, line, Vector2(x, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		y += 18
 	elif sc.has("hold"):
-		Art.text(self, "HOLDING IT", Vector2(x, y), 8, Color("62d26f"))
+		var f := Run.fort(Run.sec_key(sc.id))
+		Art.text(self, "HOLDING IT" + ("  FORTIFIED %d/3" % f if f > 0 else ""), Vector2(x, y), 8, Color("62d26f"))
 		y += 6
-		for line in CardView.wrap_text(hold_text(sc.hold) + " for the rest of the war.", SIDE.size.x - 24, 16):
+		var nxt := "" if f >= 3 or st != "held" else " Fortified: " + hold_text(Run.hold_pay(sc, f + 1)).to_lower().replace(" per op", "") + "."
+		for line in CardView.wrap_text(hold_text(Run.hold_pay(sc, f)) + " for the rest of the war." + nxt, SIDE.size.x - 24, 16):
 			y += 16
 			Art.text(self, line, Vector2(x, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		y += 18
 	elif sc.has("perk"):
 		var P: Dictionary = Data.SECTOR_PERKS[sc.perk]
-		Art.text(self, "HOLDING IT: " + P.name, Vector2(x, y), 8, Color("62d26f"))
+		var f := Run.fort(Run.sec_key(sc.id))
+		Art.text(self, ("FORTIFIED %d/3: " % f if f > 0 else "HOLDING IT: ") + P.name, Vector2(x, y), 8, Color("62d26f"))
 		y += 6
-		for line in CardView.wrap_text(P.text, SIDE.size.x - 24, 16):
+		var ptx: String = P.text if f == 0 else P.text.replace(" this act", " for the rest of the war")
+		for k in range(1, f):
+			ptx += " " + Data.FORTIFY_PERK[sc.perk][k]
+		if st == "held" and f < 3:
+			ptx += " Fortify: " + Data.FORTIFY_PERK[sc.perk][f].to_lower()
+		for line in CardView.wrap_text(ptx, SIDE.size.x - 24, 16):
 			y += 16
 			Art.text(self, line, Vector2(x, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		y += 18

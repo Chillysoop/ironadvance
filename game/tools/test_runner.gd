@@ -852,6 +852,8 @@ func run() -> void:
 			await campaignplay()
 		"campfix":
 			await campfix()
+		"wardeep":
+			await wardeep()
 		"straggler":
 			await straggler()
 		"hoverwedge":
@@ -5507,6 +5509,103 @@ func campfix() -> void:
 	Run.meta = keep
 	Run.save_meta()
 
+func wardeep() -> void:
+	## Campaign ideas W1, W4, W6, W12: two ways into every act, fortifying held sectors, new bonus
+	## ops, and the War Book's act challenges.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	for a in Data.ACTS.size():
+		var lz_links: Array = Data.ACTS[a].sectors.filter(func(sc): return sc.links.has("lz"))
+		check(lz_links.size() >= 2, "act %d has two ways in (%s)" % [a + 1, lz_links.map(func(sc): return sc.id)])
+	# W4: fortify an income sector and a perk sector
+	Run.camp.held.append(Run.sec_key("d1"))
+	Run.camp.held.append(Run.sec_key("d2"))
+	check(Run.income().scrip == 20, "Mudflat Landing pays 20 before fortifying (%s)" % [Run.income()])
+	Run.scrip = 2000
+	check(Run.fortify(Run.sector("d1")) and Run.scrip == 2000 - Data.FORTIFY_COST[0], "fortifying costs %d scrip (%d left)" % [Data.FORTIFY_COST[0], Run.scrip])
+	check(Run.income().scrip == 30, "rank 1 pays half again (%s)" % [Run.income()])
+	Run.fortify(Run.sector("d1"))
+	Run.fortify(Run.sector("d1"))
+	check(Run.income().scrip == 50 and Run.fort("0:d1") == 3, "rank 3 pays 50 (%s)" % [Run.income()])
+	check(not Run.fortify(Run.sector("d1")) and Run.fortify_block(Run.sector("d1")) == "FULLY FORTIFIED", "three ranks at most")
+	check(Run.fortify_block(Run.sector("j1")) == "HOLD IT FIRST", "only held sectors can be fortified")
+	check(Run.perk_power("aid") == 1 and Run.hq("mess") == 1, "Rice Terraces' Field Hospital works in act I")
+	main.show_war_room()
+	await frames_wait(5)
+	main.screen.sel = "d1"
+	main.screen.build()
+	await frames_wait(10)
+	await shot("wd_room_fort")
+	check(main.screen.fort_btn != null and main.screen.fort_btn.disabled, "the War Room shows a maxed FORTIFY button on a held sector")
+	main.screen.sel = "d2"
+	main.screen.build()
+	await frames_wait(5)
+	main.screen.fort_btn.pressed.emit()
+	await frames_wait(5)
+	await shot("wd_room_perk")
+	check(Run.fort("0:d2") == 1, "the FORTIFY button fortifies the selected sector")
+	Run.camp.act = 1
+	check(Run.perk_power("aid") == 1 and Run.hq("mess") == 1, "a fortified perk lasts into act II")
+	Run.camp.fort["0:d2"] = 2
+	check(Run.hq("mess") == 3, "rank 2 Field Hospital is worth Mess Hall rank 3 (%d)" % Run.hq("mess"))
+	Run.camp.fort["0:d2"] = 3
+	check(Run.income().salvage >= 1, "rank 3 perk sector pays salvage (%s)" % [Run.income()])
+	Run.camp.act = 0
+	# W6: the new bonus ops pay their own way
+	for kind in ["yard", "column", "crash"]:
+		Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": kind, "left": 2}
+		Run.start_op(Run.sector("d1"))
+		check(Run.level.bonus == kind and Run.level.job == Data.BONUS_OPS[kind].job, "%s is a %s op" % [kind, Run.level.job])
+	Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": "yard", "left": 2}
+	Run.start_op(Run.sector("d1"))
+	var b: Battle = main.start_battle(0, Run.level)
+	b.mission_over.disconnect(main._on_mission_over)
+	await until(func(): return b.state == "player" and not b.busy)
+	var sal := int(Run.meta.salvage)
+	b.job_reward()
+	check(int(Run.meta.salvage) == sal + Data.BONUS_SALVAGE, "a salvage yard pays %d salvage" % Data.BONUS_SALVAGE)
+	Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": "column", "left": 2}
+	Run.start_op(Run.sector("d1"))
+	b.mission = Run.level
+	var n0 := Run.company().size()
+	b.job_reward()
+	check(Run.company().size() == n0 + 1 and Run.company().back().get("spec", "") == "defector", "a defector column brings a Jackal Defector into the company")
+	main.show_title()
+	await frames_wait(5)
+	Run.load_campaign(9)
+	Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": "crash", "left": 2}
+	Run.start_op(Run.sector("d1"))
+	var k0 := Run.tech_kills("blinker")
+	Run.after_op({"won": true, "rounds": 30, "downed_by": {"moss": true}, "kinds": {"blinker": 3}, "op": Run.op_over(true)})
+	check(Run.tech_kills("blinker") == k0 + 6, "a crash site counts alien kills double (%d -> %d)" % [k0, Run.tech_kills("blinker")])
+	# W12: challenges
+	Run.start_op(Run.sector("j1"))
+	var stash0 := Run.stash.size() + Run.belt.size()
+	var inc := Run.after_op({"won": true, "rounds": 8, "downed_by": {"moss": false}, "op": Run.op_over(true)})
+	check(inc.challenges.size() == 2 and Run.camp.chal.has("0:clean") and Run.camp.chal.has("0:fast"), "a quick clean win completes CLEAN SWEEP and BLITZ (%s)" % [inc.challenges])
+	check(Run.stash.size() + Run.belt.size() == stash0 + 2, "each challenge puts a Legendary item in the stash")
+	Run.start_op(Run.sector("j2"))
+	inc = Run.after_op({"won": true, "rounds": 8, "downed_by": {}, "op": Run.op_over(true)})
+	check(inc.challenges.is_empty(), "a challenge pays only once")
+	for id in ["d3", "j3"]:
+		Run.camp.held.append(Run.sec_key(id))
+	Run.start_op(Run.sector("boss"))
+	inc = Run.after_op({"won": true, "rounds": 20, "downed_by": {"moss": true}, "op": Run.op_over(true)})
+	check(Run.camp.chal.has("0:sweep"), "holding every act I sector before the Boar's Den falls completes TOTAL CONTROL (%s)" % [inc.challenges])
+	main.show_war_room()
+	await frames_wait(5)
+	main.screen.book_open = true
+	Run.camp.act = 0
+	main.screen.build()
+	await frames_wait(10)
+	await shot("wd_book")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
 func warmap() -> void:
 	## Campaign step 1: save slots, a separate base, the War Room, sector income and perks, the
 	## stronghold, act two, and a real op played by the bot.
@@ -5536,7 +5635,7 @@ func warmap() -> void:
 	await frames_wait(20)
 	await shot("wm_room_start")
 	var open: Array = Run.act().sectors.filter(func(sc): return Run.sector_open(sc)).map(func(sc): return sc.id)
-	check(open == ["d1"], "only the sector next to the landing zone is open (%s)" % [open])
+	check(open == ["d1", "d2"], "only the two sectors next to the landing zone are open (%s)" % [open])
 	check(not Run.sector_open(Run.sector("boss")), "the stronghold starts sealed")
 	Run.start_op(Run.sector("d1"))
 	check(Run.level.segments.size() == 6 and Run.level.segments.count("camp") == 1, "a sector op has one camp (%s)" % [Run.level.segments])
@@ -5594,7 +5693,7 @@ func warmap() -> void:
 	check(res.get("act_done", "") == "LANDFALL" and int(Run.camp.act) == 1, "beating the fort clears act I")
 	check(not Run.camp_perk("aid"), "act I's perks stay in act I")
 	check(Run.income().scrip == 20, "act I's income keeps paying in act II (%s)" % [Run.income()])
-	check(Run.act().sectors.filter(func(sc): return Run.sector_open(sc)).size() == 1, "act II starts with one open sector")
+	check(Run.act().sectors.filter(func(sc): return Run.sector_open(sc)).size() == 2, "act II starts with two open sectors (W1)")
 	# save, leave, load
 	Run.soldiers[1].lvl = 5
 	Run.soldiers[1].deck.append(Run.new_card("frag", 2, "shop"))

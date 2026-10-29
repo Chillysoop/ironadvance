@@ -586,9 +586,9 @@ func hq(id: String) -> int:
 	var r := int(meta.get("hq", {}).get(id, 0))
 	if campaign():
 		match id:
-			"motor": r = maxi(r, 1 if camp_perk("fuel") else 0)
-			"mess": r = maxi(r, 1 if camp_perk("aid") else 0)
-			"armory": r = maxi(r, 2 if camp_perk("supply") else 0)
+			"motor": r = maxi(r, mini(perk_power("fuel"), 2))
+			"mess": r = maxi(r, int([0, 1, 3, 3][perk_power("aid")]))
+			"armory": r = maxi(r, int([0, 2, 3, 3][perk_power("supply")]))
 	return r
 
 func hq_buildings() -> Array:
@@ -793,7 +793,7 @@ func new_card(key: String, tier := -1, from := "") -> Dictionary:
 	return c
 
 func luck_total() -> int:
-	var n := luck + (1 if camp_perk("lookout") else 0) + (2 if has_gear("charm") else 0) + (1 if has_gear("dogtags") else 0) + (2 if has_cmd("rabbit") else 0) + temp_luck
+	var n: int = luck + int([0, 1, 2, 2][perk_power("lookout")]) + (1 if perk_power("airfield") >= 2 else 0) + (2 if has_gear("charm") else 0) + (1 if has_gear("dogtags") else 0) + (2 if has_cmd("rabbit") else 0) + temp_luck
 	for s in soldiers:
 		if s.alive:
 			n += int(gear_bonus(s).get("luck", 0))
@@ -1451,8 +1451,59 @@ func sector_open(sc: Dictionary) -> bool:
 	return sc.links.any(func(l): return sector_held(l))
 
 func camp_perk(id: String) -> bool:
-	## M3: a held sector's perk, only for the act it's in.
-	return campaign() and act().sectors.any(func(sc): return sc.get("perk", "") == id and camp.held.has(sec_key(sc.id)))
+	## M3: a held sector's perk, only for the act it's in (or the whole war once fortified, W4).
+	return perk_power(id) > 0
+
+func perk_power(id: String) -> int:
+	## W4: 0 when no held sector gives this perk now, else its strength: 1 (rank 0-1), 2 or 3.
+	if not campaign():
+		return 0
+	var best := 0
+	for key in camp.get("held", []):
+		var parts: PackedStringArray = key.split(":")
+		var sc := sector(parts[1], int(parts[0]))
+		if sc.get("perk", "") != id:
+			continue
+		var f := fort(key)
+		if int(parts[0]) == int(camp.get("act", 0)) or f >= 1:
+			best = maxi(best, maxi(1, f))
+	return mini(best, 3)
+
+func fort(key: String) -> int:
+	## W4: how far a held sector ("act:id") is fortified, 0-3.
+	return int(camp.get("fort", {}).get(key, 0))
+
+func fortify_block(sc: Dictionary) -> String:
+	## Why this sector can't be fortified right now, or "".
+	var key := sec_key(sc.id)
+	if sc.get("stronghold", false) or not camp.held.has(key):
+		return "HOLD IT FIRST"
+	if fort(key) >= Data.FORTIFY_COST.size():
+		return "FULLY FORTIFIED"
+	if scrip < Data.FORTIFY_COST[fort(key)]:
+		return "NEED %d SCRIP" % Data.FORTIFY_COST[fort(key)]
+	return ""
+
+func fortify(sc: Dictionary) -> bool:
+	if fortify_block(sc) != "":
+		return false
+	var key := sec_key(sc.id)
+	scrip -= Data.FORTIFY_COST[fort(key)]
+	var f: Dictionary = camp.get("fort", {})
+	f[key] = fort(key) + 1
+	camp["fort"] = f
+	save_campaign()
+	return true
+
+func hold_pay(sc: Dictionary, f: int) -> Dictionary:
+	## W4: what a held sector pays after each op at fortify rank f.
+	var out := {}
+	var h: Dictionary = sc.get("hold", {})
+	for k in h:
+		out[k] = ceili(int(h[k]) * (1.0 + 0.5 * f))
+	if sc.has("perk") and f >= 3:
+		out["salvage"] = 1
+	return out
 
 func income() -> Dictionary:
 	## M2: what every held sector in the war pays after each op.
@@ -1461,7 +1512,7 @@ func income() -> Dictionary:
 		return out
 	for key in camp.held:
 		var parts: PackedStringArray = key.split(":")
-		var h: Dictionary = sector(parts[1], int(parts[0])).get("hold", {})
+		var h := hold_pay(sector(parts[1], int(parts[0])), fort(key))
 		for k in h:
 			out[k] = out.get(k, 0) + int(h[k])
 	return out
@@ -1508,6 +1559,7 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 		lv.boss_hp = int(lv.boss_hp * m)
 		lv.plate = int(lv.plate * m)
 	lv["op"] = sc.id
+	lv["act"] = int(camp.get("act", 0))
 	lv["job"] = job
 	if sc.get("varga", false) and not patrol:
 		lv["guest"] = "varga"  # S3: the colonel fights alongside the company this once
@@ -1563,6 +1615,7 @@ func op_over(won: bool) -> Dictionary:
 	if level.get("bonus", "") != "" and won:
 		camp.bonus = {}
 		out["bonus"] = Data.BONUS_OPS[level.bonus].name
+		out["pay"] = Data.BONUS_OPS[level.bonus].get("pay", "epic")
 	if not won or level.get("patrol", false) or level.get("bonus", "") != "":
 		return out
 	var sc := sector(level.op)
@@ -1593,11 +1646,13 @@ func after_op(st := {}) -> Dictionary:
 	inc.merge(book_service(st))
 	inc["deserter"] = deserter(st)
 	var kk: Dictionary = camp.get("kills", {})
+	var crash := 2 if st.get("won", false) and Data.BONUS_OPS.get(level.get("bonus", ""), {}).get("pay", "") == "crash" else 1
 	for ty in st.get("kinds", {}):
-		kk[ty] = int(kk.get(ty, 0)) + int(st.kinds[ty])
+		kk[ty] = int(kk.get(ty, 0)) + int(st.kinds[ty]) * crash
 	camp["kills"] = kk
 	inc["engineer"] = engineer_joins()
 	inc["bonus"] = roll_bonus()
+	inc["challenges"] = check_challenges(st)
 	scrip += inc.scrip
 	meta.salvage = int(meta.get("salvage", 0)) + inc.salvage
 	meta.bio = int(meta.get("bio", 0)) + inc.bio
@@ -1639,6 +1694,46 @@ func engineer_joins() -> String:
 	var names: Array = Data.CALLSIGNS.filter(func(c): return not used.has(c))
 	var s := enlist(spec_offer("engineer", names[randi() % names.size()] if names.size() else "SPARKS"))
 	return "%s, a Gate Engineer, joined the company with Vharr tech." % s.def.name
+
+func check_challenges(st: Dictionary) -> Array:
+	## W12: the act's three feats, each paid once. Returns a news line per feat done.
+	var out: Array = []
+	if level.is_empty() or level.get("patrol", false):
+		return out
+	var a := int(level.get("act", camp.get("act", 0)))
+	var won: bool = st.get("won", false) and alive_count() > 0
+	var fell: bool = st.get("downed_by", {}).values().any(func(v): return v)
+	var took_fort: bool = st.get("op", {}).has("act_done")
+	var done: Dictionary = camp.get("chal", {})
+	for id in Data.ACT_CHALLENGES[a]:
+		var key := "%d:%s" % [a, id]
+		if done.has(key) or not won:
+			continue
+		var ok := false
+		match id:
+			"clean": ok = not fell
+			"fast": ok = int(st.get("rounds", 99)) <= Data.BLITZ_ROUNDS
+			"sweep": ok = took_fort and act(a).sectors.all(func(sc): return sc.get("stronghold", false) or camp.held.has(sec_key(sc.id, a)))
+			"threat": ok = took_fort and threat >= 2
+			"bonus": ok = level.get("bonus", "") != ""
+		if not ok:
+			continue
+		done[key] = true
+		meta.salvage = int(meta.get("salvage", 0)) + int(Data.CHALLENGE_PAY.salvage)
+		meta.bio = int(meta.get("bio", 0)) + int(Data.CHALLENGE_PAY.bio)
+		var it := roll_item(Data.TIER_MAX)
+		add_loot(it)
+		out.append("Challenge done: %s. +%d salvage, +%d bio and a Legendary %s." % [Data.CHALLENGES[id].name, Data.CHALLENGE_PAY.salvage, Data.CHALLENGE_PAY.bio, Data.item_name(it)])
+	camp["chal"] = done
+	return out
+
+func challenge_text(id: String) -> String:
+	var tx: String = Data.CHALLENGES[id].text
+	return tx % Data.BLITZ_ROUNDS if id == "fast" else tx
+
+func bonus_text(kind: String) -> String:
+	var tx: String = Data.BONUS_OPS[kind].text
+	return tx % Data.BONUS_SALVAGE if kind == "yard" else tx
 
 func roll_bonus() -> String:
 	## P2: a bonus op may turn up on a held sector; an old one counts down and leaves. Returns news.

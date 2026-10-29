@@ -236,6 +236,7 @@ func campaign_home(st := {}) -> void:
 	for k in ["deserter", "engineer", "bonus"]:
 		if inc[k] != "":
 			news.append(inc[k])
+	news.append_array(inc.challenges)
 	news.append_array(inc.promos)
 	for m in inc.medals:
 		news.append("Medal for " + m + ".")
@@ -864,7 +865,7 @@ class Screen extends Control:
 				line = "THE WAR IS WON." if Run.camp.get("done", false) else "THE FRONT MOVES ON: ACT %s, %s." % [Run.act().roman, Run.act().name]
 			elif op.has("bonus"):
 				title = "BONUS OP DONE!"
-				line = "%s: EPIC GEAR IN THE STASH." % op.bonus
+				line = "%s: %s" % [op.bonus, {"salvage": "+%d SALVAGE FOR HQ." % Data.BONUS_SALVAGE, "defector": "A JACKAL DEFECTOR JOINS THE COMPANY.", "crash": "ALIEN KILLS COUNT DOUBLE AT THE LAB."}.get(op.get("pay", ""), "EPIC GEAR IN THE STASH.")]
 			elif op.has("perk"):
 				line = "%s: %s" % [Data.SECTOR_PERKS[op.perk].name, Data.SECTOR_PERKS[op.perk].text.to_upper()]
 			elif op.has("took"):
