@@ -16,6 +16,7 @@ const Services := preload("res://scripts/services.gd")
 const HubUI := preload("res://scripts/hub_ui.gd")
 const HudScript := preload("res://scripts/hud.gd")
 const ArmoryScript := preload("res://scripts/armory.gd")
+const WarRoomScriptRef := preload("res://scripts/war_room.gd")
 
 var out_dir := "user://shots"
 var scenario := ""
@@ -851,6 +852,14 @@ func run() -> void:
 			await campsweep()
 		"bcalls":
 			await bcalls()
+		"campaignplay":
+			await campaignplay()
+		"campfix":
+			await campfix()
+		"wardeep":
+			await wardeep()
+		"warplus":
+			await warplus()
 		"straggler":
 			await straggler()
 		"hoverwedge":
@@ -5494,6 +5503,367 @@ func campsweep() -> void:
 	Run.meta.hq = keep.hq
 	Run.save_meta()
 
+func campaignplay() -> void:
+	## Autoplays a whole campaign through the real screens: War Room, brief, the bot's op, the
+	## result, HQ news and pick queue, salvage spent on the upgrade board, act by act to the ending.
+	## A sector the bot loses three times is booked as taken so the war keeps moving ([forced]).
+	## One [cp] JSON line per op. --seed=N
+	playtest_debug = true
+	seed(seed_arg)
+	var slot := 5 + seed_arg
+	Run.delete_campaign(slot)
+	var keep := Run.meta.duplicate(true)
+	Run.new_campaign(slot)
+	main.show_hq(false)
+	await frames_wait(20)
+	await shot("cp_hq_start")
+	var losses := {}
+	var shots := {}
+	var ms_war := Time.get_ticks_msec()
+	for n in 80:
+		if Run.camp.get("done", false):
+			break
+		main.show_war_room()
+		await frames_wait(8)
+		var A: Dictionary = Run.act()
+		if not shots.has("room%d" % int(Run.camp.act)):
+			shots["room%d" % int(Run.camp.act)] = true
+			await shot("cp_room_act%d" % int(Run.camp.act))
+		var open: Array = A.sectors.filter(func(sc): return Run.sector_open(sc))
+		var bon: Array = A.sectors.filter(func(sc): return Run.sector_held(sc.id) and Run.bonus_at(sc) != "")
+		var sc: Dictionary
+		var forts: Array = open.filter(func(x): return x.get("stronghold", false))
+		if forts.size():
+			sc = forts[0]
+		elif bon.size() and randf() < 0.5:
+			sc = bon[0]
+		elif open.size():
+			sc = open[randi() % open.size()]
+		else:
+			print("[cp] stuck: nothing open in act %d" % int(Run.camp.act))
+			break
+		var key := Run.sec_key(sc.id)
+		if int(losses.get(key, 0)) >= 3 and Run.bonus_at(sc) == "":
+			print("[forced] %s" % key)
+			Run.start_op(sc)
+			var res := Run.op_over(true)
+			Run.after_op({"won": true, "op": res})
+			losses.erase(key)
+			continue
+		main.screen.attack.emit(sc, false)
+		await frames_wait(6)
+		var lv: Dictionary = Run.current_mission()
+		var before := {"scrip": Run.scrip, "sal": int(Run.meta.salvage), "bio": int(Run.meta.bio), "co": Run.company().size()}
+		pt_tag = "cp%d_op%d" % [seed_arg, n]
+		var ms0 := Time.get_ticks_msec()
+		var ok := await bot(int(A.tier), 70, false, lv)
+		await frames_wait(6)
+		var st: Dictionary = Run.history.back() if Run.history.size() else {}
+		if not shots.has("res%d" % int(Run.camp.act)):
+			shots["res%d" % int(Run.camp.act)] = true
+			await shot("cp_result_act%d" % int(Run.camp.act))
+		if not ok:
+			losses[key] = int(losses.get(key, 0)) + 1
+		main.campaign_home(st)
+		await frames_wait(10)
+		if main.screen is WarRoomScriptRef.PickQueue:
+			if not shots.has("picks"):
+				shots["picks"] = true
+				await shot("cp_picks")
+			while main.screen is WarRoomScriptRef.PickQueue and Run.pending_picks().size():
+				main.screen.pick(randi() % main.screen.opts.size())
+				await frames_wait(2)
+			await frames_wait(4)
+		# spend salvage on the upgrade board, cheapest first
+		var bought := []
+		for _i in 6:
+			var bs: Array = Run.hq_buildings().filter(func(B): return Run.hq(B.id) < 3 and int(Run.meta.salvage) >= Data.HQ_COST[Run.hq(B.id)])
+			if bs.is_empty():
+				break
+			bs.sort_custom(func(a, b): return Run.hq(a.id) < Run.hq(b.id))
+			Run.hq_upgrade(bs[0].id)
+			bought.append(bs[0].id)
+		var row := {"n": n, "act": int(Run.camp.act), "sec": sc.id, "job": lv.get("job", ""), "bonus": lv.get("bonus", ""), "won": ok,
+			"rounds": bot_stats.get("rounds", 0), "kills": bot_stats.get("kills", 0), "downs": bot_stats.get("downs", 0), "fallen": bot_stats.get("fallen", []),
+			"secs": (Time.get_ticks_msec() - ms0) / 1000.0, "scrip": [before.scrip, Run.scrip], "sal": [before.sal, int(Run.meta.salvage)], "bio": [before.bio, int(Run.meta.bio)],
+			"co": [before.co, Run.company().size()], "bought": bought, "op": st.get("op", {}), "news": main.screen.get("news") if main.screen.get("news") != null else [],
+			"ranks": Run.company().map(func(s): return Run.rank(s)), "lv": Run.company().map(func(s): return s.lvl), "decks": Run.soldiers.map(func(s): return s.deck.size()),
+			"stash": Run.stash.size(), "mem": Run.meta.memorial.size()}
+		print("[cp] ", JSON.stringify(row))
+		if not shots.has("home%d" % int(Run.camp.act)):
+			shots["home%d" % int(Run.camp.act)] = true
+			await frames_wait(20)
+			await shot("cp_home_act%d" % int(Run.camp.act))
+	print("[cp] war over done=%s ops=%d mins=%.1f" % [Run.camp.get("done", false), int(Run.camp.ops), (Time.get_ticks_msec() - ms_war) / 60000.0])
+	if Run.camp.get("done", false):
+		main.show_ending()
+		await frames_wait(20)
+		await shot("cp_ending")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(slot)
+	Run.meta = keep
+	Run.save_meta()
+
+func campfix() -> void:
+	## Bugs from the 2026-10-29 campaign autoplay: the Slug rolling into the water froze the enemy
+	## phase, and a campaign paradrop could put a second soldier of one class in the squad.
+	var keep := Run.meta.duplicate(true)
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	b.call_slug(b.squad()[0])
+	var sl: Unit = b.units.back()
+	await until(func(): return not sl.air, 600)
+	var done := {"v": false}
+	(func(): await b.slug_act(sl); done.v = true).call()
+	await frames_wait(2)
+	sl.y = Battle.WATER_Y + 3  # off the lip and into the water mid-rush
+	var ok := await until(func(): return done.v, 600)
+	check(ok and sl.sunk, "a Slug that rolls into the water ends its attack (sunk %s)" % sl.sunk)
+	main.show_title()
+	await frames_wait(5)
+	# campaign paradrop: the bench only sends a class the squad is missing
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	var twin: Dictionary = Run.soldiers[0].duplicate(true)
+	twin.def = twin.def.duplicate()
+	twin.def.name = "TWIN"
+	Run.roster.append(twin)
+	b = main.start_battle(0)
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var sq: Array = b.squad()
+	var other: Unit = sq.filter(func(u): return u.s.key != twin.key)[0]
+	b.kill(other, null)
+	await until(func(): return other.dead, 120)
+	await b.call_reinforcements(b.squad_alive()[0])
+	var keys: Array = Run.soldiers.map(func(x): return x.key)
+	check(not Run.soldiers.has(twin), "no bench soldier of a class already in the squad jumps in (%s)" % [keys])
+	var same: Unit = b.squad().filter(func(u): return u.s.key == twin.key and not u.gone)[0]
+	b.kill(same, null)
+	await until(func(): return same.dead, 120)
+	await b.call_reinforcements(b.squad_alive()[0])
+	keys = Run.soldiers.map(func(x): return x.key)
+	check(Run.soldiers.has(twin), "the bench soldier jumps in for a downed soldier of their own class")
+	var uniq := {}
+	for k in keys:
+		uniq[k] = true
+	check(uniq.size() == keys.size(), "the squad is still one of each class (%s)" % [keys])
+	# an escort's truck rolling counts as moving the line; digging in on a hold is not a stall
+	b = await op_battle("escort")
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	var tr = b.truck()
+	b.rounds_since_scroll = 5
+	var tx0: float = tr.x
+	await b.job_round()
+	check(tr.x > tx0 and b.rounds_since_scroll == 0, "the truck rolling resets the stall clock (x %d -> %d, stall %d)" % [int(tx0), int(tr.x), b.rounds_since_scroll])
+	b = await op_battle("hold")
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	b.job_st["on"] = true
+	b.job_st["left"] = 4
+	b.rounds_since_scroll = 1
+	await b.enemy_phase()
+	check(b.rounds_since_scroll == 1, "holding the far end doesn't stall the line (%d)" % b.rounds_since_scroll)
+	# a radio call still going when the War Room opens moves off the sector panel
+	main.show_hq(false)
+	main.call_in(Run.radio_after({"won": true}))
+	await frames_wait(10)
+	main.show_war_room()
+	await frames_wait(40)
+	var oc: Control = main.call_layer.get_child(0)
+	await shot("cf_room_call")
+	check(not oc.get_global_rect().intersects(Rect2(690, 80, 254, 396)), "the radio call sits clear of the War Room's sector panel (%s)" % oc.get_global_rect())
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
+func wardeep() -> void:
+	## Campaign ideas W1, W4, W6, W12: two ways into every act, fortifying held sectors, new bonus
+	## ops, and the War Book's act challenges.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	for a in Data.ACTS.size():
+		var lz_links: Array = Data.ACTS[a].sectors.filter(func(sc): return sc.links.has("lz"))
+		check(lz_links.size() >= 2, "act %d has two ways in (%s)" % [a + 1, lz_links.map(func(sc): return sc.id)])
+	# W4: fortify an income sector and a perk sector
+	Run.camp.held.append(Run.sec_key("d1"))
+	Run.camp.held.append(Run.sec_key("d2"))
+	check(Run.income().scrip == 20, "Mudflat Landing pays 20 before fortifying (%s)" % [Run.income()])
+	Run.scrip = 2000
+	check(Run.fortify(Run.sector("d1")) and Run.scrip == 2000 - Data.FORTIFY_COST[0], "fortifying costs %d scrip (%d left)" % [Data.FORTIFY_COST[0], Run.scrip])
+	check(Run.income().scrip == 30, "rank 1 pays half again (%s)" % [Run.income()])
+	Run.fortify(Run.sector("d1"))
+	Run.fortify(Run.sector("d1"))
+	check(Run.income().scrip == 50 and Run.fort("0:d1") == 3, "rank 3 pays 50 (%s)" % [Run.income()])
+	check(not Run.fortify(Run.sector("d1")) and Run.fortify_block(Run.sector("d1")) == "FULLY FORTIFIED", "three ranks at most")
+	check(Run.fortify_block(Run.sector("j1")) == "HOLD IT FIRST", "only held sectors can be fortified")
+	check(Run.perk_power("aid") == 1 and Run.hq("mess") == 1, "Rice Terraces' Field Hospital works in act I")
+	main.show_war_room()
+	await frames_wait(5)
+	main.screen.sel = "d1"
+	main.screen.build()
+	await frames_wait(10)
+	await shot("wd_room_fort")
+	check(main.screen.fort_btn != null and main.screen.fort_btn.disabled, "the War Room shows a maxed FORTIFY button on a held sector")
+	main.screen.sel = "d2"
+	main.screen.build()
+	await frames_wait(5)
+	main.screen.fort_btn.pressed.emit()
+	await frames_wait(5)
+	await shot("wd_room_perk")
+	check(Run.fort("0:d2") == 1, "the FORTIFY button fortifies the selected sector")
+	Run.camp.act = 1
+	check(Run.perk_power("aid") == 1 and Run.hq("mess") == 1, "a fortified perk lasts into act II")
+	Run.camp.fort["0:d2"] = 2
+	check(Run.hq("mess") == 3, "rank 2 Field Hospital is worth Mess Hall rank 3 (%d)" % Run.hq("mess"))
+	Run.camp.fort["0:d2"] = 3
+	check(Run.income().salvage >= 1, "rank 3 perk sector pays salvage (%s)" % [Run.income()])
+	Run.camp.act = 0
+	# W6: the new bonus ops pay their own way
+	for kind in ["yard", "column", "crash"]:
+		Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": kind, "left": 2}
+		Run.start_op(Run.sector("d1"))
+		check(Run.level.bonus == kind and Run.level.job == Data.BONUS_OPS[kind].job, "%s is a %s op" % [kind, Run.level.job])
+	Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": "yard", "left": 2}
+	Run.start_op(Run.sector("d1"))
+	var b: Battle = main.start_battle(0, Run.level)
+	b.mission_over.disconnect(main._on_mission_over)
+	await until(func(): return b.state == "player" and not b.busy)
+	var sal := int(Run.meta.salvage)
+	b.job_reward()
+	check(int(Run.meta.salvage) == sal + Data.BONUS_SALVAGE, "a salvage yard pays %d salvage" % Data.BONUS_SALVAGE)
+	Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": "column", "left": 2}
+	Run.start_op(Run.sector("d1"))
+	b.mission = Run.level
+	var n0 := Run.company().size()
+	b.job_reward()
+	check(Run.company().size() == n0 + 1 and Run.company().back().get("spec", "") == "defector", "a defector column brings a Jackal Defector into the company")
+	main.show_title()
+	await frames_wait(5)
+	Run.load_campaign(9)
+	Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": "crash", "left": 2}
+	Run.start_op(Run.sector("d1"))
+	var k0 := Run.tech_kills("blinker")
+	Run.after_op({"won": true, "rounds": 30, "downed_by": {"moss": true}, "kinds": {"blinker": 3}, "op": Run.op_over(true)})
+	check(Run.tech_kills("blinker") == k0 + 6, "a crash site counts alien kills double (%d -> %d)" % [k0, Run.tech_kills("blinker")])
+	# W12: challenges
+	Run.start_op(Run.sector("j1"))
+	var stash0 := Run.stash.size() + Run.belt.size()
+	var inc := Run.after_op({"won": true, "rounds": 8, "downed_by": {"moss": false}, "op": Run.op_over(true)})
+	check(inc.challenges.size() == 2 and Run.camp.chal.has("0:clean") and Run.camp.chal.has("0:fast"), "a quick clean win completes CLEAN SWEEP and BLITZ (%s)" % [inc.challenges])
+	check(Run.stash.size() + Run.belt.size() == stash0 + 2, "each challenge puts a Legendary item in the stash")
+	Run.start_op(Run.sector("j2"))
+	inc = Run.after_op({"won": true, "rounds": 8, "downed_by": {}, "op": Run.op_over(true)})
+	check(inc.challenges.is_empty(), "a challenge pays only once")
+	for id in ["d3", "j3"]:
+		Run.camp.held.append(Run.sec_key(id))
+	Run.start_op(Run.sector("boss"))
+	inc = Run.after_op({"won": true, "rounds": 20, "downed_by": {"moss": true}, "op": Run.op_over(true)})
+	check(Run.camp.chal.has("0:sweep"), "holding every act I sector before the Boar's Den falls completes TOTAL CONTROL (%s)" % [inc.challenges])
+	main.show_war_room()
+	await frames_wait(5)
+	main.screen.book_open = true
+	Run.camp.act = 0
+	main.screen.build()
+	await frames_wait(10)
+	await shot("wd_book")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
+func warplus() -> void:
+	## Campaign ideas W2, W8, W10: the act-end ceremony with its MVP's field promotion, the war
+	## journal in the War Book and on the ending screen, and the company token driving the map.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	var sq: Array = Run.soldiers.duplicate()
+	var st_for := func(won: bool, kills: Dictionary, op: Dictionary) -> Dictionary:
+		var xp := {}
+		for s in sq:
+			xp[s.key] = 10
+		return {"won": won, "kills": kills.values().reduce(func(a, b): return a + b, 0), "kills_by": kills, "rounds": 14, "xp": xp, "downed_by": {}, "fallen": [], "op": op}
+	# W10: the token drives from the landing zone to the sector before the op starts
+	main.show_war_room()
+	await frames_wait(5)
+	var w = main.screen
+	w.sel = "d1"
+	w.build()
+	var t0: Vector2 = w.tok
+	w.go_btn.pressed.emit()
+	await frames_wait(8)
+	await shot("wp_drive")
+	check(w.tok != t0 and w.tok_path.size() > 0, "the company token drives toward the sector (%s -> %s)" % [t0, w.tok])
+	var ok := await until(func(): return main.screen != w, 400)
+	check(ok and main.screen.get("mode") == "brief", "the op starts when the token arrives")
+	main.show_hq(false)
+	await frames_wait(3)
+	Run.level = {}
+	# W8: ops go into the journal
+	Run.start_op(Run.sector("d1"))
+	Run.after_op(st_for.call(true, {sq[0].key: 9, sq[1].key: 2}, Run.op_over(true)))
+	Run.start_op(Run.sector("d2"))
+	Run.after_op(st_for.call(false, {sq[0].key: 3}, Run.op_over(false)))
+	var j: Array = Run.camp.get("journal", [])
+	check(j.size() == 2 and j[0].sec == "MUDFLAT LANDING" and j[0].won and not j[1].won and j[0].squad.size() == 4, "each op is written in the journal (%s)" % [j])
+	check(Run.camp.tried.has("0:d2") and not Run.sector_held("d2"), "a failed sector is remembered as fought over")
+	main.show_war_room()
+	await frames_wait(5)
+	check(main.screen.tok == main.screen.node_pos(Run.sector("d2")) or main.screen.tok == main.screen.lz_pos(), "the token waits where the company last went")
+	main.screen.book_open = true
+	main.screen.book_tab = 1
+	main.screen.build()
+	await frames_wait(10)
+	await shot("wp_journal")
+	# W2: the stronghold falls and the act gets its ceremony
+	for id in ["d2", "d3"]:
+		Run.camp.held.append(Run.sec_key(id))
+	Run.start_op(Run.sector("boss"))
+	var rk0 := Run.rank(sq[0])
+	var st: Dictionary = st_for.call(true, {sq[0].key: 6, sq[2].key: 1}, Run.op_over(true))
+	main.campaign_home(st)
+	await frames_wait(140)
+	await shot("wp_act_end")
+	check(main.screen is WarRoomScriptRef.ActEndScreen, "beating the stronghold opens the act-end ceremony")
+	check(main.screen.mvp == sq[0] and int(sq[0].get("field", 0)) == 1, "the act's top killer is its MVP with a field promotion (%s)" % main.screen.mvp.def.name)
+	main.screen.done.emit()
+	await frames_wait(5)
+	check(main.screen is WarRoomScriptRef.PickQueue, "the field promotion is picked after the ceremony")
+	var offers := Run.promo_offers(sq[0])
+	check(offers == Data.PROMO_OFFERS[clampi(Run.rank(sq[0]), 1, 4)], "a field promotion offers the current rank's picks (%s)" % [offers])
+	await shot("wp_field_promo")
+	while main.screen is WarRoomScriptRef.PickQueue and Run.pending_picks().size():
+		main.screen.pick(0)
+		await frames_wait(2)
+	check(not sq[0].has("field") and not sq[0].has("promo") and Run.rank(sq[0]) == rk0, "the field promotion is used up without changing rank")
+	# the ending screen shows the journal too
+	Run.camp.done = true
+	main.show_ending()
+	await frames_wait(5)
+	main.screen.show_j = true
+	main.screen.build()
+	await frames_wait(10)
+	await shot("wp_ending_journal")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
 func warmap() -> void:
 	## Campaign step 1: save slots, a separate base, the War Room, sector income and perks, the
 	## stronghold, act two, and a real op played by the bot.
@@ -5523,7 +5893,7 @@ func warmap() -> void:
 	await frames_wait(20)
 	await shot("wm_room_start")
 	var open: Array = Run.act().sectors.filter(func(sc): return Run.sector_open(sc)).map(func(sc): return sc.id)
-	check(open == ["d1"], "only the sector next to the landing zone is open (%s)" % [open])
+	check(open == ["d1", "d2"], "only the two sectors next to the landing zone are open (%s)" % [open])
 	check(not Run.sector_open(Run.sector("boss")), "the stronghold starts sealed")
 	Run.start_op(Run.sector("d1"))
 	check(Run.level.segments.size() == 6 and Run.level.segments.count("camp") == 1, "a sector op has one camp (%s)" % [Run.level.segments])
@@ -5581,7 +5951,7 @@ func warmap() -> void:
 	check(res.get("act_done", "") == "LANDFALL" and int(Run.camp.act) == 1, "beating the fort clears act I")
 	check(not Run.camp_perk("aid"), "act I's perks stay in act I")
 	check(Run.income().scrip == 20, "act I's income keeps paying in act II (%s)" % [Run.income()])
-	check(Run.act().sectors.filter(func(sc): return Run.sector_open(sc)).size() == 1, "act II starts with one open sector")
+	check(Run.act().sectors.filter(func(sc): return Run.sector_open(sc)).size() == 2, "act II starts with two open sectors (W1)")
 	# save, leave, load
 	Run.soldiers[1].lvl = 5
 	Run.soldiers[1].deck.append(Run.new_card("frag", 2, "shop"))
@@ -6235,7 +6605,7 @@ func lab() -> void:
 	await shot("lab_bonus_room")
 	check(main.screen.go_btn.text == "BONUS OP", "the War Room offers the bonus op")
 	Run.start_op(bsc)
-	check(Run.level.bonus != "" and Run.level.banner == "BONUS OP" and Run.level.job in ["escort", "hunt"], "a bonus op is a convoy escort or a scout hunt (%s)" % Run.level.job)
+	check(Run.level.bonus != "" and Run.level.banner == "BONUS OP" and Run.level.job == Data.BONUS_OPS[Run.level.bonus].job, "a bonus op runs its kind's job (%s %s)" % [Run.level.bonus, Run.level.job])
 	var res := Run.op_over(true)
 	check(res.has("bonus") and Run.camp.bonus.is_empty() and Run.sector_held(bsc.id), "winning it pays and clears it; the sector stays held")
 	Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": "convoy", "left": 2}

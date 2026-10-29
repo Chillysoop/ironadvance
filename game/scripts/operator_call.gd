@@ -75,6 +75,9 @@ func _process(_d: float) -> void:
 		home = Vector2(8, 34)
 		if m.hud != null and m.hud.coach_box != null and m.hud.coach_box.get_child_count() > 0:
 			home.y = 152.0
+	elif m != null and "screen" in m and is_instance_valid(m.screen) and m.screen.has_signal("attack"):
+		# the War Room: over the header, so the sector panel on the right stays readable
+		home = Vector2(8, 2)
 	# slide in, and back out once the call is over
 	slide = move_toward(slide, 1.0 if i < 0 else 0.0, 0.08)
 	var side := 1.0 if home.x > 480 else -1.0   # slides in from the nearest edge

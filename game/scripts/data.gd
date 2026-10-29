@@ -1644,10 +1644,36 @@ const TECH_BIO := 2
 const TECH_SALVAGE := 4
 
 # P2: bonus ops that sit on a held sector for a couple of ops. Skipping one costs nothing.
+# "pay" is what finishing one brings: an Epic crate, Salvage, a Jackal Defector, or double Alien Lab kills (W6).
 const BONUS_OPS := {
-	"convoy": {"name": "SUPPLY CONVOY", "job": "escort", "text": "A friendly convoy is passing through. Get it across for Epic gear."},
-	"scout": {"name": "DOWNED VHARR SCOUT", "job": "hunt", "text": "A Vharr scout ship came down. Its pilot carries Epic gear."},
+	"convoy": {"name": "SUPPLY CONVOY", "job": "escort", "pay": "epic", "text": "A friendly convoy is passing through. Get it across for Epic gear."},
+	"scout": {"name": "DOWNED VHARR SCOUT", "job": "hunt", "pay": "epic", "text": "A Vharr scout ship came down. Its pilot carries Epic gear."},
+	"yard": {"name": "SALVAGE YARD", "job": "demolish", "pay": "salvage", "text": "A Jackal scrapyard full of parts. Blow its three dumps open for %d Salvage."},
+	"column": {"name": "DEFECTOR COLUMN", "job": "escort", "pay": "defector", "text": "Jackals who want out are coming over in a truck. Get it across and one joins the company."},
+	"crash": {"name": "VHARR CRASH SITE", "job": "hold", "pay": "crash", "text": "A Vharr ship went down. Hold the wreck: every alien killed here counts double at the Alien Lab."},
 }
+const BONUS_SALVAGE := 6
+# W4: fortifying a held sector, paid in scrip. An income sector pays half its base again per rank;
+# a perk sector's perk lasts the whole war from rank 1 and gets stronger at ranks 2 and 3.
+const FORTIFY_COST := [150, 300, 500]
+const FORTIFY_PERK := {
+	"aid": ["Lasts the whole war.", "Camps also offer all 4 detours.", "Also pays +1 Salvage per op."],
+	"lookout": ["Lasts the whole war.", "+2 Luck on every op.", "Also pays +1 Salvage per op."],
+	"fuel": ["Lasts the whole war.", "The Slug stays for 2 rounds.", "Also pays +1 Salvage per op."],
+	"supply": ["Lasts the whole war.", "Elite outposts pay Legendary gear.", "Also pays +1 Salvage per op."],
+	"airfield": ["Lasts the whole war.", "+1 Luck on every op.", "Also pays +1 Salvage per op."],
+}
+# W12: three optional feats per act, shown in the War Book. Each pays CHALLENGE_PAY once.
+const CHALLENGES := {
+	"clean": {"name": "CLEAN SWEEP", "text": "Win an op this act with nobody going down."},
+	"fast": {"name": "BLITZ", "text": "Win an op this act in %d rounds or fewer."},
+	"sweep": {"name": "TOTAL CONTROL", "text": "Hold every sector of the act before its stronghold falls."},
+	"threat": {"name": "HARD TARGET", "text": "Beat the act's stronghold on threat 2 or higher."},
+	"bonus": {"name": "OPPORTUNIST", "text": "Win a bonus op this act."},
+}
+const ACT_CHALLENGES := [["clean", "fast", "sweep"], ["clean", "bonus", "threat"], ["fast", "sweep", "threat"], ["clean", "bonus", "sweep"], ["clean", "fast", "threat"]]
+const BLITZ_ROUNDS := 10
+const CHALLENGE_PAY := {"salvage": 3, "bio": 2}   # plus a Legendary item into the stash
 const BONUS_CHANCE := 0.35
 const BONUS_OPS_LEFT := 2
 const TOUR_HARDER := 0.2   # S5: each Second Tour adds this much to enemy and boss HP   # S4: odds a won Act III op ends with a Jackal deserter asking to join
@@ -1745,7 +1771,7 @@ const ACTS := [
 	 "lz": {"name": "BEACHHEAD", "at": [70, 380]},
 	 "sectors": [
 		{"id": "d1", "name": "MUDFLAT LANDING", "biome": "delta", "job": "push", "at": [190, 380], "links": ["lz", "d2", "d3"], "hold": {"scrip": 20}},
-		{"id": "d2", "name": "RICE TERRACES", "biome": "delta", "job": "rescue", "at": [280, 270], "links": ["d1", "j1", "j2"], "perk": "aid"},
+		{"id": "d2", "name": "RICE TERRACES", "biome": "delta", "job": "rescue", "at": [280, 270], "links": ["lz", "d1", "j1", "j2"], "perk": "aid"},
 		{"id": "d3", "name": "FERRY DOCKS", "biome": "delta", "job": "demolish", "at": [340, 410], "links": ["d1", "j2"], "hold": {"salvage": 2}},
 		{"id": "j1", "name": "SIGNAL RIDGE", "biome": "jungle", "job": "hold", "at": [230, 160], "links": ["d2", "j3"], "perk": "lookout"},
 		{"id": "j2", "name": "RIVER BATTERY", "biome": "jungle", "job": "demolish", "at": [440, 300], "links": ["d2", "d3", "boss"], "hold": {"scrip": 20}},
@@ -1756,7 +1782,7 @@ const ACTS := [
 	 "lz": {"name": "AIRDROP ZONE", "at": [80, 200]},
 	 "sectors": [
 		{"id": "s1", "name": "BROKEN AQUEDUCT", "biome": "desert", "job": "escort", "at": [200, 150], "links": ["lz", "s2", "s3"], "hold": {"scrip": 25}},
-		{"id": "s2", "name": "SALT FLATS", "biome": "desert", "job": "hold", "at": [220, 330], "links": ["s1", "m1"], "perk": "airfield"},
+		{"id": "s2", "name": "SALT FLATS", "biome": "desert", "job": "hold", "at": [220, 330], "links": ["lz", "s1", "m1"], "perk": "airfield"},
 		{"id": "s3", "name": "SUNKEN TEMPLE", "biome": "desert", "job": "rescue", "at": [350, 180], "links": ["s1", "m1", "m2"], "hold": {"bio": 1}},
 		{"id": "m1", "name": "SWITCHBACKS", "biome": "mountain", "job": "escort", "at": [380, 360], "links": ["s2", "s3", "m3"], "hold": {"salvage": 3}},
 		{"id": "m2", "name": "OBSERVATORY", "biome": "mountain", "job": "hunt", "at": [480, 130], "links": ["s3", "boss"], "perk": "lookout"},
@@ -1769,7 +1795,7 @@ const ACTS := [
 		{"id": "r1", "name": "PUMP STATION", "biome": "refinery", "job": "demolish", "at": [190, 220], "links": ["lz", "r2", "f1"], "hold": {"salvage": 3}},
 		{"id": "r2", "name": "CRACKING TOWERS", "biome": "refinery", "job": "hold", "at": [300, 120], "links": ["r1", "r3"], "perk": "fuel"},
 		{"id": "r3", "name": "TANK FARM", "biome": "refinery", "job": "escort", "at": [450, 140], "links": ["r2", "boss"], "hold": {"scrip": 30}},
-		{"id": "f1", "name": "MARKET STREET", "biome": "fortress", "job": "rescue", "at": [220, 390], "links": ["r1", "f2"], "perk": "supply"},
+		{"id": "f1", "name": "MARKET STREET", "biome": "fortress", "job": "rescue", "at": [220, 390], "links": ["lz", "r1", "f2"], "perk": "supply"},
 		{"id": "f2", "name": "OLD CITADEL", "biome": "fortress", "job": "hunt", "at": [370, 330], "links": ["f1", "f3"], "hold": {"bio": 2}},
 		{"id": "f3", "name": "GARRISON GATE", "biome": "fortress", "job": "push", "varga": true, "at": [500, 400], "links": ["f2", "boss"], "perk": "aid"},
 		{"id": "boss", "name": "THE INFESTED WORKS", "biome": "refinery", "at": [590, 270], "links": ["r3", "f3"], "stronghold": true}]},
@@ -1779,7 +1805,7 @@ const ACTS := [
 	 "sectors": [
 		{"id": "p1", "name": "LANTERN GARDENS", "biome": "palace", "job": "hunt", "at": [190, 130], "links": ["lz", "p2", "p3"], "perk": "lookout"},
 		{"id": "p2", "name": "SHOGUN'S HALL", "biome": "palace", "job": "rescue", "at": [320, 210], "links": ["p1", "h1"], "hold": {"bio": 2}},
-		{"id": "p3", "name": "PAPER BRIDGE", "biome": "palace", "job": "escort", "at": [200, 300], "links": ["p1", "h2"], "hold": {"scrip": 30}},
+		{"id": "p3", "name": "PAPER BRIDGE", "biome": "palace", "job": "escort", "at": [200, 300], "links": ["lz", "p1", "h2"], "hold": {"scrip": 30}},
 		{"id": "h1", "name": "LIGHTHOUSE", "biome": "harbor", "job": "hold", "at": [470, 140], "links": ["p2", "boss"], "perk": "airfield"},
 		{"id": "h2", "name": "FISH MARKET", "biome": "harbor", "job": "push", "at": [330, 400], "links": ["p3", "h3"], "hold": {"salvage": 3}},
 		{"id": "h3", "name": "DRY DOCK", "biome": "harbor", "job": "demolish", "at": [490, 350], "links": ["h2", "boss"], "perk": "supply"},

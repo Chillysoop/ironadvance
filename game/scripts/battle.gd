@@ -6871,10 +6871,16 @@ func call_reinforcements(u: Unit) -> void:
 	var picked: Array = []
 	var n := mini(downed.size(), pool.size())
 	while picked.size() < n:
+		var takes: Unit = downed[picked.size()]
 		var left: Array = pool.filter(func(s): return not picked.has(s))
+		if Run.campaign():
+			# a campaign squad is one of each class: the bench sends someone whose class isn't already in it
+			var taken: Array = Run.soldiers.filter(func(o): return o != takes.s).map(func(o): return o.key) + picked.map(func(o): return o.key)
+			left = left.filter(func(s): return not taken.has(s.key))
+			if left.is_empty():
+				break
 		var opts: Array = left.slice(0, 6).map(func(s): return {"kind": "service", "title": "PARADROP", "soldier": s,
 			"name": s.def.name.to_upper(), "text": "LV %d %s. %d HP, %d dog tag%s." % [s.lvl, s.def.cls.to_upper(), Run.eff_max_hp(s), s.tags, "" if s.tags == 1 else "s"]})
-		var takes: Unit = downed[picked.size()]
 		var ch := await ask("reinforce", "CALL IN REINFORCEMENTS  %d OF %d" % [picked.size() + 1, n],
 			"Who jumps in for %s? %s" % [takes.def.name, "%s goes home to the barracks to recover." % takes.def.name if takes.downed else "They take the fallen soldier's place."], opts)
 		if ch < 0:
@@ -7522,6 +7528,7 @@ func job_round() -> void:
 				await wait(20)
 				return
 			float_text(tr, "ROLLING", Color("62d26f"))
+			rounds_since_scroll = 0  # the truck sets the pace on an escort: while it rolls, the line isn't stalled
 			var x0: float = tr.x
 			for i in 20:
 				tr.x = lerpf(x0, nx, (i + 1) / 20.0)
@@ -7540,9 +7547,28 @@ func job_reward() -> void:
 	## A finished job pays on top of the usual: scrip, plus a recruit, a crate or a trophy.
 	var j := job()
 	if mission.get("bonus", "") != "":
-		var bx: float = squad_alive()[0].x if squad_alive().size() else cam_x + W / 2.0
-		drop_loot(bx, T.ground_at(bx) - 40, {"type": "item", "item": Run.roll_item(3)})
-		stats["bonus_gear"] = true
+		# W6: each kind of bonus op pays its own way
+		match str(Data.BONUS_OPS[mission.bonus].get("pay", "epic")):
+			"salvage":
+				Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.BONUS_SALVAGE
+				stats["salvage"] = int(stats.get("salvage", 0)) + Data.BONUS_SALVAGE
+				log_msg("The yard's parts are ours: %d Salvage for HQ." % Data.BONUS_SALVAGE)
+			"defector":
+				if Run.company_room():
+					var used: Array = Run.roster.map(func(x): return x.def.name)
+					var names: Array = Data.CALLSIGNS.filter(func(c): return not used.has(c))
+					var d := Run.enlist(Run.spec_offer("defector", names[randi() % names.size()] if names.size() else "TURNCOAT"))
+					log_msg("%s, a Jackal Defector, signs up with the company." % d.def.name)
+				else:
+					Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.BONUS_SALVAGE
+					stats["salvage"] = int(stats.get("salvage", 0)) + Data.BONUS_SALVAGE
+					log_msg("The company is full, so the defectors hand over %d Salvage instead." % Data.BONUS_SALVAGE)
+			"crash":
+				log_msg("The wreck is held. Every alien killed here counts double at the Alien Lab.")
+			_:
+				var bx: float = squad_alive()[0].x if squad_alive().size() else cam_x + W / 2.0
+				drop_loot(bx, T.ground_at(bx) - 40, {"type": "item", "item": Run.roll_item(3)})
+				stats["bonus_gear"] = true
 	if j == "push":
 		return
 	Run.scrip += Data.JOB_PAY
@@ -7646,8 +7672,11 @@ func slug_act(sl: Unit) -> void:
 	## Rolls forward crushing whatever is in front, then shells the three nearest Jackals.
 	banner("SLUG ATTACK", Color("62d26f"))
 	sl.rushing = true; sl.bumped = {}; sl.air = true; sl.vx = 6.5; sl.vy = -3.2; sl.walk = null
-	await until(func(): return not sl.air)
+	# it can roll off a ledge into the water, and step() never lands a sunk unit
+	await until(func(): return not sl.air or sl.sunk or sl.gone or sl.dead)
 	sl.rushing = false
+	if sl.sunk or sl.gone or sl.dead:
+		return
 	var foes: Array = units.filter(func(e): return e.team == "enemy" and not e.dead and e.x > cam_x - 20 and e.x < cam_x + W + 40)
 	foes.sort_custom(func(a, b2): return absf(a.x - sl.x) < absf(b2.x - sl.x))
 	for e in foes.slice(0, 3):
@@ -8136,8 +8165,10 @@ func enemy_phase() -> void:
 	if squad_alive().is_empty():
 		game_over()
 		return
-	# alert only climbs when you stall; the radioman's clock is what brings fresh bodies
-	rounds_since_scroll += 1
+	# alert only climbs when you stall; the radioman's clock is what brings fresh bodies.
+	# Digging in on a HOLD job is the order, not a stall.
+	if not (job() == "hold" and job_st.get("on", false)):
+		rounds_since_scroll += 1
 	var before := alert
 	var calls := 0
 	if stalled():
@@ -8358,7 +8389,7 @@ func enemy_advance(e: Unit, tx: float, budget: float, stop = null) -> void:
 			e.air = true
 			e.leaping = true
 			float_text(e, "JUMP", Color("e8dcc2"))
-			await until(func(): return not e.air or e.dead)
+			await until(func(): return not e.air or e.dead or e.sunk or e.gone)
 			left -= land
 			continue
 		var top = null
@@ -8383,7 +8414,7 @@ func enemy_advance(e: Unit, tx: float, budget: float, stop = null) -> void:
 			e.vy = -sqrt(2 * grav * (top + 18))
 			e.air = true
 			e.leaping = true
-			await until(func(): return not e.air or e.dead)
+			await until(func(): return not e.air or e.dead or e.sunk or e.gone)
 			left -= top + 20
 			continue
 		if E.get("smash", false):
@@ -8477,7 +8508,7 @@ func jet_fly(e: Unit, dest: Vector2) -> void:
 		if over:
 			e.vx = 0.0
 			e.vy = 0.0
-	await until(func(): return not e.air or e.dead)
+	await until(func(): return not e.air or e.dead or e.sunk or e.gone)
 
 func jetter_act(e: Unit) -> void:
 	var E: Dictionary = Data.ETYPES[e.type]
