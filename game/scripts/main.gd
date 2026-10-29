@@ -130,6 +130,12 @@ func show_title() -> void:
 		["QUICK RUN", func(): show_draft() if Run.class_keys().size() > 4 else start_run(), "%d LEVELS AND A FINALE" % Data.LEVELS.size()],
 		["TRAINING", func(): start_training(), "OPTIONAL  LEARN THE BASICS", Color("9aa2ae") if Run.meta.get("trained", false) else Color("ffb23e")]]
 	s.corner = ["DAILY OP", func(): start_daily()]  # D2
+	# V6: the blood and ichor sprays can be switched off
+	s.corner2 = ["BLOOD: " + ("ON" if Run.meta.get("blood", true) else "OFF"), func():
+		Run.meta["blood"] = not Run.meta.get("blood", true)
+		Run.save_meta()
+		Sfx.play("click")
+		show_title()]
 	var tmax := mini(int(Run.meta.threat_max), Data.THREATS.size())
 	if tmax > 0:
 		# W5: every campaign win opens the next threat level
@@ -447,6 +453,7 @@ class Screen extends Control:
 	var buttons: Array = []
 	var unlock := ""
 	var corner: Array = []  # a small extra button in the top-left corner: [label, callable]
+	var corner2: Array = []  # and one in the top-right corner
 	var t := 0
 	func _ready() -> void:
 		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -459,6 +466,15 @@ class Screen extends Control:
 			cb.position = Vector2(20, 18)
 			cb.pressed.connect(corner[1])
 			add_child(cb)
+		if corner2.size():
+			var cb2 = load("res://scripts/hud.gd").PixButton.new()
+			cb2.text = corner2[0]
+			cb2.small = true
+			cb2.color = Color("9aa2ae")
+			cb2.size = Vector2(170, 28)
+			cb2.position = Vector2(770, 18)
+			cb2.pressed.connect(corner2[1])
+			add_child(cb2)
 		var n := buttons.size()
 		var widths: Array = []
 		var total := 0.0
