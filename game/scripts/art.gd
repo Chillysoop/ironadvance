@@ -18,10 +18,17 @@ func _ready() -> void:
 			tex[k + "_gun_w"] = load("res://assets/sprites/%s_gun_w.png" % k)
 	for n in ["pow", "boss", "boss_barrel", "barrel", "barrel_w", "fuel", "fuel_w", "charge", "charge_w", "sandbags", "crate", "crate_w", "explosion", "muzzle", "puff", "slash", "parachute"]:
 		tex[n] = load("res://assets/sprites/%s.png" % n)
+	for v in ["hive", "droppod", "vgate", "burrow"]:
+		tex["vh_" + v] = load("res://assets/sprites/vh_%s.png" % v)
+		tex["vh_" + v + "_w"] = load("res://assets/sprites/vh_%s_w.png" % v)
+	for v in ["walker", "bike", "tank"]:
+		for suf in ["", "_sq", "_w"]:
+			tex["veh_" + v + suf] = load("res://assets/sprites/veh_%s%s.png" % [v, suf])
 	for n in ["panel", "hazard", "card", "tag", "bulb_off", "bulb_g", "bulb_y", "bulb_r"]:
 		tex["ui_" + n] = load("res://assets/ui/%s.png" % n)
 	for n in ["bolt", "heart", "flame", "coin", "skull", "shield", "radio", "star", "up", "card", "boot", "cross"]:
 		tex["ic_" + n] = load("res://assets/ui/ic_%s.png" % n)
+		tex["ic8_" + n] = load("res://assets/ui/ic8_%s.png" % n)
 	font = load("res://assets/fonts/PressStart2P.woff")
 	font_b = load("res://assets/fonts/VT323.woff")
 	for fo in [font, font_b]:

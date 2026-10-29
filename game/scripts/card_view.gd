@@ -248,7 +248,7 @@ func _draw() -> void:
 		Art.text(self, chain, Vector2(w / 2.0, -4), 8, Color("e0b0ff"), HORIZONTAL_ALIGNMENT_CENTER)
 	if price >= 0:
 		draw_rect(Rect2(w / 2.0 - 26, h - 16, 52, 16), INK)
-		draw_texture_rect(Art.tex.ic_coin, Rect2(w / 2.0 - 22, h - 12, 8, 8), false)
+		draw_texture_rect(Art.tex.ic8_coin, Rect2(w / 2.0 - 22, h - 12, 8, 8), false)
 		Art.text(self, str(price), Vector2(w / 2.0 + 8, h - 4), 8, Color("ffd23a") if not disabled else Color("8a7a40"), HORIZONTAL_ALIGNMENT_CENTER, 0)
 	if corner != "":
 		Art.text(self, corner, Vector2(1, -3), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 1)
@@ -340,7 +340,7 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 		if opt.has("icon"):
 			icon = opt.icon
 	if icon != "":
-		draw_texture_rect(Art.tex[icon], Rect2(c.x - 12, c.y - 12, 24, 24), false, mod)
+		draw_texture_rect(Art.tex[icon], Rect2(c.x - 16, c.y - 16, 32, 32), false, mod)
 
 static func wrap_text(s: String, width: float, size: int) -> Array:
 	var out: Array = []

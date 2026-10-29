@@ -1,0 +1,492 @@
+[
+ {
+  "op": "style",
+  "prompt": "A UI icon of a steel grey shield with a blue stripe (armor), centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "shield_0.png",
+   "shield_1.png",
+   "shield_2.png",
+   "shield_3.png",
+   "shield_4.png",
+   "shield_5.png",
+   "shield_6.png",
+   "shield_7.png",
+   "shield_8.png"
+  ],
+  "asset_ids": [
+   "676f104d-2126-4ac4-a198-bc320223a525",
+   "964caa88-d61e-4985-99f2-7fa3e6865590",
+   "88bf2400-f78d-4f18-b7f9-507710dd7a3d",
+   "e3a4b3c7-4375-4262-aa3b-534d1237178e",
+   "d52f6585-ec0c-4788-97de-d152e9199991",
+   "98983bd1-be2c-45e4-b528-560e3bb4fa91",
+   "338b0f10-796f-4dc8-ac41-d5e9957f2b5d",
+   "ac11586f-c043-4974-b485-365b6348f373",
+   "47438cf8-3255-4900-b6f9-2fa166cb7163"
+  ],
+  "picked": "shield_5 -> shield.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a gold star (rank), centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "star_0.png",
+   "star_1.png",
+   "star_2.png",
+   "star_3.png",
+   "star_4.png",
+   "star_5.png",
+   "star_6.png",
+   "star_7.png",
+   "star_8.png"
+  ],
+  "asset_ids": [
+   "aecf0526-fd91-4a0f-aa57-77ba2684f279",
+   "90161962-d46f-4907-bb75-a80f4921e543",
+   "e16cc762-8af8-4679-abf3-d1dabd5f4ada",
+   "6255f9d4-bd5e-4158-b182-10a6688a2990",
+   "5bfc28e7-2e1c-434e-850a-ff447fcbf24b",
+   "82ad37df-33ba-4ab5-9ac7-2922d8313682",
+   "7b0ee947-9c1a-40ad-ac32-1e1aeb82dfef",
+   "0ec8de9f-4566-44e3-86ac-031c2cd4f4c0",
+   "5e6f5ca8-0686-4e43-9f08-f5dd1d0ec286"
+  ],
+  "picked": "none, re-asked (other options not kept)"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a white skull (danger), centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "skull_0.png",
+   "skull_1.png",
+   "skull_2.png",
+   "skull_3.png",
+   "skull_4.png",
+   "skull_5.png",
+   "skull_6.png",
+   "skull_7.png",
+   "skull_8.png"
+  ],
+  "asset_ids": [
+   "229c5cc2-7576-4cd1-a902-47f92fe96c89",
+   "22a8125f-eb9b-43a7-b407-3655be3842fd",
+   "0dd32ee6-2f8e-43b6-8976-8e50b0f7ea66",
+   "432ec567-875f-48f6-9d9c-8ec0675aa62b",
+   "3700fb2b-f361-4e89-8d0c-422f8fcf39ed",
+   "ed271bd0-e7fa-438a-80f3-d50235eaba1b",
+   "7862f518-3a4d-45db-a0da-0d3932c5ffee",
+   "80d6407f-0bcd-4c7d-91f1-7bb204dbe86b",
+   "5fd38661-a6a1-4424-a283-cba3f892b497"
+  ],
+  "picked": "skull_1 -> skull.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a gold coin with a dollar mark (scrip money), centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "coin_0.png",
+   "coin_1.png",
+   "coin_2.png",
+   "coin_3.png",
+   "coin_4.png",
+   "coin_5.png",
+   "coin_6.png",
+   "coin_7.png",
+   "coin_8.png"
+  ],
+  "asset_ids": [
+   "a2e51901-d3bc-4765-afaf-885ba3e2c29a",
+   "3638af9c-4fa0-4a6c-b5c0-270cacc1e8df",
+   "1f311c4d-f537-468e-bda6-a757a7ac47e3",
+   "02711158-c50e-45d6-b6dc-e96e386a541a",
+   "208d7919-934d-472a-9215-249c2bf89910",
+   "34b0ede5-063c-4868-8d2a-3025321b2e8d",
+   "7d65eca7-f0b9-4764-b00d-06dd1258841c",
+   "dab00eaf-92af-411e-8712-06e4e03569ab",
+   "ad08fa36-ad4d-48f8-a085-657ae77987b6"
+  ],
+  "picked": "coin_3 -> coin.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a bold green arrow pointing up (upgrade), centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "up_0.png",
+   "up_1.png",
+   "up_2.png",
+   "up_3.png",
+   "up_4.png",
+   "up_5.png",
+   "up_6.png",
+   "up_7.png",
+   "up_8.png"
+  ],
+  "asset_ids": [
+   "a8cb14c6-c3c8-4146-957b-23b5e1f3da6d",
+   "63e1d197-7432-4393-b079-b1921c506a6a",
+   "a20eed79-9e33-48ec-8467-7f3f87827e6a",
+   "7ff2e96c-b3c5-4f56-a7cf-c2a901327a82",
+   "55148bfe-7c18-4d78-81fd-a3022e05861f",
+   "4fabbadd-581d-445d-893f-4dc58b2f50d5",
+   "04c83550-7e3e-4b6d-9329-0f47f10750e3",
+   "a57ed95c-0525-4bd1-8865-e506f7965945",
+   "95f7e632-bc74-422e-b4c0-adcecc43cec9"
+  ],
+  "picked": "up_1 -> up.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a yellow lightning bolt (energy), centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "bolt_0.png",
+   "bolt_1.png",
+   "bolt_2.png",
+   "bolt_3.png",
+   "bolt_4.png",
+   "bolt_5.png",
+   "bolt_6.png",
+   "bolt_7.png",
+   "bolt_8.png"
+  ],
+  "asset_ids": [
+   "cd1b23a2-f483-4e55-93b6-d3060ee1918e",
+   "f5e351b0-0cf8-41e9-92c8-136b539ce275",
+   "a56dd42b-c915-4ced-84b1-3f233eeab1b9",
+   "6283be9c-5021-41b2-8b5c-aec952161b85",
+   "0bc2a778-3332-4202-adbc-64ef5dd61fe9",
+   "c7726ebf-467c-4932-8971-50c58fa41aaa",
+   "2a7fb9ed-087e-43fe-93af-e68f9587517c",
+   "1383d6f6-f617-4011-a10d-f21607e28689",
+   "2f2bf564-fffa-402c-8d52-6e339a00b171"
+  ],
+  "picked": "bolt_7 -> bolt.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a red heart (health), centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "heart_0.png",
+   "heart_1.png",
+   "heart_2.png",
+   "heart_3.png",
+   "heart_4.png",
+   "heart_5.png",
+   "heart_6.png",
+   "heart_7.png",
+   "heart_8.png"
+  ],
+  "asset_ids": [
+   "02fc4fc6-e8a8-471e-ba4a-3b5cb020358f",
+   "911a82d0-f3f8-4e89-82b6-a2b68791e102",
+   "7e9da808-696c-4eea-a008-1982cf25aa84",
+   "6852412c-e732-4221-b4b5-b852d8de2871",
+   "4f3f3871-d1b4-485e-81e5-8f6eeb4d1993",
+   "3f65fe3b-40ea-4251-b0e6-15dd0bfe15e9",
+   "074e826e-aecd-4a35-92a1-0ad1492ecd8b",
+   "99eeb592-0075-485c-9cb0-958b44566f36",
+   "735e8d86-421a-4cf0-988a-64156e489edb"
+  ],
+  "picked": "heart_0 -> heart.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of an orange and yellow flame, centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "flame_0.png",
+   "flame_1.png",
+   "flame_2.png",
+   "flame_3.png",
+   "flame_4.png",
+   "flame_5.png",
+   "flame_6.png",
+   "flame_7.png",
+   "flame_8.png"
+  ],
+  "asset_ids": [
+   "629ca75e-2be7-4c1f-90e3-1f9d6fdb3c5e",
+   "746a0af1-299e-4924-963c-832f454f77bb",
+   "b44c5062-bac6-43f4-a0e5-d937ea49abb1",
+   "8b070e4b-e2a6-441a-ad55-5709226cf5f5",
+   "b060457c-1cc2-4764-9839-fc8fa9ee87f0",
+   "1066257d-72a5-4c39-9fab-27c1e4cbb97b",
+   "18c451b6-8022-4a35-9aeb-10a3fa96d506",
+   "a3873cf3-a2fa-48b2-9277-3f708c9e67d6",
+   "ff7f958a-33af-45ef-8cc8-ca8591676dc3"
+  ],
+  "picked": "flame_1 -> flame.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a green military field radio with an antenna, centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "radio_0.png",
+   "radio_1.png",
+   "radio_2.png",
+   "radio_3.png",
+   "radio_4.png",
+   "radio_5.png",
+   "radio_6.png",
+   "radio_7.png",
+   "radio_8.png"
+  ],
+  "asset_ids": [
+   "1f699e5d-6ec6-4d53-b34f-3fc32b6468b9",
+   "b5d6012d-d54b-475c-b25b-4c7efda87b56",
+   "ad834170-0d00-4ac3-b924-113b2ad149bc",
+   "eec85f01-2627-4448-9971-3e43d2bf0762",
+   "45a99cd9-4964-484b-98cb-57b021a1ecb1",
+   "70f69637-7365-4936-9af3-38dae9301d10",
+   "1a5250ab-461d-468b-9932-e2a059bfbe8a",
+   "754265bb-6200-4956-a165-7b9863c00a90",
+   "298be9d2-4280-43a6-b5b2-329bed89239e"
+  ],
+  "picked": "radio_8 -> radio.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a white first-aid box with a red cross (medic), centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "cross_0.png",
+   "cross_1.png",
+   "cross_2.png",
+   "cross_3.png",
+   "cross_4.png",
+   "cross_5.png",
+   "cross_6.png",
+   "cross_7.png",
+   "cross_8.png"
+  ],
+  "asset_ids": [
+   "96032c2d-2150-4cd4-ac84-14fb4df46897",
+   "656cafa1-02a6-4e84-8bf9-42c4fdc617be",
+   "90d0531d-80c8-4d7d-a6cb-2a9148f4a12d",
+   "45aac8e6-a3eb-496f-9e88-98ccc70a75bc",
+   "e5605d6b-75e6-43d3-9231-725cf631f8e9",
+   "1ed3cd1b-0640-4a8f-93f5-de8edf74856d",
+   "e4f2cc1a-b946-4694-8b06-ac522b353efe",
+   "09780b55-6bf1-4a90-bc3c-f44dac27c3a0",
+   "880c3424-e79b-4848-a841-5b21adab0d33"
+  ],
+  "picked": "cross_3 -> cross.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a single playing card with a gold border, slightly tilted, centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "card_0.png",
+   "card_1.png",
+   "card_2.png",
+   "card_3.png",
+   "card_4.png",
+   "card_5.png",
+   "card_6.png",
+   "card_7.png",
+   "card_8.png"
+  ],
+  "asset_ids": [
+   "0dbab1b2-7901-4b33-8d9b-5bdb00ccdcca",
+   "72ddee13-011f-4bc6-92bc-33483157d04a",
+   "a3aa60ac-ba10-411a-9224-c163f5f0ed3f",
+   "d522e85a-03e0-495b-bcb7-f2895620d8f7",
+   "95f76fd8-1c5e-42b3-a8d8-30d471ddce50",
+   "c94e6450-14c5-4267-8bca-431f871a95ec",
+   "d3d223d2-ab5a-40aa-b4b0-83fcaa1a9d4e",
+   "a55409fe-94d3-4f38-8acb-5cb819bee1c4",
+   "6fdac1af-507d-44fb-b3b8-388932f0362d"
+  ],
+  "picked": "none, re-asked (other options not kept)"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a brown military combat boot seen from the side (movement), centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "boot_0.png",
+   "boot_1.png",
+   "boot_2.png",
+   "boot_3.png",
+   "boot_4.png",
+   "boot_5.png",
+   "boot_6.png",
+   "boot_7.png",
+   "boot_8.png"
+  ],
+  "asset_ids": [
+   "5bbba0d9-26d5-47ba-aa4a-db4cd5d8b555",
+   "5948779f-e162-44d4-ba10-9c2ca5dd15b3",
+   "3af351e7-da45-49a4-b877-ee7d9680f38b",
+   "1b195c66-bd6a-4b88-a648-8bd42eef1c81",
+   "c613f5b7-9edc-4999-8a8d-b2fbbb4b3ce6",
+   "8884e6c2-369f-427b-a584-38d80701f867",
+   "248fb89a-9989-4f4f-a72f-7e0670d8cdb0",
+   "a47bc8ef-bf88-4080-8f39-55e914404bfb",
+   "ca129303-aa66-41db-bb73-ca4d28f9a204"
+  ],
+  "picked": "boot_0 -> boot.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a classic five-pointed gold star with a lighter highlight, centered, small enough to leave a 1 pixel margin inside a 16x16 frame, bold dark outline, few colours, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "star2_0.png",
+   "star2_1.png",
+   "star2_2.png",
+   "star2_3.png",
+   "star2_4.png",
+   "star2_5.png",
+   "star2_6.png",
+   "star2_7.png",
+   "star2_8.png"
+  ],
+  "asset_ids": [
+   "35d5fe6c-2c6e-495d-8271-6e6642246c3c",
+   "9657abc8-101f-434e-b9ad-c0d43c4d748f",
+   "65a8c6a5-5494-4d8c-ab86-cec87baf8390",
+   "f5118eee-abff-4900-affb-d58d002b4c32",
+   "4a2b2837-93fc-4736-bf12-2e77f0a809fd",
+   "bd85e94f-030e-4168-9ef9-c3ca82456593",
+   "14a0e142-eef9-4b0d-bdfb-211da1a15375",
+   "92ee2cfa-4031-4d91-b7f9-9af690a2bc98",
+   "80836c58-fd1d-437e-9f60-634a97272262"
+  ],
+  "picked": "star2_8 -> star.png"
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of one small upright playing card (cream face, gold border, a black spade in the middle), narrow and tall, fits inside a 16x16 frame with margin, bold dark outline, few colours, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/heart.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/skull.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/00490b99-67d5-5ac6-aa9c-56f0c8c143b9/scratchpad/refs/ic/coin.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "card2_0.png",
+   "card2_1.png",
+   "card2_2.png",
+   "card2_3.png",
+   "card2_4.png",
+   "card2_5.png",
+   "card2_6.png",
+   "card2_7.png",
+   "card2_8.png"
+  ],
+  "asset_ids": [
+   "a0dd4550-b6b8-4142-b272-f7be9ac8bdc0",
+   "58ea5960-5d3a-46a4-90a2-d771c43c4d8b",
+   "f0e8aacc-b921-4a17-a732-d41e17306613",
+   "88bce46d-e6d1-4d6b-b5a4-cf2fa61fe335",
+   "baffd173-8435-4447-a690-b495e29a35a8",
+   "8a179b47-4261-43e7-b410-57ba8e06f87d",
+   "293d90b6-cf2f-4ca3-a62e-bb237e4d5834",
+   "61c537b2-411a-4da9-8313-96981210fc32",
+   "32be28e0-986a-4206-8221-28e2b6d6767a"
+  ],
+  "picked": "card2_1 -> card.png"
+ }
+]
