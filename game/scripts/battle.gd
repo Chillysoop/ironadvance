@@ -7539,9 +7539,28 @@ func job_reward() -> void:
 	## A finished job pays on top of the usual: scrip, plus a recruit, a crate or a trophy.
 	var j := job()
 	if mission.get("bonus", "") != "":
-		var bx: float = squad_alive()[0].x if squad_alive().size() else cam_x + W / 2.0
-		drop_loot(bx, T.ground_at(bx) - 40, {"type": "item", "item": Run.roll_item(3)})
-		stats["bonus_gear"] = true
+		# W6: each kind of bonus op pays its own way
+		match str(Data.BONUS_OPS[mission.bonus].get("pay", "epic")):
+			"salvage":
+				Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.BONUS_SALVAGE
+				stats["salvage"] = int(stats.get("salvage", 0)) + Data.BONUS_SALVAGE
+				log_msg("The yard's parts are ours: %d Salvage for HQ." % Data.BONUS_SALVAGE)
+			"defector":
+				if Run.company_room():
+					var used: Array = Run.roster.map(func(x): return x.def.name)
+					var names: Array = Data.CALLSIGNS.filter(func(c): return not used.has(c))
+					var d := Run.enlist(Run.spec_offer("defector", names[randi() % names.size()] if names.size() else "TURNCOAT"))
+					log_msg("%s, a Jackal Defector, signs up with the company." % d.def.name)
+				else:
+					Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.BONUS_SALVAGE
+					stats["salvage"] = int(stats.get("salvage", 0)) + Data.BONUS_SALVAGE
+					log_msg("The company is full, so the defectors hand over %d Salvage instead." % Data.BONUS_SALVAGE)
+			"crash":
+				log_msg("The wreck is held. Every alien killed here counts double at the Alien Lab.")
+			_:
+				var bx: float = squad_alive()[0].x if squad_alive().size() else cam_x + W / 2.0
+				drop_loot(bx, T.ground_at(bx) - 40, {"type": "item", "item": Run.roll_item(3)})
+				stats["bonus_gear"] = true
 	if j == "push":
 		return
 	Run.scrip += Data.JOB_PAY
