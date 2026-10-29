@@ -862,6 +862,8 @@ func run() -> void:
 			await warstory()
 		"warfront":
 			await warfront()
+		"warpincer":
+			await warpincer()
 		"straggler":
 			await straggler()
 		"hoverwedge":
@@ -5912,6 +5914,94 @@ func warfront() -> void:
 	main.show_slots()
 	await frames_wait(10)
 	await shot("wf_slots")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
+func warpincer() -> void:
+	## Campaign idea W9: Iron Harbor goes in as a two-squad pincer once the company has eight.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	Run.camp.act = 4
+	Run.start_op(Run.sector("boss"))
+	check(not Run.level.get("pincer", false), "a small company storms the harbor as one squad")
+	while Run.company().size() < Data.PINCER_COMPANY:
+		Run.enlist(Run.recruit_offers(1)[0])
+	Run.start_op(Run.sector("boss"))
+	check(Run.level.get("pincer", false) and Run.wing_b().size() == 4, "a company of eight goes in as two squads (%d)" % Run.wing_b().size())
+	check(Run.wing_b().all(func(s): return not Run.soldiers.has(s)), "squad B comes off the bench")
+	main.show_brief()
+	await frames_wait(10)
+	await shot("pc_brief")
+	var b: Battle = main.start_battle(0, Run.current_mission())
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var wa: Array = b.squad().filter(func(u): return b.wing(u) == "a")
+	var wb: Array = b.squad().filter(func(u): return b.wing(u) == "b")
+	check(wa.size() == 4 and wb.size() == 4 and wb.all(func(u): return u.x > b.world_w - 300), "squad A lands left, squad B at the far right (%d %d)" % [wa.size(), wb.size()])
+	check(b.pincer.get("on", false) and b.pincer.view == "a", "the camera starts on squad A")
+	check(b.units.any(func(e): return e.team == "enemy" and e.active and e.x > b.world_w - Battle.W), "enemies on squad B's side are live too")
+	check(b.units.any(func(e): return e.team == "enemy" and not e.active and e.x > Battle.W + 100 and e.x < b.world_w - Battle.W - 100), "the middle stays quiet until someone gets there")
+	await shot("pc_a")
+	b.switch_wing()
+	await frames_wait(10)
+	check(b.pincer.view == "b" and b.sel == wb[0] and b.cam_x >= b.world_w - Battle.W - 1, "G jumps to squad B (cam %d)" % b.cam_x)
+	check(b.bar_squad() == wb, "the squad bar shows the half on screen")
+	await frames_wait(20)
+	await shot("pc_b")
+	# a B soldier advancing west drags B's view along
+	var u: Unit = wb[3]
+	var cam0 := b.cam_x
+	u.x = b.cam_x + 120
+	u.y = b.T.stand_y(u.x, 0)
+	await b.check_push(u)
+	check(b.cam_x < cam0 and b.pincer.view == "b", "squad B's view follows them west (%d -> %d)" % [cam0, b.cam_x])
+	# picking an A soldier jumps back, and A's camera is where it was
+	b.sel = wa[0]
+	await frames_wait(5)
+	check(b.pincer.view == "a" and b.cam_x < Battle.W, "selecting squad A jumps back to their side")
+	# an enemy phase plays both halves
+	b.end_turn(true)
+	await until(func(): return b.state != "player", 300)
+	var views := {}
+	while not (b.state == "player" and not b.busy) and b.round_n < 3:
+		views[b.pincer.get("view", "-")] = true
+		await frames_wait(1)
+		if Engine.get_frames_drawn() > 1 << 30:
+			break
+	check(views.has("b") and views.has("a"), "the camera visits both halves in the enemy phase (%s)" % [views.keys()])
+	check(b.round_n == 2 and b.squad_alive().size() > 0, "an enemy phase plays both halves and hands the turn back (r%d %s busy %s alive %d)" % [b.round_n, b.state, b.busy, b.squad_alive().size()])
+	# the halves meet: B's view reaches A's
+	u = b.squad_alive().filter(func(x): return b.wing(x) == "b")[0]
+	for x in b.squad_alive().filter(func(x): return b.wing(x) == "b"):
+		x.hp = x.max_hp
+	u.x = b.pincer.a_cam + Battle.W * 0.9
+	u.y = b.T.stand_y(u.x, 0)
+	b.sel = u
+	await frames_wait(5)
+	await b.check_push(u)
+	await frames_wait(60)
+	check(not b.pincer.get("on", false) and b.pincer.get("met", false), "when the windows meet the pincer closes (%s cam %d ux %d)" % [b.pincer, b.cam_x, u.x])
+	check(b.squad().all(func(x): return b.wing(x) == "a"), "and it's one squad of eight")
+	await shot("pc_met")
+	# service books every soldier, even two of a class
+	for x in b.squad():
+		x.kills = 1
+	b.mission_over.emit(true)
+	await frames_wait(5)
+	var st: Dictionary = Run.history.back()
+	check(st.get("by", {}).size() == 8, "the op books all eight by roster slot (%d)" % st.get("by", {}).size())
+	Run.book_service(st)
+	check(Run.wing_b().all(func(s): return int(Run.svc(s).kills) >= 1), "squad B's kills land on their own records")
+	# the autoplayer plays a few rounds of it without hanging
+	Run.start_op(Run.sector("boss"))
+	for s0 in Run.company():
+		s0.hp = Run.eff_max_hp(s0)
+	await bot(0, 5, false, Run.current_mission())
+	check(true, "the autoplayer got through %d rounds of the pincer (%s)" % [int(bot_stats.get("rounds", 5)), bot_stats.get("alive", "-")])
 	main.show_title()
 	await frames_wait(5)
 	Run.delete_campaign(9)

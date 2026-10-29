@@ -1227,7 +1227,34 @@ func add_loot(it: Dictionary) -> String:
 	return "stash"
 
 func alive_count() -> int:
-	return soldiers.filter(func(s): return s.alive).size()
+	return deployed().filter(func(s): return s.alive).size()
+
+func wing_b() -> Array:
+	## W9: squad B on the pincer op, from the roster indices make_op picked.
+	var out := []
+	if campaign() and level.get("pincer", false):
+		for i in level.get("wing_b", []):
+			if int(i) < roster.size() and not soldiers.has(roster[int(i)]):
+				out.append(roster[int(i)])
+	return out
+
+func deployed() -> Array:
+	## Everyone who went in: the squad, plus squad B on the pincer.
+	return soldiers + wing_b()
+
+func pick_wing_b() -> Array:
+	## W9: the four best on the bench by rank, then level, as roster indices.
+	var pool: Array = company().filter(func(s): return not soldiers.has(s) and not s.has("guest"))
+	pool.sort_custom(func(a, b): return rank(a) * 100 + int(a.lvl) > rank(b) * 100 + int(b.lvl))
+	return pool.slice(0, Data.SQUAD_MAX).map(func(s): return roster.find(s))
+
+func svc_rec(st: Dictionary, s: Dictionary) -> Dictionary:
+	## An op's kills, XP and downs for one soldier: by roster slot when booked that way (two of a class
+	## can deploy on the pincer), else by class key.
+	var r: Dictionary = st.get("by", {}).get(str(roster.find(s)), {})
+	if not r.is_empty():
+		return r
+	return {"k": int(st.get("kills_by", {}).get(s.key, 0)), "down": st.get("downed_by", {}).get(s.key, false), "xp": int(st.get("xp", {}).get(s.key, 0))}
 
 # ---------------------------------------------------------------- merging (M1-M3, M5)
 func all_items() -> Array:
@@ -1577,7 +1604,11 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 		var bm: Dictionary = Data.BIOMES[sc.biome]
 		lv.segments = ["start", segs[1], "camp", "yard", segs[4], bm.segments[randi() % bm.segments.size()]]
 	elif sc.get("finale", false) and not patrol:
-		pass
+		if company().size() >= Data.PINCER_COMPANY and pick_wing_b().size() >= Data.SQUAD_MAX:
+			# W9: two squads of four, one in from each end of the harbor, the flagship between them
+			lv["pincer"] = true
+			lv["wing_b"] = pick_wing_b()
+			lv.segments = ["start", "docks", "pier", "warehouse", "start"]
 	elif not sc.get("stronghold", false):
 		lv.segments = ["start", segs[1], "camp", "yard", segs[4], segs[6]]
 	else:
@@ -2152,12 +2183,13 @@ func book_service(st: Dictionary) -> Dictionary:
 	var out := {"medals": [], "promos": [], "bench": 0, "orders": [], "bonds": []}
 	var won: bool = st.get("won", false)
 	var xps: Array = []
-	for s in soldiers:
+	for s in deployed():
 		if not s.alive:
 			continue
 		var sv := svc(s)
-		var k: int = int(st.get("kills_by", {}).get(s.key, 0))
-		var down: bool = st.get("downed_by", {}).get(s.key, false)
+		var rec := svc_rec(st, s)
+		var k: int = int(rec.k)
+		var down: bool = rec.down
 		sv.ops = int(sv.ops) + 1
 		sv.kills = int(sv.kills) + k
 		var ak: Dictionary = sv.get("acts", {})  # W2: kills per act, for the act's MVP
@@ -2166,7 +2198,7 @@ func book_service(st: Dictionary) -> Dictionary:
 		sv["acts"] = ak
 		if down:
 			sv.downs = int(sv.downs) + 1
-		xps.append(int(st.get("xp", {}).get(s.key, 0)))
+		xps.append(int(rec.xp))
 		var got: Array = []
 		if won and down and award(s, "heart"):
 			got.append("heart")
@@ -2193,7 +2225,7 @@ func book_service(st: Dictionary) -> Dictionary:
 			if oid != "":
 				out.orders.append("%s has a personal order: %s" % [s.def.name, order_text(oid)])
 	# W7: soldiers who keep finishing ops together become battle buddies
-	var team: Array = soldiers.filter(func(x): return x.alive and not x.has("guest"))
+	var team: Array = deployed().filter(func(x): return x.alive and not x.has("guest"))
 	for a in team:
 		for b in team:
 			if a == b:
@@ -2216,6 +2248,8 @@ func book_service(st: Dictionary) -> Dictionary:
 	var bx := int(avg * Data.BENCH_XP)
 	if bx > 0:
 		for s in bench():
+			if wing_b().has(s):
+				continue  # squad B earned their own XP in the fight
 			var gained := add_xp(s, bx)
 			if gained > 0:
 				s["train"] = int(s.get("train", 0)) + gained
