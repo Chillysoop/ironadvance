@@ -19,6 +19,7 @@ const C_DARK := Color(0.05, 0.035, 0.03)
 const RIM := {"dusk": Color(1.0, 0.72, 0.42, 0.85), "jungle": Color(1.0, 0.95, 0.65, 0.75), "night": Color(0.6, 0.75, 1.0, 0.8)}
 const C_ALIEN := Color("c47bff")  # Vharr markers and labels
 const C_OOZE := Color("9df25c")
+const SUNK_Y := 452.0  # world y where a soldier disappears behind the card tray
 
 func _draw() -> void:
 	if b.T == null:
@@ -964,6 +965,13 @@ func draw_plate(u: Unit) -> void:
 
 func draw_squad_plate(u: Unit, x: float) -> void:
 	# dog-tag style plate at the feet: HP blocks, adrenaline flame bar, energy bolts
+	if u.y - u.h * 0.5 > SUNK_Y:
+		# down in a deep crater behind the card tray: point at them from just above it
+		var nm: String = u.def.name
+		var my: float = SUNK_Y - 6 + absf(sin(b.t / 10.0)) * 2
+		var mx: float = maxf(x, b.cam_x + 236)  # clear of the squad roster and energy box
+		draw_colored_polygon(PackedVector2Array([Vector2(mx - 6, my), Vector2(mx + 6, my), Vector2(mx, my + 7)]), Color("ffb23e"))
+		Art.text(self, nm, in_view(Vector2(mx, my - 3), nm), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 	var y := roundf(u.y + 4)
 	var w := 34.0
 	var sel: bool = u == b.sel
