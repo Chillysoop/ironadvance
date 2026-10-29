@@ -8573,7 +8573,10 @@ func enemy_act(e: Unit) -> void:
 		return
 	if await jackal_nade(e):
 		return
-	var pad = pad_in_reach(e, E.get("speed", 0)) if not e.hold and E.get("speed", 0) > 0 and not E.get("static", false) else null
+	# only rank-and-file shooters run for a pad: the follow-up below is a plain rifle shot, and a
+	# Flametrooper's or Di-Cokka's single dmg number isn't a rifle's [min, max] (it crashed the shot)
+	var grabs: bool = not e.hold and E.get("speed", 0) > 0 and not E.get("static", false) and E.get("dmg") is Array
+	var pad = pad_in_reach(e, E.get("speed", 0)) if grabs else null
 	if pad != null:
 		# a bonus is up within reach: grab it, then shoot if there is a shot
 		float_text(e, "GRAB IT!", Color("ff7a3d"))

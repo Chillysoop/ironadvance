@@ -1904,4 +1904,12 @@ func draw_crumble() -> void:
 		draw_line(Vector2(c.x, y), Vector2(minf(nx, c.x + 40), y + 40), Color("ff4d3d", 0.3), 2.0)
 		y += 24
 	draw_rect(Rect2(nx - 2, top, 3, b.WATER_Y - top), Color("ff4d3d"))
-	Art.text(self, "FALLS NEXT ROUND" if c.on else "COLLAPSE ZONE", Vector2((c.x + nx) / 2.0, top + 14), 8, Color("ff7a5a"), HORIZONTAL_ALIGNMENT_CENTER)
+	var cl := "FALLS NEXT ROUND" if c.on else "COLLAPSE ZONE"
+	var cx: float = (c.x + nx) / 2.0
+	var ly: float = top + 14
+	# drop below the PUSH ZONE words (drawn left of the push line, down to y 106 under a boss bar)
+	var pz := b.cam_x + Battle.W * 0.72
+	var hw := Art.text_width(cl, 8) / 2.0
+	if b.state == "player" and cx + hw > pz - 170 and cx - hw < pz:
+		ly = 124.0
+	Art.text(self, cl, Vector2(cx, ly), 8, Color("ff7a5a"), HORIZONTAL_ALIGNMENT_CENTER)
