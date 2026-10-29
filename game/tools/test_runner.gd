@@ -6428,7 +6428,7 @@ func lab() -> void:
 	await shot("lab_bonus_room")
 	check(main.screen.go_btn.text == "BONUS OP", "the War Room offers the bonus op")
 	Run.start_op(bsc)
-	check(Run.level.bonus != "" and Run.level.banner == "BONUS OP" and Run.level.job in ["escort", "hunt"], "a bonus op is a convoy escort or a scout hunt (%s)" % Run.level.job)
+	check(Run.level.bonus != "" and Run.level.banner == "BONUS OP" and Run.level.job == Data.BONUS_OPS[Run.level.bonus].job, "a bonus op runs its kind's job (%s %s)" % [Run.level.bonus, Run.level.job])
 	var res := Run.op_over(true)
 	check(res.has("bonus") and Run.camp.bonus.is_empty() and Run.sector_held(bsc.id), "winning it pays and clears it; the sector stays held")
 	Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": "convoy", "left": 2}
