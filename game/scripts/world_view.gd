@@ -1252,7 +1252,7 @@ func draw_targeting() -> void:
 					Art.text(self, "CLIMB %dpx" % int(pl.cost), Vector2(LD.offx, LD.top - 44), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 				else:
 					Art.text(self, "LADDER: OUT OF REACH", Vector2(LD.x, LD.top - 14), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
-			elif hov == null:
+			elif hov == null and get_viewport().get_mouse_position().y >= 34:  # a click on the top bar doesn't walk
 				var sim := b.sim_walk(u, m.x, u.move_left)
 				if sim.pts.size():
 					var i := 0
