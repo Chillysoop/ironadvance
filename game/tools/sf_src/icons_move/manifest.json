@@ -1,0 +1,138 @@
+[
+ {
+  "op": "style",
+  "prompt": "A UI icon of a running boot with three horizontal speed lines behind it (sprint), centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_boot.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_up.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_shield.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "sprint_0.png",
+   "sprint_1.png",
+   "sprint_2.png",
+   "sprint_3.png",
+   "sprint_4.png",
+   "sprint_5.png",
+   "sprint_6.png",
+   "sprint_7.png",
+   "sprint_8.png"
+  ],
+  "asset_ids": [
+   "d2d376e4-6f07-4412-8d25-62d133ed073a",
+   "d0237804-7d7c-4ddc-aabd-cbe286ee2efd",
+   "5739b570-bc2d-412e-bb22-6db7bbef9445",
+   "b5e0677f-f8d5-49a9-8eff-193ccf8a754b",
+   "5fe325bc-af56-4228-89c7-33b565c09044",
+   "042c8c3a-8f5d-4757-9a37-c52164d5aa40",
+   "408d6138-7008-462a-ae31-c9776f2a3d73",
+   "9fc244e1-f00f-48f1-b449-7c2c7c813b1a",
+   "0b06f0ae-a26f-49f1-892b-2c513193a90b"
+  ]
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a military jet pack with two orange flame jets underneath, centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_boot.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_up.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_shield.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "jetpack_0.png",
+   "jetpack_1.png",
+   "jetpack_2.png",
+   "jetpack_3.png",
+   "jetpack_4.png",
+   "jetpack_5.png",
+   "jetpack_6.png",
+   "jetpack_7.png",
+   "jetpack_8.png"
+  ],
+  "asset_ids": [
+   "99f50e4c-ea95-4a28-978d-8365ccca587b",
+   "47668de4-af1d-46c3-a285-126607a4925b",
+   "8fb8f095-a6cd-4074-886a-64f2af89869e",
+   "66a121be-a3a0-49df-8327-ecaad50cbe75",
+   "5e9221dd-2876-4d08-98f7-01b3197c82bb",
+   "15c829af-588c-43de-9d02-7e12de19db5c",
+   "02521285-98f3-433d-8ce8-22cd1f018970",
+   "acacda26-7220-4e95-a5d7-58d15e4d5e3e",
+   "cce6d8c3-5a9d-4db1-93a9-d3db81fb3beb"
+  ]
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon of a short red steel I-beam girder seen at an angle, with bolts, centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_boot.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_up.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_shield.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "girder_0.png",
+   "girder_1.png",
+   "girder_2.png",
+   "girder_3.png",
+   "girder_4.png",
+   "girder_5.png",
+   "girder_6.png",
+   "girder_7.png",
+   "girder_8.png"
+  ],
+  "asset_ids": [
+   "aca5dd3a-8d48-401b-8260-2bb2aebcbea6",
+   "76021b58-7b7b-461f-b383-31e14ec9fd90",
+   "60e03779-615f-4f63-ad85-0486d113f299",
+   "628693b5-fb65-4885-96af-34f13e5321eb",
+   "38532cf9-a122-4fc4-93ef-b76a790af704",
+   "9ac4704b-e622-4586-9c4a-a4865d5d7896",
+   "5a7721d9-0157-4200-9de5-ccc63b81718a",
+   "c5949d82-6607-44be-9f0a-ee04429f13db",
+   "3f1a8e93-216f-42ef-ad42-703846f7eb90"
+  ]
+ },
+ {
+  "op": "style",
+  "prompt": "A UI icon on a transparent background: a brown army boot leaping up and forward over a curved yellow arc arrow, centered, filling the frame, bold dark outline, few colours, readable at tiny size, like the reference icons.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_boot.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_bolt.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_star.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_up.png",
+   "../../../../../../../tmp/claude-0/-home-user-ironadvance/e9fbdebe-9a3a-54c0-8ea2-3b19251b1c22/scratchpad/refs/ic_shield.png"
+  ],
+  "size": 16,
+  "outputs": [
+   "hop_0.png",
+   "hop_1.png",
+   "hop_2.png",
+   "hop_3.png",
+   "hop_4.png",
+   "hop_5.png",
+   "hop_6.png",
+   "hop_7.png",
+   "hop_8.png"
+  ],
+  "asset_ids": [
+   "8257bc80-1570-4f25-a8ac-952b33c924f9",
+   "5619c724-f633-425d-afd3-fcdc12910df7",
+   "f9b6104d-06dd-425e-93db-ddbb6f0ee65b",
+   "51083c09-ff84-4e35-bbb8-51934ba7d9b7",
+   "a0a2ea22-bf2c-4675-a0ea-e195440be75c",
+   "c1f234fc-c307-4a30-809c-da1879e33fd5",
+   "86198518-a429-4a42-bbf6-172ed82b08bd",
+   "cc2643be-66ac-465d-970a-0c850f41e9f2",
+   "bbe0f032-1afe-4e48-8a12-89433327885e"
+  ]
+ }
+]

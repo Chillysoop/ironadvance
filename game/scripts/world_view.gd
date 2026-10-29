@@ -1113,6 +1113,15 @@ func draw_fx() -> void:
 				draw_set_transform_matrix(Transform2D.IDENTITY)
 
 # ---------------------------------------------------------------- targeting overlays
+func draw_tut_flag(x: float) -> void:
+	## D2: training's first step. Walk anyone as far as this flag.
+	var gy: float = b.T.ground_at(x)
+	var wave := sin(b.t / 6.0) * 2
+	draw_rect(Rect2(x - 1, gy - 34, 2, 34), Color("e8dcc2"))
+	draw_colored_polygon(PackedVector2Array([Vector2(x + 1, gy - 34), Vector2(x + 17, gy - 29 + wave), Vector2(x + 1, gy - 22)]), Color("62d26f"))
+	Art.text(self, "WALK HERE", Vector2(x, gy - 40), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+
+# ---------------------------------------------------------------- targeting overlays
 func draw_targeting() -> void:
 	if b.state != "player" or b.busy:
 		return
@@ -1120,6 +1129,8 @@ func draw_targeting() -> void:
 	if u == null or u.dead:
 		return
 	var m: Vector2 = b.mouse
+	if b.tutorial() and b.tut_step == b.TUT_MOVE:
+		draw_tut_flag(b.TUT_FLAG_X)
 	var pz := b.cam_x + Battle.W * 0.72
 	if b.cam_x < b.world_w - Battle.W:
 		# the label sits left of the line, clear of the bounty board in the top right. With an

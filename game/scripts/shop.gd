@@ -44,8 +44,11 @@ func _ready() -> void:
 	else:
 		restock()
 	if mode == "shop":
-		if not Run.qm_cache.get("barked", false) and not Run.meta.get("tips_off", false):
+		# D12: the Quartermaster explains himself on the first visit ever, not every visit
+		if not Run.meta.get("qm_coached", false) and not Run.meta.get("tips_off", false):
 			bark = 0
+			Run.meta["qm_coached"] = true
+			Run.save_meta()
 		Run.qm_cache["barked"] = true
 		Run.qm_cache["seen"] = true
 	build()

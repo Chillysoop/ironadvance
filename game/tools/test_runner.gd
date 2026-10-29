@@ -8,7 +8,7 @@ extends Node
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
 ## crumble (falling structures tip, spin, splinter and crush),
-## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
+## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), dcalls (D1-D12 from the full-build playtest page), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -869,6 +869,8 @@ func run() -> void:
 			await newplayer3()
 		"newplayer4":
 			await newplayer4()
+		"dcalls":
+			await dcalls()
 		"fieldfix":
 			await fieldfix()
 		"synergies":
@@ -1162,7 +1164,7 @@ func picks() -> void:
 	await shot("picks_supply_who")
 	var who: Array = b.hud.modal.get_children().filter(func(c): return c is CardView and not c.is_queued_for_deletion())
 	check(modal_title(b).begins_with("WHO GETS") and who.size() == sq.size(), "then asks who gets it (%s, %d soldiers)" % [modal_title(b), who.size()])
-	check(who[2].label_top == "TO " + sq[2].def.name, "each copy is labelled with its soldier (%s)" % who[2].label_top)
+	check(who[2].label_top == "GIVE TO " + sq[2].def.name and who[2].opt.has("soldier"), "D7: each tile shows its soldier, not the card (%s)" % who[2].label_top)
 	b.hud.picked.emit(2)
 	await frames_wait(10)
 	check(sq[2].s.deck.size() == n2 + 1 and [0, 1, 3].map(func(k): return sq[k].s.deck.size()) == others, "the card goes to the soldier you picked and nobody else")
@@ -1514,6 +1516,7 @@ func hub() -> void:
 	await shot("hub_hq")
 	hq.dial_btn.hover = false
 	# walking to a building opens it after the squad gets there
+	Run.meta.erase("qm_coached")  # D12: only the first visit ever gets the coach
 	hq.walk_to("qm")
 	await frames_wait(14)
 	await shot("hub_walk")
@@ -1854,6 +1857,9 @@ func training() -> void:
 	main.start_training()
 	var b: Battle = main.battle
 	await until(func(): return b.state == "player" and not b.busy)
+	if not b.banners.is_empty():
+		check(b.tut_said < 0, "D1: the sergeant waits for the mission banner to clear")
+	await until(func(): return main.call_layer != null and main.call_layer.get_child_count() > 0, 600)
 	await frames_wait(20)
 	check(b.tutorial() and b.tut_step == b.TUT_MOVE, "training opens on the move step")
 	check(main.call_layer.get_child_count() > 0 and main.call_layer.get_child(0).line().name == "SGT. KRUGER", "the sergeant calls in on the tablet")
@@ -1862,6 +1868,7 @@ func training() -> void:
 	check(b.tut_step == b.TUT_SHOOT, "walking forward clears the move step")
 	await frames_wait(20)
 	check(b.sel.hand.any(func(c): return c.key == "rifle"), "the selected soldier holds a rifle shot for the shoot step")
+	check(b.sel.hand[0].key == "rifle", "D3: the training rifle is card 1")
 	for u in b.tut_marks.target:
 		b.kill(u, b.sel)
 	await frames_wait(20)
@@ -2047,6 +2054,46 @@ func newplayer4() -> void:
 	await shot("newplayer4")
 	Run.meta = keep
 	Run.save_meta()
+
+func dcalls() -> void:
+	## D1-D12 from the full-build playtest page (all voted YES). D1 and D3 are in training, D7 in picks, D12 in hub.
+	check(Data.BIOMES.lake.rough != "long" and Data.BIOMES.lake.rules.sway < 1.0, "D4: the calm Frozen Lake isn't tagged rough on long guns")
+	check(["hop", "sprint", "jetpack", "girder"].all(func(n): return Art.tex.has("ic_" + n) and Art.tex["ic_" + n] != null), "D6: movement cards have their own icons")
+	check(Data.COMMANDS[0].id == "doubledown" and Data.COMMANDS[0].text.begins_with("ONE USE"), "D8: Double Down says it's spent after one use")
+	check(Data.CARDS.zipline.reach >= 440, "D11: zipline reach is 30%% longer (%d)" % Data.CARDS.zipline.reach)
+	# D2: the walk step ends at the flag
+	main.start_training()
+	var b: Battle = main.battle
+	await until(func(): return b.state == "player" and not b.busy)
+	b.squad()[0].x = b.TUT_FLAG_X - 2
+	await until(func(): return b.tut_step == b.TUT_SHOOT, 120)
+	check(b.tut_step == b.TUT_SHOOT, "D2: reaching the flag ends the walk step")
+	# D5: a 10-card hand narrows its cards and a hovered card comes fully clear
+	var u: Unit = b.sel
+	for k in ["sprint", "hop", "frag", "rifle", "pistol", "drill", "jumppack", "girder", "medkit", "smoke"]:
+		u.hand.append(Run.new_card(k))
+	u.hand = u.hand.slice(0, 10)
+	b.ui_dirty = true
+	await frames_wait(6)
+	var cards: Array = main.hud.cards
+	check(cards.size() == 10 and cards[0].size.x == 90.0, "D5: a 10-card hand uses narrower cards (%.0f)" % (cards[0].size.x if cards.size() else 0.0))
+	cards[2].hover = true
+	await frames_wait(20)
+	check(cards[2].position.y + cards[2].size.y <= 545.0, "D5: the hovered card lifts fully clear (bottom %.0f)" % (cards[2].position.y + cards[2].size.y))
+	await shot("dcalls_hand")
+	cards[2].hover = false
+	# D9: the night floor is lighter
+	Run.new_run()
+	Run.pick_biome("lake")
+	var nb: Battle = main.start_battle(0, Run.current_mission().duplicate(true))
+	await until(func(): return nb.state == "player" and not nb.busy)
+	var sh = nb.get_node_or_null("Lights")
+	if sh == null:
+		for c in nb.get_children():
+			if "shade" in c:
+				sh = c
+	check(nb.theme != "night" or (sh != null and sh.shade.color.r >= 0.8), "D9: night levels keep a lighter floor")
+	await shot("dcalls_night")
 
 func hover_at(p: Vector2) -> void:
 	## Rest the mouse on a 960x540 point, for Tip boxes.

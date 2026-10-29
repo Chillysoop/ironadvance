@@ -64,6 +64,7 @@ class SquadBar extends Control:
 				Sfx.play("select")
 				all_decks.emit()
 	func _draw() -> void:
+		Tip.clear(self)
 		if has_all():
 			var ar := all_rect()
 			draw_rect(ar, INK)
@@ -112,6 +113,14 @@ class SquadBar extends Control:
 				draw_rect(Rect2(ap, Vector2(aw, 12)), INK)
 				draw_rect(Rect2(ap + Vector2(1, 1), Vector2(aw - 2, 10)), Color("ff4d3d") if al == "HURT" else Color("ffd23a"))
 				Art.text(self, al, ap + Vector2(aw / 2, 10), 8, INK, HORIZONTAL_ALIGNMENT_CENTER, 0)
+				# D10: what the badge means and where to act on it
+				var why: Array = {
+					"FUSE": ["FUSE READY", "%s has 3 copies of a card at one rarity. Fuse them into one copy a rarity higher at the WORKSHOP, or from the Dossier's FUSE tab." % s.def.name],
+					"EVOLVE": ["EVOLVE READY", "One of %s's cards can evolve into its upgraded form. Do it at the WORKSHOP." % s.def.name],
+					"HURT": ["HURT", "%s is below full HP. Patch them up at DOC'S LAB." % s.def.name],
+				}.get(al, [])
+				if why.size():
+					Tip.zone(self, Rect2(ap, Vector2(aw, 12)).grow(3), why[0], why[1], Color("ff4d3d") if al == "HURT" else Color("ffd23a"))
 
 class ActionTile extends Control:
 	## A service button big enough to explain itself: name and price on top, then what it

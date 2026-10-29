@@ -60,6 +60,8 @@ func _process(_d: float) -> void:
 		# cards you can't pay for sink and grey out so the playable ones stand up
 		# a hovered card rises all the way even when you can't play it, so its text can be read
 		var target := -60.0 if hover or selected else (14.0 if disabled else 0.0)
+		if hover and peek > 0.0:
+			target = -size.y + 70.0  # D5: in a crowded hand the hovered card comes fully clear
 		if selected:
 			target = -64.0
 		if ghost:
@@ -235,7 +237,10 @@ func _draw() -> void:
 	if supercharged and not dim:
 		var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 150.0)
 		draw_rect(Rect2(0, 0, w, h - 2), Color(1, 0.48, 0.24, pulse), false, 2.0)
-		Art.text(self, "PUMPED", Vector2(w - 6, 26), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_RIGHT, 1)
+		# D5: the tag sits on a tab above the card, where the next card in a big hand can't hide it
+		var py := -18.0 if chain != "" else -4.0
+		draw_rect(Rect2(0, py - 10, 48, 12), Color(0.25, 0.1, 0.04, 0.9))
+		Art.text(self, "PUMPED", Vector2(4, py), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_LEFT, 1)
 	if selected:
 		draw_rect(Rect2(-2, -2, w + 4, h + 2), Color("ffd23a"), false, 2.0)
 	elif hover and not dim:
@@ -321,6 +326,9 @@ func draw_compact(kind: String, title: String, name_: String, dim: bool) -> void
 	if supercharged and not dim:
 		var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 150.0)
 		draw_rect(Rect2(0, 0, size.x, size.y - 2), Color(1, 0.48, 0.24, pulse), false, 2.0)
+		var pt := "PUMPED" if pw >= 50 else "PMP"
+		draw_rect(Rect2(0, -14, minf(pw, 48), 12), Color(0.25, 0.1, 0.04, 0.9))
+		Art.text(self, pt, Vector2(4, -4), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_LEFT, 1)
 	var t := tier()
 	if t >= 0:
 		draw_rarity(size.x, size.y, t, dim)
@@ -362,7 +370,14 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 					draw_rect(Rect2(c.x - 15, c.y - 5, 10, 10), INK)
 					draw_rect(Rect2(c.x - 14, c.y - 4, 8, 8), Color("ffb23e").darkened(0.5 if dim else 0.0))
 					return
-				if cd.get("grapple", false) or cd.get("jump", false) or cd.get("rush", false) or cd.get("roll", false):
+				# D6: Hop, jump packs and Girder each get their own icon
+				if cd.get("girder", false):
+					icon = "ic_girder"
+				elif cd.get("hop", false):
+					icon = "ic_hop"
+				elif cd.get("jump", false):
+					icon = "ic_jetpack"
+				elif cd.get("grapple", false) or cd.get("rush", false) or cd.get("roll", false):
 					icon = "ic_boot" if not cd.get("grapple", false) else "ic_up"
 				else:
 					draw_rect(Rect2(c.x - 15, c.y - 4, 26, 8), INK)
@@ -376,7 +391,7 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 			"ALLY":
 				icon = "ic_cross"
 			"SELF":
-				icon = "ic_shield" if cd.has("armor") else ("ic_flame" if cd.has("adrenal") or cd.get("surge", false) else ("ic_star" if cd.has("rally") or cd.get("overwatch", false) else "ic_boot"))
+				icon = "ic_shield" if cd.has("armor") else ("ic_flame" if cd.has("adrenal") or cd.get("surge", false) else ("ic_star" if cd.has("rally") or cd.get("overwatch", false) else ("ic_sprint" if cd.has("move") else "ic_boot")))
 	else:
 		if kind == "item":
 			var d: Dictionary = Data.ITEMS[opt.item.id]
@@ -399,7 +414,11 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 			Art.draw_char(self, Art.look_sheet(opt.soldier), "idle", 0, Vector2(c.x, c.y + 14), 1, false, 0, mod.a, 0, false, 0.8)
 			return
 	if icon != "":
-		draw_texture_rect(Art.tex[icon], Rect2(c.x - 16, c.y - 16, 32, 32), false, mod)
+		# 16 px icons draw at 2x; the taller movement icons keep their shape inside the same 32 box
+		var tx: Texture2D = Art.tex[icon]
+		var k := 32.0 / maxf(tx.get_width(), tx.get_height())
+		var sz := Vector2(tx.get_width(), tx.get_height()) * k
+		draw_texture_rect(tx, Rect2(c - sz / 2.0, sz), false, mod)
 
 static func wrap_text(s: String, width: float, size: int) -> Array:
 	var out: Array = []

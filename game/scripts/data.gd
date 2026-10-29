@@ -212,7 +212,7 @@ const CARDS := {
 	"suplex": {"name": "Suplex", "type": "MELEE", "cost": 1, "dmg": [8, 10], "range": 34, "suplex": true, "text": "Lift a Jackal over your head and drive him into the ground behind you.", "rarity": 1, "up": {"dmg": [11, 13]}},
 	"piledrive": {"name": "Piledriver", "type": "MELEE", "cost": 0, "od": true, "dmg": [22, 26], "range": 40, "piledrive": true, "text": "Leap up with a Jackal and slam down: a crater, and everything around it is Stunned.", "rarity": 5},
 	# N1 Finch, Scout
-	"zipline": {"name": "Zipline", "type": "LINE", "cost": 1, "zipline": true, "reach": 340, "pull": 70, "text": "Fire a line to the cursor. Finch and every squadmate within 70px ride it there.", "rarity": 0, "up": {"reach": 460}},
+	"zipline": {"name": "Zipline", "type": "LINE", "cost": 1, "zipline": true, "reach": 440, "pull": 70, "text": "Fire a line to the cursor. Finch and every squadmate within 70px ride it there.", "rarity": 0, "up": {"reach": 600}},
 	"flare": {"name": "Flare", "type": "ARC", "cost": 1, "flare": 90, "wind": 0.5, "text": "Lights up every Jackal within 90px: FLARED, they take +3 from everyone for 2 turns.", "rarity": 0, "up": {"flare": 130}},
 	"drone": {"name": "Recon Drone", "type": "SELF", "cost": 1, "drone": 1, "dmg": 9, "radius": 32, "text": "The drone flies over the nearest Jackal within 420px and drops a grenade on it.", "rarity": 1, "up": {"dmg": 13}},
 	"knives": {"name": "Throwing Knives", "type": "AIM", "cost": 1, "dmg": [3, 4], "shots": 2, "range": 520, "gun": "pistol", "bounce": 0, "sway": 0.02, "spread": 0.03, "text": "Two quick knives.", "rarity": 0, "up": {"shots": 3}},
@@ -1204,7 +1204,7 @@ const THREATS := [
 
 # Commander perks (P5): one squad-wide pick after each mission win.
 const COMMANDS := [
-	{"id": "doubledown", "name": "Double Down", "text": "Your next level-up lets you take two of the three options."},
+	{"id": "doubledown", "name": "Double Down", "text": "ONE USE: the squad's next level-up takes two of the three options."},
 	{"id": "brothers", "name": "Brothers in Arms", "text": "Tag-team combos also draw a card."},
 	{"id": "supply", "name": "Supply Lines", "text": "+1 belt slot."},
 	{"id": "tempo", "name": "Tempo", "text": "On round 1 of each mission, Momentum pays out every 2 cards."},
@@ -1538,7 +1538,8 @@ const BIOMES := {
 		"look": {"tint": Color(0.86, 0.62, 0.7), "grass": Color("5a4a6a"), "sky": Color(1.0, 0.7, 0.8)},
 		"segments": ["fort", "overhang", "gauntlet", "warehouse"],
 		"text": "Paper walls and shadows. Jackals see 40% less far, but more of them are elite. Aimed shots sway 60% more."},
-	"lake": {"name": "FROZEN LAKE", "theme": "night", "favor": "arc", "rough": "long",
+	# D4: the lake's sway is calm, so it was never rough on long guns; the ice slides brawlers past
+	"lake": {"name": "FROZEN LAKE", "theme": "night", "favor": "arc", "rough": "close", "why": "SLICK ICE",
 		"rules": {"lake": true, "ice": 3, "wind": 1.3, "sway": 0.9},
 		"look": {"tint": Color(0.94, 1.0, 1.12), "grass": Color("dfeef6"), "sky": Color(0.86, 0.94, 1.08), "water": [Color("0c2a40"), Color("6fb6d6")]},
 		"segments": ["lake", "floes", "ridge", "trenches", "towers", "fenceline"],
@@ -1683,7 +1684,7 @@ const RADIO_LANDFALL := [
 ]
 # N6: the training drill, one list of lines per step (move, shoot, crate, throw, push, fight)
 const TUT_LINES := [
-	["Listen up, recruits. This is a drill: nothing here counts.", "Click the ground to walk. Move anyone a few steps forward."],
+	["Listen up, recruits. This is a drill: nothing here counts.", "Click the ground to walk. Walk anyone to the green flag."],
 	["Target Jackal ahead. Click RIFLE SHOT, or press its number key.", "Aim at him with the mouse and click to fire. Right-click cancels. SHIFT steadies your aim."],
 	["Supply crate up ahead. Shoot it open.", "Loot you leave lying around is collected when the screen moves on."],
 	["Jackals bunched up ahead. Arm the FRAG GRENADE and lob it at their feet.", "Only the start of the throw is shown, so judge the bounces yourself. The mouse wheel sets the fuse."],

@@ -30,6 +30,8 @@ func _ready() -> void:
 	for n in ["bolt", "heart", "flame", "coin", "skull", "shield", "radio", "star", "up", "card", "boot", "cross"]:
 		tex["ic_" + n] = load("res://assets/ui/ic_%s.png" % n)
 		tex["ic8_" + n] = load("res://assets/ui/ic8_%s.png" % n)
+	for n in ["hop", "sprint", "jetpack", "girder"]:
+		tex["ic_" + n] = load("res://assets/ui/ic_%s.png" % n)
 	font = load("res://assets/fonts/PressStart2P.woff")
 	font_b = load("res://assets/fonts/VT323.woff")
 	for fo in [font, font_b]:
