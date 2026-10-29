@@ -951,20 +951,29 @@ class Overlay extends Control:
 		var w := 0.0
 		for r in rows:
 			w = maxf(w, Art.text_width(r[0] + "  " + r[1], 8) + 8 + Art.text_width(r[2], 16, true))
+		# too wide to sit beside the names without running into the PUSH ZONE words: each
+		# description drops to its own line under its name instead
+		var stack := w + 20 > 520.0
+		var row_h := 28.0 if stack else 16.0
+		if stack:
+			w = 0.0
+			for r in rows:
+				w = maxf(w, maxf(Art.text_width(r[0] + "  " + r[1], 8), Art.text_width(r[2], 16, true) + 8))
 		w = minf(w + 20, 520.0)
-		var hgt := 18.0 + rows.size() * 16
+		var hgt := 18.0 + rows.size() * row_h
 		draw_rect(Rect2(5, y - 1, w + 2, hgt + 2), ink)
 		draw_rect(Rect2(6, y, w, hgt), Color(0.1, 0.11, 0.13, 0.92))
 		draw_rect(Rect2(6, y, w, 2), Color("b48cff"))
 		Art.text(self, "%s: POWER-UPS AND STATUS" % u.def.name, Vector2(12, y + 13), 8, Color("ffd23a"))
 		for i in rows.size():
 			var r: Array = rows[i]
-			var ry := y + 28 + i * 16
+			var ry := y + 28 + i * row_h
 			var head: String = r[0] + "  " + r[1]
 			var pulse: float = 0.75 + 0.25 * sin(b.t / 8.0)
 			draw_rect(Rect2(12, ry - 9, 4, 10), Color(r[3], pulse))
 			Art.text(self, head, Vector2(20, ry), 8, r[3])
-			Art.text(self, r[2], Vector2(28 + Art.text_width(head, 8), ry + 1), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			var dp := Vector2(28, ry + 13) if stack else Vector2(28 + Art.text_width(head, 8), ry + 1)
+			Art.text(self, r[2], dp, 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		return hgt + 8
 
 	func foe_behind(b: Battle, r: Rect2) -> bool:

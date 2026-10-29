@@ -299,7 +299,7 @@ const STATUS := {
 	"fat": {"name": "FAT", "short": "FAT", "c": Color("ffb070"), "text": "+10 HP and 50% bigger blasts."},
 	"zombie": {"name": "ZOMBIE", "short": "ZOMB", "c": Color("9df25c"), "text": "Can't go down."},
 	"roll": {"name": "ROLLING", "short": "ROLL", "c": Color("e8dcc2"), "text": "The next Jackal shot at it goes over its head."},
-	"cluster": {"name": "CLUSTER", "short": "CLUS", "c": Color("ffd23a"), "text": "Its next grenades burst into bomblets (counts grenades, not turns)."},
+	"cluster": {"name": "CLUSTER", "short": "CLUS", "c": Color("ffd23a"), "text": "Your next grenades burst into bomblets."},
 	"nades": {"name": "GRENADE KIT", "short": "NADE", "c": Color("8fbf4a"), "text": "Throws a grenade on its next attack."},
 }
 # Bonus pads (Soldat): a marked pad shows which bonus it will give and in how many rounds.
