@@ -251,8 +251,11 @@ func draw_unit(u: Unit) -> void:
 			var moving: bool = u.kind == "hulk"
 			draw_vehicle(u.loot.type, pos, u.face, white, moving, false, vc)
 			draw_vehicle(u.loot.type, pos, u.face, white, moving, true, vc)
-			if u.kind == "ride" and b.t % 60 < 44:
-				Art.text(self, "HIJACK " + Data.VEHICLES[u.loot.type].name, pos + Vector2(0, -Data.VEHICLES[u.loot.type].seat - 26), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
+			if u.kind == "ride":
+				var ly: float = -Data.VEHICLES[u.loot.type].seat - 26
+				if b.t % 60 < 44:
+					Art.text(self, "HIJACK " + Data.VEHICLES[u.loot.type].name, pos + Vector2(0, ly - 12), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
+				Art.text(self, "WALK ONTO IT TO DRIVE", pos + Vector2(0, ly), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif u.kind == "hulk" and b.t % 8 < 4:
 				draw_rect(Rect2(pos.x - 2, pos.y - 30, 4, 4), Color("ff4d3d"))
 			return
@@ -620,6 +623,16 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			draw_circle(p + Vector2(0, -4), 13, Color(1, 0.7, 0.12, 0.35 + 0.25 * sin(b.t / 4.0)))
 			draw_texture_rect(Art.tex[Data.gear(L.id).icon], Rect2(p.x - 8, p.y - 12, 16, 16), false)
 			Art.text(self, Data.gear(L.id).name.to_upper(), p + Vector2(0, -22), 8, Color("ffb21e"), HORIZONTAL_ALIGNMENT_CENTER)
+		"flare":
+			# a reinforcement flare: a red stick spitting green smoke, with a chute over it
+			draw_circle(p + Vector2(0, -4), 12, Color(0.38, 0.82, 0.44, 0.25 + 0.2 * sin(b.t / 5.0)))
+			draw_rect(Rect2(p.x - 3, p.y - 12, 6, 12), C_DARK)
+			draw_rect(Rect2(p.x - 2, p.y - 11, 4, 10), Color("c8322a"))
+			draw_rect(Rect2(p.x - 2, p.y - 11, 4, 2), Color("ffd23a") if b.t % 8 < 4 else Color("ffffff"))
+			for k in 3:
+				var ph := fmod(b.t / 40.0 + k / 3.0, 1.0)
+				draw_circle(p + Vector2(sin(ph * 6.0 + k) * 4, -14 - ph * 22), 2 + ph * 4, Color(0.38, 0.82, 0.44, 0.6 * (1.0 - ph)))
+			Art.text(self, "REINFORCEMENTS", p + Vector2(0, -42), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 		"trophy":
 			draw_circle(p + Vector2(0, -4), 11, Color(1, 0.7, 0.12, 0.3 + 0.2 * sin(b.t / 5.0)))
 			draw_texture_rect(Art.tex.ic_star, Rect2(p.x - 8, p.y - 12, 16, 16), false)
@@ -864,7 +877,9 @@ func draw_slug(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_set_transform(pos, 0, Vector2(-Art.PX, Art.PX))
 	draw_texture_rect_region(tx, Rect2(-32, -40, 64, 40), Rect2(ph * 64, 0, 64, 40), mod)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
-	Art.text(self, "SV-001", pos + Vector2(0, -92), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+	Art.text(self, "SV-001", pos + Vector2(0, -102), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+	# it drives itself: say so, so nobody walks up to it expecting to climb in
+	Art.text(self, "AUTO: NO BOARDING", pos + Vector2(0, -90), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_wreck(u: Unit, pos: Vector2) -> void:
 	## A burnt-out jeep on its rims. Stripped ones lose the panels and the glint.
@@ -1103,12 +1118,20 @@ func draw_targeting() -> void:
 	var m: Vector2 = b.mouse
 	var pz := b.cam_x + Battle.W * 0.72
 	if b.cam_x < b.world_w - Battle.W:
+		# the label sits left of the line, clear of the bounty board in the top right. With an
+		# enemy still alive behind the line the zone is locked and turns red.
+		var lock: int = b.push_blockers().size()
+		var zc := Color(1, 0.7, 0.24) if lock == 0 else Color(1, 0.3, 0.24)
 		var yy := 48.0
 		while yy < Battle.H:
-			draw_rect(Rect2(pz, yy, 2, 6), Color(1, 0.7, 0.24, 0.5))
+			draw_rect(Rect2(pz, yy, 2, 6), Color(zc, 0.5))
 			yy += 12
-		draw_rect(Rect2(pz, 40, Battle.W * 0.28, Battle.H - 40), Color(1, 0.7, 0.24, 0.05))
-		Art.text(self, "PUSH ZONE >>", Vector2(pz + 8, 58), 8, Color("ffb23e"))
+		draw_rect(Rect2(pz, 40, Battle.W * 0.28, Battle.H - 40), Color(zc, 0.05))
+		if lock == 0:
+			Art.text(self, "PUSH ZONE >>", Vector2(pz - 6, 58), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_RIGHT)
+		else:
+			Art.text(self, "PUSH ZONE LOCKED", Vector2(pz - 6, 58), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
+			Art.text(self, ("1 ENEMY BEHIND THE LINE" if lock == 1 else "%d ENEMIES BEHIND THE LINE" % lock), Vector2(pz - 6, 72), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_RIGHT)
 	if b.jet_armed:
 		var sim := b.sim_body(u, 0.0, 0.0, m, u.fuel)
 		draw_dashed_line(Vector2(u.x, u.y - u.h / 2.0), m, Color(0.33, 0.83, 0.89, 0.6), 1.0, 4.0)
@@ -1614,8 +1637,10 @@ func draw_hover(cv: CanvasItem) -> void:
 			"letter": lines = ["%s: %s" % [L.key, Data.CARDS[Data.LETTERS[L.key]].name.to_upper()], "3 free shots for whoever grabs it."]
 			"scrip": lines = ["%d SCRIP" % L.n]
 			"relic": lines = ["BOSS TROPHY: " + Data.gear(L.id).name.to_upper(), Data.gear(L.id).text, "Squad gear: it helps everyone, for the rest of the run."]
+			"flare": lines = ["REINFORCEMENT FLARE", "Walk over it to parachute soldiers in from the barracks,", "one for each squadmate who is down. The downed go home to rest."]
 			_: lines = ["TROPHY: " + L.get("name", L.type.to_upper())]
-		lines.append("Anything left behind goes to the stash.")
+		if L.type != "flare":
+			lines.append("Anything left behind goes to the stash.")
 	elif h.kind == "pad":
 		var B: Dictionary = Data.BONUSES[b.pad_bonus(h)]
 		lines = ["BONUS PAD: " + B.name, "READY: whoever stands on it takes it." if h.loot.ready else "Ready in %d round%s." % [h.loot.t, "" if h.loot.t == 1 else "s"], B.text, "Jackals race for it too."]
@@ -1635,6 +1660,9 @@ func draw_hover(cv: CanvasItem) -> void:
 		lines = ["SENTRY GUN  HP %d/%d" % [h.hp, h.max_hp], "Shoots the nearest enemy along its laser", "at the end of your turn. Your shots pass it."]
 	elif h.kind == "sticky":
 		lines = ["STICKY CHARGE  BLAST %d" % int(h.loot.r), "A Clacker sets it off. So does a Jackal", "stepping on it in their phase."]
+	elif h.kind == "slug":
+		var left: int = h.loot.get("turns", 1)
+		lines = ["SV-001 SLUG  %d ROUND%s LEFT" % [left, "" if left == 1 else "S"], "Your Metal Slug drives itself: after your turn it rolls forward,", "crushes Jackals in its way and shells the three nearest.", "NOBODY CAN CLIMB IN. To drive, walk onto a parked Jackal", "vehicle (the ones marked HIJACK)."]
 	elif h.kind == "ride":
 		var V: Dictionary = Data.VEHICLES[h.loot.type]
 		var hp: int = h.loot.get("hp", -1)

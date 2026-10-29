@@ -1794,6 +1794,8 @@ const ACTS := [
 # from that rank's three options, and a Captain in the squad gives everyone CAPTAIN_DODGE.
 const COMPANY_MAX := 10
 const SQUAD_MAX := 4
+const RESERVE_MAX := 6    # quick run: rescued soldiers the barracks holds while the squad is full
+const FLARE_CHANCE := 0.3 # odds a new screen holds a reinforcement flare while someone is down
 const BENCH_XP := 0.5             # the bench gets half the squad's average XP from each op (C4)
 const RANKS := [
 	{"short": "PVT", "name": "PRIVATE", "ops": 0},
