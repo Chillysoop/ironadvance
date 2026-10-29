@@ -415,6 +415,8 @@ func badges() -> Dictionary:
 		out["doc"] = "CAN OPERATE"
 	if al.any(func(s): return s.get("train", false)):
 		out["barracks"] = "TRAINING"
+	elif not Run.campaign() and Run.barracks_pool().size() and (not Run.fallen_slots().is_empty() or Run.soldiers.size() < Data.SQUAD_MAX):
+		out["barracks"] = "RESERVE FREE"  # an open place in the squad and someone waiting to fill it, at no cost
 	elif not Run.campaign() and not Run.fallen_slots().is_empty() and Run.scrip >= Services.price(Data.RECRUIT_PRICE / (2 if Run.hq("barracks") >= 3 else 1)):
 		out["barracks"] = "RECRUIT"
 	elif al.any(func(s): return s.tags < Data.DOG_TAGS) and Run.scrip >= Services.price(Data.TAG_PRICE):
