@@ -769,6 +769,8 @@ func run() -> void:
 			await crumble()
 		"jumppack":
 			await jumppack()
+		"stranded":
+			await stranded()
 		"draft":
 			await draft_test()
 		"reinforce":
@@ -1712,7 +1714,7 @@ func ui_clarity() -> void:
 				bad += 1
 		sh.free()
 	check(bad == 0, "40 QM restocks offer no class cards for missing classes (%d)" % bad)
-	# battle: power-up panel, Hop/Drill crossed out, grenade aim, sentry
+	# battle: power-up panel, Drill crossed out (Hop isn't), grenade aim, sentry
 	var b: Battle = main.start_battle(0)
 	await until(func(): return b.state == "player" and not b.busy)
 	b.speed = 2.0
@@ -1726,7 +1728,8 @@ func ui_clarity() -> void:
 	await frames_wait(6)
 	var hv: CardView = main.hud.cards[hi]
 	var dv: CardView = main.hud.cards[di]
-	check(hv.no_move and hv.disabled and dv.no_move and dv.disabled, "out of movement: Hop and Drill are crossed out")
+	check(dv.no_move and dv.disabled, "out of movement: Drill is crossed out")
+	check(not hv.no_move and not hv.disabled, "out of movement: Hop still works (B1)")
 	await shot("ui_powerups_nomove")
 	u.move_left = 100
 	b.ui_dirty = true
@@ -3018,6 +3021,148 @@ func jumppack() -> void:
 		lands.append(s.x)
 		check(absf(s.x - sim.x) < 14, "%s: lands where the preview ends (%.0f vs preview %.0f, took off at %.0f)" % ["paused at the top" if hang else "straight jump", s.x, sim.x, x])
 	check(absf(lands[0] - lands[1]) < 6, "pausing for a shot doesn't shorten the jump (%.0f vs %.0f)" % lands)
+
+func stranded() -> void:
+	## Stranded turns: Hop at zero movement (B1), leg-up (B2), undo a quiet walk (A2), Rummage (C1),
+	## banked energy (C3), kill momentum (D1) and Pad Bounce at zero movement (D2).
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	b.autopick = 0
+	var s: Unit = b.squad()[0]
+	var mate: Unit = b.squad()[1]
+	var x := 900.0
+	while not flat_open(b, x, 320) and x < b.world_w - 600:
+		x += 20
+	for o in b.units:
+		if o != s and (o.team == "enemy" or o.kind != "soldier") and absf(o.x - x - 130) < 600:
+			o.gone = true
+	for o in b.squad():
+		if o != s:
+			ground_unit(b, o, x - 200, 0)
+	cam_on(b, x + 130)
+	ground_unit(b, s, x, 0)
+	b.sel = s
+	await until(func(): return b.settled(), 300)
+
+	# B1: Hop is playable and flies with no movement left
+	s.move_left = 0
+	s.energy = 3
+	var hi := force_card(s, "hop")
+	check(not b.out_of_move(s, Data.card(s.hand[hi])), "B1: Hop isn't crossed out at zero movement")
+	var y0: float = s.y
+	b.sel = s
+	b.card_idx = hi
+	b.commit_aim(Vector2(s.x + 40, s.y - 60))
+	await until(func(): return not b.busy, 600)
+	check(s.energy == 2 and (s.x > x + 10 or s.y < y0 - 4), "B1: the Hop went off with no movement (energy %d, moved %.0f,%.0f)" % [s.energy, s.x - x, s.y - y0])
+
+	# B2: a Hop beside a squadmate launches harder than a lone Hop, still under a Jump Pack
+	ground_unit(b, s, x, 0)
+	ground_unit(b, mate, x - 200, 0)
+	var hop: Dictionary = Data.card("hop")
+	var alone := b.jump_pow(s, hop)
+	ground_unit(b, mate, x - 14, 0)
+	check(b.legup_buddy(s, hop) == mate, "B2: the squadmate beside you gives a leg-up")
+	var boosted := b.jump_pow(s, hop)
+	check(boosted > alone * 1.2 and boosted < Data.card("jumppack").jpow, "B2: leg-up Hop %.2f vs lone %.2f, still under Jump Pack %.2f" % [boosted, alone, Data.card("jumppack").jpow])
+	check(b.legup_buddy(s, Data.card("jumppack")) == null, "B2: only Hop gets the leg-up")
+	ground_unit(b, mate, x - 200, 0)
+	await until(func(): return b.settled(), 300)
+
+	# A2: a quiet walk can be undone, with the movement back
+	ground_unit(b, s, x, 0)
+	s.move_left = 150
+	b.sel = s
+	b.do_move(s, x + 80)
+	await until(func(): return not b.busy, 600)
+	check(s.x > x + 40 and s.move_left < 150, "A2: walked (%.0f px, %.0f move left)" % [s.x - x, s.move_left])
+	check(b.can_undo(), "A2: the quiet walk can be undone")
+	await shot("stranded_walked")
+	b.undo_last_walk()
+	check(absf(s.x - x) < 1 and absf(s.move_left - 150) < 0.5, "A2: undo puts the soldier back with full movement (x %.0f, move %.0f)" % [s.x - x, s.move_left])
+	check(not b.can_undo(), "A2: one undo per walk")
+	b.do_move(s, x + 60)
+	await until(func(): return not b.busy, 600)
+	var si := force_card(s, "dash")
+	b.select_card(si)
+	await until(func(): return not b.busy, 600)
+	check(not b.can_undo(), "A2: playing a card after the walk locks it in")
+
+	# C1: Rummage swaps one card for a fresh draw, 1 energy, once a turn
+	s.energy = 3
+	s.fl.erase("rummaged")
+	s.hand = s.hand.filter(func(h): return h.get("temp", false))
+	s.hand.append(Run.new_card("rifle"))
+	s.draw.append(Run.new_card("sprint"))
+	var n0 := s.hand.size()
+	b.toggle_rummage()
+	check(b.rummage_armed, "C1: SWAP arms the swap")
+	b.hud.refresh()
+	await shot("stranded_swap")
+	var ri := -1
+	for i in s.hand.size():
+		if s.hand[i].key == "rifle":
+			ri = i
+	b.select_card(ri)
+	check(s.energy == 2 and s.hand.size() == n0 and s.hand.any(func(h): return h.key == "sprint") and not s.hand.any(func(h): return h.key == "rifle"), "C1: the Rifle went back and a Sprint came in for 1 energy")
+	check(s.disc.any(func(h): return h.key == "rifle"), "C1: the swapped card is in the discard pile")
+	check(not b.can_rummage(s), "C1: only once a turn")
+	b.toggle_rummage()
+	check(not b.rummage_armed, "C1: a second swap is refused")
+	var hop_i := force_card(s, "hop")
+	b.rummage_armed = true
+	b.select_card(hop_i)
+	check(s.hand.any(func(h): return h.key == "hop"), "C1: Hop can't be swapped out")
+
+	# D1: a kill on your turn gives +40 movement
+	var e: Unit = null
+	for o in b.units:
+		if o.team == "enemy" and not o.dead and o.gone:
+			e = o
+			break
+	if e != null:
+		e.gone = false
+		var mv0: float = s.move_left
+		b.kill(e, s)
+		check(absf(s.move_left - mv0 - Battle.KILL_MOVE) < 0.5, "D1: a kill gives +%d movement (%.0f -> %.0f)" % [Battle.KILL_MOVE, mv0, s.move_left])
+		await until(func(): return b.settled(), 300)
+	else:
+		check(false, "D1: no enemy to kill")
+
+	# D2: standing on a Jump Pad gives a free Pad Bounce that works at zero movement
+	ground_unit(b, s, x + 100, 0)
+	var gy: float = s.y
+	for cx in range(int((s.x - 14) / Battle.CELL), int((s.x + 14) / Battle.CELL) + 1):
+		b.T.set_cell(cx, int(gy / Battle.CELL), Terrain.RUBBER)
+	s.move_left = 0
+	s.fl.erase("padbounced")
+	b.refresh_mounts()
+	var pi := -1
+	for i in s.hand.size():
+		if s.hand[i].key == "padbounce":
+			pi = i
+	check(pi >= 0, "D2: on a Jump Pad the soldier gets a Pad Bounce")
+	if pi >= 0:
+		var e0 := s.energy
+		b.card_idx = pi
+		b.commit_aim(Vector2(s.x + 120, s.y - 80))
+		await until(func(): return not b.busy, 600)
+		check(s.energy >= e0 and absf(s.x - (x + 100)) > 30, "D2: bounced %.0f px for free with no movement (energy %d -> %d)" % [s.x - x - 100, e0, s.energy])
+		ground_unit(b, s, x + 100, 0)
+		b.refresh_mounts()
+		check(not s.hand.any(func(h): return h.key == "padbounce"), "D2: once a turn")
+
+	# C3: one unspent energy carries into next turn
+	for o in b.squad_alive():
+		o.energy = 0
+	s.energy = 2
+	b.end_turn(true)
+	await until(func(): return b.state == "player" and not b.busy, 6000)
+	if not s.dead and not mate.dead:
+		check(s.energy - mate.energy == 1, "C3: one banked energy (%d vs %d)" % [s.energy, mate.energy])
+	await shot("stranded_next")
 
 func drill() -> void:
 	## The Drill card: in every starting deck, bores through dirt, stone and steel, spends movement,

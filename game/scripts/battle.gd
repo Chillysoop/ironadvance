@@ -72,6 +72,9 @@ var ui_dirty := true
 var end_confirm_t := 0   # frames left to confirm END TURN while soldiers can still act
 var inspect := false     # ALT held: show every soldier's actions
 var jet_armed := false   # J pressed: the next click-and-hold flies the selected soldier
+var rummage_armed := false  # C1: the next card clicked is swapped for a fresh draw instead of played
+var undo_walk := {}       # A2: the last walk, while nothing else has happened since it can be taken back
+var walk_snap := {}       # A2: set just before a walk's resolve so it can tell whether the walk was quiet
 var jet_hold := false    # the mouse button is down while jetting
 var pads: Array = []     # bonus pads on this map
 var stickies: Array = []  # B3 Sapper charges on the ground
@@ -4148,6 +4151,8 @@ func who_did(tg: Unit, src) -> String:
 		return "FRIENDLY FIRE (%s)" % src.def.name.to_upper()
 	return "A FALL OR DEBRIS"
 
+const KILL_MOVE := 40  # D1: movement a soldier gets back for each kill on their turn
+
 func kill(tg: Unit, src) -> void:
 	if tg.dead:
 		return
@@ -4203,6 +4208,13 @@ func kill(tg: Unit, src) -> void:
 		credit_card(src)
 		if src is Unit and src.team == "squad":
 			src.kills += 1  # C5: the service record
+			if state == "player" and not src.dead:
+				# D1 kill momentum: a kill opens up the next step
+				src.move_left += KILL_MOVE
+				float_text(src, "+%d MOVE" % KILL_MOVE, Color("b48cff"))
+				if not act_once.has("moveup"):
+					act_once["moveup"] = true
+					bark(src, "MOVE UP!")
 			var wrenched: bool = act_unit == src and act_inst is Dictionary and act_inst.get("key", "") == "wrench"
 			if src.def.key == "bolt" and not src.fl.has("scrapped") and (wrenched or src.perk("salvager")):
 				# SCRAPHEAP chain / Salvager: the wreck becomes a free Sandbags
@@ -4878,6 +4890,10 @@ func solve_arc(sx: float, sy: float, tx: float, ty: float, wind_f: float, pmax: 
 func resolve(fn: Callable) -> void:
 	busy = true
 	card_idx = -1
+	rummage_armed = false
+	var snap := walk_snap
+	walk_snap = {}
+	undo_walk = {}
 	ui_dirty = true
 	act_once = {}
 	act_crushed = 0
@@ -4902,6 +4918,8 @@ func resolve(fn: Callable) -> void:
 	await post_action()
 	if state == "player":
 		busy = false
+		if not snap.is_empty() and quiet_walk(snap):
+			undo_walk = snap
 	ui_dirty = true
 
 func card_cost(u: Unit, inst: Dictionary) -> int:
@@ -5175,6 +5193,21 @@ func aim_angle(u: Unit, c: Dictionary, p: Vector2) -> Dictionary:
 	var a := atan2(p.y - my, p.x - mx) + sin(sway_t * 0.055) * sw + sin(sway_t * 0.137 + 1) * sw * 0.5
 	return {"a": a, "mx": mx, "my": my, "f": f}
 
+const LEGUP_MUL := 1.27  # B2: a Hop off a squadmate's shoulders goes about 60% higher
+
+func legup_buddy(u: Unit, c: Dictionary):
+	## B2: the squadmate standing right beside a soldier about to Hop, who boosts them; null if none.
+	if not c.get("hop", false) or u.mech != null or u.air:
+		return null
+	for s in squad_alive():
+		if s != u and s.mech == null and not s.air and absf(s.x - u.x) < 30 and absf(s.y - u.y) < 16:
+			return s
+	return null
+
+func jump_pow(u: Unit, c: Dictionary) -> float:
+	## How hard this jump card launches the soldier, with a leg-up counted in.
+	return c.get("jpow", 1.0) * (LEGUP_MUL if legup_buddy(u, c) != null else 1.0)
+
 func jump_vel(u: Unit, p: Vector2, mul := 1.0) -> Dictionary:
 	var hp_ := hand_pos(u)
 	var dx := p.x - hp_.x
@@ -5379,10 +5412,11 @@ func _act_aim(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
 	await wait(6)
 
 func out_of_move(u: Unit, c: Dictionary) -> bool:
-	## Hop and Drill spend movement: with none left they can't be played (the hand crosses them out).
+	## Drill spends movement: with none left it can't be played (the hand crosses it out). Hop works
+	## at zero movement, so a soldier who walked up to a ledge can always get onto it.
 	if c.get("drill", false):
 		return u.move_left + c.get("reach", 0) < 4
-	return c.get("hop", false) and u.move_left < 1
+	return false
 
 func recoil_vel(u: Unit, c: Dictionary, ang: float) -> Vector2:
 	## The shove a heavy gun gives its shooter: straight back from the shot, with a little lift.
@@ -5522,13 +5556,21 @@ func _act_grapple(u: Unit, idx: int, gs: Dictionary) -> void:
 
 func _act_jump(u: Unit, idx: int, p: Vector2) -> void:
 	var c := spend_card(u, idx)
+	var buddy = legup_buddy(u, c)
 	u.fl["jumped"] = true
+	if c.get("padbounce", false):
+		u.fl["padbounced"] = true
+		float_text(u, "BOING!", Color("ffd23a"))
+	if buddy != null:
+		bark(buddy, "UP YOU GO!")
+		buddy.pose = "cheer"; buddy.pose_t = 30
+		float_text(u, "LEG-UP", Color("62d26f"))
 	if c.get("hop", false):
 		u.move_left = 0  # a hop is the rest of your legwork for the turn
 	if c.get("rjump", false):
 		explode(u.x, u.y - 4, 30, 6, u)
 		await wait(2)
-	var v := jump_vel(u, p, c.get("jpow", 1.0))
+	var v := jump_vel(u, p, c.get("jpow", 1.0) * (LEGUP_MUL if buddy != null else 1.0))
 	var dir := 1 if v.vx >= 0 else -1
 	if c.get("hop", false):
 		v = hop_out(u, v)
@@ -6289,13 +6331,53 @@ func do_climb(u: Unit, L: Dictionary) -> void:
 		float_text(u, "CAN'T REACH", Color("ff7a3d"))
 		return
 	Sfx.play("click")
+	walk_snap = walk_snapshot(u)
 	resolve(func(): await _act_walk(u, pl.pts, pl.cost))
 
 func do_move(u: Unit, tx: float) -> void:
 	var sim := sim_walk(u, tx, u.move_left)
 	if sim.pts.is_empty():
 		return
+	walk_snap = walk_snapshot(u)
 	resolve(func(): await _act_walk(u, sim.pts, sim.used))
+
+func walk_print(skip: Unit) -> String:
+	## A2: everything a walk could have set off (a camera push, alert, a new log line, any unit
+	## spotting, moving, getting hurt or picked up), minus the walker's own position and movement.
+	var parts: Array = [int(cam_x), alert, log_lines, Run.scrip, units.size(), T.chunks.size(), stats, pow_queue.size()]
+	for o in units:
+		if o == skip:
+			parts.append([o.hp, o.energy, o.hand.size(), o.overwatch, o.st.keys(), o.dead, o.carry])
+		else:
+			parts.append([o.dead, o.gone, o.hp, o.active, int(o.x), int(o.y), o.overwatch])
+	return str(parts)
+
+func walk_snapshot(u: Unit) -> Dictionary:
+	return {"u": u, "x": u.x, "y": u.y, "face": u.face, "move": u.move_left, "moved": u.moved, "print": walk_print(u)}
+
+func quiet_walk(snap: Dictionary) -> bool:
+	## A2: the walk can be taken back only if it changed nothing but where the walker stands.
+	var u: Unit = snap.u
+	return not u.dead and not u.air and u.walk == null and u.move_left < snap.move and walk_print(u) == snap.print
+
+func can_undo() -> bool:
+	return state == "player" and not busy and not undo_walk.is_empty()
+
+func undo_last_walk() -> void:
+	## A2: back to where the soldier stood before the last walk, with the movement refunded.
+	if not can_undo():
+		return
+	var w := undo_walk
+	undo_walk = {}
+	var u: Unit = w.u
+	u.x = w.x; u.y = w.y; u.face = w.face
+	u.move_left = w.move; u.moved = w.moved
+	u.vx = 0; u.vy = 0; u.air = false; u.walk = null; u.slide = 0
+	refresh_mounts()
+	sel = u
+	Sfx.play("click")
+	float_text(u, "WALK UNDONE", Color("9aa2ae"))
+	ui_dirty = true
 
 func _act_walk(u: Unit, pts: Array, cost: float) -> void:
 	u.move_left = maxf(0, u.move_left - cost)
@@ -7522,6 +7604,8 @@ func draw_cards(u: Unit, n: int) -> void:
 			break
 		u.hand.append(u.draw.pop_back())
 
+const BANK_MAX := 1  # C3: unspent energy carried into the next turn
+
 func stow_hand(s: Unit) -> void:
 	for c in s.hand:
 		if not c.get("od", false) and not c.get("temp", false):
@@ -7538,7 +7622,8 @@ func start_player_turn() -> void:
 	wind = int(round(ri(-6, 6) * rules.get("wind", 1.0)))
 	combo = 0
 	for s in squad_alive():
-		s.energy = 3
+		s.energy = 3 + s.banked
+		s.banked = 0
 		if round_n == 1:
 			s.energy += s.s.bonus.energy1 + int(s.g("energy1")) + (1 if Run.has_gear("bandolier") else 0)
 		elif round_n == 2 and Run.relic_tier("bandolier") >= 3:
@@ -7687,6 +7772,29 @@ func refresh_mounts() -> void:
 		elif not ok and has:
 			s.hand = s.hand.filter(func(c): return c.key != "mounted")
 			ui_dirty = true
+	refresh_padbounce()
+
+func on_jump_pad(s: Unit) -> bool:
+	## D2: standing on (or right at the edge of) a Jump Pad's rubber.
+	if s.air or s.mech != null:
+		return false
+	for dx in [0.0, -12.0, 12.0]:
+		if T.mat(s.x + dx, s.y + 2) == Terrain.RUBBER:
+			return true
+	return false
+
+func refresh_padbounce() -> void:
+	## D2: a soldier on a Jump Pad gets a free Pad Bounce, once a turn, even with no movement left.
+	for s in squad_alive():
+		var ok: bool = on_jump_pad(s) and not s.fl.get("padbounced", false)
+		var has: bool = s.hand.any(func(c): return c.key == "padbounce")
+		if ok and not has:
+			s.hand.append({"id": -8, "key": "padbounce", "tier": Data.base_tier("padbounce"), "temp": true})
+			float_text(s, "ON THE PAD", Color("ffd23a"))
+			ui_dirty = true
+		elif not ok and has:
+			s.hand = s.hand.filter(func(c): return c.key != "padbounce")
+			ui_dirty = true
 
 func pad_bonus(p: Unit) -> String:
 	return p.loot.seq[p.loot.i % p.loot.seq.size()]
@@ -7789,11 +7897,17 @@ func end_turn(force := false) -> void:
 		elif r.loot.taken:
 			r.loot.hold = 99  # walked off: the hold is over, the buff stays
 			float_text(r, "HOLD BROKEN", Color("ff7a3d"), true)
+	undo_walk = {}
+	rummage_armed = false
 	for s in squad_alive():
 		if s.perk("tracker") and s.energy > 0:
 			s.overwatch += s.energy
 			float_text(s, "TRACKING +%d" % s.energy, Color("53d4e2"))
 			s.energy = 0
+		# C3: one unspent energy is banked for next turn
+		s.banked = mini(s.energy, BANK_MAX)
+		if s.banked > 0:
+			float_text(s, "+%d ENERGY BANKED" % s.banked, Color("ffd23a"))
 		stow_hand(s)
 	card_idx = -1
 	drop_all_hangs()
@@ -10462,6 +10576,9 @@ func select_card(i: int) -> void:
 	var u := sel
 	if u == null or busy or state != "player" or i >= u.hand.size():
 		return
+	if rummage_armed:
+		rummage(u, i)
+		return
 	var inst: Dictionary = u.hand[i]
 	var c := Data.card(inst)
 	if u.energy < card_cost(u, inst):
@@ -10476,7 +10593,49 @@ func select_card(i: int) -> void:
 	fuse_pick = 0
 	ui_dirty = true
 
+const RUMMAGE_COST := 1
+
+func can_rummage(u: Unit) -> bool:
+	## C1: once a turn, 1 energy swaps a card in hand for a fresh draw.
+	return u != null and not u.dead and u.team == "squad" and state == "player" and not busy and u.energy >= RUMMAGE_COST and not u.fl.get("rummaged", false) and u.hand.any(swappable)
+
+func swappable(inst: Dictionary) -> bool:
+	## Hop, sidearms, gun mounts and Overdrives aren't in the deck, so they can't be swapped out.
+	return not inst.get("temp", false) and not inst.get("od", false)
+
+func toggle_rummage() -> void:
+	if rummage_armed:
+		rummage_armed = false
+	elif can_rummage(sel):
+		rummage_armed = true
+		card_idx = -1
+		jet_armed = false
+		float_text(sel, "PICK A CARD TO SWAP", Color("ffd23a"))
+	else:
+		Sfx.play("deny")
+		if sel != null and sel.fl.get("rummaged", false):
+			float_text(sel, "ALREADY SWAPPED THIS TURN", Color("ff7a3d"))
+		return
+	Sfx.play("click")
+	ui_dirty = true
+
+func rummage(u: Unit, i: int) -> void:
+	rummage_armed = false
+	ui_dirty = true
+	if not can_rummage(u) or i >= u.hand.size() or not swappable(u.hand[i]):
+		Sfx.play("deny")
+		return
+	var out: Dictionary = u.hand[i]
+	u.hand.remove_at(i)
+	u.energy -= RUMMAGE_COST
+	u.fl["rummaged"] = true
+	draw_cards(u, 1)
+	u.disc.append(out)  # after the draw, so a reshuffle can't hand the same card straight back
+	Sfx.play("select")
+	float_text(u, "SWAPPED %s" % Data.card(out).name.to_upper(), Color("ffd23a"))
+
 func cancel_card() -> void:
+	rummage_armed = false
 	card_idx = -1
 	jet_armed = false
 	fuse_pick = 0
@@ -10640,7 +10799,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 			return  # keys stay out of the battle while the deck viewer is up
 		if ev.keycode == KEY_ESCAPE:
 			# N7: Esc cancels an armed card (or the jet, or a mid-air hang) first; with nothing to cancel it pauses
-			if card_idx >= 0 or jet_armed:
+			if card_idx >= 0 or jet_armed or rummage_armed:
 				cancel_card()
 			elif sel != null and sel.hang:
 				drop_hang(sel)
@@ -10661,6 +10820,10 @@ func _unhandled_input(ev: InputEvent) -> void:
 			end_turn()
 		elif ev.keycode == KEY_M:
 			auto_advance()
+		elif ev.keycode == KEY_R:
+			toggle_rummage()
+		elif ev.keycode == KEY_BACKSPACE:
+			undo_last_walk()
 		elif ev.keycode == KEY_J:
 			toggle_jet()
 		elif ev.keycode == KEY_BRACKETRIGHT or ev.keycode == KEY_EQUAL:

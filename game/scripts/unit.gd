@@ -92,6 +92,7 @@ var s: Dictionary = {}  # persistent Run soldier record
 var def: Dictionary = {}
 var adr := 0
 var energy := 3
+var banked := 0  # C3: energy carried over from last turn
 var move_left := 0.0
 var draw: Array = []
 var hand: Array = []
