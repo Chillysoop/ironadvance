@@ -1340,12 +1340,12 @@ func draw_targeting() -> void:
 					Art.text(self, "PULL" if c.has("magnet") and c.magnet < 0 else ("PUSH" if c.has("magnet") else "CUT x%d" % L.hit.size()), L.to + Vector2(0, -12), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.get("jump", false) and not (c.get("hop", false) and b.pit_rim(u, 1.0 if m.x >= u.x else -1.0) != null):
 				# stepped exactly like the flight itself, so the soldier lands where the ghost stands
-				var v := b.jump_vel(u, m, c.get("jpow", 1.0))
+				var v := b.jump_vel(u, m, b.jump_pow(u, c))
 				var sim := b.sim_body(u, v.vx, v.vy)
 				sim.fall = 0  # a jump lands soft
-				draw_ghost(u, sim, Color("62d26f"), "HOP" if c.get("hop", false) else "JUMP")
+				draw_ghost(u, sim, Color("62d26f"), ("LEG-UP" if b.legup_buddy(u, c) != null else "HOP") if c.get("hop", false) else "JUMP")
 			elif c.get("jump", false) or c.get("rush", false) or c.get("eject", false):
-				var v := b.jump_vel(u, m, c.get("jpow", 1.0)) if c.get("jump", false) else b.rush_vel(u, m)
+				var v := b.jump_vel(u, m, b.jump_pow(u, c)) if c.get("jump", false) else b.rush_vel(u, m)
 				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50)
 				for i in sim.pts.size():
 					if i % 2 == 0:

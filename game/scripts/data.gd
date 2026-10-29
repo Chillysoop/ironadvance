@@ -64,7 +64,8 @@ const CARDS := {
 	"rocket": {"name": "Rocket Pod", "type": "LINE", "cost": 2, "radius": 24, "dmg": 8, "speed": 11.0, "count": 3, "text": "Three rockets in a spread.", "rarity": 2, "up": {"count": 4}},
 	"grapple": {"name": "Grapple Hook", "type": "LINE", "cost": 1, "grapple": true, "range": 280, "text": "Zip onto a ledge or roof in reach.", "rarity": 1, "up": {"range": 400}},
 	# every soldier carries Hop: it is handed out each turn and never sits in a deck
-	"hop": {"name": "Hop", "type": "LINE", "cost": 1, "jump": true, "jpow": 0.62, "hop": true, "pool": false, "text": "Everyone has one. Jump a short gap or up a wall about head high. Uses the rest of your movement.", "rarity": 0},
+	"hop": {"name": "Hop", "type": "LINE", "cost": 1, "jump": true, "jpow": 0.62, "hop": true, "pool": false, "text": "Everyone has one. Jump a short gap or up a wall about head high. Works with no movement left; uses up the rest. Next to a squadmate: a leg-up jumps higher.", "rarity": 0},
+	"padbounce": {"name": "Pad Bounce", "type": "LINE", "cost": 0, "jump": true, "jpow": 1.0, "padbounce": true, "pool": false, "text": "Free while you stand on a Jump Pad, once a turn. Bounce off it, even with no movement left.", "rarity": 0},
 	# every soldier starts with one Drill in the deck; once it's spent it waits for the next draw
 	"drill": {"name": "Drill", "type": "LINE", "cost": 0, "drill": true, "reach": 0, "pool": false, "text": "Bore through any terrain toward the cursor. Uses movement as you go. Click to stop early.", "rarity": 0, "up": {"reach": 60}},
 	# B5: Vharr tech, built in the Alien Lab

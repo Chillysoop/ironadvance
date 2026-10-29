@@ -12,6 +12,8 @@ var roster_box: Control
 var end_btn: PixButton
 var next_btn: PixButton
 var move_btn: PixButton
+var undo_btn: PixButton   # A2: take back the last walk
+var swap_btn: PixButton   # C1: Rummage, swap a card for 1 energy
 var deck_btn: PixButton
 var jet_btn: PixButton
 var modal: Control
@@ -73,6 +75,24 @@ func setup(battle: Battle) -> void:
 	move_btn.size = Vector2(58, 22)
 	move_btn.pressed.connect(func(): Sfx.play("click"); b.auto_advance())
 	root.add_child(move_btn)
+	# A2 + C1 sit above the belt (above LEAVE RANGE on the range)
+	var ty := 366.0 if b.practice() else 396.0
+	undo_btn = PixButton.new()
+	undo_btn.text = "UNDO"
+	undo_btn.sub = "BKSP"
+	undo_btn.color = Color("9aa2ae")
+	undo_btn.position = Vector2(830, ty)
+	undo_btn.size = Vector2(58, 24)
+	undo_btn.pressed.connect(func(): b.undo_last_walk())
+	root.add_child(undo_btn)
+	swap_btn = PixButton.new()
+	swap_btn.text = "SWAP 1E"
+	swap_btn.sub = "R"
+	swap_btn.color = Color("ffd23a")
+	swap_btn.position = Vector2(894, ty)
+	swap_btn.size = Vector2(58, 24)
+	swap_btn.pressed.connect(func(): b.toggle_rummage())
+	root.add_child(swap_btn)
 	jet_btn = PixButton.new()
 	jet_btn.text = "JET"
 	jet_btn.sub = "J"
@@ -140,6 +160,9 @@ func refresh() -> void:
 	end_btn.disabled = not my_turn
 	next_btn.disabled = not my_turn
 	move_btn.disabled = not my_turn
+	undo_btn.disabled = not b.can_undo()
+	swap_btn.disabled = not (b.rummage_armed or b.can_rummage(u))
+	swap_btn.text = "CANCEL" if b.rummage_armed else "SWAP 1E"
 	jet_btn.visible = my_turn and u != null and not u.dead and u.fuel_max > 0
 	jet_btn.disabled = u == null or u.fuel <= 0
 	jet_btn.position = Vector2(maxf(160.0, hand_x0 - 52), 410)
@@ -189,6 +212,11 @@ func refresh() -> void:
 		cv.selected = b.card_idx == i
 		cv.no_move = b.out_of_move(u, c)
 		cv.disabled = not my_turn or u.energy < cv.cost or cv.no_move
+		cv.stamp = ""
+		if b.rummage_armed:
+			# C1: every card that can go back into the deck is clickable and marked SWAP
+			cv.disabled = not my_turn or not b.swappable(inst)
+			cv.stamp = "SWAP" if not cv.disabled else ""
 		cv.supercharged = u.adr >= 50 and not inst.get("od", false) and Data.is_attack(c)
 		cv.chain = b.chain_ready(u, inst) if my_turn else ""
 	overlay.queue_redraw()
@@ -636,6 +664,8 @@ class PauseMenu extends Control:
 		["SPACE", "NEXT: the next soldier who can act"],
 		["ENTER", "END TURN (asks twice while anyone can act)"],
 		["M", "Auto-move with mobility cards"],
+		["BACKSPACE", "Undo the last walk, if nothing happened on it"],
+		["R", "Swap a card for a new draw (1 energy, once a turn)"],
 		["WHEEL / [ ]", "Set a grenade's fuse"],
 		["SHIFT", "Hold a steady aim"],
 		["ALT / V", "Intel on every soldier"],
