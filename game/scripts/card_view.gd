@@ -455,7 +455,7 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 		draw_texture_rect(tx, Rect2(c - sz / 2.0, sz), false, mod)
 
 static func wrap_stat(s: String, width: float) -> Array:
-	## Like wrap_text, but a number stays on the line with its label ("BNC 1", never "BNC" / "1").
+	## Like wrap_text, but a number stays on the line with its label ("BOUNCE 1", never "BOUNCE" / "1").
 	var groups: Array = []
 	for part in s.split("  ", false):
 		# a double space already splits stats ("RADIUS 56  3 RNDS"): never pair across it,

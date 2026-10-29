@@ -60,6 +60,11 @@ func restock() -> void:
 	for i in 5:
 		var t := Run.roll_card_tier(keys[i])
 		stock_cards.append({"kind": "card", "key": keys[i], "tier": t, "price": price(Data.card_price(keys[i], t))})
+	# Q1: the first Quartermaster of a run always has a card the starting scrip can buy
+	if Run.mission == 0 and not stock_cards.any(func(o): return o.price <= Run.scrip):
+		var cheap: Array = keys.slice(5).filter(func(k): return Data.base_tier(k) == 0)
+		if cheap.size():
+			stock_cards[4] = {"kind": "card", "key": cheap[0], "tier": 0, "price": price(Data.card_price(cheap[0], 0))}
 	var gear: Array = Data.GEAR.filter(func(g): return not Run.has_gear(g.id) and not g.get("boss", false) and g.get("from", 0) <= Run.mission)
 	gear.shuffle()
 	stock_gear = gear.slice(0, 3).map(func(g):

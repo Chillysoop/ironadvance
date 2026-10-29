@@ -39,7 +39,7 @@ static func change_line(a: Dictionary, b: Dictionary) -> String:
 	var sa := Data.stat_line(Data.card(a))
 	var sb := Data.stat_line(Data.card(b))
 	if sa != sb and sa != "":
-		# only the numbers that move: "DMG 6-8 BNC 1" vs "DMG 8-10 BNC 1" -> "DMG 6-8 > 8-10"
+		# only the numbers that move: "DMG 6-8 BOUNCE 1" vs "DMG 8-10 BOUNCE 1" -> "DMG 6-8 > 8-10"
 		var ta := sa.split(" ")
 		var tb := sb.split(" ")
 		if ta.size() != tb.size():
