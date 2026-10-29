@@ -252,7 +252,7 @@ func draw_unit(u: Unit) -> void:
 			draw_vehicle(u.loot.type, pos, u.face, white, moving, false, vc)
 			draw_vehicle(u.loot.type, pos, u.face, white, moving, true, vc)
 			# aiming, or a Jackal standing at it: their tags own this space
-			if u.kind == "ride" and b.card_idx < 0 and not b.units.any(func(e): return e.kind == "enemy" and not e.dead and not e.gone and absf(e.x - u.x) < 50):
+			if u.kind == "ride" and b.card_idx < 0 and not b.units.any(func(e): return e.kind == "enemy" and not e.dead and not e.gone and absf(e.x - u.x) < 90):  # the label is ~170px wide
 				var ly: float = -Data.VEHICLES[u.loot.type].seat - 26
 				if b.t % 60 < 44:
 					Art.text(self, "HIJACK " + Data.VEHICLES[u.loot.type].name, in_view(pos + Vector2(0, ly - 12), "HIJACK " + Data.VEHICLES[u.loot.type].name), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -941,7 +941,11 @@ func draw_plate(u: Unit) -> void:
 		draw_rect(Rect2(x - w / 2 - 1, y + 4, w + 2, 4), C_DARK)
 		draw_rect(Rect2(x - w / 2, y + 5, roundf(w * u.pod / maxf(1, pm)), 2), C_ALIEN)
 	if u.weight != "" and u.elite == "":
-		Art.text(self, u.weight.to_upper(), Vector2(x, y - 4), 8, C_ALIEN, HORIZONTAL_ALIGNMENT_CENTER)
+		# a pack of the same weight shares one tag instead of printing LIGHTLIGHT
+		var wt := u.weight.to_upper()
+		var tw := Art.text_width(wt, 8) + 4
+		if not b.units.any(func(o): return o != u and o.id < u.id and o.kind == "enemy" and not o.dead and not o.gone and o.weight == u.weight and o.elite == "" and absf(o.x - u.x) < tw and absf(o.y - o.h - u.y + u.h) < 12):
+			Art.text(self, wt, Vector2(x, y - 4), 8, C_ALIEN, HORIZONTAL_ALIGNMENT_CENTER)
 	if u.elite != "":
 		draw_rect(Rect2(x - w / 2 - 2, y - 2, w + 4, 7), Color("ffd23a"), false, 1.0)
 		Art.text(self, Data.ELITES[u.elite].name, Vector2(x, y - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
