@@ -251,6 +251,17 @@ func campaign_home(st := {}) -> void:
 	news.append("Everyone is patched up and has their dog tags back.")
 	if inc.rookies.size():
 		news.append("Command sent replacements: %s." % ", ".join(inc.rookies))
+	# W2: a stronghold that ends an act gets its own ceremony, and the act's MVP a field promotion
+	var cleared := -1
+	if st.get("op", {}).has("act_done") and not Run.camp.get("done", false):
+		cleared = int(Run.camp.act) - 1
+	var mvp := {}
+	if cleared >= 0:
+		mvp = Run.act_mvp(cleared)
+		if not mvp.is_empty():
+			mvp.promo = int(mvp.get("promo", 0)) + 1
+			mvp["field"] = int(mvp.get("field", 0)) + 1
+			news.append("%s was the MVP of Act %s: a field promotion pick." % [mvp.def.name, Data.ACTS[cleared].roman])
 	var home := func():
 		if Run.camp.get("done", false):
 			Run.save_campaign()
@@ -260,8 +271,21 @@ func campaign_home(st := {}) -> void:
 		else:
 			show_hq(true)
 			screen.news = news
+	if cleared >= 0:
+		# the act's radio waits for HQ, so it doesn't cover the next front on the ceremony
+		show_act_end(cleared, mvp, func(): home.call(); call_in(talk))
+		return
 	home.call()
 	call_in(talk)  # C4: Command's word comes in on the tablet over HQ
+
+func show_act_end(a: int, mvp: Dictionary, then: Callable) -> void:
+	## W2: the act's ceremony: what it took, its MVP, and the next front rolling out.
+	clear()
+	var e: Control = WarRoomScript.ActEndScreen.new()
+	e.act_i = a
+	e.mvp = mvp
+	e.done.connect(then)
+	open(e)
 
 func show_picks(then: Callable) -> void:
 	## C3/C4: promotions and the bench's training levels, one pick each.
