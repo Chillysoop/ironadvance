@@ -1097,7 +1097,9 @@ class Overlay extends Control:
 		Art.text(self, str(b.score).pad_zeros(7), Vector2(14, 28), 8, Color.WHITE)
 		draw_texture_rect(Art.tex.ic8_coin, Rect2(90, 18, 10, 10), false)
 		Art.text(self, "%d" % Run.scrip, Vector2(104, 28), 8, Color("ffd23a"))
-		Art.text(self, "M%d %s" % [b.mission_idx + 1, b.mission.name], Vector2(150, 14), 8, Color("e8dcc2"))
+		# a campaign op goes by its sector code (S1, M2...), the same one the war map shows
+		var code: String = str(b.mission.op).to_upper() if Run.campaign() and b.mission.has("op") else "M%d" % (b.mission_idx + 1)
+		Art.text(self, "%s %s" % [code, b.mission.name], Vector2(150, 14), 8, Color("e8dcc2"))
 		# alert siren bulbs
 		var ax := 384.0
 		Art.text(self, "ALERT", Vector2(ax - 6, 22), 8, Color("ff4d3d") if b.alert >= 10 and b.t % 30 < 15 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT)
@@ -1131,8 +1133,6 @@ class Overlay extends Control:
 		Art.text(self, "RND", Vector2(912, 14), 8, Color("e8dcc2"))
 		Art.text(self, str(b.round_n), Vector2(912, 28), 8, Color.WHITE)
 		var jl: String = b.job_left()
-		if jl != "":
-			Art.text(self, jl, Vector2(480, 52), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		# boss bar
 		var boss = null
 		for u in b.units:
@@ -1172,6 +1172,10 @@ class Overlay extends Control:
 				draw_rect(Rect2(bx, 58, bw * minf(1, boss.plate / float(b.mission.plate)), 2), Color("9fb4c9"))
 		# log
 		var ly := 52.0 if boss == null or (not b.boss_active and boss.type != "queen") else 84.0
+		if jl != "":
+			# the op's objective gets its own row, so the log never runs underneath it
+			Art.text(self, jl, Vector2(480, ly), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			ly += 16
 		ly += draw_boosts(b, ly - 12)
 		for i in b.log_lines.size():
 			var a := 0.55 + 0.45 * float(i + 1) / b.log_lines.size()

@@ -7370,7 +7370,7 @@ func place_job() -> void:
 				u.hp = Data.TARGET_HP; u.max_hp = u.hp; u.heavy = true; u.immovable = true
 				units.append(u)
 		"escort":
-			var x := job_spot(70.0)
+			var x := job_spot(275.0)  # just ahead of the squad line (50-215), so nobody deploys hidden behind it
 			var u := mk_unit(); u.team = "neutral"; u.kind = "truck"; u.x = x; u.y = T.stand_y(x, T.ground_at(x) - 40); u.w = 56; u.h = 32; u.face = 1
 			u.hp = Data.TRUCK_HP; u.max_hp = u.hp; u.heavy = true; u.immovable = true
 			units.append(u)
