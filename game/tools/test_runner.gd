@@ -858,6 +858,8 @@ func run() -> void:
 			await warplus()
 		"warpeople":
 			await warpeople()
+		"warstory":
+			await warstory()
 		"straggler":
 			await straggler()
 		"hoverwedge":
@@ -5782,6 +5784,70 @@ func warpeople() -> void:
 	await until(func(): return b.state == "player" and not b.busy)
 	var e1: Unit = b.squad().filter(func(u): return u.s == Run.soldiers[0])[0]
 	check(e1.energy >= 4, "a soldier with a buddy deployed starts with +1 energy (%d)" % e1.energy)
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
+func warstory() -> void:
+	## Campaign ideas W11 and W13: held ground looks liberated, and Varga's last stand in Act IV.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	# W11: a patrol on held ground has company posts and green flags
+	Run.camp.held.append(Run.sec_key("d1"))
+	Run.start_op(Run.sector("d1"), true)
+	check(Run.level.get("liberated", false), "a patrol is on liberated ground")
+	var b: Battle = main.start_battle(0, Run.current_mission())
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var dec = b.get_node_or_null("Decor")
+	check(dec != null and dec.liberated and dec.posts.size() >= 2, "the company's sandbag posts stand on held ground (%d)" % (dec.posts.size() if dec else -1))
+	cam_on(b, dec.posts[1].x if dec and dec.posts.size() > 1 else 0)
+	await frames_wait(30)
+	await shot("st_liberated")
+	Run.start_op(Run.sector("d2"))
+	check(not Run.level.get("liberated", false), "a new sector isn't")
+	# W13: the last stand opens off the Paper Bridge in Act IV
+	Run.camp.act = 3
+	Run.camp.held.clear()
+	var v: Dictionary = Run.sector("v1")
+	check(not v.is_empty() and v.get("story", "") == "varga", "Act IV has Varga's Fort")
+	check(not Run.sector_open(v), "it's sealed until the bridge is held")
+	Run.camp.held.append(Run.sec_key("p3"))
+	check(Run.sector_open(v), "holding the Paper Bridge opens it")
+	var held0 := Run.held_count()
+	Run.start_op(v)
+	check(Run.level.get("story", "") == "varga" and Run.level.get("guest", "") == "varga", "the op is the story op with Varga fighting alongside")
+	main.show_brief()
+	await frames_wait(10)
+	await shot("st_brief")
+	b = main.start_battle(0, Run.current_mission())
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	check(b.squad().any(func(u): return u.s.has("guest")), "Varga deploys")
+	var n0 := Run.roster.size()
+	b.mission_over.emit(true)
+	await frames_wait(5)
+	var st: Dictionary = Run.history.back()
+	check(st.get("varga_alive", false), "Varga made it (%s)" % st.get("varga_alive"))
+	main.campaign_home(st)
+	await frames_wait(10)
+	check(Run.camp.get("varga", "") == "joined" and Run.roster.size() > n0, "he joins the company for good (%s, %d -> %d)" % [Run.camp.get("varga"), n0, Run.roster.size()])
+	var vs: Array = Run.roster.filter(func(s): return s.def.name == "VARGA")
+	check(vs.size() == 1 and not vs[0].has("guest") and vs[0].deck.map(func(c): return c.key) == Data.VARGA_DECK, "as a full soldier with his own deck (%d)" % vs.size())
+	check(Run.held_count() == held0, "the story sector doesn't count toward the stronghold")
+	check(main.screen.get("news") != null and main.screen.news.any(func(l): return l.contains("Varga")), "HQ news says so")
+	await shot("st_joined")
+	Run.start_op(Run.sector("p1"))
+	check(not Run.level.has("guest"), "no second Varga on later ops")
+	# and if he falls, he stays fallen
+	Run.camp.erase("varga")
+	Run.roster.erase(vs[0])
+	Run.start_op(v)
+	var st2 := {"won": true, "varga_alive": false}
+	check(Run.varga_stand(st2).contains("fell") and Run.camp.varga == "fell", "a fallen Varga is booked")
 	main.show_title()
 	await frames_wait(5)
 	Run.delete_campaign(9)

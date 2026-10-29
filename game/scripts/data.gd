@@ -1747,6 +1747,9 @@ const RADIO_ACT_DONE := [
 	[["prime", "THE SHIP FALLS. THE GATE DOES NOT."]],
 	[["cmd", "The gate is shut. It's over. Iron Company, come home."]],
 ]
+# W13: Varga's last stand, the story op in Act IV
+const RADIO_VARGA_STAND := [["varga", "Iron Company. The Vharr turned on my garrison. The fort is coming down around us."], ["varga", "Get my men out and I am yours. I have nowhere else to go."], ["cmd", "Your call, Iron Company. Bring him home or leave him to it."]]
+const VARGA_DECK := ["hmg", "hmg", "burst", "rifle", "rifle", "haymaker", "frag", "sprint", "knife"]
 const RADIO_VARGA_OP := [["varga", "Iron Company. I'll go in with you this once. Don't make me regret it."], ["sq", "Colonel Varga on our side. Write that down, {mate}."]]
 
 # O1-O6: what an op on the war map asks of the squad. Strongholds are always a push to the boss.
@@ -1827,6 +1830,7 @@ const ACTS := [
 		{"id": "h1", "name": "LIGHTHOUSE", "biome": "harbor", "job": "hold", "at": [470, 140], "links": ["p2", "boss"], "perk": "airfield"},
 		{"id": "h2", "name": "FISH MARKET", "biome": "harbor", "job": "push", "at": [330, 400], "links": ["p3", "h3"], "hold": {"salvage": 3}},
 		{"id": "h3", "name": "DRY DOCK", "biome": "harbor", "job": "demolish", "at": [490, 350], "links": ["h2", "boss"], "perk": "supply"},
+		{"id": "v1", "name": "VARGA'S FORT", "biome": "fortress", "job": "rescue", "story": "varga", "varga": true, "at": [96, 410], "links": ["p3"], "hold": {"bio": 2}},
 		{"id": "boss", "name": "UNDER THE HIVE SHIP", "biome": "harbor", "at": [600, 240], "links": ["h1", "h3"], "stronghold": true}]},
 	{"id": "gate", "name": "SHUT THE GATE", "roman": "V", "tier": 2, "hp_mul": 1.6, "boss_hp": 270, "plate": 74, "need": 2, "breach": 0.3,
 	 "text": "Iron Harbor, where the Jackals keep the captured gate. Two big ops, then the flagship and the gate itself.",
