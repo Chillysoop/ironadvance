@@ -334,7 +334,7 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 				opt = tmp
 				sub.free()
 				return
-			icon = {"armor": "ic_shield", "kit": "ic_star", "belt": "ic_heart"}.get(d.slot, "ic_card")
+			icon = {"armor": "ic_shield", "kit": "ic_star", "belt": Data.BELT_ICONS.get(d.get("use", ""), "ic_heart")}.get(d.slot, "ic_card")
 		else:
 			icon = {"stat": "ic_up", "perk": "ic_star", "gear": "ic_shield", "service": "ic_heart"}.get(kind, "ic_card")
 		if opt.has("icon"):

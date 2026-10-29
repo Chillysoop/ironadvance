@@ -283,7 +283,7 @@ func hint_text() -> String:
 		if c.get("girder", false):
 			return "GIRDER: click where the beam goes, even in mid-air. Shoot its bolt later to drop it."
 		if c.get("jump", false):
-			return "JUMP PACK: aim the arc. You land soft. Landing in the push zone counts as a push."
+			return "%s: aim the arc. You land soft. Landing in the push zone counts as a push." % c.name.to_upper()
 		if c.get("beacon", false):
 			return "BEACON: lob it onto the Jackals. Three bombs land there when their phase starts."
 		if b.armed_fuse() != null:
@@ -552,7 +552,7 @@ class BeltSlot extends Control:
 			Art.text(self, "BELT", Vector2(size.x / 2, 19), 8, Color("4a505a"), HORIZONTAL_ALIGNMENT_CENTER)
 			return
 		var it: Dictionary = Run.belt[idx]
-		var icon: String = {"heal": "ic_heart", "ration": "ic_heart", "smoke": "ic_shield", "energy": "ic_bolt"}.get(Data.ITEMS[it.id].use, "ic_card")
+		var icon: String = Data.BELT_ICONS.get(Data.ITEMS[it.id].use, "ic_card")
 		draw_texture_rect(Art.tex[icon], Rect2(size.x / 2 - 8, 3, 16, 16), false)
 		Art.text(self, Data.item_name(it).split(" ")[0].to_upper().substr(0, 5), Vector2(size.x / 2, 28), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 		if hover:

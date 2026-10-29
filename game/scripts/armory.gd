@@ -700,12 +700,18 @@ class ItemTile extends Control:
 	func _process(_d: float) -> void:
 		t += 1
 		queue_redraw()
-	static func fit_text(s: String, maxw: float) -> String:
+	static func fit_text(s: String, maxw: float, by_word := false) -> String:
 		if Art.text_width(s, 16, true) <= maxw:
 			return s
-		while s.length() > 1 and Art.text_width(s + ".", 16, true) > maxw:
+		# a stat or rules line drops whole words, so it never ends on half a word ("Smoke at y.")
+		var words := s.split(" ")
+		while by_word and words.size() > 1 and Art.text_width(" ".join(words) + "...", 16, true) > maxw:
+			words.remove_at(words.size() - 1)
+		s = " ".join(words)
+		var dots := "..." if by_word else "."
+		while s.length() > 1 and Art.text_width(s + dots, 16, true) > maxw:
 			s = s.substr(0, s.length() - 1)
-		return s.strip_edges() + "."
+		return s.strip_edges().trim_suffix(",").trim_suffix(":") + dots
 	func _draw() -> void:
 		var ink := Color(0.05, 0.035, 0.03)
 		var w := size.x
@@ -733,13 +739,15 @@ class ItemTile extends Control:
 			var icon: String = {"weapon": "ic_up", "armor": "ic_shield", "kit": "ic_star", "belt": "ic_heart"}.get(d.slot, "ic_card")
 			if d.slot == "weapon":
 				icon = "ic_card"
+			elif d.slot == "belt":
+				icon = Data.BELT_ICONS.get(d.get("use", ""), "ic_heart")
 			draw_texture_rect(Art.tex[icon], Rect2(5, 6, 16, 16), false)
 			var nm: String = d.name
 			nm = ItemTile.fit_text(nm, w - 31)
 			Art.text(self, nm, Vector2(27, 15), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 			var sl: Array = Data.stat_lines(Data.item_stats(item))
 			var line: String = sl[0] if sl.size() else d.text
-			line = ItemTile.fit_text(line, w - 31)
+			line = ItemTile.fit_text(line, w - 31, true)
 			Art.text(self, line, Vector2(27, 28), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		# the full slot word along the bottom, clear of the icon and the price
 		if item != null:

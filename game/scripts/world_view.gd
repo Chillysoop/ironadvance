@@ -4,6 +4,16 @@ extends Node2D
 ## lasers, move paths, floating text).
 
 @onready var b: Battle = get_parent()
+var tip: Node2D = null   # hover info box, on its own layer over the weather and foreground
+
+class HoverTip extends Node2D:
+	func _draw() -> void:
+		get_parent().draw_hover(self)
+
+func _ready() -> void:
+	tip = HoverTip.new()
+	tip.z_index = 50
+	add_child(tip)
 
 const C_DARK := Color(0.05, 0.035, 0.03)
 const RIM := {"dusk": Color(1.0, 0.72, 0.42, 0.85), "jungle": Color(1.0, 0.95, 0.65, 0.75), "night": Color(0.6, 0.75, 1.0, 0.8)}
@@ -58,7 +68,8 @@ func _draw() -> void:
 	draw_targeting()
 	draw_texts()
 	draw_barks()
-	draw_hover()
+	if tip != null:
+		tip.queue_redraw()
 
 func draw_camp(c: Dictionary) -> void:
 	## Two tents, a supply crate, a flag and a campfire that burns until the squad moves on.
@@ -1558,7 +1569,7 @@ func draw_barks() -> void:
 		draw_colored_polygon(PackedVector2Array([Vector2(x - 4, y + 4), Vector2(x + 4, y + 4), Vector2(x, y + 10)]), Color("efe7d2"))
 		Art.text(self, bk.text, Vector2(bx + 7, y - 2), 16, C_DARK, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 
-func draw_hover() -> void:
+func draw_hover(cv: CanvasItem) -> void:
 	var h = b.unit_at_p(b.mouse)
 	if h == null or h.kind == "pow" or (b.card_idx >= 0 and b.state == "player"):
 		return
@@ -1650,11 +1661,11 @@ func draw_hover() -> void:
 	var x := clampf(h.x - w / 2, b.cam_x + 4, b.cam_x + Battle.W - w - 4)
 	var y := maxf(46, h.y - h.h - 34 - lines.size() * 16 - 10)
 	var hgt := lines.size() * 16 + 8
-	draw_rect(Rect2(x - 1, y - 1, w + 2, hgt + 2), C_DARK)
-	draw_rect(Rect2(x, y, w, hgt), Color(0.1, 0.11, 0.13, 0.94))
-	draw_rect(Rect2(x, y, w, 2), Color("ff4d3d") if h.team == "enemy" else Color("ffb23e"))
+	cv.draw_rect(Rect2(x - 1, y - 1, w + 2, hgt + 2), C_DARK)
+	cv.draw_rect(Rect2(x, y, w, hgt), Color(0.1, 0.11, 0.13, 0.94))
+	cv.draw_rect(Rect2(x, y, w, 2), Color("ff4d3d") if h.team == "enemy" else Color("ffb23e"))
 	for i in lines.size():
-		Art.text(self, lines[i], Vector2(x + 8, y + 18 + i * 16), 16, Color.WHITE if i == 0 else Color("d7cfbb"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		Art.text(cv, lines[i], Vector2(x + 8, y + 18 + i * 16), 16, Color.WHITE if i == 0 else Color("d7cfbb"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 
 # ---------------------------------------------------------------- M1-M7 biomes
 func draw_cart(u: Unit, pos: Vector2, white: bool) -> void:

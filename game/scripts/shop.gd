@@ -155,7 +155,7 @@ func build() -> void:
 			var it: Dictionary = o.item
 			tile.title = "BUY %s" % Data.item_name(it).to_upper()
 			var sl: Array = Data.stat_lines(Data.item_stats(it))
-			tile.line = "%s %s. Goes to the %s." % [Data.tier_name(it.tier).capitalize(), ", ".join(sl) if sl.size() else Data.ITEMS[it.id].text, "belt" if Data.ITEMS[it.id].slot == "belt" else "stash"]
+			tile.line = "%s %s. Goes to the %s." % [Data.tier_name(it.tier).capitalize(), ", ".join(sl) if sl.size() else Data.ITEMS[it.id].text.trim_suffix("."), "belt" if Data.ITEMS[it.id].slot == "belt" else "stash"]
 		tile.ok = Run.scrip >= p
 		tile.why = Services.short(p)
 		tile.pressed.connect(buy_shelf)

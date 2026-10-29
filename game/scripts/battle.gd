@@ -1306,6 +1306,8 @@ func park_ride(x: float, type: String, hp := -1) -> Unit:
 	var gy = T.stand_y(x, 0)
 	if gy == null or gy >= WATER_Y - 4:
 		return null
+	if T.lakes.any(func(l): return x > l[0] - 20 and x < l[1] + 20):
+		return null  # M1: lake crust breaks under any vehicle, so the first driver would sink on boarding
 	var r := mk_unit()
 	r.team = "neutral"; r.kind = "ride"; r.x = x; r.y = gy; r.w = 30; r.h = 24; r.face = -1
 	r.loot = {"type": type, "hp": hp}
@@ -1319,11 +1321,20 @@ func place_vehicles() -> void:
 		return
 	var st: Array = T.stretches[0]
 	var w: float = st[1] - st[0]
-	park_ride(st[0] + w * 0.3, pick(["bike", "walker", "tank"]))
+	var kind: String = pick(["bike", "walker", "tank"])
+	for f in [0.3, 0.2, 0.4, 0.15, 0.5]:
+		if park_ride(st[0] + w * f, kind) != null:
+			break
 	if mission.get("walker", false):
-		var x: float = st[0] + w * 0.75
-		var y = T.stand_y(x, 0)
 		var mb: String = mission.get("miniboss", "jwalker")
+		# E6: both feet on solid ground, or leg_check topples it before the squad has moved
+		var x: float = st[0] + w * 0.75
+		for f in [0.75, 0.7, 0.8, 0.65, 0.85]:
+			x = st[0] + w * f
+			var y0 = T.stand_y(x, 0)
+			if y0 != null and T.solid(x - 13, y0 + 3) and T.solid(x + 13, y0 + 3):
+				break
+		var y = T.stand_y(x, 0)
 		if y != null and y < WATER_Y - 4:
 			var e := mk_enemy(mb, x, y)
 			if mb == "jwalker":
@@ -2813,12 +2824,14 @@ func troopers_leave() -> void:
 func dealer_price(it: Dictionary) -> int:
 	return int(round(Run.item_price(it) * Data.DEALER_MUL))
 
-func check_dealer(u: Unit) -> void:
-	## R4: walk up to the arms dealer to see his three items and their prices.
+func check_dealer(u: Unit, x0 = null) -> void:
+	## R4: walk up to (or past) the arms dealer to see his three items and their prices.
 	if u.dead or u.team != "squad" or state != "player":
 		return
+	var lo := minf(u.x, x0 if x0 != null else u.x) - 44
+	var hi := maxf(u.x, x0 if x0 != null else u.x) + 44
 	for d in units:
-		if d.kind != "dealer" or d.gone or absf(d.x - u.x) > 44 or absf(d.y - u.y) > 30 or d.loot.get("seen", -1) == round_n:
+		if d.kind != "dealer" or d.gone or d.x < lo or d.x > hi or absf(d.y - u.y) > 30 or d.loot.get("seen", -1) == round_n:
 			continue
 		d.loot["seen"] = round_n
 		var stock: Array = d.loot.stock
@@ -5932,11 +5945,25 @@ func play_self(idx: int) -> void:
 	if u.energy < card_cost(u, inst) or busy:
 		return
 	var why := mech_ok(u, c)
+	if why == "" and self_no_target(u, c):
+		why = "NO JACKAL IN RANGE"  # SELF cards fire on the hotkey, so one with nothing to hit stays in hand
 	if why != "":
 		float_text(u, why, Color("ff7a3d"))
 		Sfx.play("deny")
 		return
 	resolve(func(): await _act_self(u, idx, c))
+
+func self_no_target(u: Unit, c: Dictionary) -> bool:
+	## A Tesla Arc, drone run or Slingshot with no enemy it could reach would only waste the card.
+	var chest := Vector2(u.x, u.y - u.h / 2.0)
+	if c.has("tesla"):
+		return not vis_foes().any(func(e): return chest.distance_to(Vector2(e.x, e.y - e.h / 2.0)) <= 300.0)
+	if c.has("drone"):
+		var reach := 2000.0 if c.get("od", false) else 420.0
+		return not vis_foes().any(func(e): return absf(e.x - u.x) <= reach)
+	if c.get("slingshot", false):
+		return squad_of("rook") == null or not vis_foes().any(func(e): return not e.heavy)
+	return false
 
 func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 	spend_card(u, idx, c)
@@ -6201,13 +6228,14 @@ func do_move(u: Unit, tx: float) -> void:
 func _act_walk(u: Unit, pts: Array, cost: float) -> void:
 	u.move_left = maxf(0, u.move_left - cost)
 	u.moved = true
+	var x0 := u.x
 	await walk_along(u, pts)
-	await check_push(u)
+	await check_push(u, x0)
 
 # ---------------------------------------------------------------- screen scrolling
-func check_push(u: Unit) -> void:
+func check_push(u: Unit, x0 = null) -> void:
 	check_troopers(u)
-	await check_dealer(u)
+	await check_dealer(u, x0)
 	await check_camp(u)
 	if u.dead or cam_x >= world_w - W:
 		return
@@ -9822,7 +9850,13 @@ func body_collisions(u: Unit) -> void:
 					u.vx *= 0.35
 
 func physics(u: Unit) -> void:
-	if u.walk != null or (u.kind == "pow" and u.freed) or u.kind == "rivet" or u.kind == "sticky" or u.fl.has("carried"):
+	if u.kind == "rivet" or u.kind == "sticky":
+		# pinned in place: a blast can't knock them loose (or the turn would wait on them landing)
+		u.air = false
+		u.vx = 0
+		u.vy = 0
+		return
+	if u.walk != null or (u.kind == "pow" and u.freed) or u.fl.has("carried"):
 		return
 	if u.type == "shipplate" and not u.dead:
 		# a hull plate hangs on its tethers under the Hive Ship and goes where the ship goes

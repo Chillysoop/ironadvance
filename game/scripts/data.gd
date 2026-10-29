@@ -108,7 +108,7 @@ const CARDS := {
 	"molotov": {"name": "Molotov", "type": "ARC", "cost": 1, "radius": 30, "dmg": 4, "wind": 1.0, "burnblast": true, "text": "Smashes on impact. Everything caught is Burning.", "rarity": 1, "up": {"radius": 40}},
 	"shapedcharge": {"name": "Shaped Charge", "type": "ARC", "cost": 1, "radius": 26, "dmg": 8, "fuse": 90, "wind": 0.6, "carve": 56, "text": "Small blast, huge hole. Drops structures.", "rarity": 1, "up": {"carve": 72}},
 	"haymaker": {"name": "Haymaker", "type": "MELEE", "cost": 1, "dmg": [6, 8], "range": 38, "knock": 11, "text": "Sends them flying. Aim the body at their friends.", "rarity": 1, "up": {"knock": 14}},
-	"taunt": {"name": "Taunt", "type": "SELF", "cost": 0, "taunt": true, "text": "Every Jackal that can targets you next phase.", "rarity": 1, "up": {"armor": 4}},
+	"taunt": {"name": "Taunt", "type": "SELF", "cost": 0, "taunt": true, "text": "Every Jackal with a shot at you takes it next phase.", "rarity": 1, "up": {"armor": 4}},
 	"suppress": {"name": "Suppressing Fire", "type": "AIM", "cost": 1, "dmg": [2, 2], "shots": 5, "range": FULL_RANGE, "gun": "mg", "bounce": 0, "sway": 0.06, "spread": 0.09, "supp": true, "text": "Everything hit is Suppressed.", "rarity": 1, "up": {"shots": 7}},
 	# weapon cards: only come from equipped weapons (G1)
 	"carbine": {"name": "Carbine Burst", "type": "AIM", "cost": 1, "dmg": [4, 5], "shots": 2, "range": FULL_RANGE, "gun": "smg", "bounce": 1, "sway": 0.04, "spread": 0.05, "text": "Two quick rounds.", "rarity": 0, "pool": false, "up": {"shots": 3}},
@@ -346,6 +346,8 @@ const LETTER_FROM := {"D": 1, "T": 1, "Z": 2, "G": 2}
 # ---------------------------------------------------------------- gear (G1-G6)
 # Four slots per soldier plus a squad stash and a 3-slot consumable belt.
 # "stats" scale with the item's rarity (TIER_MUL); weapons add their cards to the deck.
+# the icon a belt consumable shows everywhere: shop shelf, Armory, battle belt
+const BELT_ICONS := {"heal": "ic_heart", "ration": "ic_heart", "smoke": "ic_shield", "energy": "ic_bolt"}
 const SLOT_NAMES := {"weapon": "WEAPON", "armor": "ARMOR", "kit": "KIT", "belt": "BELT"}
 const TIER_MUL := [1.0, 1.25, 1.5, 2.0, 2.5]
 const STASH_MAX := 8
@@ -1917,13 +1919,19 @@ func laser_len(c: Dictionary, step_bonus := 0, pct := 0.0) -> float:
 	var L: float = LASER_LEN[i]
 	return L if L > 9999.0 else L * (1.0 + pct)
 
+func dmg_text(d) -> String:
+	## "6-8", or just "3" when the range is one number (Heavy MG read "DMG 3-3").
+	if not d is Array:
+		return "%d" % d
+	return ("%d" % d[0]) if int(d[0]) == int(d[1]) else "%d-%d" % [d[0], d[1]]
+
 func stat_line(c: Dictionary) -> String:
 	if c.type == "AIM":
-		return "DMG %d-%d%s%s BNC %d" % [c.dmg[0], c.dmg[1], (" x%d" % c.shots) if c.has("shots") else "", (" x%d" % c.pellets) if c.has("pellets") else "", c.get("bounce", 0)]
+		return "DMG %s%s%s BNC %d" % [dmg_text(c.dmg), (" x%d" % c.shots) if c.has("shots") else "", (" x%d" % c.pellets) if c.has("pellets") else "", c.get("bounce", 0)]
 	if c.has("radius"):
 		return "DMG %d%s BLAST %d" % [c.dmg, (" x%d" % c.count) if c.has("count") else "", c.radius]
 	if c.has("dmg"):
-		return ("DMG %d-%d" % [c.dmg[0], c.dmg[1]]) if c.dmg is Array else "DMG %d" % c.dmg
+		return "DMG " + dmg_text(c.dmg)
 	if c.has("heal"):
 		return "HEAL %d  RNG %d" % [c.heal, c.range]
 	if c.get("grapple", false):
@@ -1959,7 +1967,7 @@ func relic_text(id: String, t: int) -> String:
 	## Squad gear text at a given rarity tier.
 	match id:
 		"boots": return "Squad takes no fall or slam damage." if t >= 3 else "Squad takes half fall and slam damage."
-		"jammer": return "Radiomen need %d more rounds to call backup." % (2 if t >= 3 else 1)
+		"jammer": return ("Radiomen need 2 more rounds to call backup." if t >= 3 else "Radiomen need 1 more round to call backup.")
 		"rations": return "Every wave clear heals the squad %d HP." % (4 + t * 2)
 		"laser": return "Aim lasers reach %s further. Sway -30%%." % ("two steps" if t >= TIER_MAX else "one step")
 		"charm": return "The first %s to die each mission live%s at 1 HP." % (["soldier", "s"] if t < 3 else ["two soldiers", ""])

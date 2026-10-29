@@ -127,7 +127,7 @@ func show_title() -> void:
 	s.mode = "title"
 	# N4: each mode says what it is
 	s.buttons = [["CAMPAIGN", func(): show_slots(), "5 ACTS  COMPANY OF %d  SAVED" % Data.COMPANY_MAX],
-		["QUICK RUN", func(): show_draft() if Run.class_keys().size() > 4 else start_run(), "%d LEVELS AND A FINALE" % Data.LEVELS.size()],
+		["QUICK RUN", func(): quick_run(), "%d LEVELS AND A FINALE" % Data.LEVELS.size()],
 		["TRAINING", func(): start_training(), "OPTIONAL  LEARN THE BASICS", Color("9aa2ae") if Run.meta.get("trained", false) else Color("ffb23e")]]
 	s.corner = ["DAILY OP", func(): start_daily()]  # D2
 	# V6: the blood and ichor sprays can be switched off
@@ -144,6 +144,13 @@ func show_title() -> void:
 			Sfx.play("click")
 			show_title()])
 	open(s)
+
+func quick_run() -> void:
+	## X1: with more than four classes unlocked a run starts at the squad draft.
+	if Run.class_keys().size() > 4:
+		show_draft()
+	else:
+		start_run()
 
 func show_draft() -> void:
 	## X1: more than four classes unlocked, so the run starts with picking the squad.
@@ -263,6 +270,8 @@ func show_hq(arrived: bool) -> void:
 	## Home base between missions. The gate dials straight into mission 1 at the start of a run,
 	## and onto the road east after that.
 	clear()
+	if not Run.campaign():
+		Run.mission = Run.history.size()  # the next level, so the Quartermaster restocks for it
 	var h: Control = HqScript.new()
 	h.arrived = arrived
 	h.dial.connect(show_war_room if Run.campaign() else dial_gate)
@@ -396,10 +405,10 @@ func _on_mission_over(won: bool) -> void:
 		Run.daily_over()
 	if not won or Run.alive_count() == 0:
 		s.mode = "lost"
-		s.buttons = [["NEW RUN", func(): start_run()], ["TITLE", func(): show_title()]]
+		s.buttons = [["NEW RUN", func(): quick_run()], ["TITLE", func(): show_title()]]
 	elif Run.is_final_mission():
 		s.mode = "final"
-		s.buttons = [["NEW RUN", func(): start_run()], ["TITLE", func(): show_title()]]
+		s.buttons = [["NEW RUN", func(): quick_run()], ["TITLE", func(): show_title()]]
 		Run.meta.wins = int(Run.meta.wins) + 1
 		Run.meta.threat_max = maxi(int(Run.meta.threat_max), mini(Run.threat + 1, Data.THREATS.size()))
 		Run.save_meta()
@@ -547,8 +556,10 @@ class Screen extends Control:
 				squad_line(370, "cheer")
 	func squad_line(y: float, anim: String) -> void:
 		var i := 0
-		for s in Run.soldiers if Run.soldiers.size() else Data.SQUAD_DEFS.map(func(d): return {"key": d.key, "alive": true, "def": d, "lvl": 1}):
-			var x := 480 - 150 + i * 100
+		var line: Array = Run.soldiers if Run.soldiers.size() else Data.SQUAD_DEFS.filter(func(d): return Data.BASE_CLASSES.has(d.key)).map(func(d): return {"key": d.key, "alive": true, "def": d, "lvl": 1})
+		var gap := 100.0 if line.size() <= 4 else 72.0  # a fifth soldier squeezes in between the briefing's side panels
+		for s in line:
+			var x := 480 - (line.size() - 1) * gap / 2.0 + i * gap
 			var a := anim if s.alive else "die"
 			Art.draw_char(self, Art.look_sheet(s), a, (t / 6) % 8 if a == "run" else ((t / 12 + i) % 4 if a == "idle" else (t / 10) % 2 if a == "cheer" else 5), Vector2(x, y), 1, false, 0, 1.0, 0, a != "cheer" and a != "die", 2.0)
 			Art.text(self, s.def.name, Vector2(x, y + 18), 8, Color.WHITE if s.alive else Color("8a7a7a"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -621,7 +632,7 @@ class Screen extends Control:
 		Art.text(self, "TURN-BASED RUN AND GUN", Vector2(480, 140), 16, Color("ffb070"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 		if corner.size():
 			var best := Run.daily_best()
-			Art.text(self, ("TODAY'S BEST %d" % best) if best > 0 else "SAME SQUAD AND MAPS ALL DAY", Vector2(105, 60), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, ("TODAY'S BEST %d" % best) if best > 0 else "ONE SEED A DAY", Vector2(105, 60), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 		var ver := FileAccess.get_file_as_string("res://version.txt").strip_edges()
 		Art.text(self, "BUILD " + (ver if ver != "" else "DEV"), Vector2(950, 530), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)
 		if t % 60 < 40:
@@ -661,7 +672,7 @@ class Screen extends Control:
 			Art.text(self, "SPECIALIST POW: %s THE %s IS HELD HERE. FREE THEM TO UNLOCK THE CLASS." % [D.name, D.cls.to_upper()], Vector2(480, y + 86), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		draw_texture_rect(Art.tex.ic8_coin, Rect2(410, y + 30, 10, 10), false)
 		Art.text(self, "%d SCRIP" % Run.scrip, Vector2(426, y + 40), 8, Color("ffd23a"))
-		squad_line(370, "idle")
+		squad_line(382, "idle")  # feet low enough that heads clear the SPECIALIST POW line
 		draw_extras(m)  # over the squad, so no rifle pokes through the boards
 	func draw_extras(m: Dictionary) -> void:
 		## R2-R5: the level's event on the left, its bounty board on the right. D2: the daily tag.
@@ -735,11 +746,12 @@ class Screen extends Control:
 					Art.text(self, "BOSS HP %d   ARMOR %d" % [lv.boss_hp, lv.plate], Vector2(cx, 452), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 			# how each soldier's deck fits this biome
 			y += 38
+			var step := minf(30.0, (430.0 - y) / maxf(1, al.size()))  # five soldiers still fit inside the card
 			for j in al.size():
 				var so: Dictionary = al[j]
 				var f := Run.fit(so, id)
 				var fc: Color = {"great": Color("62d26f"), "ok": Color("e8dcc2"), "rough": Color("ff7a5a")}[f]
-				var row := y + j * 30
+				var row := y + j * step
 				Art.draw_char(self, Art.look_sheet(so), "idle", (t / 12 + j) % 4, Vector2(x + 40, row + 14), 1, false, 0, 1.0, 0, true, 0.8)
 				Art.text(self, so.def.name, Vector2(x + 60, row + 8), 8, Color.WHITE)
 				Art.text(self, f.to_upper(), Vector2(x + cw - 20, row + 8), 8, fc, HORIZONTAL_ALIGNMENT_RIGHT)
@@ -780,7 +792,7 @@ class Screen extends Control:
 		var col := Color("62d26f") if mode != "lost" else Color("ff4d3d")
 		Art.text(self, title, Vector2(480, 96), 32, col, HORIZONTAL_ALIGNMENT_CENTER, 3)
 		if mode == "final":
-			Art.text(self, "CAMPAIGN WON. THE ROAD EAST IS OPEN.", Vector2(480, 124), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "RUN WON. THE ROAD EAST IS OPEN.", Vector2(480, 124), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 			if Run.threat < Data.THREATS.size() and int(Run.meta.threat_max) > Run.threat:
 				Art.text(self, "THREAT %d UNLOCKED: %s" % [Run.threat + 1, Data.THREATS[Run.threat].name], Vector2(480, 140), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			if unlock != "":
@@ -799,10 +811,14 @@ class Screen extends Control:
 			rows.append(["BOUNTY " + bt[0], ("+%d$" % bt[1]) if bt[2] else "MISSED"])
 		if mode == "final" or mode == "lost":
 			rows.append(["RUN SCORE", str(Run.total_score)])
-		for i in rows.size():
-			Art.text(self, rows[i][0], Vector2(330, 160 + i * 20), 8, Color("e8dcc2"))
-			Art.text(self, rows[i][1], Vector2(630, 160 + i * 20), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
+		draw_rows(rows, 172.0 if mode == "final" else 160.0)
 		squad_line(420, "cheer" if mode != "lost" else "idle")
+	func draw_rows(rows: Array, top: float) -> void:
+		## The stat table squeezes its rows together so the last one stays clear of the squad's heads.
+		var step := minf(20.0, (345.0 - top) / maxf(1, rows.size()))
+		for i in rows.size():
+			Art.text(self, rows[i][0], Vector2(330, top + i * step), 8, Color("e8dcc2"))
+			Art.text(self, rows[i][1], Vector2(630, top + i * step), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
 	func draw_op_result() -> void:
 		var op: Dictionary = stats.get("op", {})
 		var title := "OP FAILED"
@@ -830,7 +846,5 @@ class Screen extends Control:
 		if stats.get("fallen", []).size():
 			rows.append(["KILLED IN ACTION", ", ".join(stats.fallen)])
 		rows.append(["OPS FOUGHT", str(Run.camp.get("ops", 0))])
-		for i in rows.size():
-			Art.text(self, rows[i][0], Vector2(330, 160 + i * 20), 8, Color("e8dcc2"))
-			Art.text(self, rows[i][1], Vector2(630, 160 + i * 20), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
+		draw_rows(rows, 160.0)
 		squad_line(420, "cheer" if mode == "op_won" else "idle")
