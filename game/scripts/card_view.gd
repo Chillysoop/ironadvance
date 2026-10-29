@@ -219,7 +219,7 @@ func _draw() -> void:
 		y += 13
 	if stat != "":
 		draw_rect(Rect2(6, y - 6, w - 12, 1), PAPER_D)
-		for sl in wrap_text(stat, w - 8, 16):
+		for sl in (wrap_stat(stat, w - 8) if kind == "card" else wrap_text(stat, w - 8, 16)):
 			Art.text(self, sl, Vector2(w / 2.0, y + 6), 16, Color("7a2a14") if not dim else Color("4a4030"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
 			y += 12
 		y += 4
@@ -430,6 +430,29 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 		var k := 32.0 / maxf(tx.get_width(), tx.get_height())
 		var sz := Vector2(tx.get_width(), tx.get_height()) * k
 		draw_texture_rect(tx, Rect2(c - sz / 2.0, sz), false, mod)
+
+static func wrap_stat(s: String, width: float) -> Array:
+	## Like wrap_text, but a number stays on the line with its label ("BNC 1", never "BNC" / "1").
+	var groups: Array = []
+	for tok in s.split(" ", false):
+		var c := tok.substr(0, 1)
+		var num := c.is_valid_int() or c in ["+", "-", "x", "%"] and tok.length() > 1
+		if num and groups.size():
+			groups[-1] += " " + tok
+		else:
+			groups.append(tok)
+	var out: Array = []
+	var line := ""
+	for g in groups:
+		var t: String = g if line == "" else line + " " + g
+		if Art.text_width(t, 16, true) > width and line != "":
+			out.append(line)
+			line = g
+		else:
+			line = t
+	if line != "":
+		out.append(line)
+	return out
 
 static func wrap_text(s: String, width: float, size: int) -> Array:
 	var out: Array = []
