@@ -854,6 +854,8 @@ func run() -> void:
 			await campfix()
 		"wardeep":
 			await wardeep()
+		"warplus":
+			await warplus()
 		"straggler":
 			await straggler()
 		"hoverwedge":
@@ -5600,6 +5602,85 @@ func wardeep() -> void:
 	main.screen.build()
 	await frames_wait(10)
 	await shot("wd_book")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
+func warplus() -> void:
+	## Campaign ideas W2, W8, W10: the act-end ceremony with its MVP's field promotion, the war
+	## journal in the War Book and on the ending screen, and the company token driving the map.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	var sq: Array = Run.soldiers.duplicate()
+	var st_for := func(won: bool, kills: Dictionary, op: Dictionary) -> Dictionary:
+		var xp := {}
+		for s in sq:
+			xp[s.key] = 10
+		return {"won": won, "kills": kills.values().reduce(func(a, b): return a + b, 0), "kills_by": kills, "rounds": 14, "xp": xp, "downed_by": {}, "fallen": [], "op": op}
+	# W10: the token drives from the landing zone to the sector before the op starts
+	main.show_war_room()
+	await frames_wait(5)
+	var w = main.screen
+	w.sel = "d1"
+	w.build()
+	var t0: Vector2 = w.tok
+	w.go_btn.pressed.emit()
+	await frames_wait(8)
+	await shot("wp_drive")
+	check(w.tok != t0 and w.tok_path.size() > 0, "the company token drives toward the sector (%s -> %s)" % [t0, w.tok])
+	var ok := await until(func(): return main.screen != w, 400)
+	check(ok and main.screen.get("mode") == "brief", "the op starts when the token arrives")
+	main.show_hq(false)
+	await frames_wait(3)
+	Run.level = {}
+	# W8: ops go into the journal
+	Run.start_op(Run.sector("d1"))
+	Run.after_op(st_for.call(true, {sq[0].key: 9, sq[1].key: 2}, Run.op_over(true)))
+	Run.start_op(Run.sector("d2"))
+	Run.after_op(st_for.call(false, {sq[0].key: 3}, Run.op_over(false)))
+	var j: Array = Run.camp.get("journal", [])
+	check(j.size() == 2 and j[0].sec == "MUDFLAT LANDING" and j[0].won and not j[1].won and j[0].squad.size() == 4, "each op is written in the journal (%s)" % [j])
+	check(Run.camp.tried.has("0:d2") and not Run.sector_held("d2"), "a failed sector is remembered as fought over")
+	main.show_war_room()
+	await frames_wait(5)
+	check(main.screen.tok == main.screen.node_pos(Run.sector("d2")) or main.screen.tok == main.screen.lz_pos(), "the token waits where the company last went")
+	main.screen.book_open = true
+	main.screen.book_tab = 1
+	main.screen.build()
+	await frames_wait(10)
+	await shot("wp_journal")
+	# W2: the stronghold falls and the act gets its ceremony
+	for id in ["d2", "d3"]:
+		Run.camp.held.append(Run.sec_key(id))
+	Run.start_op(Run.sector("boss"))
+	var rk0 := Run.rank(sq[0])
+	var st: Dictionary = st_for.call(true, {sq[0].key: 6, sq[2].key: 1}, Run.op_over(true))
+	main.campaign_home(st)
+	await frames_wait(140)
+	await shot("wp_act_end")
+	check(main.screen is WarRoomScriptRef.ActEndScreen, "beating the stronghold opens the act-end ceremony")
+	check(main.screen.mvp == sq[0] and int(sq[0].get("field", 0)) == 1, "the act's top killer is its MVP with a field promotion (%s)" % main.screen.mvp.def.name)
+	main.screen.done.emit()
+	await frames_wait(5)
+	check(main.screen is WarRoomScriptRef.PickQueue, "the field promotion is picked after the ceremony")
+	var offers := Run.promo_offers(sq[0])
+	check(offers == Data.PROMO_OFFERS[clampi(Run.rank(sq[0]), 1, 4)], "a field promotion offers the current rank's picks (%s)" % [offers])
+	await shot("wp_field_promo")
+	while main.screen is WarRoomScriptRef.PickQueue and Run.pending_picks().size():
+		main.screen.pick(0)
+		await frames_wait(2)
+	check(not sq[0].has("field") and not sq[0].has("promo") and Run.rank(sq[0]) == rk0, "the field promotion is used up without changing rank")
+	# the ending screen shows the journal too
+	Run.camp.done = true
+	main.show_ending()
+	await frames_wait(5)
+	main.screen.show_j = true
+	main.screen.build()
+	await frames_wait(10)
+	await shot("wp_ending_journal")
 	main.show_title()
 	await frames_wait(5)
 	Run.delete_campaign(9)
