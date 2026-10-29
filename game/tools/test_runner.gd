@@ -871,6 +871,8 @@ func run() -> void:
 			await newplayer4()
 		"dcalls":
 			await dcalls()
+		"pcalls":
+			await pcalls()
 		"fieldfix":
 			await fieldfix()
 		"synergies":
@@ -2158,12 +2160,17 @@ func synergies() -> void:
 	await hover_at(Vector2(954 - 232 + 30, 40 + 29 - 4))
 	check(Tip.cur.get("title", "") == "DESERT RAT", "hovering a field synergy opens its tip (%s)" % Tip.cur.get("title", ""))
 	await shot("syn_field")
+	# P5: the pairs row waits until a pair is pumped; the header tip lists them meanwhile
+	check(rows.any(func(r): return r.name == "DUO PAIRS" and r.get("quiet", false)), "P5: the duo pairs row is quiet at the start")
+	await hover_at(Vector2(954 - 232 + 60, 40 + 8))
+	check(Tip.cur.get("title", "") == "SYNERGIES" and Tip.cur.text.contains("Spotter Strike (MOSS+VEE)"), "P5: the SYNERGIES header lists every pair (%s)" % Tip.cur.get("title", ""))
+	var moss: Unit = b.squad_alive().filter(func(o): return o.def.key == "moss")[0]
+	var vee: Unit = b.squad_alive().filter(func(o): return o.def.key == "vee")[0]
+	moss.adr = 50; vee.adr = 60
 	await hover_at(Vector2(954 - 232 + 30, 40 + 29 + 14 - 4))
 	check(Tip.cur.get("title", "") == "DUO PAIRS" and Tip.cur.text.contains("Spotter Strike (MOSS+VEE)"), "the duo pairs row lists every pair on the field (%s)" % Tip.cur.get("title", ""))
 	await shot("syn_field_pairs")
 	# a duo card in hand gets its own READY row
-	var moss: Unit = b.squad_alive().filter(func(o): return o.def.key == "moss")[0]
-	var vee: Unit = b.squad_alive().filter(func(o): return o.def.key == "vee")[0]
 	moss.hand.append({"id": -1, "key": Data.OD.moss, "tier": Data.OD_TIER, "od": true})
 	vee.hand.append({"id": -2, "key": Data.OD.vee, "tier": Data.OD_TIER, "od": true})
 	vee.x = moss.x + 30
@@ -8285,3 +8292,59 @@ func reinforce_test() -> void:
 	await frames_wait(20)
 	Run.meta = keep
 	Run.save_meta()
+
+func pcalls() -> void:
+	## P1-P8 from the playtest-after-#94 page (all voted YES but P4, which was left open).
+	Run.new_run()
+	Run.first_run = false
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	# P2: the squad lands spread out
+	var xs: Array = b.squad_alive().map(func(s): return s.x)
+	var gap := 999.0
+	for i in range(1, xs.size()):
+		gap = minf(gap, absf(xs[i] - xs[i - 1]))
+	check(gap >= 50, "P2: the squad deploys at least 50px apart (%.0f)" % gap)
+	# P3: no routine round line in the log
+	check(not b.log_lines.any(func(l): return str(l).begins_with("Round ")), "P3: the log has no 'Round N. Alert' line")
+	# P1: the coach starts with one page and queues the rest when their moment comes
+	main.hud.coach_queue.clear()
+	b.coach_start()
+	check(main.hud.coach_queue.size() == 1 and main.hud.coach_queue[0][1] == "YOUR TURN", "P1: the battle opens with one coach page")
+	b.coach_hit("blast")
+	check(main.hud.coach_queue.size() == 2 and main.hud.coach_queue[1][1] == "PHYSICS HURTS", "P1: a first blast queues PHYSICS HURTS")
+	b.coach_hit("blast")
+	check(main.hud.coach_queue.size() == 2, "P1: each page shows only once")
+	await until(func(): return main.hud.coach_box.get_child_count() > 0, 120)
+	await shot("pcalls_coach")
+	main.hud.coach_box.get_child(0).press(1)
+	check(b.coach_left.is_empty() and main.hud.coach_queue.is_empty(), "P1: SKIP drops the pages still to come")
+	await frames_wait(4)
+	# P7: ALT intel goes on the plates, not stacked over the squad
+	b.inspect = true
+	await frames_wait(4)
+	await shot("pcalls_alt")
+	b.inspect = false
+	# P6: the hijack toast sits above the hand, clear of the top of the field
+	var u: Unit = b.squad_alive()[0]
+	b.vehicle_pop(u, "in", "tank", ["tankshell", "vulcan", "eject"], [])
+	await frames_wait(12)
+	var vp = null
+	for c in main.hud.find_children("*", "", true, false):
+		if c.has_method("short_line"):
+			vp = c
+	check(vp != null and vp.visible, "P6: the vehicle toast shows")
+	if vp != null:
+		var r: Rect2 = vp.box(b.vpop)
+		check(r.position.y > 300 and r.end.y <= 470 and r.size.y < 90, "P6: the toast is small and sits above the hand (%s)" % str(r))
+	await shot("pcalls_toast")
+	b.vpop = {}
+	# P8: a brand-new player's first level has no bounties and no event; level 2 does
+	Run.first_run = true
+	var lv: Dictionary = Run.make_level("city", 0)
+	check(lv.event == "" and lv.bounties.is_empty(), "P8: the first-ever level 1 has no event or bounties")
+	lv = Run.make_level("city", 1)
+	check(lv.event != "" and lv.bounties.size() == 3, "P8: level 2 brings them back")
+	Run.first_run = false
+	lv = Run.make_level("city", 0)
+	check(lv.event != "" and lv.bounties.size() == 3, "P8: later runs keep them on level 1")

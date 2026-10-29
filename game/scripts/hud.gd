@@ -650,6 +650,11 @@ class Tag extends Control:
 			if not b.can_act(u):
 				draw_rect(Rect2(x0 + 1, 1, w - 2, h - 2), Color(0.05, 0.035, 0.03, 0.55))
 				Art.text(self, "DONE", Vector2(x0 + w - 6, 20), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT, 1)
+			if b.inspect:
+				# P7: ALT intel sits on the plate's top row, instead of stacked over the squad
+				var info := "%dE MV%d ADR%d%s" % [u.energy, int(maxf(0, u.move_left)), u.adr, " OW" if u.overwatch > 0 else ""]
+				draw_rect(Rect2(x0 + 34, 2, w - 36, 11), Color(0.05, 0.035, 0.03, 0.95))
+				Art.text(self, info, Vector2(x0 + 36, 11), 8, Color("62d26f") if b.can_act(u) else Color("9aa2ae"))
 		if not u.dead:
 			var bw := w - 40
 			draw_rect(Rect2(x0 + 36, 14, bw, 4), Color(0.05, 0.035, 0.03))
@@ -788,6 +793,8 @@ class Coach extends Control:
 		if k == 0 and hud.coach_queue.size() > 1:
 			hud.coach_queue.pop_front()
 			return
+		if k > 0:
+			hud.b.coach_left.clear()  # P1: SKIP drops the pages still to come as well
 		hud.coach_queue.clear()
 		queue_free()
 	func _gui_input(ev: InputEvent) -> void:
@@ -961,7 +968,8 @@ class Overlay extends Control:
 	func draw_synergies(b: Battle, y: float) -> float:
 		## The squad's switched-on synergies, top right above the bounty board. Hover one for what it
 		## does. Returns where the bounty board starts.
-		var rows: Array = b.synergy_board()
+		var all_rows: Array = b.synergy_board()
+		var rows: Array = all_rows.filter(func(r): return not r.get("quiet", false))
 		if rows.is_empty() or b.state == "title":
 			return y
 		var w := 232.0
@@ -976,6 +984,10 @@ class Overlay extends Control:
 		draw_rect(Rect2(x, y, w, 2), Color(0.71, 0.55, 1, al))
 		Art.text(self, "SYNERGIES", Vector2(x + 6, y + 13), 8, Color("b48cff"), HORIZONTAL_ALIGNMENT_LEFT, 1, false, al)
 		Art.text(self, "HOVER", Vector2(x + w - 6, y + 13), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT, 1, false, al)
+		if not hud.targeting:
+			# P5: a duo pair far from its Overdrive has no row; the header still lists every pair
+			var all_text := ". ".join(all_rows.filter(func(r): return r.get("quiet", false)).map(func(r): return r.text))
+			Tip.zone(self, Rect2(x, y, w, 18), "SYNERGIES", "Hover a row for what it does." + (" " + all_text if all_text != "" else ""), Color("b48cff"))
 		var ry := y + 29
 		for r in rows:
 			var row := Rect2(x, ry - 11, w, 14)
@@ -1178,7 +1190,7 @@ class Overlay extends Control:
 			Art.text(self, nxt, Vector2(cx, cy + 16), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT)
 		# hint strip above the hand
 		var h: String = hud.hint_text()
-		if h != "":
+		if h != "" and not (b.vpop.size() and b.t - b.vpop.t0 < VehiclePop.DUR):  # P6: the vehicle toast uses this spot
 			var lines := CardView.wrap_text(h, 640, 16)
 			var hw := 0.0
 			for l in lines:
@@ -1215,45 +1227,42 @@ class Overlay extends Control:
 
 # ---------------------------------------------------------------- the boarding card
 class VehiclePop extends Control:
-	## Climbing into (or out of) a vehicle: what it does for you, and the exact cards that
-	## joined or left the driver's hand, shown as real cards for a few seconds.
+	## Climbing into (or out of) a vehicle: a small toast just above the hand with what happened,
+	## one line on what it means, and a chip for each card that joined or left the driver's hand.
+	## P6: it used to be a big panel over the top of the field. Hover it for the full rules.
 	var hud
-	var shown := -1
-	var shown_mode := ""
-	var cvs: Array = []
 	const DUR := 330
-	const CW := 100.0
-	const CH := 138.0
+	const CHIP_H := 18.0
 
 	func _process(_d: float) -> void:
 		var b: Battle = hud.b
 		var p: Dictionary = b.vpop if b != null else {}
 		var live: bool = p.size() > 0 and b.t - p.t0 < DUR and b.state != "title"
 		if not live:
-			if shown != -1:
-				clear()
+			if visible:
+				Tip.clear(self)
 			visible = false
 			return
 		visible = true
-		if shown != p.t0 or shown_mode != p.mode:
-			build(p)
 		# fade in and out, and step aside while a card is being aimed
 		var age: int = b.t - p.t0
 		var a := minf(1.0, age / 8.0) * clampf((DUR - age) / 30.0, 0, 1)
 		modulate.a = a * (0.25 if hud.targeting else 1.0)
+		if hud.overlay.foe_behind(b, box(p)):
+			modulate.a = minf(modulate.a, 0.4)
 		queue_redraw()
-
-	func stamp_for(p: Dictionary) -> String:
-		return "REMOVED" if p.mode != "in" else ""
-
-	func clear() -> void:
-		for c in cvs:
-			c.queue_free()
-		cvs.clear()
-		shown = -1
 
 	func cards_of(p: Dictionary) -> Array:
 		return p.added if p.mode == "in" else p.removed
+
+	func short_line(p: Dictionary) -> String:
+		var u: Unit = p.u
+		match p.mode:
+			"in":
+				return "VEHICLE HP %d. Its cards come back every turn you drive." % (u.mech.max if u.mech != null else int(Data.VEHICLES[p.type].hp))
+			"out":
+				return "Back on foot at normal movement."
+		return "Patch Job rebuilds the walker." if u.def.key == "gears" else "On foot again. Walk onto a parked vehicle to drive."
 
 	func content(p: Dictionary) -> Array:
 		## [title, lines] for the card's text.
@@ -1273,37 +1282,24 @@ class VehiclePop extends Control:
 		out[1] = out[1].filter(func(l): return l != "")
 		return out
 
-	func box(p: Dictionary) -> Rect2:
-		var n: int = cards_of(p).size()
-		var tl: Array = content(p)
-		var w := maxf(n * (CW + 10) + 30, Art.text_width(tl[0], 16) + 40)
-		for l in tl[1]:
-			w = maxf(w, Art.text_width(l, 16, true) + 40)
-		w = minf(w, 940)
-		var h: float = 50.0 + tl[1].size() * 18 + (CH + 26 if n > 0 else 0.0)
-		return Rect2(480 - w / 2, 62, w, h)
+	func chips(p: Dictionary) -> Array:
+		## [name, width] for each card chip
+		return cards_of(p).map(func(k): return [Data.CARDS[k].name.to_upper(), Art.text_width(Data.CARDS[k].name.to_upper(), 8) + 14])
 
-	func build(p: Dictionary) -> void:
-		clear()
-		shown = p.t0
-		shown_mode = p.mode
-		var ks: Array = cards_of(p)
-		var r := box(p)
-		var x0 := 480 - (ks.size() * (CW + 10) - 10) / 2.0
-		for i in ks.size():
-			var cv := CardView.new()
-			cv.opt = {"key": ks[i], "tier": Data.base_tier(ks[i])}
-			cv.size = Vector2(CW, CH)
-			cv.position = Vector2(x0 + i * (CW + 10), r.end.y - CH - 12)
-			cv.label_top = "+ IN HAND" if p.mode == "in" else ""
-			cv.stamp = stamp_for(p)
-			add_child(cv)
-			cv.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			cvs.append(cv)
+	func box(p: Dictionary) -> Rect2:
+		var tl: Array = content(p)
+		var w := maxf(Art.text_width(tl[0], 8) + 40, Art.text_width(short_line(p), 16, true) + 30)
+		var cw := 0.0
+		for c in chips(p):
+			cw += c[1] + 6
+		w = minf(maxf(w, cw + 24), 600)
+		var h := 46.0 + (CHIP_H + 6 if cw > 0 else 0.0)
+		return Rect2(480 - w / 2, 430 - h, w, h)  # over the hint strip's spot, which steps aside
 
 	func _draw() -> void:
 		var b: Battle = hud.b
 		var p: Dictionary = b.vpop
+		Tip.clear(self)
 		if p.is_empty():
 			return
 		var r := box(p)
@@ -1312,10 +1308,22 @@ class VehiclePop extends Control:
 		var col := Color("ffb23e") if p.mode == "in" else Color("ff7a3d")
 		draw_rect(r.grow(2), ink)
 		draw_rect(r, Color(0.1, 0.11, 0.13, 0.95))
-		draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 3), col)
+		draw_rect(Rect2(r.position.x, r.position.y, 3, r.size.y), col)
 		var cx := r.get_center().x
-		Art.text(self, tl[0], Vector2(cx, r.position.y + 26), 16, col, HORIZONTAL_ALIGNMENT_CENTER, 2)
-		var lines: Array = tl[1]
-		for i in lines.size():
-			var last: bool = i == lines.size() - 1
-			Art.text(self, lines[i], Vector2(cx, r.position.y + 50 + i * 18), 16, Color("ffd23a") if last else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
+		Art.text(self, tl[0], Vector2(cx, r.position.y + 16), 8, col, HORIZONTAL_ALIGNMENT_CENTER, 1)
+		Art.text(self, short_line(p), Vector2(cx, r.position.y + 34), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
+		var cs: Array = chips(p)
+		var tot := 0.0
+		for c in cs:
+			tot += c[1] + 6
+		var x := cx - (tot - 6) / 2.0
+		var cy := r.position.y + 44
+		for c in cs:
+			var cr := Rect2(x, cy, c[1], CHIP_H)
+			draw_rect(cr, Color(col, 0.18))
+			draw_rect(cr, col, false, 1.0)
+			Art.text(self, c[0], Vector2(cr.get_center().x, cy + 13), 8, Color.WHITE if p.mode == "in" else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 1)
+			if p.mode != "in":
+				draw_line(Vector2(cr.position.x + 4, cy + CHIP_H / 2), Vector2(cr.end.x - 4, cy + CHIP_H / 2), Color("ff7a3d"), 1.0)
+			x += c[1] + 6
+		Tip.zone(self, r, tl[0], " ".join(tl[1]), col)

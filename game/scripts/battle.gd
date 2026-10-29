@@ -163,7 +163,7 @@ func setup(idx: int, custom := {}) -> void:
 	for s in deployed:
 		if not s.alive or (mission.has("only") and s.key != mission.only):
 			continue
-		deploy_unit(s, 50.0 + i * 35)
+		deploy_unit(s, 50.0 + i * 55)  # P2: far enough apart that tags, bars and clicks don't overlap
 		i += 1
 	var pi := randi() % Data.POW_NAMES.size()
 	var foot := 0  # plain rifleman and bomber slots seen so far (cast_foot)
@@ -2538,7 +2538,7 @@ func begin() -> void:
 	if breach:
 		log_msg("BREACH: the Vharr and the Jackals are fighting each other. Each shoots whoever is nearest, so let them.")
 	if hud != null and Run.tips_on() and Run.history.is_empty() and not practice() and not tutorial():
-		hud.coach_queue.append_array(COACH)
+		coach_start()
 	activate_enemies()
 	await wait(60)
 	if state == "title":
@@ -2796,7 +2796,8 @@ func setup_events() -> void:
 
 func synergy_board() -> Array:
 	## The squad's switched-on synergies for the top right, above the bounty board: full gear sets,
-	## duos whose card is in hand right now, and one line for every duo pair still on the field.
+	## duos whose card is in hand right now, and one line for every duo pair still on the field
+	## ("quiet" until a pair is both pumped: then it only shows in the SYNERGIES header tip).
 	var out: Array = []
 	var sq := squad_alive()
 	for u in sq:
@@ -2804,15 +2805,17 @@ func synergy_board() -> Array:
 			if sy.kind == "set" and sy.done:
 				out.append({"name": sy.name, "who": u.def.name, "text": sy.text, "c": Color("62d26f")})
 	var pairs: Array = []
+	var close := false  # P5: a pair with both soldiers pumped or past it is near its duo Overdrive
 	for d in Data.DUOS:
 		var pair: Array = sq.filter(func(u): return d.pair.has(u.def.key))
 		if pair.size() < 2:
 			continue
 		pairs.append("%s (%s+%s)" % [Data.CARDS[d.card].name, pair[0].def.name, pair[1].def.name])
+		close = close or pair.all(func(u): return u.adr >= 50)
 		if pair.any(func(u): return u.hand.any(func(c): return c.get("duo", "") != "" and c.key == d.card)):
 			out.append({"name": "DUO " + Data.CARDS[d.card].name.to_upper(), "who": "READY", "text": Run.duo_tip(d) + " In hand now.", "c": Color("ffb23e")})
 	if pairs.size():
-		out.append({"name": "DUO PAIRS", "who": str(pairs.size()), "c": Color("b48cff"),
+		out.append({"name": "DUO PAIRS", "who": str(pairs.size()), "c": Color("b48cff"), "quiet": not close,
 			"text": "When both soldiers of a pair have an Overdrive ready and stand close, a duo Overdrive card appears. On the field: %s." % ", ".join(pairs)})
 	return out
 
@@ -3067,13 +3070,19 @@ func tut_update() -> void:
 		var fresh: Array = squad_alive().filter(func(s): return s.energy >= Data.CARDS[need].cost)
 		if not fresh.is_empty():
 			select_unit(fresh[0])
-	if need != "" and sel != null and not sel.dead:
-		if not sel.hand.any(func(c): return c.key == need):
-			# D3: first in the hand, so "press its number" is always 1
-			sel.hand.insert(0, {"id": -2, "key": need, "tier": Data.base_tier(need), "temp": true})
-			if card_idx >= 0:
-				card_idx += 1
-			ui_dirty = true
+	if need != "" and sel != null and not sel.dead and (sel.hand.is_empty() or sel.hand[0].key != need):
+		# D3: first in the hand, so "press its number" is always 1 (a drawn copy moves up front)
+		var at: int = -1
+		for i in sel.hand.size():
+			if sel.hand[i].key == need:
+				at = i
+				break
+		if card_idx >= 0 and (at < 0 or card_idx < at):
+			card_idx += 1
+		elif card_idx == at:
+			card_idx = 0
+		sel.hand.insert(0, sel.hand.pop_at(at) if at >= 0 else {"id": -2, "key": need, "tier": Data.base_tier(need), "temp": true})
+		ui_dirty = true
 
 func practice_round() -> void:
 	## D5: no enemy phase at the range. When every dummy is down, a fresh set stands up.
@@ -4574,6 +4583,8 @@ func blast_scale(owner) -> float:
 	return (1.2 if owner.perk("bigboom") else 1.0) + float(owner.g("blast", 0.0))
 
 func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> void:
+	if dmg > 0:
+		coach_hit("blast")
 	if owner is Unit and owner.has_st("fat"):
 		r *= 1.5  # R6 FAT: 50% bigger blasts
 	# FUEL-AIR: a blast inside smoke or gas grows by half; a gas cloud is used up
@@ -5005,6 +5016,8 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 	var inst: Dictionary = u.hand[idx]
 	var c: Dictionary = c_in if c_in != null else Data.card(inst)
 	var cost := card_cost(u, inst)
+	if u.team == "squad":
+		coach_hit("card")
 	u.fl.erase("syncfree")
 	var ch := chain_ready(u, inst)
 	if Data.is_attack(c) and u.st.has("cloak"):
@@ -6412,6 +6425,7 @@ func undo_last_walk() -> void:
 func _act_walk(u: Unit, pts: Array, cost: float) -> void:
 	u.move_left = maxf(0, u.move_left - cost)
 	u.moved = true
+	coach_hit("walk")
 	var x0 := u.x
 	await walk_along(u, pts)
 	await check_push(u, x0)
@@ -7003,13 +7017,27 @@ func activate_enemies() -> void:
 				Sfx.play("alarm")
 
 # ---------------------------------------------------------------- N1/N5: new-player tips
-const COACH := [
-	["1/5", "YOUR TURN", "Each soldier has 3 ENERGY a turn. Cards cost energy (the yellow number). Click a card, aim with the mouse, click to fire. Right-click cancels."],
-	["2/5", "MOVING", "Click the ground to walk the selected soldier. The MOVE gauge beside the hand shows how far they can still go. Click a soldier or their plate to switch."],
-	["3/5", "NEXT AND END TURN", "NEXT (SPACE) jumps to the next soldier who can still act. END TURN (ENTER) ends the round for the whole squad; it asks twice while someone can still act."],
-	["4/5", "THE ENEMY TURN", "After you end the turn, every enemy moves and then shoots. The ALERT bar up top climbs while you stall, and a full bar calls in airstrikes. Push right: ending a turn in the PUSH ZONE scrolls on and cuts the alert."],
-	["5/5", "PHYSICS HURTS", "Blasts throw bodies around. Falls, slams and crushing debris do damage, to your squad too. Hold ALT any time for each soldier's energy and movement."],
-]
+const COACH := {
+	# P1: each page waits for the moment it is about, instead of five pages before the first shot
+	"start": ["TIP", "YOUR TURN", "Each soldier has 3 ENERGY a turn. Cards cost energy (the yellow number). Click a card, aim with the mouse, click to fire. Right-click cancels."],
+	"card": ["TIP", "MOVING", "Click the ground to walk the selected soldier. The MOVE gauge beside the hand shows how far they can still go. Click a soldier or their plate to switch."],
+	"walk": ["TIP", "NEXT AND END TURN", "NEXT (SPACE) jumps to the next soldier who can still act. END TURN (ENTER) ends the round for the whole squad; it asks twice while someone can still act."],
+	"end": ["TIP", "THE ENEMY TURN", "After you end the turn, every enemy moves and then shoots. The ALERT bar up top climbs while you stall, and a full bar calls in airstrikes. Push right: ending a turn in the PUSH ZONE scrolls on and cuts the alert."],
+	"blast": ["TIP", "PHYSICS HURTS", "Blasts throw bodies around. Falls, slams and crushing debris do damage, to your squad too. Hold ALT any time to see each soldier's energy, movement and adrenaline on their plate, bottom left."],
+}
+var coach_left := {}  # P1: coach pages not shown yet, by the moment that shows them
+
+func coach_start() -> void:
+	coach_left = COACH.duplicate()
+	coach_hit("start")
+
+func coach_hit(key: String) -> void:
+	## P1: queues the coach page for this moment the first time it happens; the box opens on the next quiet player turn.
+	if hud == null or not coach_left.has(key):
+		return
+	hud.coach_queue.append(coach_left[key])
+	coach_left.erase(key)
+
 const INTROS := {
 	"jackal": ["JKL", "THE JACKALS", "Mercenaries holding the gate worlds: riflemen, grenadiers, gun nests and radiomen who call in paratroopers. Knock them off ledges or bring the scenery down on them."],
 	"vharr": ["VHR", "THE VHARR", "Aliens coming through the gates. They don't fight like the Jackals: some hover, some burrow. Where both factions are on the map they shoot each other too, so let them."],
@@ -7749,7 +7777,9 @@ func start_player_turn() -> void:
 		var al := squad_alive()
 		sel = al[-1] if al.size() else null
 	banner("ROUND %d" % round_n, Color.WHITE, ("WIND %s %d" % [">>" if wind > 0 else "<<", absi(wind)]) if wind else "NO WIND")
-	log_msg("Round %d. Alert %d/10.%s" % [round_n, alert, " The line has stalled: alert is rising." if stalled() else ""])
+	# P3: the round banner and alert bar already say the round and alert; the log only gets news
+	if rounds_since_scroll == stall_limit():
+		log_msg("The line has stalled: alert rises every round until you push.")
 	ui_dirty = true
 	var autoload := units.any(func(o): return o.kind == "sentry" and not o.dead and o.loot.by is Unit and o.loot.by.perk("autoloader"))
 	resolve(func():
@@ -7917,6 +7947,7 @@ func end_turn(force := false) -> void:
 		ui_dirty = true
 		return
 	end_confirm_t = 0
+	coach_hit("end")
 	for r in units.filter(func(o): return o.kind == "relay" and o.loot.hold < Data.RELAY_HOLD):
 		var on = null
 		for s in squad_alive():

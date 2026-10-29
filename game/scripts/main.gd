@@ -164,6 +164,9 @@ func start_run() -> void:
 	Run.leave_campaign()
 	Run.daily = ""
 	Run.new_run()
+	if not Run.meta.get("ran", false):
+		Run.meta["ran"] = true  # P8: only the first quick run ever gets the plainer level 1
+		Run.save_meta()
 	show_hq(false)
 
 func start_daily() -> void:
