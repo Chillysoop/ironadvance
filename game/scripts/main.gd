@@ -822,7 +822,7 @@ class Screen extends Control:
 		squad_line(420, "cheer" if mode != "lost" else "idle")
 	func draw_rows(rows: Array, top: float) -> void:
 		## The stat table squeezes its rows together so the last one stays clear of the squad's heads.
-		var step := minf(20.0, (345.0 - top) / maxf(1, rows.size()))
+		var step := minf(20.0, (332.0 - top) / maxf(1, rows.size()))  # cheering arms reach up to ~335
 		for i in rows.size():
 			Art.text(self, rows[i][0], Vector2(300, top + i * step), 8, Color("e8dcc2"))
 			Art.text(self, rows[i][1], Vector2(660, top + i * step), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)

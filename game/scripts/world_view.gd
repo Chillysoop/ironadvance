@@ -543,13 +543,15 @@ func draw_pad(u: Unit, pos: Vector2) -> void:
 		draw_rect(Rect2(pos.x - 6, by - 6, 12, 12), B.c)
 		draw_rect(Rect2(pos.x - 6, by - 6, 12, 2), Color(1, 1, 1, 0.45))
 		Art.text(self, B.glyph, Vector2(pos.x + 1, by + 4), 8, C_DARK, HORIZONTAL_ALIGNMENT_CENTER, 0)
-		Art.text(self, B.name, Vector2(pos.x, by - 12), 8, B.c, HORIZONTAL_ALIGNMENT_CENTER)
+		if word_ok(pos, false):  # a pad's name matters most when you stand at it
+			Art.text(self, B.name, Vector2(pos.x, by - 12), 8, B.c, HORIZONTAL_ALIGNMENT_CENTER)
 	else:
 		var a := 0.35 + 0.15 * sin(b.t / 12.0)
 		draw_rect(Rect2(pos.x - 6, pos.y - 26, 12, 22), Color(B.c, a * 0.25))
 		draw_rect(Rect2(pos.x - 6, pos.y - 26, 12, 12), Color(B.c, a), false, 1.0)
 		Art.text(self, B.glyph, Vector2(pos.x + 1, pos.y - 16), 8, Color(B.c, 0.8), HORIZONTAL_ALIGNMENT_CENTER, 0)
-		Art.text(self, "%s IN %d" % [B.name, L.t], Vector2(pos.x, pos.y - 30), 8, Color(B.c, 0.85), HORIZONTAL_ALIGNMENT_CENTER)
+		if word_ok(pos, false):
+			Art.text(self, "%s IN %d" % [B.name, L.t], Vector2(pos.x, pos.y - 30), 8, Color(B.c, 0.85), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_drill(u: Unit, d: Vector2, spin: bool) -> void:
 	## A drill bit held out in front: a steel cone along the bore line, its threads turning.
@@ -598,11 +600,15 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 	var L: Dictionary = u.loot
 	var bob := sin((b.t + u.id * 13) / 9.0) * 2 if not u.air else 0.0
 	var p := pos + Vector2(0, -6 + bob)
+<<<<<<< HEAD
+	var lab := word_ok(pos)
+=======
 	# the selected soldier's name tag wins: a pickup right beside them drops its word label
 	# and so do a Jackal's plate and tags, or a POW's HELP!, when one stands on it
 	var lab: bool = not (b.state == "player" and b.sel != null and absf(b.sel.x - pos.x) < 70 and absf(b.sel.y - pos.y) < 60)
 	if lab and b.units.any(func(e): return e.kind in ["enemy", "pow"] and not e.dead and not e.gone and absf(e.x - pos.x) < 40 and absf(e.y - pos.y) < 60):
 		lab = false
+>>>>>>> origin/claude/project-thread-wd4lu3
 	match L.type:
 		"letter":
 			draw_circle(p + Vector2(0, -4), 10, C_DARK)
@@ -658,6 +664,16 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			if t >= 3 and b.t % 30 < 4:
 				draw_rect(Rect2(p.x + 5, p.y - 14, 2, 2), Color.WHITE)
 
+<<<<<<< HEAD
+func word_ok(pos: Vector2, sel_too := true) -> bool:
+	## A pickup's word label gives way to the selected soldier's name tag right beside it, and to a
+	## Jackal's plate and tags or a POW's HELP! when one stands on it. The icon still shows.
+	if sel_too and b.state == "player" and b.sel != null and absf(b.sel.x - pos.x) < 70 and absf(b.sel.y - pos.y) < 60:
+		return false
+	return not b.units.any(func(e): return e.kind in ["enemy", "pow"] and not e.dead and not e.gone and absf(e.x - pos.x) < 40 and absf(e.y - pos.y) < 60)
+
+=======
+>>>>>>> origin/claude/project-thread-wd4lu3
 func in_view(p: Vector2, text: String) -> Vector2:
 	## A centered world label pulled in so it never runs off either edge of the view.
 	var hw := Art.text_width(text, 8) / 2.0 + 2
@@ -1158,11 +1174,22 @@ func draw_targeting() -> void:
 			draw_rect(Rect2(pz, yy, 2, 6), Color(zc, 0.5))
 			yy += 12
 		draw_rect(Rect2(pz, 40, Battle.W * 0.28, Battle.H - 40), Color(zc, 0.05))
+		# below the boss bar or the job line when the HUD has one across the top
+		var ty := 58.0
+		if b.units.any(func(e): return not e.dead and ((e.type in ["boss", "hiveship"] and b.boss_active) or (e.type == "queen" and e.active))):
+			ty = 92.0
+		elif b.job_left() != "":
+			ty = 72.0
 		if lock == 0:
-			Art.text(self, "PUSH ZONE >>", Vector2(pz - 6, 58), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_RIGHT)
+			Art.text(self, "PUSH ZONE >>", Vector2(pz - 6, ty), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_RIGHT)
 		else:
+<<<<<<< HEAD
+			Art.text(self, "PUSH ZONE LOCKED", Vector2(pz - 6, ty), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
+			Art.text(self, ("1 ENEMY IN IT" if lock == 1 else "%d ENEMIES IN IT" % lock), Vector2(pz - 6, ty + 14), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_RIGHT)
+=======
 			Art.text(self, "PUSH ZONE LOCKED", Vector2(pz - 6, 58), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
 			Art.text(self, ("1 ENEMY IN IT" if lock == 1 else "%d ENEMIES IN IT" % lock), Vector2(pz - 6, 72), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_RIGHT)
+>>>>>>> origin/claude/project-thread-wd4lu3
 	if b.jet_armed:
 		var sim := b.sim_body(u, 0.0, 0.0, m, u.fuel)
 		draw_dashed_line(Vector2(u.x, u.y - u.h / 2.0), m, Color(0.33, 0.83, 0.89, 0.6), 1.0, 4.0)

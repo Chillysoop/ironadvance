@@ -489,6 +489,7 @@ func open_memorial() -> void:
 		bt.color = Color("62d26f") if on else (Color("9aa2ae") if ready else Color("4a4f57"))
 		bt.disabled = not ready
 		bt.size = Vector2(212, 40)
+		bt.small = true  # one font for the whole row, however long each name is
 		bt.position = Vector2(30 + i * 228, 410)
 		bt.pressed.connect(func(): Sfx.play("click"); Run.flip_toggle(id); open_memorial())
 		add_child(bt)

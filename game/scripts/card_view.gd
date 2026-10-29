@@ -189,7 +189,12 @@ func _draw() -> void:
 	if compact():
 		draw_compact(kind, title, name_, dim)
 		return
-	Art.text(self, title, Vector2(w / 2.0, 12), 8, Color.WHITE if not dim else Color("cccccc"), HORIZONTAL_ALIGNMENT_CENTER, 1)
+	# the title steps left of the rarity gem, and drops to the small font when even that won't fit
+	var ttw := Art.text_width(title, 8)
+	if ttw <= w - 28:
+		Art.text(self, title, Vector2(minf(w / 2.0, w - 20 - ttw / 2.0), 12), 8, Color.WHITE if not dim else Color("cccccc"), HORIZONTAL_ALIGNMENT_CENTER, 1)
+	else:
+		Art.text(self, title, Vector2((w - 18) / 2.0, 12), 16, Color.WHITE if not dim else Color("cccccc"), HORIZONTAL_ALIGNMENT_CENTER, 1, true)
 	# cost bubble
 	if kind == "card":
 		var cc := cost if cost >= 0 else int(Data.card(opt).cost)
