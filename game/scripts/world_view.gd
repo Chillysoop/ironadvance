@@ -853,7 +853,6 @@ func draw_dicokka(u: Unit, pos: Vector2, white: bool) -> void:
 		draw_set_transform(pos + Vector2(0, -13), PI, Vector2.ONE)
 		draw_vehicle("tank", Vector2(0, 13), u.face, white, false, true, col)
 		draw_set_transform_matrix(Transform2D.IDENTITY)
-		Art.text(self, "FLIPPED", pos + Vector2(0, -34), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		return
 	draw_vehicle("tank", pos, u.face, white, u.walk != null, true, col)
 	draw_rect(Rect2(pos.x - 4, pos.y - 30, 8, 5), C_DARK)
@@ -949,12 +948,14 @@ func draw_plate(u: Unit) -> void:
 		var wt := u.weight.to_upper()
 		var tw := Art.text_width(wt, 8) + 4
 		if not b.units.any(func(o): return o != u and o.id < u.id and o.kind == "enemy" and not o.dead and not o.gone and o.weight == u.weight and o.elite == "" and absf(o.x - u.x) < tw and absf(o.y - o.h - u.y + u.h) < 12):
-			Art.text(self, wt, Vector2(x, y - 4), 8, C_ALIEN, HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, wt, in_view(Vector2(x, y - 4), wt), 8, C_ALIEN, HORIZONTAL_ALIGNMENT_CENTER)
 	if u.elite != "":
 		draw_rect(Rect2(x - w / 2 - 2, y - 2, w + 4, 7), Color("ffd23a"), false, 1.0)
-		Art.text(self, Data.ELITES[u.elite].name, Vector2(x, y - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		var en: String = Data.ELITES[u.elite].name
+		Art.text(self, en, in_view(Vector2(x, y - 4), en), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		if u.fl.has("quarry"):
-			Art.text(self, "WANTED: " + u.fl.quarry, Vector2(x, y - 14), 8, Color("ff4d3d") if b.t % 40 < 28 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			var wn: String = "WANTED: " + u.fl.quarry
+			Art.text(self, wn, in_view(Vector2(x, y - 14), wn), 8, Color("ff4d3d") if b.t % 40 < 28 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 	draw_statuses(u, x, y - (24 if u.fl.has("quarry") else (14 if u.elite != "" else 4)))
 	if u.type == "radio" and b.radio_t != null and u.active:
 		var col := Color("ff4d3d") if b.radio_t <= 1 else Color("ffd23a")
@@ -1019,6 +1020,9 @@ func draw_statuses(u: Unit, x: float, y: float) -> void:
 		tags.append(["AIR", Color("9fe3f0")])
 	if u.fl.has("mind"):
 		tags.append(["BROOD" if u.fl.get("brood", false) else "LINKED", Color("c47bff")])
+	if u.fl.get("flipped", 0) > 0:
+		# rides the status row so it never prints on top of a STUN tag
+		tags.append(["FLIPPED", Color("ffd23a")])
 	for k in u.st:
 		if u.st[k] > 0:
 			tags.append([Data.STATUS[k].short, Data.STATUS[k].c])
@@ -1027,7 +1031,8 @@ func draw_statuses(u: Unit, x: float, y: float) -> void:
 	var tw := 0.0
 	for tg in tags:
 		tw += Art.text_width(tg[0], 8) + 4
-	var cx := x - tw / 2
+	# pulled in from the view edges like the other world labels
+	var cx := clampf(x - tw / 2, b.cam_x + 4, b.cam_x + Battle.W - tw - 2)
 	draw_rect(Rect2(cx - 2, y - 9, tw + 2, 11), Color(C_DARK, 0.8))
 	for tg in tags:
 		Art.text(self, tg[0], Vector2(cx, y), 8, tg[1])
@@ -1876,6 +1881,9 @@ func draw_dealer(u: Unit, pos: Vector2) -> void:
 	draw_rect(Rect2(pos.x + 9, pos.y - 13, 24, 12), Color("8a6a3a"))
 	draw_rect(Rect2(pos.x + 9, pos.y - 8, 24, 1), Color("5a4220"))
 	var left: int = u.loot.stock.size()
+	# the stall's words give way to a Jackal standing at the counter; hovering still names him
+	if not word_ok(pos + Vector2(10, 0), false, 80):
+		return
 	Art.text(self, "ARMS DEALER" if left else "SOLD OUT", pos + Vector2(10, -44), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 	if left:
 		Art.text(self, "%d ITEMS  WALK UP TO TRADE" % left, pos + Vector2(10, -32), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
