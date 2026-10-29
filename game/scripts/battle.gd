@@ -89,6 +89,8 @@ var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "sc
 var act_once := {}        # tag-team combos that pay out once per action
 var squad_bonks := {}     # "id:id" or id -> tick of the last squadmate bonk for that pair or that soldier
 const BONK_RESET := 120   # ticks before the same two soldiers can bonk again
+var bonk_launch := {}     # id -> tick a body last got knocked into the air by another body
+const RELAUNCH := 40      # ticks before a bonked body can be knocked up again (a pit of Jackals would juggle forever)
 var act_crushed := 0      # Jackals crushed by debris during the current action (DOMINO)
 var act_crush_at := Vector2.ZERO
 var crate_bump := 0       # kill combo x5: the next crate rolls one rarity higher
@@ -3127,7 +3129,7 @@ func until(cond: Callable) -> void:
 		await tick
 
 func settled() -> bool:
-	if projs.size() or booms.size() or T.chunks.size() or absf(cam_x - cam_tx) >= 0.5:
+	if projs.size() or booms.size() or T.chunks_falling() or absf(cam_x - cam_tx) >= 0.5:
 		return false
 	for u in units:
 		if u.sunk or u.gone:
@@ -10245,7 +10247,9 @@ func body_collisions(u: Unit) -> void:
 			float_text(o, "SMASH" if u.rushing else "BONK", Color("ffd23a"), true)
 			Sfx.play("bonk")
 			shake += 3
-			if not o.heavy and not o.is_prop() and not o.immovable:
+			if not o.heavy and not o.is_prop() and not o.immovable and (u.rushing or t - int(bonk_launch.get(o.id, -RELAUNCH)) >= RELAUNCH):
+				if not u.rushing:
+					bonk_launch[o.id] = t
 				var dir := signf(u.vx) if u.vx != 0 else 1.0
 				o.vx = (dir * 8 if u.rushing else u.vx * 0.9) * kb(o)
 				o.vy = -5 if u.rushing else minf(o.vy, -3)

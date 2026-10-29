@@ -8067,12 +8067,16 @@ func events10_test() -> void:
 	Run.meta = keep
 	Run.save_meta()
 
-func watch_chunks(b: Battle, max_frames: int) -> Dictionary:
+func watch_chunks(b: Battle, max_frames: int, st := {}) -> Dictionary:
 	## Step frames until every falling piece has come to rest; note how far they turned and how many were in the air.
-	var st := {"frames": 0, "ang": 0.0, "most": 0, "usec": 0}
-	while st.frames < max_frames:
+	## Pass the st of an earlier watch to keep counting from it (frames spent taking screenshots, say).
+	if st.is_empty():
+		st.merge({"frames": 0, "ang": 0.0, "most": 0, "usec": 0, "life": 0})
+	var stop: int = st.frames + max_frames
+	while st.frames < stop:
 		for c in b.T.chunks:
 			st.ang = maxf(st.ang, absf(c.ang))
+			st.life = maxi(st.life, c.life)
 		st.most = maxi(st.most, b.T.chunks.size())
 		var t0 := Time.get_ticks_usec()
 		await get_tree().process_frame
@@ -8101,10 +8105,11 @@ func crumble() -> void:
 	cam_on(b, tw.x)
 	await shot("crumble_tower_0")
 	b.explode(tw.x, b.T.ground_at(tw.x) - 14, 14, 0, b.sel)
+	var st := {}
 	for k in 8:
-		await frames_wait(10)
+		st = await watch_chunks(b, 10, st)
 		await shot("crumble_tower_f%d" % k)
-	var st := await watch_chunks(b, 1500)
+	st = await watch_chunks(b, 1500, st)
 	await shot("crumble_tower_2")
 	check(b.T.chunks.is_empty(), "the tower's pieces all come to rest (%d frames)" % st.frames)
 	check(st.ang > 0.6, "the tower tips over as it falls (turned %.2f rad)" % st.ang)
@@ -8137,14 +8142,16 @@ func crumble() -> void:
 	b.T.fill_r(x + 420, 0, 200, gy, 0)
 	b.T.flush()
 	drop_block(b, x + 480, gy - 260, 40, 40, 4)
+	st = {}
 	for k in 12:
-		await frames_wait(6)
+		st = await watch_chunks(b, 6, st)
 		if k >= 6:
 			await shot("crumble_splinter_f%d" % k)
 			print("[chunks] ", b.T.chunks.map(func(c): return "%d@%d,%d v%.1f,%.1f a%.2f" % [c.n, c.pos.x - x, c.pos.y - gy, c.vel.x, c.vel.y, c.ang]))
-	st = await watch_chunks(b, 900)
+	st = await watch_chunks(b, 900, st)
 	await shot("crumble_splinter_2")
 	check(st.most >= 3, "a block dropped from 260px splinters into pieces (%d at once)" % st.most)
+	check(st.life < 260, "the splinters stop moving soon after they land, so the turn goes on (longest fall %d ticks)" % st.life)
 	var rub := count_cells(b, x + 380, gy - 60, 320, 60)
 	check(rub > 40 and rub < 100, "the pieces settle as rubble on the ground, a little lost to dust (%d of 100 cells)" % rub)
 	# crush damage still lands
@@ -8174,17 +8181,19 @@ func crumble() -> void:
 	b.T.chunk_usec = 0
 	b.T.fill_r(x + 96, gy - 12, 32, 12, 0)  # cut it clean through at the foot
 	b.T.check_floating(x + 112, gy - 100, 120, b.sel)
+	st = {}
 	for k in 10:
-		await frames_wait(9)
+		st = await watch_chunks(b, 9, st)
 		await shot("crumble_chimney_f%d" % k)
-	st = await watch_chunks(b, 1500)
+	st = await watch_chunks(b, 1500, st)
 	await shot("crumble_chimney_end")
 	check(b.T.chunks.is_empty(), "the chimney and everything it hit come to rest (%d frames)" % st.frames)
 	check(st.most >= 4, "the chimney breaks up as it comes down (%d pieces at once)" % st.most)
+	check(st.life < 260, "the chimney rubble stops moving soon after it lands (longest fall %d ticks)" % st.life)
 	check(count_cells(b, x + 90, gy - 200, 44, 120) < 30, "the chimney is no longer standing")
 	var col1 := count_cells(b, x + 216, gy - 130, 16, 70)
 	check(col1 < col0 - 4, "the falling chimney breaks a lump off the top of the column it hits (%d -> %d cells)" % [col0, col1])
-	check(b.T.chunk_usec / maxi(1, st.frames + 90) < 4000, "the chimney collapse is cheap (%d us of physics a frame)" % (b.T.chunk_usec / maxi(1, st.frames + 90)))
+	check(b.T.chunk_usec / maxi(1, st.frames) < 4000, "the chimney collapse is cheap (%d us of physics a frame)" % (b.T.chunk_usec / maxi(1, st.frames)))
 	await until(func(): return b.settled(), 600)
 	check(b.T.chunks.is_empty(), "nothing left in the air")
 
