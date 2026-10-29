@@ -768,6 +768,8 @@ func run() -> void:
 			await jumppack()
 		"draft":
 			await draft_test()
+		"reinforce":
+			await reinforce_test()
 		"bolt":
 			await bolt_test()
 		"track":
@@ -1342,6 +1344,9 @@ func gear_test() -> void:
 	Run.new_run()
 	Run.scrip = 400
 	var bolt := Run.free_specialist("bolt")
+	# the squad caps at four now, but a save from before the cap can still hold a fifth soldier
+	Run.reserve.erase(bolt)
+	Run.soldiers.append(bolt)
 	check(Run.soldiers.size() == 5 and not bolt.is_empty(), "Bolt joins as a fifth soldier")
 	var moss: Dictionary = Run.soldiers[0]
 	var hex: Dictionary = Run.soldiers[1]
@@ -4129,15 +4134,26 @@ func detours() -> void:
 	await frames_wait(20)
 	await shot("detour_elite_done")
 	main.clear()
-	# POW rescue: a dog tag back when nobody has fallen
-	Run.soldiers[1].tags = 0
+	# POW rescue: with a full squad the freed recruit waits in the barracks
+	Run.reserve = []
 	b = await detour_battle("pow")
 	var pows: Array = b.units.filter(func(p): return p.detour and p.kind == "pow")
 	check(pows.size() == 3, "three prisoners in the yard")
 	for p in pows:
 		p.freed = true
 	await b.check_detour()
-	check(Run.soldiers[1].tags == 1, "freeing them all gives a dog tag back to whoever has fewest")
+	check(Run.reserve.size() == 1 and Run.soldiers.size() == 4, "freeing them all with a full squad sends a recruit to the barracks")
+	main.clear()
+	# POW rescue: a dog tag back when nobody has fallen and the barracks is full
+	for i in Data.RESERVE_MAX - 1:
+		Run.reserve.append(Run.reserve[0].duplicate(true))
+	Run.soldiers[1].tags = 0
+	b = await detour_battle("pow")
+	for p in b.units.filter(func(p): return p.detour and p.kind == "pow"):
+		p.freed = true
+	await b.check_detour()
+	check(Run.soldiers[1].tags == 1, "...or, with the barracks full, a dog tag back to whoever has fewest")
+	Run.reserve = []
 	main.clear()
 	# POW rescue: a free recruit when a slot is empty
 	Run.soldiers[3].alive = false
@@ -5941,8 +5957,9 @@ func draft_test() -> void:
 		await frames_wait(20)
 		await shot("draft_freed")
 		check(Run.meta.unlocked.has("cls_bolt"), "freeing the specialist unlocks the class for good")
-		check(Run.soldiers.size() == 5 and Run.soldiers[4].key == "bolt", "the specialist joins the squad as a fifth soldier")
-		check(b.squad().any(func(u): return u.def.key == "bolt"), "and is on the field right away")
+		check(Run.soldiers.size() == 4 and Run.reserve.size() == 1 and Run.reserve[0].key == "bolt", "with four in the squad the specialist waits in the barracks")
+		check(not b.squad().any(func(u): return u.def.key == "bolt"), "and is not on the field")
+		Run.reserve.clear()
 	Run.mission = 1
 	Run.level = {}
 	Run.roll_dial()
@@ -7587,5 +7604,118 @@ func events10_test() -> void:
 	main.screen.open_memorial()
 	await frames_wait(6)
 	await shot("d3_memorial")
+	Run.meta = keep
+	Run.save_meta()
+
+func reinforce_test() -> void:
+	## The squad caps at four: rescued extras wait in the barracks, swap in at HQ, and a
+	## reinforcement flare (only while someone is down, 30% a screen) parachutes them in.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.leave_campaign()
+	Run.new_run()
+	var bolt := Run.free_specialist("bolt")
+	check(Run.soldiers.size() == 4 and Run.reserve == [bolt], "a fifth rescue goes to the barracks, not the squad")
+	var track := Run.free_specialist("track")
+	check(Run.soldiers.size() == 4 and Run.reserve.size() == 2, "and so does a sixth")
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	check(b.squad().size() == 4, "four soldiers deploy (%d)" % b.squad().size())
+	check(b.roll_flare(true) == null, "no flare while nobody is down")
+	var sq: Array = b.squad_alive()
+	var hex: Unit = sq[1]
+	hex.hp = 0; hex.dead = true; hex.downed = true; hex.s.tags = 1
+	# odds: about 30% of new screens hold a flare while someone is down
+	var hits := 0
+	for i in 2000:
+		var f = b.roll_flare()
+		if f != null:
+			hits += 1
+			f.gone = true
+	check(hits > 520 and hits < 680, "a flare turns up on about 30%% of screens (%d of 2000)" % hits)
+	Run.reserve.clear()
+	check(b.roll_flare(true) == null, "no flare when nobody waits in the barracks")
+	Run.reserve = [bolt, track]
+	var fl: Unit = b.roll_flare(true)
+	check(fl != null, "a downed soldier and a full barracks: the flare drops")
+	check(b.roll_flare(true) == null, "only one flare on the field at a time")
+	await b.until(func(): return not fl.air)
+	await frames_wait(20)
+	cam_on(b, fl.x)
+	await frames_wait(6)
+	await shot("reinforce_flare")
+	for o in b.units:
+		if o.kind == "ride":
+			o.gone = true  # keep Moss out of a parked vehicle for the screenshots
+	var moss: Unit = sq[0]
+	ground_unit(b, moss, fl.x - 30, fl.y - 40)
+	b.state = "player"; b.busy = false
+	b.resolve(func():
+		b.collect(moss, fl)
+		await b.wait(1))
+	var shot_pick := false
+	var shot_drop := false
+	for i in 3200:
+		if modal_title(b) != "":
+			if not shot_pick:
+				await frames_wait(10)
+				await shot("reinforce_pick")
+				shot_pick = true
+			b.hud.picked.emit(0)
+			await frames_wait(10)
+		if not shot_drop and b.squad().any(func(u): return u.para):
+			await frames_wait(6)
+			await shot("reinforce_chutes")
+			shot_drop = true
+		if not b.busy and i > 5:
+			break
+		await get_tree().process_frame
+	var on_field: Array = b.squad_alive()
+	check(on_field.size() == 4 and on_field.any(func(u): return u.s == bolt), "Bolt parachutes in for Hex: four on the field (%s)" % [on_field.map(func(u): return u.def.name)])
+	check(b.squad().size() == 4 and hex.gone and not b.squad().has(hex), "Hex is flown out, not left on the field")
+	check(Run.soldiers.size() == 4 and Run.soldiers.has(bolt) and not Run.soldiers.has(hex.s), "the squad record swaps Hex for Bolt")
+	check(Run.reserve.has(hex.s) and Run.reserve.has(track) and not Run.reserve.has(bolt), "Hex goes home to the barracks")
+	check(hex.s.hp == int(ceil(Run.eff_max_hp(hex.s) / 2.0)) and hex.s.alive, "Hex keeps their life and half their HP")
+	var bu: Unit = on_field.filter(func(u): return u.s == bolt)[0]
+	check(not bu.para and not bu.air, "Bolt lands")
+	# a killed soldier's place: they go to the Memorial, and two can jump at once
+	var rook: Unit = b.squad_alive()[0]
+	var rook_s: Dictionary = rook.s
+	var mem0: int = Run.meta.memorial.size()
+	rook.hp = 0; rook.dead = true; rook.downed = false
+	var gears: Unit = b.squad_alive()[1]
+	gears.hp = 0; gears.dead = true; gears.downed = true
+	b.autopick = 0
+	b.state = "player"; b.busy = false
+	b.resolve(func(): await b.call_reinforcements(b.squad_alive()[0]))
+	await until(func(): return not b.busy)
+	check(b.squad_alive().size() == 4 and b.squad().size() == 4, "two downed, two jump in: still four (%d)" % b.squad_alive().size())
+	check(not rook_s.alive and Run.meta.memorial.size() == mem0 + 1 and not Run.reserve.has(rook_s), "the killed soldier goes to the Memorial, not the barracks")
+	check(Run.reserve == [gears.s], "both reserves jumped; the downed one rests in the barracks (%d waiting)" % Run.reserve.size())
+	b.autopick = -1
+	b.sync_back()
+	# HQ: swap a reserve into the squad from the Barracks screen
+	main.show_hq(false)
+	await frames_wait(10)
+	main.screen.open_shop("barracks")
+	await frames_wait(10)
+	var sh: Control = main.screen.sub
+	await frames_wait(10)
+	await shot("reinforce_barracks")
+	var r0: Dictionary = Run.reserve[0]
+	var out: Dictionary = Run.soldiers[0]
+	r0.hp = 1
+	sh.swap_reserve()
+	await frames_wait(10)
+	await shot("reinforce_swap_pick")
+	sh.chosen.emit(0)
+	await frames_wait(10)
+	await shot("reinforce_swap_who")
+	sh.chosen.emit(0)
+	await frames_wait(10)
+	check(Run.soldiers[0] == r0 and Run.reserve.has(out) and Run.soldiers.size() == 4, "at HQ a reserve swaps in and the one they replace waits in the barracks")
+	check(r0.hp == Run.eff_max_hp(r0), "barracks rest: they come in at full health")
+	main.show_title()
+	await frames_wait(20)
 	Run.meta = keep
 	Run.save_meta()

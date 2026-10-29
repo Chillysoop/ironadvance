@@ -339,6 +339,10 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 			icon = {"stat": "ic_up", "perk": "ic_star", "gear": "ic_shield", "service": "ic_heart"}.get(kind, "ic_card")
 		if opt.has("icon"):
 			icon = opt.icon
+		if opt.has("soldier"):
+			# a barracks soldier: their own figure instead of an icon
+			Art.draw_char(self, Art.look_sheet(opt.soldier), "idle", 0, Vector2(c.x, c.y + 14), 1, false, 0, mod.a, 0, false, 0.8)
+			return
 	if icon != "":
 		draw_texture_rect(Art.tex[icon], Rect2(c.x - 16, c.y - 16, 32, 32), false, mod)
 
