@@ -5,6 +5,7 @@ extends Node2D
 
 @onready var b: Battle = get_parent()
 var tip: Node2D = null   # hover info box, on its own layer over the weather and foreground
+var push_rect := Rect2()   # the PUSH ZONE words on screen this frame, so the kill feed can step under them
 
 class HoverTip extends Node2D:
 	func _draw() -> void:
@@ -1190,6 +1191,7 @@ func draw_targeting() -> void:
 	if b.tutorial() and b.tut_step == b.TUT_MOVE:
 		draw_tut_flag(b.TUT_FLAG_X)
 	var pz := b.cam_x + Battle.W * 0.72
+	push_rect = Rect2()
 	if b.cam_x < b.world_w - Battle.W:
 		# the label sits left of the line, clear of the bounty board in the top right. With an
 		# enemy still alive behind the line the zone is locked and turns red.
@@ -1212,6 +1214,7 @@ func draw_targeting() -> void:
 		var tg_w := Art.text_width("%s LV%d" % [u.def.name, u.s.lvl], 8) / 2.0
 		if tg_y > ty - 22 and tg_y < ty + 26 and u.x - tg_w < pz and u.x + tg_w > pz - 6 - pw:
 			ty = u.y + 34
+		push_rect = Rect2(pz - b.cam_x - 6 - pw, ty - 10, pw + 6, 14 if lock == 0 else 28)
 		if lock == 0:
 			Art.text(self, "PUSH ZONE >>", Vector2(pz - 6, ty), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_RIGHT)
 		else:

@@ -323,6 +323,11 @@ func hint_text() -> String:
 	if u.mech != null and u.mech.max > 0:
 		var V: Dictionary = Data.VEHICLES[u.mech.type]
 		return "%s is driving the %s (HP %d/%d): it takes every hit until it breaks. %s %s" % [u.def.name, V.name, maxi(0, u.mech.hp), u.mech.max, V.pitch, "Click ground to move." if u.move_left > 1 else ""]
+	if b.tutorial() and b.tut_step in [b.TUT_SHOOT, b.TUT_CRATE, b.TUT_THROW, b.TUT_PUSH]:
+		# training: the bar repeats the sergeant's current order, not the general walking hint
+		if b.tut_step == b.TUT_PUSH and b.push_blockers().size():
+			return "The PUSH ZONE is locked while Jackals are left short of the line. Finish them, then walk someone in."
+		return Data.TUT_LINES[b.tut_step][1 if b.tut_step == b.TUT_PUSH else 0]
 	if u.move_left > 1:
 		return "Click ground to move %s. Hold ALT for intel. Click a ladder top to climb. Ending in the push zone scrolls early and cuts the alert." % u.def.name
 	return "%s is out of movement. Play cards, switch soldier (TAB) or end the turn." % u.def.name
@@ -1198,6 +1203,10 @@ class Overlay extends Control:
 				w += Art.text_width(sg[0], 8)
 			var sw: float = Art.text_width(f.stamp, 8) + 8 if f.stamp != "" else 0.0
 			var x0 := 950 - w - sw + slide
+			# a long line would run into the PUSH ZONE words: it drops under them
+			var pr: Rect2 = b.view.push_rect
+			if pr.size.x > 0 and Rect2(950 - w - sw - 6, fy - 10, w + sw + 12, 14).intersects(pr):
+				fy = pr.end.y + 12
 			draw_rect(Rect2(x0 - 6, fy - 10, w + sw + 12, 14), Color(0.05, 0.035, 0.03, 0.78 * al))
 			draw_rect(Rect2(x0 - 6, fy - 10, 3, 14), Color(f.kc, al))
 			var x := x0
