@@ -8,7 +8,7 @@ extends Node
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
 ## crumble (falling structures tip, spin, splinter and crush),
-## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), polish1 (overnight polish round 1: log wrap, label overlaps, dial rows), dcalls (D1-D12 from the full-build playtest page), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
+## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), polish1 (overnight polish round 1: log wrap, label overlaps, dial rows), polish2 (round 2: card titles, shelf text, memorial, boss bar), dcalls (D1-D12 from the full-build playtest page), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -875,6 +875,8 @@ func run() -> void:
 			await pcalls()
 		"polish1":
 			await polish1()
+		"polish2":
+			await polish2()
 		"fieldfix":
 			await fieldfix()
 		"synergies":
@@ -8372,6 +8374,28 @@ func polish1() -> void:
 	check(p.x - Art.text_width("HELP!", 8) / 2.0 >= b.cam_x, "labels near the left edge stay on screen")
 	await frames_wait(10)
 	await shot("polish1_battle")
+	Run.meta = keep
+	Run.save_meta()
+	main.show_title()
+	await frames_wait(10)
+
+func polish2() -> void:
+	## Overnight polish round 2: HQ screen text and the push zone label under the boss bar.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.meta["tips_off"] = true
+	var cut: String = ArmoryScript.ItemTile.fit_text("Heal 10. No card or energy needed.", 60, true)
+	check(cut.ends_with("...") and not cut.ends_with("...."), "shelf text never ends in four dots (%s)" % cut)
+	Run.new_run()
+	Run.first_run = false
+	main.show_shop()
+	await frames_wait(20)
+	await shot("polish2_shop")
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.boss_active = true
+	await frames_wait(6)
+	await shot("polish2_bossbar")
+	b.boss_active = false
 	Run.meta = keep
 	Run.save_meta()
 	main.show_title()

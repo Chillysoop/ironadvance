@@ -700,7 +700,7 @@ class ItemTile extends Control:
 		var dots := "..." if by_word else "."
 		while s.length() > 1 and Art.text_width(s + dots, 16, true) > maxw:
 			s = s.substr(0, s.length() - 1)
-		return s.strip_edges().trim_suffix(",").trim_suffix(":") + dots
+		return s.strip_edges().trim_suffix(",").trim_suffix(":").trim_suffix(".") + dots
 	func _draw() -> void:
 		var ink := Color(0.05, 0.035, 0.03)
 		var w := size.x
