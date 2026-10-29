@@ -10,7 +10,7 @@ Windows `IronAdvance-Windows.zip`, macOS `IronAdvance-Mac.zip`, Linux `IronAdvan
 
 Every time it starts, the launcher:
 1. reads `latest.json` from the newest release,
-2. downloads that build's game pack (under 1 MB) if it is new and checks its SHA-256,
+2. downloads that build's game pack (about 5 MB) if it is new and checks its SHA-256,
 3. deletes every older build and any half-finished download,
 4. starts the game. With no connection it plays the last build it downloaded.
 
@@ -36,6 +36,7 @@ The launcher is unsigned: on Windows choose More info → Run anyway; on macOS r
   collapsing bridges, piers, cranes, minefields, steel-grating catwalks and chain-link fences (bullets and grenades pass through both). `terrain.gd` builds them.
 - `game/tools/gen_art.py`, `gen_sfx.py` regenerate every sprite and sound (Python 3 + Pillow; gen_art.py also needs NumPy).
 - `game/tools/sf_api.py` asks the Sprite Fusion pixel art generator for new bodies, styled on our own frames (dev time only, needs `SPRITE_FUSION_API_KEY`; the key never goes in the repo or the game).
+  `python3 game/tools/sf_api.py normals` (free) refreshes the character normal maps in `tools/sf_src/normals`; gen_art.py copies each one in only while it still matches its sheet, and `scripts/lights.gd` lights the battle with them.
   Results are committed raw under `game/tools/sf_src/<name>/` with a `manifest.json` of the prompts, and `gen_art.py` cleans them (hard alpha, one shared palette, our outline colour, feet on the bottom row) and builds the full sheet, so regenerating art needs no key. The Gate Trooper is the first one.
 - `game/tools/test_runner.gd` scripted tests and an autoplayer:
   `godot --path game -- --iatest --scenario=flow --out=/tmp/shots` (title, start, aim, arc, topple, level, shop, picker, flow, bot, campaign, alive).

@@ -9,6 +9,7 @@ manifest.json recording each request, so gen_art.py can rebuild sheets from them
   python3 tools/sf_api.py edit NAME OUT.png "prompt" --ref base.png
   python3 tools/sf_api.py animate NAME OUT.png "prompt" --ref still.png --frames 8 --colors 20
   python3 tools/sf_api.py normal NAME OUT.png --ref sprite.png
+  python3 tools/sf_api.py normals      # free: a normal map for every character sheet in meta.json
 
 style and edit return several options: they are saved as OUT_0.png, OUT_1.png... so one can be picked
 and renamed. animate saves its spritesheet strip. Every request costs 15 credits except normal.
@@ -60,9 +61,25 @@ def record(name, entry):
     with open(mp, 'w') as f:
         json.dump(m, f, indent=1)
 
+def normal_map(src, dest):
+    body = {'inputs': [{'data_url': data_url(src)}]}
+    req = urllib.request.Request(API + 'normal-maps', data=json.dumps(body).encode(),
+                                 headers={'Authorization': 'Bearer ' + key(), 'Content-Type': 'application/json'})
+    open(dest, 'wb').write(urllib.request.urlopen(req, timeout=120).read())
+
+def normals():
+    # whole sheets go up as they are: the generator maps every frame in place and keeps the alpha,
+    # so gen_art.py can check each one still fits its sheet
+    sprites = os.path.join(os.path.dirname(SRC), '..', 'assets', 'sprites')
+    out = os.path.join(SRC, 'normals')
+    os.makedirs(out, exist_ok=True)
+    for name in sorted(json.load(open(os.path.join(sprites, 'meta.json')))):
+        normal_map(os.path.join(sprites, name + '.png'), os.path.join(out, name + '.png'))
+        print(name)
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('op', choices=['credits', 'style', 'edit', 'animate', 'normal'])
+    ap.add_argument('op', choices=['credits', 'style', 'edit', 'animate', 'normal', 'normals'])
     ap.add_argument('name', nargs='?')
     ap.add_argument('out', nargs='?')
     ap.add_argument('prompt', nargs='?', default='')
@@ -73,6 +90,9 @@ def main():
     a = ap.parse_args()
     if a.op == 'credits':
         print(call('credits').read().decode())
+        return
+    if a.op == 'normals':
+        normals()
         return
     d = os.path.join(SRC, a.name)
     os.makedirs(d, exist_ok=True)

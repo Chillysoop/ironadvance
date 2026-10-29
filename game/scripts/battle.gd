@@ -4483,6 +4483,8 @@ func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> vo
 		owner.fl["blasts"] = spots
 	Sfx.play("bigboom" if r > 45 else "boom")
 	shake = minf(18, shake + r * 0.28)
+	if has_node("Lights"):
+		$Lights.flash(x, y, r * 2.2, Color("ffb45a"), 24)  # G6: the blast lights up its surroundings
 	fireball(x, y, r, burn)
 	if dmg <= 0:
 		return

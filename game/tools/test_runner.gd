@@ -776,6 +776,8 @@ func run() -> void:
 			await identity_test()
 		"jackals2":
 			await jackals2_test()
+		"lights":
+			await lights_test()
 		"biomes2":
 			await biomes2_test()
 		"events10":
@@ -6422,6 +6424,28 @@ func j2_enemy(b: Battle, type: String, x: float) -> Unit:
 	e.active = true
 	b.units.append(e)
 	return e
+
+func lights_test() -> void:
+	## G6: blasts and muzzle flashes light the field, sprites carry normal maps, night darkens the canvas.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	var L = b.get_node("Lights")
+	var mo: Unit = b.squad()[0]
+	cam_on(b, mo.x + 150)
+	await frames_wait(4)
+	check(Art.lit_tex(mo.sheet) is CanvasTexture, "soldier sheets draw with their normal map")
+	b.theme = "night"
+	b.explode(mo.x + 120, mo.y - 10, 30, 0, null)
+	await frames_wait(3)
+	var on: int = L.lights.filter(func(l): return l.enabled).size()
+	check(on > 0, "a blast switches on a light (%d on)" % on)
+	check(L.shade.color != Color.WHITE, "night maps darken the canvas")
+	await shot("lights_blast")
+	await frames_wait(60)
+	check(L.flashes.is_empty(), "the blast light fades out")
 
 func jackals2_test() -> void:
 	## E1 sniper, E2 flametrooper, E3 paratroopers, E4 hounds, E5 shield wall, E7 gunship, E8 Di-Cokka.
