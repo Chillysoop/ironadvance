@@ -661,20 +661,25 @@ class Screen extends Control:
 		if m.has("biome"):
 			var bm: Dictionary = Data.BIOMES[m.biome]
 			Art.text(self, "GOOD FOR %s   ROUGH ON %s" % [Data.STYLES[bm.favor], Data.STYLES[bm.rough]], Vector2(480, y - 2), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
+		# a long brief (3+ lines) closes up the rows under it, so the last one still clears the squad's heads
+		var tight := y > 210.0
+		var sy := y + (32.0 if tight else 40.0)
+		var iy := sy + (14.0 if tight else 18.0)
 		var it: Dictionary = Data.INTEL[Run.intel] if Data.INTEL.has(Run.intel) else Data.INTEL.clear
-		Art.text(self, "INTEL: %s  %s" % [it.name, it.text.to_upper()], Vector2(480, y + 58), 8, Color("53d4e2") if Run.intel != "clear" else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+		Art.text(self, "INTEL: %s  %s" % [it.name, it.text.to_upper()], Vector2(480, iy), 8, Color("53d4e2") if Run.intel != "clear" else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 		if Run.campaign() and Run.hq("comms") >= 1:
 			var ros: Array = CardView.wrap_text("COMMS: " + Run.op_roster(m), 900, 16)
 			for k in mini(2, ros.size()):
 				Art.text(self, ros[k], Vector2(480, 440 + k * 15), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		var ny := iy + 14
 		if Run.threat > 0:
-			Art.text(self, "THREAT %d: %s" % [Run.threat, ", ".join(Data.THREATS.slice(0, Run.threat).map(func(x): return x.name))], Vector2(480, y + 72), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "THREAT %d: %s" % [Run.threat, ", ".join(Data.THREATS.slice(0, Run.threat).map(func(x): return x.name))], Vector2(480, ny), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
 		if m.get("specialist", "") != "":
 			# X2: a specialist is held somewhere in this level
 			var D: Dictionary = Run.class_def(m.specialist)
-			Art.text(self, "SPECIALIST POW: %s THE %s IS HELD HERE. FREE THEM TO UNLOCK THE CLASS." % [D.name, D.cls.to_upper()], Vector2(480, y + 86), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
-		draw_texture_rect(Art.tex.ic8_coin, Rect2(410, y + 30, 10, 10), false)
-		Art.text(self, "%d SCRIP" % Run.scrip, Vector2(426, y + 40), 8, Color("ffd23a"))
+			Art.text(self, "SPECIALIST POW: %s THE %s IS HELD HERE. FREE THEM TO UNLOCK THE CLASS." % [D.name, D.cls.to_upper()], Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		draw_texture_rect(Art.tex.ic8_coin, Rect2(410, sy - 10, 10, 10), false)
+		Art.text(self, "%d SCRIP" % Run.scrip, Vector2(426, sy), 8, Color("ffd23a"))
 		squad_line(382, "idle")  # feet low enough that heads clear the SPECIALIST POW line
 		draw_extras(m)  # over the squad, so no rifle pokes through the boards
 	func draw_extras(m: Dictionary) -> void:
