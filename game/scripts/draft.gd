@@ -103,4 +103,5 @@ func _draw() -> void:
 		if on:
 			Art.text(self, "IN", Vector2(r.position.x + 10, r.position.y + 20), 8, Color("62d26f"))
 		if hover == i:
-			Art.text(self, d.trait[1], Vector2(480, 456), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+			# under the last row of cards, whatever the grid size, so it never sits on a card
+			Art.text(self, d.trait[1], Vector2(480, card(Data.SQUAD_DEFS.size() - 1).end.y + 14), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)

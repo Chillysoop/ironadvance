@@ -7,6 +7,7 @@ extends Node
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
+## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -92,7 +93,7 @@ func dump_unsettled(b: Battle, n: int) -> void:
 			continue
 		if u.walk != null or u.zip != null or u.drill != null or u.slide != 0 or u.air or u.hang or u.para:
 			why.append("hang %s para %s jumping %s" % [u.hang, u.para, u.jumping])
-			why.append("%s %s@%d,%d walk %s zip %s drill %s slide %s air %s v%.2f,%.2f dead %s" % [u.team, u.def.key if u.team == "squad" else u.type, int(u.x), int(u.y), u.walk != null, u.zip != null, u.drill != null, u.slide, u.air, u.vx, u.vy, u.dead])
+			why.append("%s %s%s@%d,%d walk %s zip %s drill %s slide %s air %s v%.2f,%.2f dead %s" % [u.team, u.def.key if u.team == "squad" else u.type, u.kind, int(u.x), int(u.y), u.walk != null, u.zip != null, u.drill != null, u.slide, u.air, u.vx, u.vy, u.dead])
 	for u in b.squad():
 		why.append("SQ %s@%.1f,%.1f air %s dead %s gone %s sunk %s hang %s para %s walk %s v%.2f,%.2f" % [u.def.key, u.x, u.y, u.air, u.dead, u.gone, u.sunk, u.hang, u.para, u.walk != null, u.vx, u.vy])
 	print("[unsettled r%d] %d frames tick %d state %s busy %s sel %s: %s" % [b.round_n, n, b.t, b.state, b.busy, b.sel.def.key if b.sel != null else "-", why])
@@ -857,6 +858,8 @@ func run() -> void:
 			await pause_menu()
 		"uiclarity":
 			await ui_clarity()
+		"newplayer3":
+			await newplayer3()
 		"operator":
 			await operator_call()
 		"training":
@@ -1874,6 +1877,104 @@ func training() -> void:
 	if not had:
 		Run.meta.erase("trained")
 		Run.save_meta()
+
+func newplayer3() -> void:
+	## Fixes from the 2026-10-29 new-player playtest of the combined build.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.meta["tips_off"] = true
+	check(Data.dmg_text([3, 3]) == "3" and Data.dmg_text([6, 8]) == "6-8" and Data.dmg_text(7) == "7", "a one-number damage range reads DMG 3, not 3-3")
+	var src := "Smoke at your feet."
+	var ft := ArmoryScript.ItemTile.fit_text(src, 70, true)
+	var kept: String = ft.trim_suffix("...")
+	check(ft.ends_with("...") and src.begins_with(kept.strip_edges()), "item tile lines drop whole words (%s)" % ft)
+	# the Quartermaster restocks for each level of a quick run
+	Run.new_run()
+	main.show_hq(false)
+	check(Run.mission == 0, "first HQ visit stocks for level 1")
+	Run.history.append({})
+	main.show_hq(false)
+	check(Run.mission == 1, "HQ after level 1 stocks for level 2 (mission %d)" % Run.mission)
+	check(main.screen.doc_targets() == Run.squad_classes(), "Doc's Lab offers the squad, not every class (%s)" % [main.screen.doc_targets()])
+	# NEW RUN goes through the squad draft once a specialist is free
+	var had_bolt: bool = Run.meta.unlocked.has("cls_bolt")
+	if not had_bolt:
+		Run.meta.unlocked.append("cls_bolt")
+	main.quick_run()
+	check(main.screen != null and main.screen.get_script() == main.DraftScript, "quick run and NEW RUN open the squad draft")
+	if not had_bolt:
+		Run.meta.unlocked.erase("cls_bolt")
+	# Frozen Lake: no parked vehicle on the crust; Jackal Walkers stand on both feet
+	var on_ice := 0
+	var parked := 0
+	var toppled := 0
+	for i in 6:
+		Run.new_run()
+		Run.mission = i % 3
+		Run.pick_biome(["lake", "palace", "city"][i % 3])
+		var m: Dictionary = Run.current_mission().duplicate(true)
+		m["walker"] = true
+		m["event"] = "dealer" if i == 0 else m.get("event", "")
+		var b: Battle = main.start_battle(i % 3, m)
+		await until(func(): return b.state == "player" and not b.busy)
+		for r in b.units:
+			if r.kind == "ride" and not r.gone:
+				parked += 1
+				if b.T.lakes.any(func(l): return r.x > l[0] - 20 and r.x < l[1] + 20):
+					on_ice += 1
+			if r.type == "jwalker" and r.dead:
+				toppled += 1
+		if i == 0:
+			# R4: walking past the arms dealer opens his stall too
+			var d: Unit = null
+			for o in b.units:
+				if o.kind == "dealer":
+					d = o
+			check(d != null, "dealer event places the arms dealer")
+			if d != null:
+				var u: Unit = b.squad_alive()[0]
+				Run.scrip = 0
+				b.autopick = 0
+				u.x = d.x + 120
+				u.y = d.y
+				await b.check_dealer(u, d.x - 120)
+				check(d.loot.get("seen", -1) == b.round_n, "a walk that passes the dealer opens his stall")
+				b.autopick = -1
+	check(on_ice == 0 and parked > 0, "no parked vehicle on lake ice (%d of %d)" % [on_ice, parked])
+	check(toppled == 0, "no Jackal Walker topples before the squad moves (%d)" % toppled)
+	# SELF cards with nothing to hit stay in hand
+	var b: Battle = main.battle
+	var u: Unit = b.sel
+	for e in b.units:
+		if e.team == "enemy" and not e.dead:
+			e.x = u.x + 2000
+	var ti := force_card(u, "tesla")
+	var en := u.energy
+	var n := u.hand.size()
+	b.select_card(ti)
+	await frames_wait(10)
+	await until(func(): return not b.busy)
+	check(u.energy == en and u.hand.size() == n, "Tesla Arc with no Jackal in reach is refused and kept")
+	var foe: Unit = null
+	for e in b.units:
+		if e.team == "enemy" and not e.dead and not e.gone and not Data.ETYPES[e.type].get("static", false):
+			foe = e
+	if foe != null:
+		foe.x = u.x + 80
+		foe.y = u.y
+		check(not b.self_no_target(u, Data.CARDS.tesla), "Tesla Arc with a Jackal close by is allowed")
+	check(b.view.tip != null and b.view.tip.z_index > 0, "hover info draws on its own layer over the weather")
+	# a blast that throws a girder rivet doesn't leave the enemy turn waiting on it to land
+	var rv := b.mk_unit()
+	rv.team = "neutral"; rv.kind = "rivet"; rv.x = u.x + 60; rv.y = u.y - 60; rv.w = 10; rv.h = 10; rv.hp = 1; rv.max_hp = 1
+	rv.loot = {"cells": [], "by": u, "w": 40.0, "turn": b.round_n}
+	b.units.append(rv)
+	rv.vx = 5.8; rv.vy = -5.4; rv.air = true
+	await frames_wait(5)
+	check(not rv.air and rv.vx == 0, "a girder rivet hit by a blast stays pinned, so the turn doesn't wait on it")
+	rv.gone = true
+	await shot("newplayer3")
+	Run.meta = keep
+	Run.save_meta()
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)
@@ -4403,7 +4504,7 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 					var c := Data.card(u.hand[i])
 					if u.energy < b.card_cost(u, u.hand[i]):
 						continue
-					if c.type == "SELF" and not c.get("overwatch", false):
+					if c.type == "SELF" and not c.get("overwatch", false) and not b.self_no_target(u, c):
 						bot_last = c.get("name", "?")
 						b.select_card(i)
 						played = true

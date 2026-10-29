@@ -189,7 +189,8 @@ func doc_targets() -> Array:
 	## Who the Doc operates on: the four classes in a run, the deployed squad in the campaign (B3).
 	if Run.campaign():
 		return Run.soldiers.filter(func(s): return s.alive)
-	return Data.SQUAD_DEFS.map(func(d): return d.key)
+	var keys: Array = Run.squad_classes()
+	return keys if keys.size() else Data.SQUAD_DEFS.map(func(d): return d.key).filter(func(k): return Data.BASE_CLASSES.has(k))
 
 func open_doc() -> void:
 	## The Doc's Lab: surgeries installed on a class, paid in Bio-parts and Salvage.
@@ -209,8 +210,9 @@ func open_doc() -> void:
 			var bt := HudScript.PixButton.new()
 			bt.small = true
 			bt.size = Vector2(58, 20)
-			bt.position = Vector2(cr.end.x - 124 + (j % 2) * 62, cr.position.y + 4 + (j / 2) * 22)
-			bt.text = (cls.def.name if cls is Dictionary else Data.SQUAD_DEFS[j].name) + (" OK" if why == "INSTALLED" else "")
+			var cols := 2 if who.size() <= 4 else 3  # a fifth soldier gets a third column, not a row off the cell
+			bt.position = Vector2(cr.end.x - 62 * cols + (j % cols) * 62, cr.position.y + 4 + (j / cols) * 22)
+			bt.text = (cls.def.name if cls is Dictionary else Run.class_def(cls).name) + (" OK" if why == "INSTALLED" else "")
 			bt.color = Color("9df25c")
 			bt.disabled = why != ""
 			bt.pressed.connect(func():
@@ -781,7 +783,8 @@ func draw_doc_panel() -> void:
 		var on: Array = doc_targets().filter(func(w): return (Run.implants_of(w) if w is Dictionary else Run.implants(w)).has(ids[i]))
 		draw_rect(cr, Color(0.06, 0.08, 0.06, 0.9))
 		draw_rect(cr, Color("9df25c") if on.size() else Color("4a5a4a"), false, 1)
-		Art.text(self, S.name, Vector2(cr.position.x + 10, cr.position.y + 20), 16, Color("ffd23a") if r >= 1 else Color("8a8a6a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+		# with a third column of soldier buttons the name drops to the small font to stay clear of them
+		Art.text(self, S.name, Vector2(cr.position.x + 10, cr.position.y + 20), 16 if doc_targets().size() <= 4 else 8, Color("ffd23a") if r >= 1 else Color("8a8a6a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 		Art.text(self, "+ " + S.up, Vector2(cr.position.x + 10, cr.position.y + 38), 8, Color("62d26f") if r >= 1 else Color("6a7a6a"))
 
 # ---------------------------------------------------------------- C3: the campaign's night camp
