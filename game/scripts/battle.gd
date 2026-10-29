@@ -10842,6 +10842,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if busy and stop_drill():
 			return
 		if ev.button_index == MOUSE_BUTTON_LEFT:
+			# a plain click on the HUD's top bar (score, alert, wind) is not a walk order
+			if card_idx < 0 and not jet_armed and not rummage_armed and get_viewport().get_mouse_position().y < 34:
+				return
 			if jet_armed and state == "player" and not busy and sel != null and not sel.dead:
 				start_jet(sel)
 			else:
