@@ -1889,6 +1889,7 @@ const NO_TRUCK := ["lake", "train", "carrier"]   # W14: biomes a patrol never ro
 # of up to SQUAD_MAX, one per class. Ranks come from ops survived (C3); each promotion is a pick
 # from that rank's three options, and a Captain in the squad gives everyone CAPTAIN_DODGE.
 const COMPANY_MAX := 10
+const PINCER_COMPANY := 8  # W9: Iron Harbor goes in as a two-squad pincer once the company has this many
 const SQUAD_MAX := 4
 const RESERVE_MAX := 6    # quick run: rescued soldiers the barracks holds while the squad is full
 const FLARE_CHANCE := 0.3 # odds a new screen holds a reinforcement flare while someone is down

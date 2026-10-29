@@ -407,6 +407,7 @@ func _on_mission_over(won: bool) -> void:
 	var xp := {}
 	var kills := {}
 	var downs := {}
+	var by := {}
 	for u in battle.squad():
 		if u.s.has("guest"):
 			st["varga_alive"] = not (u.dead and not u.downed)  # W13: still standing (or only down) when it ends
@@ -414,7 +415,11 @@ func _on_mission_over(won: bool) -> void:
 		xp[u.def.key] = u.xp_gain
 		kills[u.def.key] = u.kills
 		downs[u.def.key] = u.downed or u.dead
+		if Run.campaign() and Run.roster.has(u.s):
+			by[str(Run.roster.find(u.s))] = {"xp": u.xp_gain, "k": u.kills, "down": u.downed or u.dead}  # W9: two of a class on the pincer
 	st["xp"] = xp
+	if by.size():
+		st["by"] = by
 	st["kills_by"] = kills
 	for u in battle.units:
 		# W3: a named officer still standing when the op ends gets away
@@ -718,6 +723,10 @@ class Screen extends Control:
 		if m.get("nemesis", {}).size():
 			# W3: an officer who got away before is waiting
 			Art.text(self, "NEMESIS: %s IS HERE. KILL THEM FOR THEIR SIGNATURE GEAR." % Run.nemesis_name(m.nemesis), Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ff4d3d") if t % 50 < 34 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			ny += 14
+		if m.get("pincer", false):
+			# W9: the two-squad assault
+			Art.text(self, "PINCER: SQUAD B (%s) LANDS ON THE FAR SIDE. G JUMPS BETWEEN THEM." % ", ".join(Run.wing_b().map(func(s): return s.def.name)), Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 			ny += 14
 		if m.get("story", "") == "varga":
 			# W13: the colonel's last stand

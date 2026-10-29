@@ -42,6 +42,7 @@ var round_n := 0
 var alert := 0
 var rounds_since_scroll := 0
 var push_warned := -1  # round the "clear the enemies behind first" warning was last shown
+var pincer := {}       # W9: Iron Harbor with two squads: {on, view "a"/"b", a_cam, b_cam}; squad B wears fl.wing = "b"
 const STALL_ROUNDS := 3   # rounds on one screen before alert starts climbing (one fewer on threat 1)
 var wind := 0
 var score := 0
@@ -168,6 +169,18 @@ func setup(idx: int, custom := {}) -> void:
 			continue
 		deploy_unit(s, 50.0 + i * 55)  # P2: far enough apart that tags, bars and clicks don't overlap
 		i += 1
+	if mission.get("pincer", false) and Run.campaign():
+		# W9: squad B lands at the far end of the harbor and fights in from the right
+		var j := 0
+		for s in Run.wing_b():
+			if not s.alive or Run.soldiers.has(s):
+				continue
+			var ub := deploy_unit(s, world_w - 50.0 - j * 55)
+			ub.face = -1
+			ub.wing = "b"
+			j += 1
+		if j > 0:
+			pincer = {"on": true, "view": "a", "a_cam": 0.0, "b_cam": float(world_w - W)}
 	var pi := randi() % Data.POW_NAMES.size()
 	var foot := 0  # plain rifleman and bomber slots seen so far (cast_foot)
 	var walled := false
@@ -294,6 +307,8 @@ func setup(idx: int, custom := {}) -> void:
 	for u in units:
 		if u.team == "squad":
 			sel = u
+			if pincer.get("on", false) and u.wing == "a":
+				break  # W9: start on squad A
 	for u in units:
 		if u.y == null:
 			u.y = WATER_Y - 4
@@ -6462,6 +6477,11 @@ func check_push(u: Unit, x0 = null) -> void:
 	check_troopers(u)
 	await check_dealer(u, x0)
 	await check_camp(u)
+	if pincer.get("on", false):
+		set_view(wing(u))
+		if wing(u) == "b":
+			await follow_b()
+			return
 	if u.dead or cam_x >= world_w - W:
 		return
 	if u.x - cam_x > W * 0.72:
@@ -6474,6 +6494,80 @@ func check_push(u: Unit, x0 = null) -> void:
 				log_msg("The push zone is locked: %d enem%s still alive behind the line." % [blk.size(), "y" if blk.size() == 1 else "ies"])
 			return
 		await scroll_to(clampf(u.x - W * 0.5, cam_x, world_w - W), "push", u)
+
+# ---------------------------------------------------------------- W9: the pincer at Iron Harbor
+func wing(u) -> String:
+	return u.wing
+
+func view_cam(w: String) -> float:
+	return cam_tx if pincer.get("view", "a") == w else float(pincer.get(w + "_cam", cam_x))
+
+func in_play(x: float, pad: float) -> bool:
+	## Inside a live window. On the pincer op both halves are live: squad A's and squad B's.
+	if not pincer.get("on", false):
+		return x < cam_x + W + pad
+	return x < view_cam("a") + W + pad or x > view_cam("b") - pad
+
+func wing_at(x: float) -> String:
+	return "b" if x > view_cam("b") - 60 else "a"
+
+func set_view(w: String) -> void:
+	## Jump the camera to one half of the pincer. Each half keeps its own camera.
+	if not pincer.get("on", false) or pincer.view == w:
+		return
+	pincer[pincer.view + "_cam"] = cam_tx
+	pincer.view = w
+	cam_x = float(pincer[w + "_cam"])
+	cam_tx = cam_x
+	activate_enemies()
+	ui_dirty = true
+
+func switch_wing() -> void:
+	## The SQUAD A / SQUAD B button: select the other half's first soldier and jump there.
+	if not pincer.get("on", false) or state != "player" or busy:
+		return
+	var w := "b" if pincer.view == "a" else "a"
+	var al: Array = squad_alive().filter(func(s): return wing(s) == w)
+	if al.size():
+		sel = al[0]
+		card_idx = -1
+	set_view(w)
+	Sfx.play("click")
+
+func bar_squad() -> Array:
+	## The soldiers the HUD's squad bar shows: on the pincer op, the half on screen.
+	if pincer.get("on", false):
+		return squad().filter(func(s): return wing(s) == pincer.view)
+	return squad()
+
+func follow_b() -> void:
+	## Squad B fights right to left: its view slides left as they advance, and the two halves
+	## join up once the windows meet.
+	var bs: Array = squad_alive().filter(func(s): return wing(s) == "b")
+	if bs.is_empty():
+		return
+	var bx: float = bs.map(func(s): return s.x).min()
+	if bx - cam_tx < W * 0.3:
+		cam_tx = clampf(bx - W * 0.5, 0, cam_tx)
+		await until(func(): return absf(cam_x - cam_tx) < 0.5)
+		cam_x = cam_tx
+		activate_enemies()
+	if cam_tx <= float(pincer.a_cam) + W * 0.6:
+		pincer_meet()
+
+func pincer_meet() -> void:
+	## The halves meet: one squad of eight, one camera, and the flagship between them.
+	var tx: float = maxf(float(pincer.a_cam), cam_tx if pincer.view == "b" else float(pincer.b_cam))
+	pincer.on = false
+	pincer["met"] = true
+	for s in squad():
+		s.wing = "a"
+	cam_x = minf(cam_x, tx)
+	cam_tx = tx
+	banner("THE PINCER CLOSES!", Color("62d26f"), "BOTH SQUADS FIGHT AS ONE")
+	Sfx.play("start")
+	log_msg("Squad A and Squad B have joined up. Finish the flagship together.")
+	ui_dirty = true
 
 func push_blockers() -> Array:
 	## Enemies still alive on this screen short of the push zone line. While any are left, a push won't scroll.
@@ -6810,6 +6904,9 @@ func stalled() -> bool:
 	return rounds_since_scroll >= stall_limit()
 
 func scroll_to(tx: float, reason: String, who = null) -> void:
+	if pincer.get("on", false) and pincer.view != "a":
+		set_view("a")  # only squad A's side of the pincer pushes the screen
+		tx = maxf(tx, cam_x)
 	tx = clampf(tx, 0, world_w - W)
 	if tx <= cam_x + 4:
 		return
@@ -6841,6 +6938,8 @@ func scroll_to(tx: float, reason: String, who = null) -> void:
 	rounds_since_scroll = 0
 	await until(func(): return absf(cam_x - cam_tx) < 0.5)
 	cam_x = cam_tx
+	if pincer.get("on", false) and cam_x + W * 0.6 >= float(pincer.b_cam):
+		pincer_meet()
 	sweep_loot(cam_x)
 	roll_flare()
 	activate_enemies()
@@ -7013,7 +7112,7 @@ func activate_enemies() -> void:
 	for e in units:
 		if e.team != "enemy" or e.dead or e.active:
 			continue
-		if e.x < cam_x + W + 40 or (e.fl.get("hunt", false) and e.x < cam_x + W + 700):
+		if in_play(e.x, 40) or (e.fl.get("hunt", false) and e.x < cam_x + W + 700):
 			e.active = true
 			meet(e)
 			if e.fl.get("lead", false):
@@ -8122,8 +8221,10 @@ func enemy_phase() -> void:
 	for e in es:
 		if e.dead or squad_alive().is_empty() or boss_dead:
 			break
-		if e.x > cam_x + W + 60 and not e.fl.get("hunt", false):
+		if not in_play(e.x, 60) and not e.fl.get("hunt", false):
 			continue
+		if pincer.get("on", false):
+			set_view(wing_at(e.x))  # W9: the camera jumps to whichever half of the pincer this enemy is in
 		await until(settled)
 		if e.dead:
 			continue
@@ -10147,7 +10248,12 @@ func step() -> void:
 			sel.gun_target = clampf(atan2(mouse.y - o.y, (mouse.x - o.x) * sel.face), -1.35, 1.1)
 	if cam_x < cam_tx:
 		cam_x = minf(cam_tx, cam_x + minf(9, (cam_tx - cam_x) * 0.08 + 1.2))
-		drag_stragglers()
+		if pincer.get("view", "a") == "a":
+			drag_stragglers()
+	elif cam_x > cam_tx and pincer.get("on", false):
+		cam_x = maxf(cam_tx, cam_x - minf(9, (cam_x - cam_tx) * 0.08 + 1.2))  # W9: squad B's view slides left
+	if pincer.get("on", false) and state == "player" and not busy and sel != null and not sel.dead and sel.team == "squad" and wing(sel) != pincer.view:
+		set_view(wing(sel))
 	T.update_chunks()
 	for u in units:
 		if u.gone or u.sunk:
@@ -10842,6 +10948,8 @@ func dial_fuse(d: int) -> void:
 func select_unit(u: Unit) -> void:
 	if u == null or u.dead or busy:
 		return
+	if pincer.get("on", false) and u.team == "squad":
+		set_view(wing(u))
 	if u != sel:
 		drop_hang(sel)
 	sel = u
@@ -10907,7 +11015,7 @@ func auto_advance() -> void:
 	resolve(func(): await _act_advance())
 
 func _act_advance() -> void:
-	var sq := squad_alive()
+	var sq := bar_squad().filter(func(s): return not s.dead)  # W9: on the pincer, the half on screen
 	# rallies first, so the movement they hand out is there for everyone else's walk
 	for pass_ in ["rally", "move"]:
 		for u in sq:
@@ -10921,11 +11029,12 @@ func _act_advance() -> void:
 						await wait(6)
 						played = true
 						break
-	sq.sort_custom(func(a, b2): return a.x > b2.x)
+	var west: bool = pincer.get("on", false) and pincer.view == "b"  # squad B advances west
+	sq.sort_custom(func(a, b2): return a.x < b2.x if west else a.x > b2.x)
 	for u in sq:
 		if u.dead or u.move_left <= 1:
 			continue
-		var sim := stop_before_mines(u, sim_walk(u, u.x + u.move_left, u.move_left))
+		var sim := stop_before_mines(u, sim_walk(u, u.x - u.move_left if west else u.x + u.move_left, u.move_left))
 		if sim.pts.is_empty():
 			continue
 		sel = u
@@ -11010,6 +11119,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 			undo_last_walk()
 		elif ev.keycode == KEY_J:
 			toggle_jet()
+		elif ev.keycode == KEY_G:
+			switch_wing()
 		elif ev.keycode == KEY_BRACKETRIGHT or ev.keycode == KEY_EQUAL:
 			dial_fuse(1)
 		elif ev.keycode == KEY_BRACKETLEFT or ev.keycode == KEY_MINUS:
