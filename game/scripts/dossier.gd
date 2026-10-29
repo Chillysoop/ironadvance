@@ -247,6 +247,13 @@ func close_modal() -> void:
 		modal.queue_free()
 		modal = null
 	mod_pick = -1
+	show_deck_cards(true)
+
+func show_deck_cards(on: bool) -> void:
+	## The deck's own cards hide under a preview: through the dimmer they read as part of it.
+	for c in get_children():
+		if c is CardView:
+			c.visible = on
 
 func preview_card(opt: Dictionary, pos: Vector2, big := true) -> CardView:
 	var cv := CardView.new()
@@ -275,6 +282,7 @@ func open_preview(id: String) -> void:
 	var cd := Data.card(c)
 	modal = Overlay.new()
 	add_child(modal)
+	show_deck_cards(false)
 	var ov: Overlay = modal
 	var go: Callable
 	var cost := 0

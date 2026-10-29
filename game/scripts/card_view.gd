@@ -235,6 +235,9 @@ func _draw() -> void:
 		var line: String = bl[i]
 		if i < bl.size() - 1 and y + lh > bottom:
 			line = line.trim_suffix(".") + "..."
+			# the dots can push a long last word ("Ricochets...") past the card's edges
+			while Art.text_width(line, 16, true) > w - 6 and line.length() > 4:
+				line = line.substr(0, line.length() - 4) + "..."
 			cut = true
 		Art.text(self, line, Vector2(w / 2.0, y + 2), 16, Color("3a3024") if not dim else Color("4a4030"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
 		y += lh
