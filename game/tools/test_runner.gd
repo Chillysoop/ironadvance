@@ -5473,6 +5473,15 @@ func campfix() -> void:
 	for k in keys:
 		uniq[k] = true
 	check(uniq.size() == keys.size(), "the squad is still one of each class (%s)" % [keys])
+	# a radio call still going when the War Room opens moves off the sector panel
+	main.show_hq(false)
+	main.call_in(Run.radio_after({"won": true}))
+	await frames_wait(10)
+	main.show_war_room()
+	await frames_wait(40)
+	var oc: Control = main.call_layer.get_child(0)
+	await shot("cf_room_call")
+	check(not oc.get_global_rect().intersects(Rect2(690, 80, 254, 396)), "the radio call sits clear of the War Room's sector panel (%s)" % oc.get_global_rect())
 	main.show_title()
 	await frames_wait(5)
 	Run.delete_campaign(9)
