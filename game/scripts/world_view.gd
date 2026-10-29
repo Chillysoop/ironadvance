@@ -623,6 +623,16 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			draw_circle(p + Vector2(0, -4), 13, Color(1, 0.7, 0.12, 0.35 + 0.25 * sin(b.t / 4.0)))
 			draw_texture_rect(Art.tex[Data.gear(L.id).icon], Rect2(p.x - 8, p.y - 12, 16, 16), false)
 			Art.text(self, Data.gear(L.id).name.to_upper(), p + Vector2(0, -22), 8, Color("ffb21e"), HORIZONTAL_ALIGNMENT_CENTER)
+		"flare":
+			# a reinforcement flare: a red stick spitting green smoke, with a chute over it
+			draw_circle(p + Vector2(0, -4), 12, Color(0.38, 0.82, 0.44, 0.25 + 0.2 * sin(b.t / 5.0)))
+			draw_rect(Rect2(p.x - 3, p.y - 12, 6, 12), C_DARK)
+			draw_rect(Rect2(p.x - 2, p.y - 11, 4, 10), Color("c8322a"))
+			draw_rect(Rect2(p.x - 2, p.y - 11, 4, 2), Color("ffd23a") if b.t % 8 < 4 else Color("ffffff"))
+			for k in 3:
+				var ph := fmod(b.t / 40.0 + k / 3.0, 1.0)
+				draw_circle(p + Vector2(sin(ph * 6.0 + k) * 4, -14 - ph * 22), 2 + ph * 4, Color(0.38, 0.82, 0.44, 0.6 * (1.0 - ph)))
+			Art.text(self, "REINFORCEMENTS", p + Vector2(0, -42), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 		"trophy":
 			draw_circle(p + Vector2(0, -4), 11, Color(1, 0.7, 0.12, 0.3 + 0.2 * sin(b.t / 5.0)))
 			draw_texture_rect(Art.tex.ic_star, Rect2(p.x - 8, p.y - 12, 16, 16), false)
@@ -1627,8 +1637,10 @@ func draw_hover(cv: CanvasItem) -> void:
 			"letter": lines = ["%s: %s" % [L.key, Data.CARDS[Data.LETTERS[L.key]].name.to_upper()], "3 free shots for whoever grabs it."]
 			"scrip": lines = ["%d SCRIP" % L.n]
 			"relic": lines = ["BOSS TROPHY: " + Data.gear(L.id).name.to_upper(), Data.gear(L.id).text, "Squad gear: it helps everyone, for the rest of the run."]
+			"flare": lines = ["REINFORCEMENT FLARE", "Walk over it to parachute soldiers in from the barracks,", "one for each squadmate who is down. The downed go home to rest."]
 			_: lines = ["TROPHY: " + L.get("name", L.type.to_upper())]
-		lines.append("Anything left behind goes to the stash.")
+		if L.type != "flare":
+			lines.append("Anything left behind goes to the stash.")
 	elif h.kind == "pad":
 		var B: Dictionary = Data.BONUSES[b.pad_bonus(h)]
 		lines = ["BONUS PAD: " + B.name, "READY: whoever stands on it takes it." if h.loot.ready else "Ready in %d round%s." % [h.loot.t, "" if h.loot.t == 1 else "s"], B.text, "Jackals race for it too."]

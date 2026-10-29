@@ -52,6 +52,7 @@ var card_idx := -1
 var mouse := Vector2(200, 300)
 var log_lines: Array = []
 var pow_queue: Array = []
+var para_queue: Array = []   # soldiers who picked up a reinforcement flare, waiting on the call-in
 var job_st := {}   # O4: {"on", "left"} while holding the far end
 var lvl_queue: Array = []
 var dummies: Array = []       # practice range: [type, x] of each dummy, to stand them back up
@@ -333,6 +334,10 @@ func collect(u: Unit, p: Unit) -> void:
 				refresh_unit_gear(o)
 			banner("BOSS TROPHY: " + Data.gear(L.id).name.to_upper(), Color("ffb21e"), Data.gear(L.id).text.to_upper())
 			Sfx.play("levelup")
+		"flare":
+			float_text(u, "REINFORCEMENT FLARE!", Color("62d26f"), true)
+			Sfx.play("power")
+			para_queue.append(u)
 		"trophy":
 			if not Run.trophies.has(L.name):
 				Run.trophies.append(L.name)
@@ -2394,6 +2399,11 @@ func free_specialist(q: Dictionary) -> void:
 	q.pow.gone = true
 	if s.is_empty():
 		log_msg("%s the %s is in the squad draft now. Pick them before your next run." % [D.name, D.cls])
+		await wait(50)
+		return
+	if Run.reserve.has(s):
+		float_at(q.pow.x, q.pow.y - 40, "TO THE BARRACKS", Color("62d26f"), true)
+		log_msg("The squad is full, so %s the %s waits in the barracks. Swap them in at HQ, or parachute them in with a reinforcement flare." % [D.name, D.cls])
 		await wait(50)
 		return
 	var u := deploy_unit(s, q.pow.x, q.pow.y)
@@ -6580,6 +6590,12 @@ func check_detour() -> void:
 				var s := Run.hire(slots[0], o)
 				banner("ALL PRISONERS FREE!", Color("62d26f"), "%s JOINS THE SQUAD AT HQ" % s.def.name)
 				log_msg("%s, a freed %s, signs up. They will be waiting at HQ%s." % [s.def.name, s.def.cls, ", with a training pick at the Barracks" if s.get("train", false) else ""])
+			elif not Run.campaign() and Run.reserve.size() < Data.RESERVE_MAX:
+				# the squad is full: the freed prisoner signs up and waits in the barracks
+				var s := Run.make_recruit(Run.recruit_offers(1)[0])
+				Run.reserve.append(s)
+				banner("ALL PRISONERS FREE!", Color("62d26f"), "%s WAITS IN THE BARRACKS" % s.def.name)
+				log_msg("%s, a freed %s, signs up and waits in the barracks. Swap them in at HQ, or parachute them in with a reinforcement flare." % [s.def.name, s.def.cls])
 			else:
 				var need: Array = squad_alive().filter(func(u): return u.s.tags < Data.DOG_TAGS)
 				need.sort_custom(func(a, b): return a.s.tags < b.s.tags)
@@ -6673,11 +6689,113 @@ func scroll_to(tx: float, reason: String, who = null) -> void:
 	await until(func(): return absf(cam_x - cam_tx) < 0.5)
 	cam_x = cam_tx
 	sweep_loot(cam_x)
+	roll_flare()
 	activate_enemies()
 	await until(settled)
 	if reason == "push" and who != null and not who.dead and state == "player":
 		await fall_in(who)
 	ui_dirty = true
+
+# ---------------------------------------------------------------- reinforcement flare: the barracks parachutes in
+func downed_squad() -> Array:
+	## Squad soldiers out of this fight (downed or killed) whose place a reinforcement can take.
+	return units.filter(func(u): return u.team == "squad" and u.dead and not u.gone and not u.s.has("guest"))
+
+func flare_on_field() -> bool:
+	return units.any(func(o): return o.kind == "loot" and not o.gone and o.loot.type == "flare") or para_queue.size() > 0
+
+func roll_flare(force := false) -> Unit:
+	## A new screen sometimes holds a reinforcement flare, but only while someone is down and
+	## somebody waits in the barracks to answer it.
+	if downed_squad().is_empty() or Run.barracks_pool().is_empty() or flare_on_field():
+		return null
+	if not force and randf() >= Data.FLARE_CHANCE:
+		return null
+	for k in 12:
+		var x := cam_x + W * 0.45 + randf() * W * 0.35
+		var sy = T.stand_y(x, T.ceil_at(x) + 12 if T.ceiling else 0)
+		if sy == null or sy > WATER_Y - 4:
+			continue
+		var f := drop_loot(x, sy - 30.0, {"type": "flare"}, 0.3)
+		float_at(x, sy - 50.0, "REINFORCEMENT FLARE", Color("62d26f"), true)
+		log_msg("A reinforcement flare up ahead. Grab it to parachute soldiers in from the barracks.")
+		return f
+	return null
+
+func call_reinforcements(u: Unit) -> void:
+	## The flare is lit: pick soldiers from the barracks, one for each soldier who is down. Each
+	## jumps in under a chute and takes a downed soldier's place in the squad; the downed go home
+	## to the barracks to recover (the killed go to the Memorial as usual).
+	var downed := downed_squad()
+	downed.sort_custom(func(a, b): return not a.downed and b.downed)  # the killed make room first
+	var pool := Run.barracks_pool()
+	if downed.is_empty() or pool.is_empty():
+		float_text(u, "NOBODY TO CALL IN", Color("9aa2ae"))
+		return
+	var picked: Array = []
+	var n := mini(downed.size(), pool.size())
+	while picked.size() < n:
+		var left: Array = pool.filter(func(s): return not picked.has(s))
+		var opts: Array = left.slice(0, 6).map(func(s): return {"kind": "service", "title": "PARADROP", "soldier": s,
+			"name": s.def.name.to_upper(), "text": "LV %d %s. %d HP, %d dog tag%s." % [s.lvl, s.def.cls.to_upper(), Run.eff_max_hp(s), s.tags, "" if s.tags == 1 else "s"]})
+		var takes: Unit = downed[picked.size()]
+		var ch := await ask("reinforce", "CALL IN REINFORCEMENTS  %d OF %d" % [picked.size() + 1, n],
+			"Who jumps in for %s? %s" % [takes.def.name, "%s goes home to the barracks to recover." % takes.def.name if takes.downed else "They take the fallen soldier's place."], opts)
+		if ch < 0:
+			break
+		picked.append(left[ch])
+	if picked.is_empty():
+		log_msg("The flare burns out. Nobody jumps.")
+		return
+	busy = true
+	banner("REINFORCEMENTS!", Color("62d26f"), "%d SOLDIER%s INBOUND" % [picked.size(), "" if picked.size() == 1 else "S"])
+	Sfx.play("start")
+	for k in picked.size():
+		var out: Unit = downed[k]
+		evacuate(out)
+		var s: Dictionary = picked[k]
+		Run.swap_in(s, out.s)
+		var x := clampf(u.x - 30 + k * 34, cam_x + 30, cam_x + W - 30)
+		var nu := deploy_unit(s, x)
+		nu.face = 1
+		nu.energy = 0
+		nu.move_left = 0
+		if not T.ceiling and s.def.key != "gears":
+			# under a chute from above the screen; Gears' walker and tunnel levels just walk in
+			nu.y = -30.0 - k * 40
+			nu.air = true
+			nu.para = true
+			nu.vy = 0.0
+		float_text(nu, "REPORTING IN", Color("62d26f"), true)
+		log_msg("%s jumps in for %s." % [s.def.name, out.def.name])
+	ui_dirty = true
+	for i in 300:
+		if not units.any(func(o): return o.team == "squad" and o.para and not o.gone):
+			break
+		await wait(1)
+	await until(settled)
+	await wait(20)
+	busy = false
+	ui_dirty = true
+
+func evacuate(out: Unit) -> void:
+	## A downed soldier is flown out to the barracks (or a killed one taken off the field), so the
+	## squad never holds more than four.
+	if out.downed:
+		out.s.hp = int(ceil(Run.eff_max_hp(out.s) / 2.0))
+	else:
+		out.s.alive = false
+		out.s.hp = 0
+		Run.memorialize(out.s)
+	out.gone = true
+	out.team = "evac"
+	for o in units:
+		if o.kind == "dog" and o.loot.get("by") == out:
+			o.gone = true  # Rex goes home with Track
+	if sel == out:
+		var al := squad_alive()
+		sel = al[0] if al.size() else null
+		card_idx = -1
 
 func sweep_loot(edge: float) -> void:
 	## Loot the squad left behind (or that sank) goes straight to the global inventory (L8).
@@ -6962,6 +7080,8 @@ func post_action() -> void:
 			Run.add_loot(lq.item)
 			continue
 		await offer_item(lq.u, lq.item)
+	while para_queue.size():
+		await call_reinforcements(para_queue.pop_front())
 	while lvl_queue.size():
 		var u: Unit = lvl_queue.pop_front()
 		await wait(20)

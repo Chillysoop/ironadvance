@@ -49,6 +49,7 @@ const META_PATH := "user://meta.json"
 const CAMP_KEYS := ["salvage", "bio", "hq", "implants", "memorial"]
 var camp := {}             # campaign state; empty during a standard run
 var roster: Array = []     # campaign: the whole company (C1); soldiers is the squad that deploys
+var reserve: Array = []    # quick run: rescued soldiers waiting in the barracks while the squad is full
 var run_base := {}         # the standard run's CAMP_KEYS while a campaign is loaded
 
 func _ready() -> void:
@@ -296,6 +297,7 @@ func new_run() -> void:
 	intel = ""
 	side = ""
 	defectors = []
+	reserve = []
 	spec_seen = []
 	temp_luck = 0
 	qm_cache = {}
@@ -428,17 +430,56 @@ func next_specialist() -> String:
 
 func free_specialist(key: String) -> Dictionary:
 	## X2: a specialist POW was cut loose. The class is unlocked for good, and in a quick run they
-	## join the squad for the rest of it. Returns the new soldier, or {} if the squad is full.
+	## join the squad for the rest of it, or wait in the barracks when four are already in it.
+	## Returns the new soldier, or {} in the campaign.
 	if not meta.unlocked.has("cls_" + key):
 		meta.unlocked.append("cls_" + key)
 		save_meta()
-	if campaign() or soldiers.size() >= 5:
+	if campaign():
 		return {}
 	var d: Dictionary = class_def(key).duplicate()
 	var s := make_soldier(d)
 	s["rescued"] = true
-	soldiers.append(s)
+	join_or_barracks(s)
 	return s
+
+func join_or_barracks(s: Dictionary) -> String:
+	## A rescued soldier takes a fallen soldier's slot, joins a squad short of four, or else waits
+	## in the barracks. Returns "squad" or "barracks".
+	var slots := fallen_slots()
+	if slots.size():
+		soldiers[slots[0]] = s
+		return "squad"
+	if soldiers.size() < Data.SQUAD_MAX:
+		soldiers.append(s)
+		return "squad"
+	reserve.append(s)
+	return "barracks"
+
+func barracks_pool() -> Array:
+	## Soldiers who can be called in from the barracks: the reserve in a quick run, the bench in a campaign.
+	return bench() if campaign() else reserve.filter(func(s): return s.alive)
+
+func swap_in(s: Dictionary, out) -> void:
+	## Puts a barracks soldier into the squad. `out` is the soldier they replace (sent to the
+	## barracks if still alive), or null to fill an open place in a squad short of four.
+	## Time in the barracks is time to rest: they come in at full health.
+	reserve.erase(s)
+	s.hp = eff_max_hp(s)
+	if out == null:
+		var slots := fallen_slots()
+		if slots.size():
+			soldiers[slots[0]] = s
+		else:
+			soldiers.append(s)
+		return
+	var i := soldiers.find(out)
+	if i < 0:
+		soldiers.append(s)
+		return
+	soldiers[i] = s
+	if out.alive and not campaign():
+		reserve.append(out)
 
 func make_soldier(d: Dictionary) -> Dictionary:
 	var deck: Array = []

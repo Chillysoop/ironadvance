@@ -31,6 +31,7 @@ var chooser: Control = null
 var mode := "shop"          # "shop" (Quartermaster) or "barracks"
 var bar: Control = null
 var shelf_pick := -1
+var n_tiles := 0            # Barracks tiles showing, so the lore line sits under them
 var bark := -1              # Q6: which Quartermaster line is showing, -1 for none
 
 func _ready() -> void:
@@ -219,11 +220,16 @@ func build_barracks() -> void:
 		var n := Run.company().size()
 		tiles[0] = ["RECRUIT", rp, "Hire a new soldier into the company (%d of %d). Pick from %d recruits.%s" % [n, Data.COMPANY_MAX, 3 if Run.hq("barracks") >= 1 else 2, " They inherit %s's best cards." % Run.legacy_deck().name if not Run.legacy_deck().is_empty() else ""], recruit,
 			"The company is full." if not Run.company_room() else Services.short(rp), Run.company_room() and Run.scrip >= rp]
+	if not Run.campaign():
+		var res: Array = Run.barracks_pool()
+		tiles.append(["RESERVES", 0, "Swap a soldier waiting here into the squad (max %d). %s." % [Data.SQUAD_MAX, ", ".join(res.map(func(s): return "%s the %s" % [s.def.name, s.def.cls])) if res.size() else "Rescued soldiers wait here when the squad is full"], swap_reserve,
+			"Nobody is waiting in the barracks." if res.is_empty() else "", res.size() > 0])
 	var xp := price(Data.XTRAIN_PRICE)
 	tiles.append(["CROSS-TRAIN", xp, "A soldier learns a card from another class: it joins their deck and turns up in their level-ups from now on.", cross_train,
 		Services.short(xp), Run.scrip >= xp])
 	if trainee.size():
 		tiles.append(["TRAINING", 0, "%s's free level from Barracks 2. Pick it like a level-up." % trainee[0].def.name, func(): train(trainee[0]), "", true])
+	n_tiles = tiles.size()
 	for i in tiles.size():
 		var sv: Array = tiles[i]
 		var tile := HubUI.ActionTile.new()
@@ -286,7 +292,7 @@ func _draw() -> void:
 		draw_texture_rect(hz, Rect2(x, 0, 32, 8), false)
 	var title := "QUARTERMASTER" if mode == "shop" else "BARRACKS"
 	Art.text(self, title, Vector2(24, 60), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
-	var sub := "Buy cards, gear and items. Card changes are at the Workshop." if mode == "shop" else "Hire replacements. Buy back spent dog tags."
+	var sub := "Buy cards, gear and items. Card changes are at the Workshop." if mode == "shop" else "Hire replacements. Buy back spent dog tags. Swap in reserves."
 	Art.text(self, sub, Vector2(24 + Art.text_width(title, 16) + 24, 58), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	var sc := "%d SCRIP" % Run.scrip
 	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 16) - 22, 44, 16, 16), false)
@@ -306,8 +312,9 @@ func _draw() -> void:
 			Art.text(self, "%d KILLED IN ACTION THIS RUN" % fallen if fallen else "THE SQUAD IS AT FULL STRENGTH", Vector2(24, 140), 8, Color("ff4d3d") if fallen else Color("62d26f"))
 		var lore := "Lose the last dog tag and a soldier is gone for good. %d names on the Memorial; recruits of a fallen soldier's class can inherit one of their abilities." % Run.meta.memorial.size()
 		var lines: Array = CardView.wrap_text(lore, 900, 16)
+		var ly := 150 + ((n_tiles + 2) / 3) * 84 - 10  # under the last row of tiles
 		for i in lines.size():
-			Art.text(self, lines[i], Vector2(24, 250 + i * 16 - (lines.size() - 1) * 8), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+			Art.text(self, lines[i], Vector2(24, ly + 12 + i * 14), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		# U3: the squad's looks, each with its restyle buttons below
 		Art.text(self, "SQUAD LOOKS: FREE", Vector2(24, 352), 8, Color("53d4e2"))
 		for i in Run.soldiers.size():
@@ -510,6 +517,30 @@ func enlist() -> void:
 		return
 	var s := Run.enlist(offers[i])
 	say("%s joins the company as a %s. Put them in the squad from the War Room." % [s.def.name, s.def.cls])
+	build()
+
+func swap_reserve() -> void:
+	## A soldier from the barracks takes a place in the squad: a fallen soldier's if there is one,
+	## else whoever you pick, who goes to the barracks in turn.
+	var res: Array = Run.barracks_pool()
+	if res.is_empty():
+		Sfx.play("deny")
+		return
+	var opts: Array = res.map(func(s): return {"kind": "service", "title": "RESERVE", "soldier": s, "name": s.def.name.to_upper(),
+		"text": "LV %d %s. %d dog tag%s." % [s.lvl, s.def.cls.to_upper(), s.tags, "" if s.tags == 1 else "s"]})
+	var i := await choose("WHO JOINS THE SQUAD?", opts)
+	if i < 0:
+		return
+	var s: Dictionary = res[i]
+	var out = null
+	if Run.fallen_slots().is_empty() and Run.soldiers.size() >= Data.SQUAD_MAX:
+		var o := await choose_soldier("WHO GOES TO THE BARRACKS FOR %s?" % s.def.name)
+		if o.is_empty():
+			return
+		out = o
+	Run.swap_in(s, out)
+	Sfx.play("buy")
+	say("%s joins the squad%s." % [s.def.name, "; %s waits in the barracks" % out.def.name if out != null else ""])
 	build()
 
 func cross_train() -> void:
