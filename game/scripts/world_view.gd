@@ -544,14 +544,15 @@ func draw_pad(u: Unit, pos: Vector2) -> void:
 		draw_rect(Rect2(pos.x - 6, by - 6, 12, 2), Color(1, 1, 1, 0.45))
 		Art.text(self, B.glyph, Vector2(pos.x + 1, by + 4), 8, C_DARK, HORIZONTAL_ALIGNMENT_CENTER, 0)
 		if word_ok(pos, false):  # a pad's name matters most when you stand at it
-			Art.text(self, B.name, Vector2(pos.x, by - 12), 8, B.c, HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, B.name, in_view(Vector2(pos.x, by - 12), B.name), 8, B.c, HORIZONTAL_ALIGNMENT_CENTER)
 	else:
 		var a := 0.35 + 0.15 * sin(b.t / 12.0)
 		draw_rect(Rect2(pos.x - 6, pos.y - 26, 12, 22), Color(B.c, a * 0.25))
 		draw_rect(Rect2(pos.x - 6, pos.y - 26, 12, 12), Color(B.c, a), false, 1.0)
 		Art.text(self, B.glyph, Vector2(pos.x + 1, pos.y - 16), 8, Color(B.c, 0.8), HORIZONTAL_ALIGNMENT_CENTER, 0)
 		if word_ok(pos, false):
-			Art.text(self, "%s IN %d" % [B.name, L.t], Vector2(pos.x, pos.y - 30), 8, Color(B.c, 0.85), HORIZONTAL_ALIGNMENT_CENTER)
+			var cd := "%s IN %d" % [B.name, L.t]
+			Art.text(self, cd, in_view(Vector2(pos.x, pos.y - 30), cd), 8, Color(B.c, 0.85), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_drill(u: Unit, d: Vector2, spin: bool) -> void:
 	## A drill bit held out in front: a steel cone along the bore line, its threads turning.
@@ -656,12 +657,12 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			if t >= 3 and b.t % 30 < 4:
 				draw_rect(Rect2(p.x + 5, p.y - 14, 2, 2), Color.WHITE)
 
-func word_ok(pos: Vector2, sel_too := true) -> bool:
+func word_ok(pos: Vector2, sel_too := true, reach := 40.0) -> bool:
 	## A pickup's word label gives way to the selected soldier's name tag right beside it, and to a
 	## Jackal's plate and tags or a POW's HELP! when one stands on it. The icon still shows.
 	if sel_too and b.state == "player" and b.sel != null and absf(b.sel.x - pos.x) < 70 and absf(b.sel.y - pos.y) < 60:
 		return false
-	return not b.units.any(func(e): return e.kind in ["enemy", "pow"] and not e.dead and not e.gone and absf(e.x - pos.x) < 40 and absf(e.y - pos.y) < 60)
+	return not b.units.any(func(e): return e.kind in ["enemy", "pow"] and not e.dead and not e.gone and absf(e.x - pos.x) < reach and absf(e.y - pos.y) < 60)
 
 func in_view(p: Vector2, text: String) -> Vector2:
 	## A centered world label pulled in so it never runs off either edge of the view.
@@ -758,7 +759,10 @@ func draw_relay(u: Unit, pos: Vector2) -> void:
 			Art.text(self, "HOLD %d/%d" % [hold, Data.RELAY_HOLD], pos + Vector2(0, -44), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 	else:
 		var bf: Dictionary = Data.RELAY_BUFFS[u.loot.buff]
-		Art.text(self, "RELAY: " + bf.name, pos + Vector2(0, -44), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+		var rl: String = "RELAY: " + bf.name
+		# a wide label: it gives way to any Jackal plate or tag it would run across
+		if word_ok(pos, false, Art.text_width(rl, 8) / 2.0 + 24):
+			Art.text(self, rl, in_view(pos + Vector2(0, -44), rl), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_sentry(u: Unit, pos: Vector2, white: bool) -> void:
 	## N2: a squat tripod turret in Bolt's orange, with its laser on whatever it will shoot.
