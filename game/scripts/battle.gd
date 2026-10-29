@@ -10441,16 +10441,11 @@ func sync_chunks() -> void:
 			continue
 		var holder: Node2D = c.node
 		var spr: Sprite2D = holder.get_child(0)
-		if c.topple != null:
-			var tp: Dictionary = c.topple
-			holder.position = Vector2(tp.px, tp.py)
-			holder.rotation = tp.dir * minf(tp.rot, PI / 2)
-			spr.position = Vector2(c.x0 * CELL - tp.px, c.y0 * CELL + c.oy - tp.py)
-		else:
-			holder.position = Vector2.ZERO
-			holder.rotation = 0
-			var jit := (randf() - .5) * 2 if c.shake < 6 else 0.0
-			spr.position = Vector2(c.x0 * CELL + jit, c.y0 * CELL + c.oy)
+		# the holder sits on the piece's centre of mass and turns with it
+		holder.position = c.pos
+		holder.rotation = c.ang
+		var jit := (randf() - .5) * 2 if c.shake < 6 else 0.0
+		spr.position = -c.com + Vector2(jit, 0)
 
 # ---------------------------------------------------------------- input
 func unit_at_p(p: Vector2):

@@ -749,196 +749,54 @@ func detach(cells: PackedInt32Array, cause) -> void:
 	if cells.size() > 30:
 		b.shake += 2
 
+# ---------------------------------------------------------------- falling chunks
+# A chunk is a small rigid body: it falls, slides, tips over edges and spins as it tumbles. It
+# collides with the cell grid at the centres of its edge cells, and a hard landing splinters it
+# into smaller pieces that fall on in turn. Once it comes to rest it is stamped back into the grid
+# (at whatever angle it lies) and the area is re-checked, so a collapse can cascade.
+const CH_E := 0.15          # bounce on a hard hit
+const CH_MU := 0.7          # friction against the ground
+const CH_BREAK := 4.6       # impact speed (px/tick) that splinters a 30-cell piece (about a 50px drop); big ones break sooner
+const CH_CHIP := 30.0       # impact speed x sqrt(cells) at which a heavy piece also gouges what it hits
+const CH_MAX := 48          # never more pieces than this in the air at once
+const CH_LIFE := 540        # a piece still moving after this many ticks is set down where it is
+
 func make_chunk(x0: int, y0: int, w: int, h: int, mask: PackedByteArray, sc: PackedByteArray, cause) -> Dictionary:
-	var bottoms: Array = []
+	## x0, y0: the world cell the mask's top-left cell came from (it also keeps the shader pattern stable).
 	var n := 0
+	var sx := 0.0
+	var sy := 0.0
 	for ry in h:
 		for rx in w:
 			if mask[ry * w + rx]:
 				n += 1
-				if ry == h - 1 or not mask[(ry + 1) * w + rx]:
-					bottoms.append(Vector2i(rx, ry))
-	var c := {"x0": x0, "y0": y0, "w": w, "h": h, "mask": mask, "sc": sc, "oy": 0.0, "vy": 0.0, "n": n,
-		"bottoms": bottoms, "hit": {}, "cause": cause, "shake": 0, "tip": null, "tipN": 0, "topple": null, "dead": false, "node": null}
+				sx += rx * CELL + 2.0
+				sy += ry * CELL + 2.0
+	var com: Vector2 = Vector2(sx, sy) / maxf(1, n)
+	var inertia := 0.0
+	var edge: Array = []
+	var steel := 0
+	for ry in h:
+		for rx in w:
+			var m: int = mask[ry * w + rx]
+			if not m:
+				continue
+			if m == STEEL:
+				steel += 1
+			var r: Vector2 = Vector2(rx * CELL + 2.0, ry * CELL + 2.0) - com
+			inertia += r.length_squared() + CELL * CELL / 6.0
+			if rx == 0 or ry == 0 or rx == w - 1 or ry == h - 1 or not mask[ry * w + rx - 1] or not mask[ry * w + rx + 1] \
+					or not mask[(ry - 1) * w + rx] or not mask[(ry + 1) * w + rx]:
+				edge.append(r)
+	var c := {"x0": x0, "y0": y0, "w": w, "h": h, "mask": mask, "sc": sc, "n": n, "com": com, "edge": edge,
+		"pos": Vector2(x0 * CELL, y0 * CELL) + com, "ang": 0.0, "vel": Vector2.ZERO, "av": 0.0,
+		"inv_m": 1.0 / maxf(1, n), "inv_i": 1.0 / maxf(1.0, inertia), "rad": sqrt(w * w + h * h) * CELL / 2.0,
+		"tough": 1.6 if steel * 2 > n else 1.0, "tall": h >= w * 1.4 and w >= 4 and h >= 8,
+		"hit": {}, "cause": cause, "shake": 0, "life": 0, "rest": 0, "nudge": 0, "gen": 0, "thud": 0,
+		"touch": [], "crack": null, "anchor": Vector2.ZERO, "gouged": -99, "anchor_ang": 0.0, "timber": false, "leaned": false, "dead": false, "node": null}
 	chunks.append(c)
 	b.chunk_created(c)
 	return c
-
-func chunk_fits(c: Dictionary, x0: int, oy: float) -> bool:
-	var d0 := int(floor(oy / CELL))
-	var d1 := int(ceil(oy / CELL))
-	var w: int = c.w
-	for ry in c.h:
-		for rx in w:
-			if not c.mask[ry * w + rx]:
-				continue
-			var cx: int = x0 + rx
-			if cx < 0 or cx >= cols:
-				return false
-			for d in [d0, d1]:
-				var cy: int = c.y0 + ry + d
-				if cy >= 0 and cy < ROWS and grid[cy * cols + cx]:
-					return false
-	return true
-
-func _com_dir(c: Dictionary, cols_hit: Dictionary) -> int:
-	var sx := 0.0
-	var n := 0
-	for i in c.mask.size():
-		if c.mask[i]:
-			sx += i % int(c.w)
-			n += 1
-	var com := sx / maxf(1, n)
-	var mid := 0.0
-	for k in cols_hit:
-		mid += k
-	mid /= cols_hit.size()
-	if absf(com - mid) > 1:
-		return int(signf(com - mid))
-	if c.cause != null and is_instance_valid_unit(c.cause):
-		var s := signf((c.x0 + c.w / 2.0) * CELL - c.cause.x)
-		return int(s) if s != 0 else 1
-	return 1
-
-func is_instance_valid_unit(u) -> bool:
-	return u is Object and u.get("x") != null
-
-func update_chunk(c: Dictionary) -> void:
-	c.shake += 1
-	if c.shake < 6:
-		return  # a beat of creak before it drops
-	if c.topple != null:
-		update_topple(c)
-		return
-	c.vy = minf(c.vy + Data.GRAV, 10)
-	var move: float = c.vy
-	while move > 0:
-		var st := minf(2, move)
-		move -= st
-		var noy: float = c.oy + st
-		var hit := false
-		var cols_hit := {}
-		for bt in c.bottoms:
-			var py: float = (c.y0 + bt.y + 1) * CELL + noy - 0.01
-			if py >= Data.H:
-				continue
-			if solid((c.x0 + bt.x) * CELL + 2, py):
-				hit = true
-				cols_hit[bt.x] = true
-		if hit:
-			# a tall piece caught on a narrow stub topples over instead of balancing there
-			if c.tip == null and c.h >= c.w * 1.4 and c.w >= 5 and cols_hit.size() <= 3:
-				var dir := _com_dir(c, cols_hit)
-				var by := 0
-				for bt in c.bottoms:
-					if cols_hit.has(bt.x):
-						by = maxi(by, bt.y)
-				var ks: Array = cols_hit.keys()
-				var px: float = (c.x0 + (ks.max() + 1 if dir > 0 else ks.min())) * CELL
-				c.topple = {"dir": dir, "rot": 0.0, "rv": 0.004, "px": px, "py": (c.y0 + by + 1) * CELL + c.oy}
-				Sfx.play("thud")
-				b.float_at((c.x0 + c.w / 2.0) * CELL, c.y0 * CELL - 10, "TIMBER!", Color("ffd23a"), true)
-				return
-			if c.tip == null and c.w >= 8 and cols_hit.size() <= 3 and c.oy < 20:
-				c.tip = _com_dir(c, cols_hit)
-				c.tipN = 0
-			if c.tip != null and c.tip != 0 and c.tipN < c.w + 4 and chunk_fits(c, c.x0 + c.tip, c.oy):
-				c.x0 += c.tip
-				c.tipN += 1
-				c.vy = minf(c.vy, 1)
-				return
-			c.oy = noy
-			land_chunk(c)
-			return
-		c.oy = noy
-	if c.y0 * CELL + c.oy > Data.WATER_Y:
-		b.splash((c.x0 + c.w / 2.0) * CELL)
-		if c.n > 20:
-			b.splash((c.x0 + c.w / 4.0) * CELL)
-		c.dead = true
-		return
-	for u in b.units:
-		if u.dead or u.gone or u.sunk or u.kind == "pow" or c.hit.has(u.id):
-			continue
-		var xs: Array = [u.x - u.w / 3.0, u.x, u.x + u.w / 3.0] if u.w > 40 else [u.x]
-		var done := false
-		for ux in xs:
-			var lx: int = int(floor(ux / CELL)) - c.x0
-			if lx < 0 or lx >= c.w:
-				continue
-			for py in [u.y - u.h + 3, u.y - u.h * 0.5]:
-				var ly: int = int(floor((py - c.oy) / CELL)) - c.y0
-				if ly >= 0 and ly < c.h and c.mask[ly * c.w + lx]:
-					c.hit[u.id] = true
-					if c.vy > 1.2:
-						var d := clampi(int(round(sqrt(c.n) * c.vy * 0.45)), 3, 50)
-						b.crush(u, d, c.cause, (-1 if u.x < (c.x0 + c.w / 2.0) * CELL else 1) * 3.5, 1.0)
-					done = true
-					break
-			if done:
-				break
-
-func update_topple(c: Dictionary) -> void:
-	var t: Dictionary = c.topple
-	t.rv = minf(t.rv + 0.0035, 0.09)
-	t.rot += t.rv
-	var a: float = t.dir * minf(t.rot, PI / 2)
-	var ca := cos(a)
-	var sa := sin(a)
-	for u in b.units:
-		if u.dead or u.gone or u.sunk or u.kind == "pow" or c.hit.has(u.id):
-			continue
-		for py in [u.y - u.h + 3, u.y - u.h * 0.5]:
-			var rx: float = u.x - t.px
-			var ry: float = py - t.py
-			var lx := rx * ca + ry * sa
-			var ly := -rx * sa + ry * ca
-			var mx: int = int(floor((lx + t.px) / CELL)) - c.x0
-			var my: int = int(floor((ly + t.py - c.oy) / CELL)) - c.y0
-			if mx >= 0 and mx < c.w and my >= 0 and my < c.h and c.mask[my * c.w + mx]:
-				c.hit[u.id] = true
-				var sp := maxf(2, t.rv * Vector2(rx, ry).length())
-				var d := clampi(int(round(sqrt(c.n) * sp * 0.45)), 3, 50)
-				b.crush(u, d, c.cause, t.dir * 4.0, -1.0)
-				break
-	if t.rot < PI / 2:
-		return
-	# lay it down: rotate every cell a quarter turn about the pivot, then drop it as a normal chunk
-	var cells: Array = []
-	for ry in c.h:
-		for rx in c.w:
-			var m: int = c.mask[ry * c.w + rx]
-			if not m:
-				continue
-			var wx: float = (c.x0 + rx) * CELL + 2 - t.px
-			var wy: float = (c.y0 + ry) * CELL + 2 + c.oy - t.py
-			var nx: float = t.px + (-wy if t.dir > 0 else wy)
-			var ny: float = t.py + (wx if t.dir > 0 else -wx)
-			cells.append([int(floor(nx / CELL)), int(floor(ny / CELL)), m, c.sc[ry * c.w + rx]])
-	var lift := 0
-	while lift < 40 and _blocked(cells, lift):
-		lift += 1
-	c.dead = true
-	for cl in cells:
-		cl[1] -= lift
-	var nc = chunk_from_cells(cells, c.cause)
-	if nc != null:
-		nc.hit = c.hit
-		nc.shake = 6
-		nc.vy = 2.0
-		nc.tip = 0
-	b.shake += 6
-	Sfx.play("thud")
-
-func _blocked(cells: Array, k: int) -> bool:
-	for cl in cells:
-		var cx: int = cl[0]
-		var cy: int = cl[1] - k
-		if cx < 0 or cx >= cols:
-			return true
-		if cy >= 0 and cy < ROWS and grid[cy * cols + cx]:
-			return true
-	return false
 
 func chunk_from_cells(cells: Array, cause):
 	cells = cells.filter(func(cl): return cl[0] >= 0 and cl[0] < cols and cl[1] < ROWS)
@@ -957,30 +815,365 @@ func chunk_from_cells(cells: Array, cause):
 	for cl in cells:
 		mask[(cl[1] - y0) * w + (cl[0] - x0)] = cl[2]
 		sc[(cl[1] - y0) * w + (cl[0] - x0)] = cl[3]
-	var c := make_chunk(x0, y0, w, h, mask, sc, cause)
-	c.tip = 0
-	return c
+	return make_chunk(x0, y0, w, h, mask, sc, cause)
 
-func land_chunk(c: Dictionary) -> void:
-	var dy := maxi(0, int(floor((c.oy - 0.01) / CELL)))
-	var s := dy * CELL
+func is_instance_valid_unit(u) -> bool:
+	return u is Object and u.get("x") != null
+
+func _normal_at(p: Vector2) -> Vector2:
+	## Which way is "out of the ground" at p: away from the solid cells around it.
+	var cx := int(floor(p.x / CELL))
+	var cy := int(floor(p.y / CELL))
+	var g := Vector2.ZERO
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			if dx == 0 and dy == 0:
+				continue
+			if solid((cx + dx) * CELL + 2, (cy + dy) * CELL + 2):
+				g -= Vector2(dx, dy) / float(dx * dx + dy * dy)
+	if g.length_squared() < 0.04:
+		return Vector2.UP
+	return g.normalized()
+
+func _point_vel(c: Dictionary, r: Vector2) -> Vector2:
+	return c.vel + Vector2(-c.av * r.y, c.av * r.x)
+
+func _collide(c: Dictionary) -> void:
+	var rot: Transform2D = Transform2D(c.ang, Vector2.ZERO)
+	var pts: Array = []
+	for e in c.edge:
+		var wp: Vector2 = c.pos + rot * e
+		if solid(wp.x, wp.y):
+			pts.append(wp)
+	c.touch = pts
+	if pts.is_empty():
+		return
+	var ns: Array = []
+	var push := Vector2.ZERO
+	var deep := 0.0
+	for wp in pts:
+		var n: Vector2 = _normal_at(wp)
+		ns.append(n)
+		push += n
+		var d: float = 1.0
+		while d < 8 and solid(wp.x + n.x * d, wp.y + n.y * d):
+			d += 1.0
+		deep = maxf(deep, d)
+	# how hard did it hit: the fastest closing speed at any contact, before the impulses soak it up
+	var hard := 0.0
+	var at: Vector2 = pts[0]
+	var hitv := Vector2.ZERO
+	for k in pts.size():
+		var v: Vector2 = _point_vel(c, pts[k] - c.pos)
+		var vn: float = -v.dot(ns[k])
+		if vn > hard:
+			hard = vn
+			at = pts[k]
+			hitv = v
+	for it in 4:
+		for k in pts.size():
+			var n: Vector2 = ns[k]
+			var r: Vector2 = pts[k] - c.pos
+			var vp: Vector2 = _point_vel(c, r)
+			var vn: float = vp.dot(n)
+			if vn >= 0:
+				continue
+			var rn: float = r.x * n.y - r.y * n.x
+			var j: float = -(1.0 + (CH_E if it == 0 and vn < -1.5 else 0.0)) * vn / (c.inv_m + rn * rn * c.inv_i)
+			c.vel += n * j * c.inv_m
+			c.av += rn * j * c.inv_i
+			var t := Vector2(-n.y, n.x)
+			vp = _point_vel(c, r)
+			var rt: float = r.x * t.y - r.y * t.x
+			var jt: float = clampf(-vp.dot(t) / (c.inv_m + rt * rt * c.inv_i), -CH_MU * j, CH_MU * j)
+			c.vel += t * jt * c.inv_m
+			c.av += rt * jt * c.inv_i
+	# push it back out of the ground along the average contact normal
+	if push.length_squared() < 0.01:
+		push = Vector2.UP
+	c.pos += push.normalized() * minf(deep, 3.0) * 0.8
+	if hard > 2.5 and c.life - c.thud > 8:
+		c.thud = c.life
+		b.shake = minf(18, b.shake + sqrt(c.n) * hard * 0.1)
+		Sfx.play("thud")
+		for k in range(0, pts.size(), 3):
+			b.dust(pts[k].x, pts[k].y, Color("c9b38a"), 2)
+	# a tall piece landing on its foot is never perfectly true: give it the lean it was going to find
+	if c.tall and c.gen == 0 and absf(c.ang) < 0.1 and hard > 1.0 and not c.leaned:
+		c.leaned = true
+		c.av += _lean_dir(c) * (0.004 + randf() * 0.004)
+	# fall damage: the bigger the piece, the less of a drop it takes to break it
+	var stress: float = hard * pow(c.n / 30.0, 0.25) / c.tough
+	if stress > CH_BREAK and c.crack == null and c.n >= 10 and c.gen < 3:
+		c.crack = {"at": at, "hard": stress}
+	if hard * sqrt(c.n) > CH_CHIP and c.n >= 30 and c.gen < 2 and c.life - c.gouged > 10:
+		c.gouged = c.life
+		_gouge(at, hard * sqrt(c.n), hitv, c.cause)
+
+func _lean_dir(c: Dictionary) -> float:
+	## Tip toward the side the centre of mass already favours over the contacts, else away from whoever caused it.
+	var lo := INF
+	var hi := -INF
+	for p in c.touch:
+		lo = minf(lo, p.x)
+		hi = maxf(hi, p.x)
+	if lo < INF and absf(c.pos.x - (lo + hi) / 2.0) > 1:
+		return signf(c.pos.x - (lo + hi) / 2.0)
+	if c.cause != null and is_instance_valid_unit(c.cause) and c.cause.x != c.pos.x:
+		return signf(c.pos.x - c.cause.x)
+	return 1.0 if randf() < 0.5 else -1.0
+
+func _gouge(at: Vector2, force: float, hitv: Vector2, cause) -> void:
+	## A heavy piece coming down hard breaks off a lump of whatever it hits and knocks it along,
+	## and anything that lump was holding up comes down after it.
+	var r: float = minf(18.0, 6.0 + (force - CH_CHIP) / 3.0)
+	var cells: Array = []
+	for cy in range(int(floor((at.y - r) / CELL)), int(floor((at.y + r) / CELL)) + 1):
+		for cx in range(int(floor((at.x - r) / CELL)), int(floor((at.x + r) / CELL)) + 1):
+			if cx < 0 or cy < 0 or cx >= cols or cy >= WATER_ROW - 1:
+				continue
+			var i: int = cy * cols + cx
+			var m: int = grid[i]
+			# plain ground holds unless the hit is huge; riveted steel always holds
+			if m == 0 or m == STEEL or pins.has(i) or (m == 1 and force < 80):
+				continue
+			if Vector2(cx * CELL + 2, cy * CELL + 2).distance_to(at) <= r and randf() < 0.8:
+				cells.append([cx, cy, m, data[i * 2 + 1]])
+				set_cell(cx, cy, 0)
+	if cells.is_empty():
+		return
+	if cells.size() < 4 or chunks.size() >= CH_MAX:
+		for cl in cells:
+			b.debris(cl[0] * CELL + 2, cl[1] * CELL + 2, cl[2])
+	else:
+		var nc = chunk_from_cells(cells, cause)
+		if nc != null:
+			nc.vel = hitv * 0.4
+			nc.shake = 6
+			nc.gen = 2
+	check_floating(at.x, at.y, r + 40, cause)
+
+func _splinter(c: Dictionary) -> void:
+	## Break a piece that hit too hard into 2-6 smaller ones along jagged cracks; crumbs near the impact turn to dust.
+	var cr: Dictionary = c.crack
+	var hard: float = cr.hard
+	var inv: Transform2D = Transform2D(c.ang, c.pos).affine_inverse()
+	var hit_l: Vector2 = inv * cr.at + c.com   # impact point in mask pixels
+	var w: int = c.w
+	var cells: Array = []
+	for i in c.mask.size():
+		if c.mask[i]:
+			cells.append(i)
+	var k: int = clampi(2 + int((hard - CH_BREAK) / 1.6) + (1 if c.n > 160 else 0), 2, 6)
+	k = mini(k, cells.size() / 5)
+	if k < 2 or chunks.size() + k > CH_MAX:
+		return
+	var seeds: Array = []
+	for s in k:
+		var i: int = cells[randi() % cells.size()]
+		seeds.append(Vector2(i % w, i / w) * CELL + Vector2(2, 2))
+	var dust_r: float = 3.0 + hard * 0.8
+	var part := PackedInt32Array(); part.resize(c.mask.size()); part.fill(-1)
+	var dusted := 0
+	for i in cells:
+		var p: Vector2 = Vector2(i % w, i / w) * CELL + Vector2(2, 2)
+		if p.distance_to(hit_l) < dust_r and randf() < 0.6:
+			if dusted % 2 == 0:
+				var wp: Vector2 = Transform2D(c.ang, c.pos) * (p - c.com)
+				b.debris(wp.x, wp.y, c.mask[i])
+			dusted += 1
+			continue
+		var best := 0
+		var bd := INF
+		for s in k:
+			var d: float = p.distance_to(seeds[s]) + hash2(c.x0 * 7 + i % w, c.y0 * 13 + i / w) * 6.0
+			if d < bd:
+				bd = d
+				best = s
+		part[i] = best
+	# every connected run of cells inside one region becomes its own piece
+	var seen := PackedByteArray(); seen.resize(c.mask.size())
+	var rot: Transform2D = Transform2D(c.ang, Vector2.ZERO)
+	var made := 0
+	for i0 in cells:
+		if part[i0] < 0 or seen[i0]:
+			continue
+		var reg: int = part[i0]
+		var comp: Array = [i0]
+		seen[i0] = 1
+		var h: int = 0
+		while h < comp.size():
+			var i: int = comp[h]
+			h += 1
+			var x: int = i % w
+			for nb in [i - 1 if x > 0 else -1, i + 1 if x < w - 1 else -1, i - w, i + w]:
+				if nb >= 0 and nb < part.size() and not seen[nb] and part[nb] == reg:
+					seen[nb] = 1
+					comp.append(nb)
+		if comp.size() < 4:
+			for i in comp:
+				var wp: Vector2 = c.pos + rot * (Vector2(i % w, i / w) * CELL + Vector2(2, 2) - c.com)
+				b.debris(wp.x, wp.y, c.mask[i], true)
+			continue
+		var bx0 := 1 << 30
+		var by0 := 1 << 30
+		var bx1 := -1
+		var by1 := -1
+		for i in comp:
+			bx0 = mini(bx0, i % w); bx1 = maxi(bx1, i % w); by0 = mini(by0, i / w); by1 = maxi(by1, i / w)
+		var nw: int = bx1 - bx0 + 1
+		var nh: int = by1 - by0 + 1
+		var mask := PackedByteArray(); mask.resize(nw * nh)
+		var sc := PackedByteArray(); sc.resize(nw * nh)
+		for i in comp:
+			var j: int = (i / w - by0) * nw + (i % w - bx0)
+			mask[j] = c.mask[i]
+			sc[j] = c.sc[i]
+		var nc: Dictionary = make_chunk(c.x0 + bx0, c.y0 + by0, nw, nh, mask, sc, c.cause)
+		# place it where it sat inside the parent, moving the way that part of the parent was moving
+		var off: Vector2 = Vector2(bx0, by0) * CELL + nc.com - c.com
+		var r: Vector2 = rot * off
+		nc.pos = c.pos + r
+		nc.ang = c.ang
+		var away: Vector2 = r.normalized() if r.length_squared() > 1 else Vector2(randf() - 0.5, -1).normalized()
+		nc.vel = _point_vel(c, r) * 0.6 + away * (0.3 + randf() * 0.3 + hard * 0.04) + Vector2(0, -0.2 - randf() * 0.3)
+		nc.av = c.av * 0.6 + (randf() - 0.5) * 0.03
+		nc.hit = c.hit.duplicate()
+		nc.shake = 6
+		nc.gen = c.gen + 1
+		nc.timber = true
+		nc.thud = 0
+		made += 1
+	c.dead = true
+	Sfx.play("thud")
+	b.shake = minf(18, b.shake + 3 + made)
+	if c.n > 40 and c.gen == 0:
+		b.float_at(cr.at.x, cr.at.y - 16, "CRUMBLE!", Color("e8dcc2"), true)
+
+func update_chunk(c: Dictionary) -> void:
+	c.shake += 1
+	if c.shake < 6:
+		return  # a beat of creak before it drops
+	c.life += 1
+	c.vel.y += Data.GRAV
+	if c.vel.length() > 10:
+		c.vel = c.vel.normalized() * 10
+	c.av = clampf(c.av * (0.9 if c.touch.size() else 0.997), -0.15, 0.15)  # scraping along the ground soaks up spin
+	var sub: int = clampi(int(ceil(maxf(c.vel.length(), absf(c.av) * c.rad) / 2.0)), 1, 6)
+	var touched := false
+	var feet: Array = []
+	for s in sub:
+		c.pos += c.vel / sub
+		c.ang += c.av / sub
+		_collide(c)
+		touched = touched or c.touch.size() > 0
+		feet.append_array(c.touch)
+		if c.crack != null:
+			_splinter(c)
+			if c.dead:
+				return
+			c.crack = null
+	if c.tall and not c.timber and absf(c.ang) > 0.2:
+		c.timber = true
+		Sfx.play("thud")
+		b.float_at(c.pos.x, c.pos.y - c.h * CELL / 2.0 - 10, "TIMBER!", Color("ffd23a"), true)
+	if c.pos.y > Data.WATER_Y + 8 or c.pos.y > Data.H + 40:
+		b.splash(c.pos.x)
+		if c.n > 20:
+			b.splash(c.pos.x + c.w * CELL / 4.0)
+		c.dead = true
+		return
+	_crush_units(c)
+	# at rest once it has sat on something without going anywhere for a few ticks
+	if touched and c.pos.distance_to(c.anchor) < 1.5 and absf(c.ang - c.anchor_ang) < 0.04:
+		c.rest += 1
+	else:
+		c.rest = 0
+		c.anchor = c.pos
+		c.anchor_ang = c.ang
+	if c.rest >= 12:
+		# no perfect balancing acts: a piece resting with its weight right at the edge of what holds it goes over
+		var lo := INF
+		var hi := -INF
+		for p in feet:
+			lo = minf(lo, p.x)
+			hi = maxf(hi, p.x)
+		var margin: float = maxf(2.0, (hi - lo) * 0.2)
+		if c.n >= 8 and c.nudge < 6 and (c.pos.x < lo + margin or c.pos.x > hi - margin):
+			c.nudge += 1
+			c.rest = 0
+			c.anchor = Vector2(INF, INF)
+			c.av += signf(c.pos.x - (lo + hi) / 2.0) * 0.012
+			c.vel.x += signf(c.pos.x - (lo + hi) / 2.0) * 0.3
+			return
+		settle_chunk(c)
+	elif c.life > CH_LIFE:
+		settle_chunk(c)
+
+func _crush_units(c: Dictionary) -> void:
+	var inv: Transform2D = Transform2D(c.ang, c.pos).affine_inverse()
+	var w: int = c.w
+	for u in b.units:
+		if u.dead or u.gone or u.sunk or u.kind == "pow" or c.hit.has(u.id):
+			continue
+		if absf(u.x - c.pos.x) > c.rad + u.w or absf(u.y - c.pos.y) > c.rad + u.h:
+			continue
+		var xs: Array = [u.x - u.w / 3.0, u.x, u.x + u.w / 3.0] if u.w > 40 else [u.x]
+		var done := false
+		for ux in xs:
+			for py in [u.y - u.h + 3, u.y - u.h * 0.5]:
+				var l: Vector2 = inv * Vector2(ux, py) + c.com
+				var lx: int = int(floor(l.x / CELL))
+				var ly: int = int(floor(l.y / CELL))
+				if lx < 0 or ly < 0 or lx >= w or ly >= c.h or not c.mask[ly * w + lx]:
+					continue
+				c.hit[u.id] = true
+				var vp: Vector2 = _point_vel(c, Vector2(ux, py) - c.pos)
+				var sp: float = vp.length()
+				if sp > 1.2:
+					var d: int = clampi(int(round(sqrt(c.n) * sp * 0.45)), 3, 50)
+					var kvx: float = signf(vp.x) * 4.0 if absf(vp.x) > 1 else (-1.0 if u.x < c.pos.x else 1.0) * 3.5
+					b.crush(u, d, c.cause, kvx, 1.0 if vp.y > absf(vp.x) else -1.0)
+				done = true
+				break
+			if done:
+				break
+
+func settle_chunk(c: Dictionary) -> void:
+	## Stamp the resting piece back into the grid at the angle it came to rest, then look for anything it left hanging.
+	var ang: float = c.ang
+	var q: float = roundf(ang / (PI / 2)) * (PI / 2)
+	if absf(ang - q) < 0.12:
+		ang = q  # near enough square: lay it square
+	var xf: Transform2D = Transform2D(ang, c.pos)
+	var inv: Transform2D = xf.affine_inverse()
+	var w: int = c.w
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for k in 4:
+		var p: Vector2 = xf * (Vector2(w * CELL if k & 1 else 0, c.h * CELL if k & 2 else 0) - c.com)
+		lo = Vector2(minf(lo.x, p.x), minf(lo.y, p.y))
+		hi = Vector2(maxf(hi.x, p.x), maxf(hi.y, p.y))
 	# debris that came down on a vehicle shatters; elsewhere it settles around bodies instead of lifting them
 	var shatter := false
 	for u in b.units:
 		if c.hit.has(u.id) and u.w > 40:
 			shatter = true
 	var boxes: Array = b.units.filter(func(u): return not u.dead and not u.gone and not u.sunk and u.kind != "pow")
-	for ry in c.h:
-		for rx in c.w:
-			var m: int = c.mask[ry * c.w + rx]
-			if not m:
-				continue
-			var cx: int = c.x0 + rx
-			var cy: int = c.y0 + ry + dy
+	for cy in range(int(floor(lo.y / CELL)), int(ceil(hi.y / CELL)) + 1):
+		for cx in range(int(floor(lo.x / CELL)), int(ceil(hi.x / CELL)) + 1):
 			if cx < 0 or cy < 0 or cx >= cols or cy >= ROWS:
 				continue
 			var wx := cx * CELL + 2.0
 			var wy := cy * CELL + 2.0
+			var l: Vector2 = inv * Vector2(wx, wy) + c.com
+			var lx: int = int(floor(l.x / CELL))
+			var ly: int = int(floor(l.y / CELL))
+			if lx < 0 or ly < 0 or lx >= w or ly >= c.h:
+				continue
+			var m: int = c.mask[ly * w + lx]
+			if not m:
+				continue
 			var inside := shatter
 			if not inside:
 				for u in boxes:
@@ -991,16 +1184,10 @@ func land_chunk(c: Dictionary) -> void:
 				if randf() < 0.25:
 					b.debris(wx, wy, m)
 				continue
-			var i := cy * cols + cx
+			var i: int = cy * cols + cx
 			if not grid[i]:
 				set_cell(cx, cy, m)
-				data[i * 2 + 1] = c.sc[ry * c.w + rx]
-	if c.vy > 2.5:
-		b.shake = minf(18, b.shake + sqrt(c.n) * c.vy * 0.12)
-		Sfx.play("thud")
-		for k in range(0, c.bottoms.size(), 3):
-			var bt: Vector2i = c.bottoms[k]
-			b.dust((c.x0 + bt.x) * CELL + 2, (c.y0 + bt.y + 1) * CELL + s, Color("c9b38a"), 2)
+				data[i * 2 + 1] = c.sc[ly * w + lx]
 	for u in b.units:
 		if u.dead or u.gone or u.sunk:
 			continue
@@ -1009,11 +1196,15 @@ func land_chunk(c: Dictionary) -> void:
 			u.y -= CELL
 			k += 1
 	c.dead = true
-	check_floating((c.x0 + c.w / 2.0) * CELL, (c.y0 + c.h / 2.0) * CELL + s, maxf(c.w, c.h) * CELL / 2.0 + 8, c.cause)
+	check_floating(c.pos.x, c.pos.y, c.rad + 8, c.cause)
+
+var chunk_usec := 0  # time spent moving falling pieces, for the crumble test
 
 func update_chunks() -> void:
+	var t0 := Time.get_ticks_usec()
 	for c in chunks.duplicate():
 		update_chunk(c)
+	chunk_usec += Time.get_ticks_usec() - t0
 	var keep: Array = []
 	for c in chunks:
 		if c.dead:
