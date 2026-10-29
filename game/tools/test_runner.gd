@@ -2042,8 +2042,9 @@ func fieldfix() -> void:
 	var line: float = b.cam_x + Battle.W * 0.72
 	var foe: Unit = null
 	for e in b.units:
-		if e.team == "enemy" and not e.dead and e.x >= line:
-			e.x = b.cam_x + 2000  # out of the way
+		if e.team == "enemy" and not e.dead and e.x < b.cam_x + 1200:
+			e.dead = true  # clear the screen so only the test's grunt is behind the line
+			e.gone = true
 	foe = b.mk_enemy("grunt", line - 60, b.T.stand_y(line - 60, 0))
 	foe.active = true
 	b.units.append(foe)
@@ -2072,6 +2073,17 @@ func fieldfix() -> void:
 	check(others.all(func(o): return o.move_left >= b.full_move(o)), "and their movement is refilled")
 	await frames_wait(10)
 	await shot("fieldfix_fallin")
+	# the SV-001 Slug drives itself: it says so over it and on hover
+	b.vpop = {}
+	b.call_slug(u)
+	var sl: Unit = b.units.back()
+	await until(func(): return not sl.air, 600)
+	for o in b.squad_alive():
+		o.x = minf(o.x, sl.x - 60)
+	check(b.unit_at_p(Vector2(sl.x, sl.y - 20)) == sl, "hovering the Slug finds it for the info box")
+	get_viewport().warp_mouse(b.get_global_transform_with_canvas() * Vector2(sl.x, sl.y - 20))
+	await frames_wait(6)
+	await shot("fieldfix_slug")
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)

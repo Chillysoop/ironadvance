@@ -251,8 +251,11 @@ func draw_unit(u: Unit) -> void:
 			var moving: bool = u.kind == "hulk"
 			draw_vehicle(u.loot.type, pos, u.face, white, moving, false, vc)
 			draw_vehicle(u.loot.type, pos, u.face, white, moving, true, vc)
-			if u.kind == "ride" and b.t % 60 < 44:
-				Art.text(self, "HIJACK " + Data.VEHICLES[u.loot.type].name, pos + Vector2(0, -Data.VEHICLES[u.loot.type].seat - 26), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
+			if u.kind == "ride":
+				var ly: float = -Data.VEHICLES[u.loot.type].seat - 26
+				if b.t % 60 < 44:
+					Art.text(self, "HIJACK " + Data.VEHICLES[u.loot.type].name, pos + Vector2(0, ly - 12), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
+				Art.text(self, "WALK ONTO IT TO DRIVE", pos + Vector2(0, ly), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif u.kind == "hulk" and b.t % 8 < 4:
 				draw_rect(Rect2(pos.x - 2, pos.y - 30, 4, 4), Color("ff4d3d"))
 			return
@@ -864,7 +867,9 @@ func draw_slug(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_set_transform(pos, 0, Vector2(-Art.PX, Art.PX))
 	draw_texture_rect_region(tx, Rect2(-32, -40, 64, 40), Rect2(ph * 64, 0, 64, 40), mod)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
-	Art.text(self, "SV-001", pos + Vector2(0, -92), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+	Art.text(self, "SV-001", pos + Vector2(0, -102), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+	# it drives itself: say so, so nobody walks up to it expecting to climb in
+	Art.text(self, "AUTO: NO BOARDING", pos + Vector2(0, -90), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_wreck(u: Unit, pos: Vector2) -> void:
 	## A burnt-out jeep on its rims. Stripped ones lose the panels and the glint.
@@ -1643,6 +1648,9 @@ func draw_hover(cv: CanvasItem) -> void:
 		lines = ["SENTRY GUN  HP %d/%d" % [h.hp, h.max_hp], "Shoots the nearest enemy along its laser", "at the end of your turn. Your shots pass it."]
 	elif h.kind == "sticky":
 		lines = ["STICKY CHARGE  BLAST %d" % int(h.loot.r), "A Clacker sets it off. So does a Jackal", "stepping on it in their phase."]
+	elif h.kind == "slug":
+		var left: int = h.loot.get("turns", 1)
+		lines = ["SV-001 SLUG  %d ROUND%s LEFT" % [left, "" if left == 1 else "S"], "Your Metal Slug drives itself: after your turn it rolls forward,", "crushes Jackals in its way and shells the three nearest.", "NOBODY CAN CLIMB IN. To drive, walk onto a parked Jackal", "vehicle (the ones marked HIJACK)."]
 	elif h.kind == "ride":
 		var V: Dictionary = Data.VEHICLES[h.loot.type]
 		var hp: int = h.loot.get("hp", -1)

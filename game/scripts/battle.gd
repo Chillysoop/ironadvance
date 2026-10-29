@@ -6326,19 +6326,24 @@ func fall_in(who: Unit) -> void:
 	back.sort_custom(func(a, c): return a.x > c.x)
 	var slot := who.x - 34
 	for s in back:
-		var tx := maxf(slot, s.x)
+		# first look for footing level with the pusher (a roof he's on), then for any safe ground
+		var tx: float = s.x
 		var ty = null
-		var k := 0
-		while ty == null and k < 80 and tx > s.x:
-			for lift in [40.0, 120.0, 240.0]:
-				ty = T.stand_y(tx, maxf(0, who.y - lift))
-				if ty != null and (ty > WATER_Y - 2 or mine_under(s, tx, ty, 6) != null or absf(ty - who.y) > 160):
-					ty = null
-				if ty != null:
-					break
-			if ty == null:
-				tx -= 6
-			k += 1
+		for near in [true, false]:
+			tx = maxf(slot, s.x)
+			var k := 0
+			while ty == null and k < 80 and tx > s.x:
+				for lift in ([40.0, 120.0, 240.0] if near else [400.0]):
+					ty = T.stand_y(tx, maxf(0, who.y - lift))
+					if ty != null and (ty > WATER_Y - 2 or mine_under(s, tx, ty, 6) != null or (near and absf(ty - who.y) > 160)):
+						ty = null
+					if ty != null:
+						break
+				if ty == null:
+					tx -= 6
+				k += 1
+			if ty != null:
+				break
 		if ty != null and tx > s.x + 4:
 			s.walk = null; s.vx = 0; s.vy = 0; s.hang = false
 			s.face = 1
