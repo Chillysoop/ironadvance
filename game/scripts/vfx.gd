@@ -6,6 +6,7 @@ extends Node2D
 
 const DT := 1.0 / 60.0
 const MAX := 80
+const NO_BLOOD := ["mg", "jwalker", "gunship", "dicokka", "prism", "burrow", "hiveship", "shipplate", "droppod", "vgate", "boss"]
 
 @onready var b: Battle = get_parent()
 var back_node: Node2D
@@ -16,6 +17,8 @@ var attached := {}    # "unit id:kind" -> effect riding on that unit (burn fire,
 var adr_seen := {}    # unit id -> adrenaline last tick, to catch PUMPED and Overdrive ready
 var sil_cache := {}   # sheet|anim|frame -> [xs, ys] opaque pixels relative to the anchor
 var sheet_img := {}   # sheet -> Image
+var hp_seen := {}     # unit id -> hp last tick, to catch heals (V14)
+var pools: Array = [] # [acid or gas dictionary, effect] for the V10 puddles and clouds
 
 func _ready() -> void:
 	back_node = b.get_node("VfxBack")
@@ -58,6 +61,11 @@ func watch() -> void:
 		keep(u, "burn", vis and u.has_st("burn"), seen)
 		keep(u, "stun", vis and u.has_st("stun"), seen)
 		keep(u, "dome", vis and u.dome > 0 and not u.fl.get("vharr", false), seen)
+		keep(u, "toxic", vis and u.has_st("toxic"), seen)
+		var hp0: int = hp_seen.get(u.id, u.hp)
+		hp_seen[u.id] = u.hp
+		if vis and u.hp > hp0 and hp0 > 0 and not u.is_prop() and not u.is_pickup():
+			heal(u)
 		if u.team == "squad":
 			var was: int = adr_seen.get(u.id, u.adr)
 			adr_seen[u.id] = u.adr
@@ -69,6 +77,27 @@ func watch() -> void:
 		if not seen.has(key):
 			attached[key].stop()
 			attached.erase(key)
+	watch_pools()
+
+func watch_pools() -> void:
+	## V10: a bubbling puddle for each acid pool and a churning cloud for each gas cloud, stopped
+	## when the pool dries up or the cloud clears.
+	var live: Array = b.acids + b.gases
+	for i in range(pools.size() - 1, -1, -1):
+		if not live.any(func(d): return is_same(d, pools[i][0])):
+			pools[i][1].stop()
+			pools.remove_at(i)
+	for d in live:
+		if pools.any(func(p): return is_same(p[0], d)):
+			continue
+		var e: SfPoison
+		if b.acids.any(func(a): return is_same(a, d)):
+			var gy: float = ground_fn(d.y).call(d.x)
+			e = SfPoison.puddle(d.x, gy if gy < 1e8 else d.y, d.r, ground_fn(d.y))
+		else:
+			e = SfPoison.gas(d.x, d.y, d.r, ground_fn(d.y))
+		pools.append([d, e])
+		add(e)
 
 func keep(u: Unit, kind: String, want: bool, seen: Dictionary) -> void:
 	var key := "%d:%s" % [u.id, kind]
@@ -81,6 +110,8 @@ func keep(u: Unit, kind: String, want: bool, seen: Dictionary) -> void:
 	var e
 	if kind == "burn":
 		e = SfFire.new(src, 0.7, b.wind * 20.0)
+	elif kind == "toxic":
+		e = SfPoison.aura(func(): return Vector2(u.x, u.y), src, ground_fn(u.y))
 	elif kind == "dome":
 		e = SfShield.new(func(): return Vector2(u.x, u.y), dome_r(u), ground_fn(u.y), SfShield.VHARR)
 	else:
@@ -111,6 +142,30 @@ func dash(u: Unit) -> SfMovement:
 
 func power_up(u: Unit, palette: Array) -> void:
 	add(SfPowerUp.new(func(): return Vector2(u.x, u.y), silhouette(u), palette, 0.55))
+
+func heal(u: Unit) -> void:
+	add(SfHeal.new(func(): return Vector2(u.x, u.y), func(): return [] if u.dead or u.gone else silhouette(u), 12 if u.h < 50 else 18))
+
+func bleed(u: Unit, src, amt: int) -> void:
+	## V6: flesh bleeds where it was hit, sprayed away from whoever hit it. Vharr bleed ichor.
+	if not Run.meta.get("blood", true):
+		return
+	if not u.kind in ["soldier", "enemy", "pow", "dog"] or u.type in NO_BLOOD or b.is_boss(u) or u.mech != null:
+		return
+	if u.kind == "enemy" and Data.ETYPES.get(u.type, {}).get("static", false):
+		return
+	var hy := u.y - u.h * 0.55
+	var a := -PI / 2 + randf_range(-0.6, 0.6)
+	if src is Unit and src != u:
+		a = atan2(clampf(hy - (src.y - src.h / 2.0), -60, 60) - 30, u.x - src.x)
+	var vh: bool = b.faction(u) == "vharr"
+	add(SfBlood.new(u.x, hy, a, ground_fn(u.y), func(): return Vector2(u.x, u.y), clampf(amt / 10.0, 0.35, 1.4), 1.0, SfBlood.ICHOR if vh else SfBlood.RED))
+
+func slash(x: float, y: float, face: float, sc: float) -> void:
+	add(SfSlash.new(x, y, face, ground_fn(y + 40), 0.5 * sc))
+
+func pickup(u: Unit, p: Unit, scrip: bool) -> void:
+	add(SfPickup.new(p.x, p.y - 10, "coin" if scrip else "gem", func(): return Vector2(u.x, u.y - u.h * 0.5)))
 
 func paint() -> void:
 	var cis := [back_node.get_canvas_item(), get_canvas_item(), light_node.get_canvas_item()]

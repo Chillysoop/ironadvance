@@ -294,6 +294,8 @@ func collect(u: Unit, p: Unit) -> void:
 	## gear waits for an equip-or-stash decision after the current action.
 	p.gone = true
 	var L: Dictionary = p.loot
+	if vfx != null:
+		vfx.pickup(u, p, L.type == "scrip")
 	match L.type:
 		"scrip":
 			give_scrip(L.n, p.x, p.y - 20)
@@ -760,6 +762,10 @@ func steel_rain(x: float, n: int, by) -> void:
 	## Steel Rain / Demo Team: girders appear high over the marker and fall.
 	banner("STEEL RAIN!", Color("c9d1da"))
 	Sfx.play("alarm")
+	if vfx != null:
+		# V17: a red beacon marks where the girders come down
+		var by_y = T.stand_y(x, 0)
+		vfx.add(SfPillar.new(x, by_y if by_y != null else WATER_Y, 0.9, 6.0 + n * 3.0, 0.2))
 	for k in n:
 		var gx := x + (k - (n - 1) / 2.0) * 44.0
 		var gy := 20.0 + (k % 2) * 16.0
@@ -882,6 +888,13 @@ func heel(u: Unit, rx: Unit) -> void:
 	await dog_leap(rx, Vector2(bx, gy if gy != null else u.y))
 	rx.face = u.face
 
+func slash_fx(x: float, y: float, sc: float, face: int) -> void:
+	## A melee cut: the V7 pixel slash when the effects layer is up, the old swipe otherwise.
+	if vfx != null:
+		vfx.slash(x, y, face, sc)
+	else:
+		fx.append({"kind": "slash", "x": x, "y": y, "t": 0, "dur": 12 if sc > 1 else 10, "sc": sc, "face": face})
+
 func dog_bite(u: Unit, by: Unit, tg: Unit, dmg: Array, o := {}) -> void:
 	## One bite. Track's perks ride on every dog, his own Rex or the pack's.
 	if tg.dead:
@@ -889,7 +902,7 @@ func dog_bite(u: Unit, by: Unit, tg: Unit, dmg: Array, o := {}) -> void:
 	by.face = 1 if tg.x >= by.x else -1
 	by.pose = "throw"; by.pose_t = 10
 	Sfx.play("slash", -4)
-	fx.append({"kind": "slash", "x": tg.x, "y": tg.y - tg.h / 2.0, "t": 0, "dur": 10, "sc": 1.0, "face": by.face})
+	slash_fx(tg.x, tg.y - tg.h / 2.0, 1.0, by.face)
 	var d := ri(dmg[0], dmg[1]) + (3 if u.perk("bigdog") else 0)
 	if o.get("double", false):
 		d *= 2
@@ -1808,7 +1821,7 @@ func _act_iaido(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
 			T.carve(pt.x, pt.y, 7, u)
 	for o in L.hit:
 		damage(o, c.iaido, u, {"melee": true})
-		fx.append({"kind": "slash", "x": o.x, "y": o.y - o.h / 2.0, "t": 0, "dur": 12, "sc": 1.6, "face": u.face})
+		slash_fx(o.x, o.y - o.h / 2.0, 1.6, u.face)
 	float_text(u, "IAIDO", Color("e0f4ff"), true)
 	await wait(16)
 
@@ -2540,6 +2553,8 @@ func ice_crack(u: Unit) -> void:
 		return
 	float_text(u, "THE ICE BREAKS!", Color("9fe3f0"), true)
 	Sfx.play("splash")
+	if vfx != null:
+		vfx.add(SfIce.new(u.x, u.y, vfx.ground_fn(u.y), clampf(u.w / 40.0, 0.8, 1.6)))
 	T.carve(u.x, u.y + 2, 20.0, null)
 	u.air = true
 	u.walk = null
@@ -3968,6 +3983,8 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 				float_text(tg, "LAZARUS!", Color("62d26f"), true)
 				log_msg("Hex drags %s back up." % tg.def.name)
 		tg.hp -= amt
+		if vfx != null and amt > 0 and not o.get("status", false):
+			vfx.bleed(tg, src, amt)
 		tg.pose = "hurt"; tg.pose_t = 16
 		Sfx.play("hurt")
 		float_text(tg, "-%d" % amt, Color("ff4d3d"), o.get("crit", false))
@@ -3977,6 +3994,8 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 			gain_adr(tg, amt * 5)
 	else:
 		tg.hp -= amt
+		if vfx != null and amt > 0 and not o.get("status", false):
+			vfx.bleed(tg, src, amt)
 		tg.pose = "hurt"; tg.pose_t = 12
 		float_text(tg, str(amt), Color("ffb23e") if o.get("crit", false) else Color.WHITE, o.get("crit", false))
 		if own != null and tg.team == "enemy":
@@ -5800,7 +5819,7 @@ func _act_melee(u: Unit, idx: int, c: Dictionary, tg: Unit, sc: bool) -> void:
 	u.face = 1 if tg.x >= u.x else -1
 	u.pose = "throw"; u.pose_t = 16
 	Sfx.play("slash")
-	fx.append({"kind": "slash", "x": tg.x, "y": tg.y - tg.h / 2.0, "t": 0, "dur": 12, "sc": 1.6, "face": u.face})
+	slash_fx(tg.x, tg.y - tg.h / 2.0, 1.6, u.face)
 	await wait(6)
 	var d := ri(c.dmg[0], c.dmg[1])
 	if sc:
@@ -8243,7 +8262,7 @@ func enemy_act(e: Unit) -> void:
 			e.face = 1 if tt.x >= e.x else -1
 			e.pose = "throw"; e.pose_t = 16
 			Sfx.play("slash")
-			fx.append({"kind": "slash", "x": tt.x, "y": tt.y - tt.h / 2.0, "t": 0, "dur": 12, "sc": 1.6, "face": e.face})
+			slash_fx(tt.x, tt.y - tt.h / 2.0, 1.6, e.face)
 			await wait(8)
 			if randf() * 100 < clampf(E.acc + alert * 2 - tt.dodge, 10, 95):
 				damage(tt, int(round(ri(E.dmg[0], E.dmg[1]) * (1 + alert * 0.06))), e, {})
@@ -8428,7 +8447,7 @@ func skitter_act(e: Unit) -> void:
 			continue
 		if absf(o.x - e.x) < 20 + o.w / 2.0 and absf(o.y - e.y) < 30:
 			Sfx.play("slash")
-			fx.append({"kind": "slash", "x": o.x, "y": o.y - o.h / 2.0, "t": 0, "dur": 10, "sc": 1.0, "face": e.face})
+			slash_fx(o.x, o.y - o.h / 2.0, 1.0, e.face)
 			damage(o, E.dmg, e, {})
 			if E.get("pin", false) and o.team == "squad" and not o.dead:
 				add_status(o, "pinned", 1, e)
@@ -8626,7 +8645,7 @@ func blinker_act(e: Unit) -> void:
 		e.face = 1 if tt.x >= e.x else -1
 		e.pose = "throw"; e.pose_t = 16
 		Sfx.play("slash")
-		fx.append({"kind": "slash", "x": tt.x, "y": tt.y - tt.h / 2.0, "t": 0, "dur": 12, "sc": 1.4, "face": e.face})
+		slash_fx(tt.x, tt.y - tt.h / 2.0, 1.4, e.face)
 		await wait(8)
 		damage(tt, int(round(E.dmg * (1 + alert * 0.06))), e, {})
 		if not tt.dead and not tt.immovable and not tt.heavy:
@@ -9946,6 +9965,8 @@ func drown(u: Unit) -> void:
 	if u.team == "squad" and not u.dead and u.s.get("trait", "") == "lifeguard" and lifeguard_swim(u):
 		return
 	splash(u.x)
+	if vfx != null:
+		vfx.add(SfBubbles.new(u.x, WATER_Y, H + 16, 1.2))
 	u.sunk = true
 	if not u.dead:
 		var hw := hazard_word()

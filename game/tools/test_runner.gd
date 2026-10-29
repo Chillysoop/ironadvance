@@ -6,7 +6,7 @@ extends Node
 ## gear (click a slot to see what fits, drag and drop, deck changes, a fifth soldier at HQ),
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
-## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams),
+## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -658,6 +658,8 @@ func run() -> void:
 			await sfvfx2()
 		"sfvfx3":
 			await sfvfx3()
+		"sfvfx4":
+			await sfvfx4()
 		"bot":
 			await bot(mission_arg, 70)
 		"levels":
@@ -7171,6 +7173,102 @@ func sfvfx3() -> void:
 		await shot("sf3_beam_%02d" % f)
 	b.speed = 1.0
 	print("[sfvfx3] done, live effects ", b.vfx.list.size())
+
+func sfvfx4() -> void:
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	var sq: Array = b.squad_alive()
+	var foes: Array = b.units.filter(func(o): return o.team == "enemy" and not o.dead and not o.gone and o.x < b.cam_x + Battle.W - 40 and o.kind == "enemy")
+	foes.sort_custom(func(p, q): return p.x < q.x)
+	print("[sfvfx4] foes on screen ", foes.size())
+	await frames_wait(100)  # the round banner clears
+	b.speed = 0.25
+	var has := func(cls) -> int: return b.vfx.list.filter(func(e): return is_instance_of(e, cls)).size()
+	# V6 blood, then the BLOOD option off
+	var tg: Unit = foes[0] if foes.size() else sq[3]
+	tg.hp += 40
+	tg.max_hp += 40
+	Run.meta["blood"] = true
+	var hp0 := tg.hp
+	b.damage(tg, 9, sq[0])
+	check(tg.hp == hp0 - 9, "damage is the same with blood on")
+	check(has.call(SfBlood) == 1, "a hit Jackal bleeds")
+	for f in [3, 10, 40]:
+		await frames_wait(f - [0, 3, 10][[3, 10, 40].find(f)])
+		print("[sfvfx4] blood +%d paint %.2f ms" % [f, vfx_cost(b)])
+		await shot("sf4_blood_%02d" % f)
+	Run.meta["blood"] = false
+	var n0: int = has.call(SfBlood)
+	b.damage(tg, 9, sq[0])
+	check(has.call(SfBlood) == n0, "no blood with the BLOOD option off")
+	Run.meta["blood"] = true
+	# V7 slash
+	b.slash_fx(tg.x, tg.y - tg.h / 2.0, 1.6, -1)
+	for f in [3, 7, 14]:
+		await frames_wait(f - [0, 3, 7][[3, 7, 14].find(f)])
+		await shot("sf4_slash_%02d" % f)
+	await frames_wait(30)
+	# V10 an acid pool, a gas cloud and a TOXIC unit
+	var px: float = sq[0].x + 140
+	var py = b.T.stand_y(px, sq[0].y - 60)
+	b.acid_puddle(px, py if py != null else sq[0].y, 40, null)
+	b.gases.append({"x": px + 150, "y": (py if py != null else sq[0].y) - 30, "r": 70.0, "turns": 2, "seed": 0.0, "owner": null})
+	b.add_status(sq[1], "toxic", 2, null)
+	for f in [10, 40, 90]:
+		await frames_wait(f - [0, 10, 40][[10, 40, 90].find(f)])
+		print("[sfvfx4] poison +%d paint %.2f ms" % [f, vfx_cost(b)])
+		await shot("sf4_poison_%02d" % f)
+	check(b.vfx.pools.size() == 2, "the acid pool and the gas cloud each get an effect")
+	check(b.vfx.attached.has("%d:toxic" % sq[1].id), "a TOXIC soldier gets the aura")
+	b.acids.clear()
+	b.gases.clear()
+	sq[1].st.erase("toxic")
+	await frames_wait(90)
+	check(b.vfx.pools.is_empty(), "dried pools stop their effects")
+	# V14 heal
+	var hu: Unit = sq[2]
+	hu.hp -= 10
+	await frames_wait(2)
+	hu.hp += 10
+	await frames_wait(2)
+	check(has.call(SfHeal) == 1, "a heal shows the crosses")
+	for f in [12, 40, 80]:
+		await frames_wait(f - [0, 12, 40][[12, 40, 80].find(f)])
+		print("[sfvfx4] heal +%d paint %.2f ms" % [f, vfx_cost(b)])
+		await shot("sf4_heal_%02d" % f)
+	# V15 pickups: scrip and a gem
+	var pu: Unit = sq[0]
+	b.vfx.add(SfPickup.new(pu.x + 90, pu.y - 10, "coin", func(): return Vector2(pu.x, pu.y - pu.h * 0.5)))
+	b.vfx.add(SfPickup.new(pu.x + 160, pu.y - 30, "gem", func(): return Vector2(pu.x, pu.y - pu.h * 0.5)))
+	for f in [4, 14, 22, 34]:
+		await frames_wait(f - [0, 4, 14, 22][[4, 14, 22, 34].find(f)])
+		await shot("sf4_pickup_%02d" % f)
+	await frames_wait(40)
+	# V16 the lake crust shatters
+	var ix: float = sq[3].x + 100
+	var iy = b.T.stand_y(ix, sq[3].y - 60)
+	b.vfx.add(SfIce.new(ix, iy if iy != null else sq[3].y, b.vfx.ground_fn(sq[3].y)))
+	for f in [6, 12, 24, 50]:
+		await frames_wait(f - [0, 6, 12, 24][[6, 12, 24, 50].find(f)])
+		print("[sfvfx4] ice +%d paint %.2f ms" % [f, vfx_cost(b)])
+		await shot("sf4_ice_%02d" % f)
+	await frames_wait(40)
+	# V17 the Steel Rain beacon, through the real card effect
+	b.steel_rain(sq[0].x + 220, 2, sq[0])
+	check(has.call(SfPillar) == 1, "Steel Rain lights the red beacon")
+	for f in [8, 20, 50, 90]:
+		await frames_wait(f - [0, 8, 20, 50][[8, 20, 50, 90].find(f)])
+		print("[sfvfx4] beacon +%d paint %.2f ms" % [f, vfx_cost(b)])
+		await shot("sf4_beacon_%02d" % f)
+	await frames_wait(60)
+	# V22 bubbles where something sank
+	b.vfx.add(SfBubbles.new(sq[0].x + 60, Battle.WATER_Y, Battle.H + 16, 1.2))
+	for f in [20, 50]:
+		await frames_wait(f - [0, 20][[20, 50].find(f)])
+		await shot("sf4_bubbles_%02d" % f)
+	b.speed = 1.0
+	print("[sfvfx4] done, live effects ", b.vfx.list.size())
 
 func e_battle(event: String, bounties := []) -> Battle:
 	var lvl := Run.make_level("desert", 0)

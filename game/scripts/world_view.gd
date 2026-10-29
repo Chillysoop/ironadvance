@@ -976,7 +976,7 @@ func draw_statuses(u: Unit, x: float, y: float) -> void:
 
 # ---------------------------------------------------------------- effects
 func draw_smokes() -> void:
-	for g in b.gases:
+	for g in b.gases if b.vfx == null else []:
 		for i in 8:
 			var a: float = i / 8.0 * TAU + b.t / 160.0 + g.seed
 			var r: float = g.r * 0.45
@@ -1496,7 +1496,7 @@ func draw_wells() -> void:
 				draw_polyline(pts, Color("ff6ad5", 0.7), 1.0)
 
 func draw_acids() -> void:
-	for a in b.acids:
+	for a in b.acids if b.vfx == null else []:
 		var w: float = a.r * 2
 		for k in 3:
 			var c := Color(C_OOZE, 0.25 + 0.1 * k)
