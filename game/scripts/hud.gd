@@ -492,6 +492,13 @@ func toggle_pause() -> void:
 	pm.hud = self
 	add_child(pm)
 	get_tree().paused = true
+	set_call_shown(false)
+
+func set_call_shown(on: bool) -> void:
+	## The operator's tablet sits on a higher layer: tuck it away while the pause menu is up.
+	var m = get_parent()
+	if m != null and "call_layer" in m and m.call_layer != null:
+		m.call_layer.visible = on
 
 func close_deck() -> bool:
 	## Esc or CLOSE on the deck viewer. True when there was one to close.
@@ -710,9 +717,11 @@ class PauseMenu extends Control:
 	func resume() -> void:
 		Sfx.play("click")
 		get_tree().paused = false
+		hud.set_call_shown(true)
 		queue_free()
 	func quit() -> void:
 		get_tree().paused = false
+		hud.set_call_shown(true)
 		var main = hud.get_parent()
 		if Run.campaign():
 			# like closing the window mid-op: the war rolls back to the last HQ save
@@ -940,6 +949,13 @@ class Overlay extends Control:
 			Art.text(self, r[2], Vector2(28 + Art.text_width(head, 8), ry + 1), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		return hgt + 8
 
+	func foe_behind(b: Battle, r: Rect2) -> bool:
+		## A live enemy stands behind this panel: the panel fades so it never hides a target.
+		for e in b.units:
+			if e.team == "enemy" and not e.dead and not e.gone and r.intersects(Rect2(e.x - b.cam_x - e.w / 2.0, e.y - e.h, e.w, e.h)):
+				return true
+		return false
+
 	func draw_synergies(b: Battle, y: float) -> float:
 		## The squad's switched-on synergies, top right above the bounty board. Hover one for what it
 		## does. Returns where the bounty board starts.
@@ -951,6 +967,8 @@ class Overlay extends Control:
 		var hgt := 22.0 + rows.size() * 14
 		var m := get_local_mouse_position()
 		var al := 0.2 if hud.targeting and Rect2(x, y, w, hgt).grow(16).has_point(m) else 1.0
+		if foe_behind(b, Rect2(x, y, w, hgt)):
+			al = minf(al, 0.35)
 		draw_rect(Rect2(x - 1, y - 1, w + 2, hgt + 2), Color(0.05, 0.035, 0.03, 0.9 * al))
 		draw_rect(Rect2(x, y, w, hgt), Color(0.1, 0.11, 0.13, 0.82 * al))
 		draw_rect(Rect2(x, y, w, 2), Color(0.71, 0.55, 1, al))
@@ -990,6 +1008,8 @@ class Overlay extends Control:
 		var al := 1.0
 		if hud.targeting and Rect2(x, y, w, hgt).grow(16).has_point(m):
 			al = 0.2  # aiming at something behind the board: fade it out of the way
+		elif not open and foe_behind(b, Rect2(x, y, w, hgt)):
+			al = 0.35
 		draw_rect(Rect2(x - 1, y - 1, w + 2, hgt + 2), Color(ink, 0.9 * al))
 		draw_rect(Rect2(x, y, w, hgt), Color(0.1, 0.11, 0.13, 0.82 * al))
 		draw_rect(Rect2(x, y, w, 2), Color(1, 0.82, 0.23, al))
@@ -1168,6 +1188,8 @@ class Overlay extends Control:
 			# a hovered card lifts into the strip's spot: get out of its way
 			if hud.cards.any(func(cv): return cv.hover):
 				al = 0.0
+			elif al > 0.35 and foe_behind(b, strip):
+				al = 0.35  # an enemy in a dip behind the strip stays visible
 			draw_rect(strip, Color(0.05, 0.035, 0.03, 0.7 * al))
 			for i in lines.size():
 				Art.text(self, lines[i], Vector2(480, top + 11 + i * 14), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0, true, al)

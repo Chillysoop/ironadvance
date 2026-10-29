@@ -251,8 +251,11 @@ func _draw() -> void:
 	if chain != "" and not dim:
 		var cp := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 120.0)
 		draw_rect(Rect2(-2, -2, w + 4, h + 2), Color(0.88, 0.69, 1.0, cp), false, 2.0)
-		draw_rect(Rect2(0, -14, w, 12), Color(0.2, 0.1, 0.3, 0.9))
-		Art.text(self, chain, Vector2(w / 2.0, -4), 8, Color("e0b0ff"), HORIZONTAL_ALIGNMENT_CENTER)
+		# a long chain name would spill onto the next card: the full name shows on hover
+		var tag := chain if hover or Art.text_width(chain, 8) <= w - 4 else "CHAIN!"
+		var tw := maxf(w, Art.text_width(tag, 8) + 6)
+		draw_rect(Rect2((w - tw) / 2.0, -14, tw, 12), Color(0.2, 0.1, 0.3, 0.9))
+		Art.text(self, tag, Vector2(w / 2.0, -4), 8, Color("e0b0ff"), HORIZONTAL_ALIGNMENT_CENTER)
 	if price >= 0:
 		draw_rect(Rect2(w / 2.0 - 26, h - 16, 52, 16), INK)
 		draw_texture_rect(Art.tex.ic8_coin, Rect2(w / 2.0 - 22, h - 12, 8, 8), false)

@@ -1,5 +1,5 @@
 extends Control
-## C4: someone calls in on a field tablet in the corner of the screen: their face on a
+## C4: someone calls in on a field tablet in a corner of the screen: their face on a
 ## scanlined screen, name and role, and the line typing out. It never blocks the screen
 ## around it. Click it (or wait) for the next line; the X hangs up.
 
@@ -13,7 +13,7 @@ var i := 0
 var shown := 0
 var t := 0
 var hold := 0
-var slide := 1.0           # 1 = off screen to the right, 0 = in place
+var slide := 1.0           # 1 = off screen at the nearest side, 0 = in place
 var home := Vector2(596, 120)
 var face: Control
 
@@ -70,12 +70,14 @@ func _process(_d: float) -> void:
 	var m = get_tree().current_scene
 	home = Vector2(596, 120)
 	if m != null and "battle" in m and m.battle != null:
-		home.y = 34.0
+		# top left, over the log: the right side holds the bounty board, kill feed and push lock
+		home = Vector2(8, 34)
 		if m.hud != null and m.hud.coach_box != null and m.hud.coach_box.get_child_count() > 0:
 			home.y = 152.0
 	# slide in, and back out once the call is over
 	slide = move_toward(slide, 1.0 if i < 0 else 0.0, 0.08)
-	position = home + Vector2((W + 40) * slide * slide, 0)
+	var side := 1.0 if home.x > 480 else -1.0   # slides in from the nearest edge
+	position = home + Vector2((W + 40) * slide * slide * side, 0)
 	if i < 0 and slide >= 1.0:
 		queue_free()
 		return

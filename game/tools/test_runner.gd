@@ -8,7 +8,7 @@ extends Node
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
 ## crumble (falling structures tip, spin, splinter and crush),
-## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
+## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -867,6 +867,8 @@ func run() -> void:
 			await ui_clarity()
 		"newplayer3":
 			await newplayer3()
+		"newplayer4":
+			await newplayer4()
 		"fieldfix":
 			await fieldfix()
 		"synergies":
@@ -1988,6 +1990,61 @@ func newplayer3() -> void:
 	check(not rv.air and rv.vx == 0, "a girder rivet hit by a blast stays pinned, so the turn doesn't wait on it")
 	rv.gone = true
 	await shot("newplayer3")
+	Run.meta = keep
+	Run.save_meta()
+
+func newplayer4() -> void:
+	## Fixes from the new-player playtest of the build after #89-#94.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.meta["tips_off"] = true
+	check(Data.ITEMS.ammopouch.text != "+1 energy on round 1.", "Ammo Pouch text doesn't repeat its stat line")
+	check(Data.INTEL.clear.name != "CLEAR SKIES", "the no-event intel isn't named after the weather")
+	# training: a spent recruit hands the frag lesson to one who can still throw
+	main.start_training()
+	var b: Battle = main.battle
+	await until(func(): return b.state == "player" and not b.busy)
+	b.tut_step = b.TUT_THROW
+	b.tut_said = b.TUT_THROW
+	var spent: Unit = b.sel
+	spent.energy = 0
+	b.tut_update()
+	check(b.sel != spent and b.sel.energy >= 1, "the frag lesson moves to a recruit with energy")
+	check(b.sel.hand.any(func(c): return c.key == "frag"), "that recruit holds the frag")
+	# idle pot shots: a small plain flash and no Sprite Fusion strike
+	var u: Unit = b.squad_alive()[0]
+	var tg: Unit = null
+	for e in b.units:
+		if e.team == "enemy" and not e.dead:
+			tg = e
+	if tg != null:
+		u.face = 1 if tg.x > u.x else -1
+		var nt := b.tracers.size()
+		b.get_node("Decor").plink(u, tg, Vector2(tg.x, tg.y - 20))
+		check(u.muzzle < 3, "idle pot shot keeps a small muzzle flash (%d)" % u.muzzle)
+		check(b.tracers.size() == nt or b.tracers[-1].get("_fx", false), "idle pot shot tracer skips the impact burst")
+	# a squad body is never pushed half off the left edge
+	u.x = b.cam_x + 2
+	u.vx = -3; u.air = true; u.vy = -1
+	await frames_wait(20)
+	check(u.x >= b.cam_x + 13.9, "squad body stays fully on screen (%.1f)" % (u.x - b.cam_x))
+	# a panel fades when an enemy stands behind it
+	var ov = main.hud.overlay if "overlay" in main.hud else null
+	if tg != null and ov != null:
+		tg.x = b.cam_x + 700; tg.y = 400
+		check(ov.foe_behind(b, Rect2(650, 300, 200, 120)), "foe_behind sees an enemy behind a panel")
+		check(not ov.foe_behind(b, Rect2(10, 40, 100, 40)), "foe_behind ignores empty sky")
+	# the operator call sits top left in battle, clear of the bounty board
+	main.call_in([Run.radio_line("sarge", "Test line.", [])])
+	await frames_wait(40)
+	var oc = main.call_layer.get_child(main.call_layer.get_child_count() - 1)
+	check(oc.position.x < 100, "operator tablet sits top left in battle (%.0f)" % oc.position.x)
+	main.hud.toggle_pause()
+	check(not main.call_layer.visible, "the tablet hides under the pause menu")
+	for c in main.hud.get_children():
+		if c.has_method("resume"):
+			c.resume()
+	check(main.call_layer.visible and not get_tree().paused, "RESUME brings the tablet back")
+	await shot("newplayer4")
 	Run.meta = keep
 	Run.save_meta()
 

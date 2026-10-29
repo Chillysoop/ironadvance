@@ -2793,9 +2793,6 @@ func setup_events() -> void:
 				var d := mk_unit(); d.team = "neutral"; d.kind = "dealer"; d.x = x; d.y = y; d.w = 20; d.h = 30; d.face = -1
 				d.loot = {"stock": [Run.roll_item(1), Run.roll_item(1), Run.roll_item(2)]}
 				units.append(d)
-	for id in mission.get("bounties", []):
-		var bt: Dictionary = Run.bounty(id)
-		log_msg("BOUNTY %s (+%d$): %s" % [bt.name, bt.pay, bt.text])
 
 func synergy_board() -> Array:
 	## The squad's switched-on synergies for the top right, above the bounty board: full gear sets,
@@ -3062,6 +3059,11 @@ func tut_update() -> void:
 			main.call_in(Data.TUT_LINES[tut_step].map(func(l): return Run.radio_line("sarge", l, [])))
 	# the card a step teaches is always in the selected soldier's hand
 	var need: String = {TUT_SHOOT: "rifle", TUT_CRATE: "rifle", TUT_THROW: "frag"}.get(tut_step, "")
+	if need != "" and sel != null and not sel.dead and sel.energy < Data.CARDS[need].cost:
+		# the selected recruit is spent: hand the lesson to one who can still play it
+		var fresh: Array = squad_alive().filter(func(s): return s.energy >= Data.CARDS[need].cost)
+		if not fresh.is_empty():
+			select_unit(fresh[0])
 	if need != "" and sel != null and not sel.dead:
 		if not sel.hand.any(func(c): return c.key == need):
 			sel.hand.append({"id": -2, "key": need, "tier": Data.base_tier(need), "temp": true})
@@ -10270,8 +10272,8 @@ func physics(u: Unit) -> void:
 			u.x = sl.x; u.y = sl.y; u.slide = sl.v
 			if u.kind == "cart":
 				cart_ram(u)
-			if u.team == "squad" and (u.x < cam_x + 8 or u.x > cam_x + W - 8):
-				u.x = clampf(u.x, cam_x + 8, cam_x + W - 8)
+			if u.team == "squad" and (u.x < cam_x + 14 or u.x > cam_x + W - 14):
+				u.x = clampf(u.x, cam_x + 14, cam_x + W - 14)
 				u.slide = 0
 			if sl.air:
 				u.air = true
@@ -10309,7 +10311,8 @@ func physics(u: Unit) -> void:
 		else:
 			u.x = nx
 		if u.team == "squad" and not u.dead:
-			u.x = clampf(u.x, cam_x + 8, cam_x + W - 8)
+			# keep the whole body (and its name tag) on screen, not half of it
+			u.x = clampf(u.x, cam_x + 14, cam_x + W - 14)
 		else:
 			u.x = clampf(u.x, 4, world_w - 4)
 		var ny: float = u.y + u.vy / n

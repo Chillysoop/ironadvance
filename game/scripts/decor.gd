@@ -213,12 +213,14 @@ func plink(u: Unit, tg: Unit, aim: Vector2) -> void:
 		return
 	raise(u, aim)
 	var ang := atan2(aim.y - m.y, aim.x - m.x)
-	u.muzzle = 4
+	# a small plain flash: effects.gd only adds the big Sprite Fusion flash from 3 up
+	u.muzzle = 2
 	var end := b.cast_ray(m.x, m.y, ang, 760)
 	# R6: a faint short streak off the muzzle, so idle pot shots never read as fire aimed at the squad
 	var col := Color(1, 0.89, 0.42, 0.4) if u.team == "squad" else Color(1, 0.54, 0.35, 0.4)
 	var tip := Vector2(m.x, m.y).move_toward(Vector2(end.x, end.y), 70.0)
 	b.tracer(m.x, m.y, tip.x, tip.y, col)
+	b.tracers[-1]["_fx"] = true   # no Sprite Fusion strike at the far end either
 	if end.hit:
 		b.dust(end.x, end.y, Color("b9a27a"), 2)
 	Sfx.play("mg" if u.type == "mg" else "shot", -16.0, randf_range(0.9, 1.1))
