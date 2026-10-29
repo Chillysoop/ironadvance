@@ -1404,7 +1404,7 @@ func save_campaign() -> void:
 	for k in CAMP_KEYS:
 		base[k] = meta.get(k)
 	data["base"] = base
-	var head := {"act": int(camp.act), "ops": int(camp.ops), "secs": float(camp.get("secs", 0.0)), "done": camp.get("done", false), "tour": int(camp.get("tour", 1)),
+	var head := {"act": int(camp.act), "ops": int(camp.ops), "secs": float(camp.get("secs", 0.0)), "done": camp.get("done", false), "tour": int(camp.get("tour", 1)), "act_name": act().name,
 		"names": soldiers.filter(func(s): return s.alive).map(func(s): return s.def.name)}
 	var f := FileAccess.open(camp_path(int(camp.slot)), FileAccess.WRITE)
 	if f != null:
@@ -1428,7 +1428,38 @@ func leave_campaign() -> void:
 	new_run()
 
 func act(a := -1) -> Dictionary:
-	return Data.ACTS[clampi(int(camp.get("act", 0)) if a < 0 else a, 0, Data.ACTS.size() - 1)]
+	var i := clampi(int(camp.get("act", 0)) if a < 0 else a, 0, Data.ACTS.size() - 1)
+	var fr: Array = camp.get("fronts", [])
+	if i < fr.size() and int(fr[i]) == 1 and Data.ALT_ACTS.has(i):
+		return Data.ALT_ACTS[i]  # W14: this tour fights the act on its other front
+	return Data.ACTS[i]
+
+func act_index(act_name: String) -> int:
+	for i in Data.ACTS.size():
+		if act(i).name == act_name or Data.ACTS[i].name == act_name or Data.ALT_ACTS.get(i, {}).get("name", "") == act_name:
+			return i
+	return -1
+
+func pick_fronts(tour: int, last: Array) -> Array:
+	## W14: the first war runs the home fronts. A Second Tour runs every other front; later tours
+	## roll each act but never replay the last war's map exactly.
+	var fr := []
+	for i in Data.ACTS.size():
+		fr.append(0)
+	if tour <= 1:
+		return fr
+	var alts: Array = Data.ALT_ACTS.keys()
+	if tour == 2:
+		for i in alts:
+			fr[i] = 1
+		return fr
+	for i in alts:
+		fr[i] = randi() % 2
+	var old: Array = last if last.size() == fr.size() else pick_fronts(1, [])
+	if fr == old:
+		var k: int = alts[randi() % alts.size()]
+		fr[k] = 1 - int(fr[k])
+	return fr
 
 func sec_key(id: String, a := -1) -> String:
 	return "%d:%s" % [int(camp.get("act", 0)) if a < 0 else a, id]
@@ -1585,6 +1616,8 @@ func op_job(sc: Dictionary, patrol := false) -> String:
 		return "push"
 	if patrol:
 		var ks: Array = Data.JOBS.keys()
+		if Data.NO_TRUCK.has(sc.get("biome", "")):
+			ks.erase("escort")
 		return ks[randi() % ks.size()]
 	return sc.get("job", "push")
 
@@ -1892,9 +1925,11 @@ func second_tour(vet: Dictionary) -> void:
 	## S5: a new war in the same slot, harder, with one veteran of the last one along for it.
 	var slot := int(camp.slot)
 	var tour := int(camp.get("tour", 1)) + 1
+	var last: Array = camp.get("fronts", [])
 	var v: Dictionary = vet.duplicate(true)
 	new_campaign(slot)
 	camp["tour"] = tour
+	camp["fronts"] = pick_fronts(tour, last)
 	v.alive = true
 	v.tags = Data.DOG_TAGS
 	v.hp = eff_max_hp(v)
@@ -1963,12 +1998,12 @@ func radio_before() -> Array:
 	var raw: Array = []
 	if int(camp.get("intro", -1)) < a:
 		camp["intro"] = a
-		raw.append_array(Data.RADIO_ACT[a])
+		raw.append_array(act().get("radio", Data.RADIO_ACT[a]))
 	else:
 		var jl: Array = Data.RADIO_JOB[level.get("job", "push")]
 		raw.append(jl[randi() % jl.size()])
 		if randf() < 0.5:
-			var tl: Array = Data.RADIO_TAUNT[a]
+			var tl: Array = act().get("taunt", Data.RADIO_TAUNT[a])
 			raw.append(tl[randi() % tl.size()])
 	if level.get("story", "") == "varga":
 		raw.append_array(Data.RADIO_VARGA_STAND)
@@ -1987,7 +2022,7 @@ func radio_after(st: Dictionary) -> Array:
 		raw.append(Data.RADIO_WON[randi() % Data.RADIO_WON.size()])
 		raw.append(["sq", Data.RADIO_SQ_WON[randi() % Data.RADIO_SQ_WON.size()]])
 	if op.has("act_done"):
-		var i: int = Data.ACTS.map(func(x): return x.name).find(op.act_done)
+		var i: int = act_index(op.act_done)
 		if i >= 0:
 			raw.append_array(Data.RADIO_ACT_DONE[i])
 	var lines: Array = raw.map(func(r): return radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())

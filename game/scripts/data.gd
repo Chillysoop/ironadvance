@@ -1743,7 +1743,7 @@ const RADIO_SQ_WON := ["Drinks are on {mate}.", "{mate}, did you see that? Tell 
 const RADIO_ACT_DONE := [
 	[["varga", "The Boar was my favorite tank. You will pay for that, Iron Company."]],
 	[["varga", "The Queen is dead? Good. Maybe now the Vharr will listen to reason."], ["prime", "THE QUEEN WAS ONE OF MANY."]],
-	[["varga", "The works are clear. Fine. My men will not fight you anymore. We fight them."]],
+	[["varga", "That nest is clear. Fine. My men will not fight you anymore. We fight them."]],
 	[["prime", "THE SHIP FALLS. THE GATE DOES NOT."]],
 	[["cmd", "The gate is shut. It's over. Iron Company, come home."]],
 ]
@@ -1840,6 +1840,50 @@ const ACTS := [
 		{"id": "g2", "name": "GATE BARRACKS", "biome": "fortress", "job": "rescue", "at": [270, 390], "links": ["lz", "boss"], "hold": {"bio": 2}},
 		{"id": "boss", "name": "IRON HARBOR", "biome": "harbor", "at": [520, 280], "links": ["g1", "g2"], "stronghold": true, "finale": true}]},
 ]
+
+# W14: on a Second Tour, Acts II to IV can run on a different front: other biomes, other sectors,
+# the same beats (the Queen's pit, the Vharr-refit Boar, Varga's garrison and his last stand).
+const ALT_ACTS := {
+	1: {"id": "whitepass", "name": "WHITE PASS", "roman": "II", "tier": 1, "hp_mul": 1.15, "boss_hp": 160, "plate": 46, "need": 3, "breach": 0.4,
+	 "text": "The frozen lakes and the old mine under the pass. The Jackals dug too deep and something dug back.",
+	 "lz": {"name": "ICE STRIP", "at": [80, 260]},
+	 "radio": [["cmd", "Bad news. The Jackals broke into something under the pass, and it came up through the mine."],
+		["prime", "THE GATE IS OPEN. YOUR KIND WILL MAKE USEFUL HOSTS."],
+		["varga", "Our new friends are... persuasive. Stay off the ice."]],
+	 "taunt": [["varga", "The ice eats armies. Ask the last one."], ["prime", "WE HAVE COUNTED YOUR SOLDIERS. THERE ARE NOT ENOUGH."]],
+	 "sectors": [
+		{"id": "k1", "name": "BLACK ICE", "biome": "lake", "job": "push", "at": [200, 160], "links": ["lz", "k2", "k3"], "hold": {"scrip": 25}},
+		{"id": "k2", "name": "FISHING HUTS", "biome": "lake", "job": "rescue", "at": [210, 360], "links": ["lz", "k1", "n1"], "perk": "aid"},
+		{"id": "k3", "name": "FROZEN FERRY", "biome": "lake", "job": "hunt", "at": [340, 130], "links": ["k1", "n2"], "hold": {"bio": 1}},
+		{"id": "n1", "name": "MINE HEAD", "biome": "mine", "job": "demolish", "at": [360, 360], "links": ["k2", "n2", "n3"], "hold": {"salvage": 3}},
+		{"id": "n2", "name": "LOWER DRIFT", "biome": "mine", "job": "hold", "at": [470, 200], "links": ["k3", "n1", "boss"], "perk": "lookout"},
+		{"id": "n3", "name": "ORE CARTS", "biome": "mine", "job": "rescue", "at": [500, 390], "links": ["n1", "boss"], "perk": "fuel"},
+		{"id": "boss", "name": "THE QUEEN'S SCREE", "biome": "mountain", "at": [600, 290], "links": ["n2", "n3"], "stronghold": true, "queen": true}]},
+	2: {"id": "ironroad", "name": "IRON ROAD", "roman": "III", "tier": 2, "hp_mul": 1.3, "boss_hp": 210, "plate": 60, "need": 3, "breach": 0.8,
+	 "text": "The rail line and the ruined city. The pact is cracking and Jackals and Vharr are shooting each other.",
+	 "lz": {"name": "SIDING", "at": [70, 220]},
+	 "sectors": [
+		{"id": "t1", "name": "COAL TRAIN", "biome": "train", "job": "push", "at": [190, 130], "links": ["lz", "t2", "c1"], "hold": {"salvage": 3}},
+		{"id": "t2", "name": "GUN CARRIAGE", "biome": "train", "job": "demolish", "at": [320, 110], "links": ["t1", "t3"], "perk": "fuel"},
+		{"id": "t3", "name": "PRISON CARS", "biome": "train", "job": "rescue", "at": [460, 150], "links": ["t2", "boss"], "hold": {"scrip": 30}},
+		{"id": "c1", "name": "TRAM DEPOT", "biome": "city", "job": "escort", "at": [200, 350], "links": ["lz", "t1", "c2"], "perk": "supply"},
+		{"id": "c2", "name": "HIGHRISE ROW", "biome": "city", "job": "hunt", "at": [350, 300], "links": ["c1", "c3"], "hold": {"bio": 2}},
+		{"id": "c3", "name": "CITY GARRISON", "biome": "city", "job": "push", "varga": true, "at": [490, 390], "links": ["c2", "boss"], "perk": "aid"},
+		{"id": "boss", "name": "THE INFESTED YARDS", "biome": "city", "at": [590, 260], "links": ["t3", "c3"], "stronghold": true}]},
+	3: {"id": "firecoast", "name": "FIRE COAST", "roman": "IV", "tier": 2, "hp_mul": 1.45, "boss_hp": 240, "plate": 66, "need": 3, "breach": 0.5,
+	 "text": "The burning coast and the captured carrier. A Hive Ship parks over the harbor and seeds nests everywhere.",
+	 "lz": {"name": "LAVA BEACH", "at": [70, 260]},
+	 "sectors": [
+		{"id": "x1", "name": "ASH FIELDS", "biome": "volcano", "job": "push", "at": [190, 150], "links": ["lz", "x2", "x3"], "perk": "lookout"},
+		{"id": "x2", "name": "OBSIDIAN STEPS", "biome": "volcano", "job": "rescue", "at": [320, 120], "links": ["x1", "y1"], "hold": {"bio": 2}},
+		{"id": "x3", "name": "MAGMA BRIDGE", "biome": "volcano", "job": "demolish", "at": [210, 340], "links": ["lz", "x1", "y2"], "hold": {"scrip": 30}},
+		{"id": "y1", "name": "FLIGHT DECK", "biome": "carrier", "job": "hunt", "at": [470, 140], "links": ["x2", "boss"], "perk": "airfield"},
+		{"id": "y2", "name": "HANGAR BAY", "biome": "carrier", "job": "hold", "at": [340, 400], "links": ["x3", "y3"], "hold": {"salvage": 3}},
+		{"id": "y3", "name": "ISLAND TOWER", "biome": "carrier", "job": "demolish", "at": [490, 350], "links": ["y2", "boss"], "perk": "supply"},
+		{"id": "v1", "name": "VARGA'S FORT", "biome": "fortress", "job": "rescue", "story": "varga", "varga": true, "at": [96, 410], "links": ["x3"], "hold": {"bio": 2}},
+		{"id": "boss", "name": "UNDER THE HIVE SHIP", "biome": "harbor", "at": [600, 250], "links": ["y1", "y3"], "stronghold": true}]},
+}
+const NO_TRUCK := ["lake", "train", "carrier"]   # W14: biomes a patrol never rolls an escort in (ice, tunnels, jets)
 
 # The company (C1-C6). The campaign keeps a roster of up to COMPANY_MAX soldiers and deploys a squad
 # of up to SQUAD_MAX, one per class. Ranks come from ops survived (C3); each promotion is a pick
