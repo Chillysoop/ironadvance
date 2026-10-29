@@ -953,14 +953,22 @@ func draw_plate(u: Unit) -> void:
 		var tw := Art.text_width(wt, 8) + 4
 		if not b.units.any(func(o): return o != u and o.id < u.id and o.kind == "enemy" and not o.dead and not o.gone and o.weight == u.weight and o.elite == "" and absf(o.x - u.x) < tw and absf(o.y - o.h - u.y + u.h) < 12):
 			Art.text(self, wt, in_view(Vector2(x, y - 4), wt), 8, C_ALIEN, HORIZONTAL_ALIGNMENT_CENTER)
+	var lift := 0.0
 	if u.elite != "":
 		draw_rect(Rect2(x - w / 2 - 2, y - 2, w + 4, 7), Color("ffd23a"), false, 1.0)
 		var en: String = Data.ELITES[u.elite].name
-		Art.text(self, en, in_view(Vector2(x, y - 4), en), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		# two elites stood together: the later one's name steps up a row instead of printing over the first
+		var ew := Art.text_width(en, 8)
+		lift = 12.0 * b.units.filter(func(o): return o != u and o.id < u.id and o.kind == "enemy" and o.elite != "" and not o.dead and not o.gone and absf(o.x - u.x) < ew and absf((o.y - o.h) - (u.y - u.h)) < 12).size()
+		# and clear of a neighbour's health bar running through the name
+		var ny := y - 4 - lift
+		if b.units.any(func(o): return o != u and o.kind == "enemy" and not o.dead and not o.gone and absf(o.x - u.x) < ew / 2 + 12 and o.y - o.h - 7 > ny - 8 and o.y - o.h - 10 < ny):
+			lift += 10.0
+		Art.text(self, en, in_view(Vector2(x, y - 4 - lift), en), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		if u.fl.has("quarry"):
 			var wn: String = "WANTED: " + u.fl.quarry
-			Art.text(self, wn, in_view(Vector2(x, y - 14), wn), 8, Color("ff4d3d") if b.t % 40 < 28 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
-	draw_statuses(u, x, y - (24 if u.fl.has("quarry") else (14 if u.elite != "" else 4)))
+			Art.text(self, wn, in_view(Vector2(x, y - 14 - lift), wn), 8, Color("ff4d3d") if b.t % 40 < 28 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+	draw_statuses(u, x, y - lift - (24 if u.fl.has("quarry") else (14 if u.elite != "" else 4)))
 	if u.type == "radio" and b.radio_t != null and u.active:
 		var col := Color("ff4d3d") if b.radio_t <= 1 else Color("ffd23a")
 		draw_texture_rect(Art.tex.ic_radio, Rect2(clampf(x, b.cam_x + 44, b.cam_x + 916) - 34, y - 16, 16, 16), false)
@@ -1662,6 +1670,9 @@ func draw_texts() -> void:
 		var sz := 16 if tx.big else 8
 		if tx.big and tx.t < 6:
 			y -= (6 - tx.t)
+		# pulled in at the edges, so a soldier at the far left doesn't lose the start of "+1 ENERGY BANKED"
+		var hw := Art.text_width(tx.text, sz) / 2.0 + 2
+		x = clampf(x, b.cam_x + hw, b.cam_x + Battle.W - hw)
 		Art.text(self, tx.text, Vector2(x, y), sz, tx.c, HORIZONTAL_ALIGNMENT_CENTER, 2, false, al)
 
 func draw_barks() -> void:
