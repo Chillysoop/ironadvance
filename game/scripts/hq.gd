@@ -591,7 +591,23 @@ func _draw() -> void:
 			draw_reminders()
 	if hover_troop >= 0 and idle():
 		draw_troop_card(Run.soldiers[hover_troop], troop_x(al.find(Run.soldiers[hover_troop])))
+	# a full-screen panel draws its own header: the HQ one would ghost through under its title
+	var panel := memorial_open or upgrades_open or doc_open or lab_open
 	# header
+	if not panel:
+		draw_header()
+	if news.size() and idle() and t < 420:
+		draw_news()
+	if memorial_open:
+		draw_memorial_panel()
+	elif upgrades_open:
+		draw_upgrades_panel()
+	elif doc_open:
+		draw_doc_panel()
+	elif lab_open:
+		draw_lab_panel()
+
+func draw_header() -> void:
 	draw_rect(Rect2(0, 0, 960, 70), Color(0.05, 0.035, 0.03, 0.75))
 	Art.text(self, "FIELD HQ  ACT %s" % Run.act().roman if Run.campaign() else "IRON ADVANCE HQ", Vector2(24, 34), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 	var line := "Kit out the squad, then dial the gate for level 1."
@@ -605,16 +621,6 @@ func _draw() -> void:
 	var sc := "%d SCRIP" % Run.scrip
 	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 16) - 22, 20, 16, 16), false)
 	Art.text(self, sc, Vector2(936, 36), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
-	if news.size() and idle() and t < 420:
-		draw_news()
-	if memorial_open:
-		draw_memorial_panel()
-	elif upgrades_open:
-		draw_upgrades_panel()
-	elif doc_open:
-		draw_doc_panel()
-	elif lab_open:
-		draw_lab_panel()
 
 func draw_news() -> void:
 	## Campaign: the after-op report, fading out after a few seconds.
@@ -761,7 +767,12 @@ func draw_upgrades_panel() -> void:
 		for k in 3:
 			var col := Color("62d26f") if k < r else (Color("e8dcc2") if k == r else Color("6c7480"))
 			var mark := "OK " if k < r else ("NEXT " if k == r else "")
-			Art.text(self, "%d  %s%s" % [k + 1, mark, B.ranks[k]], Vector2(262, y + 13 + k * 14), 8, col)
+			var rl := "%d  %s%s" % [k + 1, mark, B.ranks[k]]
+			# a long rank drops to the narrower body font instead of running under the BUILD button
+			if Art.text_width(rl, 8) > 480:
+				Art.text(self, rl, Vector2(262, y + 13 + k * 14), 16, col, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			else:
+				Art.text(self, rl, Vector2(262, y + 13 + k * 14), 8, col)
 	if blds.size() <= 6:
 		Art.text(self, "MEMORIAL is free: the fallen hang their tags there.", Vector2(480, 452), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 

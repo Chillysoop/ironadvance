@@ -561,7 +561,7 @@ func _draw() -> void:
 		var x := col_x(i)
 		var w := col_w()
 		Art.text(self, s.def.name, Vector2(x, 66), 8, Color.WHITE if s.alive else Color("8a7a7a"))
-		Art.text(self, ("HP %d/%d" % [s.hp, Run.eff_max_hp(s)]) if s.alive else "KIA", Vector2(x + w, 66), 8, Color("9aa2ae") if s.alive else Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
+		Art.text(self, ("HP %d/%d" % [s.hp, Run.eff_max_hp(s)]) if s.alive else "KIA", Vector2(x + w - 10, 66), 8, Color("9aa2ae") if s.alive else Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
 		var gear_cards: int = s.deck.filter(func(c): return c.get("src", -1) != -1).size()
 		Art.text(self, "DECK %d%s" % [s.deck.size(), ", %d from gear" % gear_cards if gear_cards else " cards"], Vector2(x, 180), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		# gear sets and kit evolutions, each one hoverable

@@ -562,7 +562,11 @@ class PixButton extends Control:
 		var fs := 8 if h < 30 or small or Art.text_width(text, 16) > w - 12 else 16
 		Art.text(self, text, Vector2(w / 2.0, ty), fs, Color.WHITE if not disabled else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 		if sub != "":
-			Art.text(self, sub, Vector2(w / 2.0, ty + 12), 8, Color.WHITE if not disabled else Color("c8ccd2"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+			# a sub line that would run over the corner rivets closes up its double spaces
+			var st := sub
+			while Art.text_width(st, 8) > w - 14 and st.contains("  "):
+				st = st.replace("  ", " ")
+			Art.text(self, st, Vector2(w / 2.0, ty + 12), 8, Color.WHITE if not disabled else Color("c8ccd2"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 
 class BeltSlot extends Control:
 	## One consumable on the squad belt. Click to use it on the selected soldier.
