@@ -267,7 +267,7 @@ func campaign_home(st := {}) -> void:
 		if not mvp.is_empty():
 			mvp.promo = int(mvp.get("promo", 0)) + 1
 			mvp["field"] = int(mvp.get("field", 0)) + 1
-			news.append("%s was the MVP of Act %s: a field promotion pick." % [mvp.def.name, Data.ACTS[cleared].roman])
+			news.append("%s was the MVP of Act %s: a field promotion pick." % [mvp.def.name, Run.act(cleared).roman])
 	var home := func():
 		if Run.camp.get("done", false):
 			Run.save_campaign()
@@ -904,7 +904,7 @@ class Screen extends Control:
 			title = "PATROL COMPLETE" if Run.level.get("patrol", false) else "SECTOR TAKEN!"
 			line = "HALF PAY. THE SECTOR WAS ALREADY YOURS." if Run.level.get("patrol", false) else ""
 			if op.has("act_done"):
-				title = "ACT %s CLEARED!" % Data.ACTS.filter(func(a): return a.name == op.act_done)[0].roman
+				title = "ACT %s CLEARED!" % Data.ACTS[maxi(0, Run.act_index(op.act_done))].roman
 				line = "THE WAR IS WON." if Run.camp.get("done", false) else "THE FRONT MOVES ON: ACT %s, %s." % [Run.act().roman, Run.act().name]
 			elif op.has("bonus"):
 				title = "BONUS OP DONE!"

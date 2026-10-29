@@ -860,6 +860,8 @@ func run() -> void:
 			await warpeople()
 		"warstory":
 			await warstory()
+		"warfront":
+			await warfront()
 		"straggler":
 			await straggler()
 		"hoverwedge":
@@ -5848,6 +5850,68 @@ func warstory() -> void:
 	Run.start_op(v)
 	var st2 := {"won": true, "varga_alive": false}
 	check(Run.varga_stand(st2).contains("fell") and Run.camp.varga == "fell", "a fallen Varga is booked")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
+func warfront() -> void:
+	## Campaign idea W14: a Second Tour fights Acts II to IV on other fronts.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	check(Run.act(1).name == "THE BREACH", "the first war runs the home fronts")
+	var vet: Dictionary = Run.roster[0]
+	Run.second_tour(vet)
+	check(int(Run.camp.tour) == 2 and Run.act(0).name == "LANDFALL", "a Second Tour still lands at the delta")
+	check([1, 2, 3].all(func(i): return Run.act(i).name == Data.ALT_ACTS[i].name), "and fights Acts II to IV on their other fronts (%s)" % [[1, 2, 3].map(func(i): return Run.act(i).name)])
+	var f2: Array = Run.camp.fronts.duplicate()
+	var f3 := Run.pick_fronts(3, f2)
+	check(f3 != f2 and int(f3[0]) == 0 and int(f3[4]) == 0, "a third tour never replays the last map exactly (%s)" % [f3])
+	# every alt sector sets up a real op
+	var bad := []
+	for a in [1, 2, 3]:
+		Run.camp.act = a
+		Run.camp.held.clear()
+		check(Run.act().sectors.filter(func(sc): return Run.sector_open(sc)).size() >= 2, "Act %s %s opens through two sectors" % [Run.act().roman, Run.act().name])
+		for sc in Run.act().sectors:
+			for l in sc.links:
+				if l != "lz" and Run.sector(l).is_empty():
+					bad.append("%s->%s" % [sc.id, l])
+			Run.start_op(sc)
+			var b: Battle = main.start_battle(0, Run.current_mission())
+			b.autopick = 0
+			await until(func(): return b.state == "player" and not b.busy)
+			var lv: Dictionary = Run.level
+			var ok := true
+			match str(lv.job):
+				"rescue": ok = b.units.filter(func(u): return u.kind == "pow" and u.fl.get("job", false)).size() == 3
+				"demolish": ok = b.units.filter(func(u): return u.kind == "dump").size() == 3
+				"escort": ok = b.truck() != null
+				"hunt": ok = b.units.any(func(u): return u.fl.has("quarry"))
+			if not ok or b.squad().is_empty():
+				bad.append("%s %s %s pow%d" % [sc.id, sc.biome, lv.job, b.units.filter(func(u): return u.kind == "pow").size()])
+			if sc.id == "t1" or sc.id == "y1":
+				cam_on(b, 700)
+				await frames_wait(20)
+				await shot("wf_op_" + sc.id)
+		Run.camp.held.append(Run.sec_key(Run.act().sectors[0].id))
+		main.show_war_room()
+		await frames_wait(20)
+		await shot("wf_map_%d" % a)
+	check(bad.is_empty(), "every alt sector links up and sets up its job (%s)" % [bad])
+	check(Run.sector("c3", 2).get("varga", false) and Run.sector("v1", 3).get("story", "") == "varga", "Varga's garrison and last stand are on the new fronts too")
+	Run.camp.act = 1
+	var esc := 0
+	for i in 40:
+		if Run.op_job(Run.sector("k1"), true) == "escort":
+			esc += 1
+	check(esc == 0, "no truck escort on the ice")
+	Run.save_campaign()
+	main.show_slots()
+	await frames_wait(10)
+	await shot("wf_slots")
 	main.show_title()
 	await frames_wait(5)
 	Run.delete_campaign(9)
