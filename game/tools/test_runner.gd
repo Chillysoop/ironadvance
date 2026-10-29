@@ -847,6 +847,8 @@ func run() -> void:
 			await aliens8()
 		"playtest":
 			await playtest()
+		"campsweep":
+			await campsweep()
 		"straggler":
 			await straggler()
 		"hoverwedge":
@@ -5316,6 +5318,48 @@ func playtest() -> void:
 				for x in Run.soldiers:
 					if x.alive:
 						x.hp = Run.eff_max_hp(x)
+
+func campsweep() -> void:
+	## Balance pass: the bot plays a fresh campaign op by op (stronghold as soon as it opens, else the
+	## first open sector) and prints one [cp] JSON line per op. --seed=N --runs=K (K = ops). Slots 6-8,
+	## one per seed, so three sweeps can run side by side.
+	playtest_debug = true
+	seed(seed_arg * 1000)
+	var slot := 6 + seed_arg % 3
+	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate()}
+	Run.delete_campaign(slot)
+	Run.new_campaign(slot)
+	for n in runs_arg:
+		if Run.camp.get("done", false):
+			break
+		var open: Array = Run.act().sectors.filter(func(sc): return Run.sector_open(sc) and not Run.sector_held(sc.id))
+		if open.is_empty():
+			break
+		var fort: Array = open.filter(func(sc): return sc.get("stronghold", false))
+		var sc: Dictionary = fort[0] if fort.size() else open[0]
+		var act0 := int(Run.camp.act)
+		var scrip0 := Run.scrip
+		Run.start_op(sc)
+		Run.roll_intel()
+		var lv: Dictionary = Run.current_mission()
+		pt_tag = "cp_s%d_o%d" % [seed_arg, n]
+		var ms0 := Time.get_ticks_msec()
+		var won := await bot(int(Run.act().tier), 70, false, lv)
+		var row := bot_stats.duplicate()
+		row.erase("round_hp")
+		row.merge({"seed": seed_arg, "op": n, "act": act0, "sector": sc.id, "job": lv.get("job", ""), "biome": lv.get("biome", ""), "stronghold": sc.get("stronghold", false),
+			"secs": (Time.get_ticks_msec() - ms0) / 1000.0, "scrip_in": scrip0, "scrip_out": Run.scrip, "lv": Run.soldiers.map(func(x): return x.lvl),
+			"hp_out": Run.soldiers.map(func(x): return x.hp if x.alive else -1)})
+		print("[cp] ", JSON.stringify(row))
+		var st: Dictionary = Run.history[-1] if Run.history.size() else {"won": won}
+		main.campaign_home(st)
+		await frames_wait(10)
+	print("[cp] done act %d ops %d held %d" % [int(Run.camp.act), int(Run.camp.ops), Run.camp.held.size()])
+	Run.leave_campaign()
+	Run.delete_campaign(slot)
+	Run.meta.salvage = keep.salvage
+	Run.meta.hq = keep.hq
+	Run.save_meta()
 
 func warmap() -> void:
 	## Campaign step 1: save slots, a separate base, the War Room, sector income and perks, the
