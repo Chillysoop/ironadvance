@@ -77,6 +77,17 @@ func build() -> void:
 	ws.position = Vector2(220, 486)
 	ws.pressed.connect(func(): walk_to("workshop"))
 	add_child(ws)
+	# Q3: what's ready at the Workshop sits on its button, not over the shed behind the QM tent
+	var wb: String = badges().get("workshop", "")
+	if wb != "":
+		var tag := BtnTag.new()
+		tag.text = wb
+		var tw := Art.text_width(wb, 8) + 10
+		tag.size = Vector2(tw, 14)
+		tag.position = Vector2(ws.position.x + ws.size.x - tw + 6, ws.position.y - 8)
+		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tag.name = "WorkshopTag"
+		add_child(tag)
 	var go := HudScript.PixButton.new()
 	go.text = "DIAL THE GATE"
 	go.sub = "FINALE" if next_mission_n() > Data.LEVELS.size() else "LEVEL %d OF %d" % [next_mission_n(), Data.LEVELS.size()]
@@ -647,7 +658,7 @@ func draw_news() -> void:
 
 func draw_badges() -> void:
 	## H2: a bobbing tag over each building with something ready.
-	var at := {"qm": Vector2(120, 336), "workshop": Vector2(176, 296), "barracks": Vector2(305, 334), "armory": Vector2(674, 356)}
+	var at := {"qm": Vector2(120, 336), "barracks": Vector2(305, 334), "armory": Vector2(674, 356)}  # the Workshop's tag rides its button (BtnTag)
 	at["doc"] = Vector2(854, 314) if Run.hq("doc") >= 1 else Vector2(835, 474)
 	var b := badges()
 	for id in b:
@@ -960,3 +971,17 @@ class DocLock extends Control:
 		draw_rect(Rect2(Vector2.ZERO, size), Color("ffd23a"), false, 2)
 		Art.text(self, "LOCKED", Vector2(size.x / 2, 26), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 		Art.text(self, "Build the Doc's Lab on the UPGRADE HQ board (salvage) to install these.", Vector2(size.x / 2, 48), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+
+class BtnTag extends Control:
+	## Q3: a small bobbing tag on a button's top corner, like the building tags over the scene.
+	var text := ""
+	var t := 0
+	func _process(_d: float) -> void:
+		t += 1
+		if t % 20 == 0:
+			queue_redraw()
+	func _draw() -> void:
+		var p := Vector2(0, -(2 if (t / 20) % 2 == 0 else 0))
+		draw_rect(Rect2(p, size), Color(0.05, 0.035, 0.03))
+		draw_rect(Rect2(p + Vector2(1, 1), size - Vector2(2, 2)), Color("ffd23a"))
+		Art.text(self, text, p + Vector2(size.x / 2, 11), 8, Color(0.05, 0.035, 0.03), HORIZONTAL_ALIGNMENT_CENTER, 0)

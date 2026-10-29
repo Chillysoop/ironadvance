@@ -875,6 +875,8 @@ func run() -> void:
 			await pcalls()
 		"newplayer5":
 			await newplayer5()
+		"qcalls":
+			await qcalls()
 		"polish1":
 			await polish1()
 		"polish2":
@@ -1174,7 +1176,7 @@ func picks() -> void:
 	await shot("picks_supply_who")
 	var who: Array = b.hud.modal.get_children().filter(func(c): return c is CardView and not c.is_queued_for_deletion())
 	check(modal_title(b).begins_with("WHO GETS") and who.size() == sq.size(), "then asks who gets it (%s, %d soldiers)" % [modal_title(b), who.size()])
-	check(who[2].label_top == "GIVE TO " + sq[2].def.name and who[2].opt.has("soldier"), "D7: each tile shows its soldier, not the card (%s)" % who[2].label_top)
+	check(who[2].opt.name == sq[2].def.name and who[2].opt.has("soldier") and who[2].label_top == "", "D7/Q6: each tile shows its soldier once, not the card (%s)" % who[2].opt.name)
 	b.hud.picked.emit(2)
 	await frames_wait(10)
 	check(sq[2].s.deck.size() == n2 + 1 and [0, 1, 3].map(func(k): return sq[k].s.deck.size()) == others, "the card goes to the soldier you picked and nobody else")
@@ -2113,6 +2115,60 @@ func newplayer5() -> void:
 	main.show_brief()
 	await frames_wait(6)
 	await shot("newplayer5_brief")
+	Run.meta = keep
+	Run.save_meta()
+
+func qcalls() -> void:
+	## Q1-Q6 from the new-player playtest 5 page (all voted YES). Q6 is checked in picks.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.meta["tips_off"] = true
+	# Q1: the first Quartermaster of a run always has a card the starting scrip buys
+	var ShopScript = load("res://scripts/shop.gd")
+	Run.new_run()
+	Run.mission = 0
+	var sh = ShopScript.new()
+	var ok := true
+	for i in 60:
+		sh.restock()
+		if not sh.stock_cards.any(func(o): return o.price <= Run.scrip):
+			ok = false
+	sh.free()
+	check(ok, "Q1: every first-visit Quartermaster has a card for %d scrip" % Run.scrip)
+	# Q2: BOUNCE spelled out, and left off a shot that doesn't bounce
+	var lines: Array = Data.CARDS.keys().map(func(k): return Data.stat_line(Data.card({"key": k})))
+	check(not lines.any(func(l): return l.contains("BNC") or l.contains("BOUNCE 0") or l.begins_with("ADR ")), "Q2: no BNC, BOUNCE 0 or ADR on card stat lines")
+	check(lines.any(func(l): return l.contains("BOUNCE 1")) and lines.any(func(l): return l.begins_with("ADRENALINE +")), "Q2: BOUNCE and ADRENALINE read in full")
+	# Q3: a fuse that's ready shows on the WORKSHOP button
+	Run.new_run()
+	var s0: Dictionary = Run.soldiers[0]
+	var c0: Dictionary = s0.deck.filter(func(c): return not c.has("src"))[0]
+	for i in 2:
+		s0.deck.append(c0.duplicate(true))
+	main.show_hq(false)
+	await frames_wait(6)
+	var tag = main.screen.get_node_or_null("WorkshopTag")
+	check(tag != null and tag.text.ends_with("READY"), "Q3: the Workshop's READY count rides its button (%s)" % (tag.text if tag else "none"))
+	await shot("qcalls_hq")
+	# Q4: two squadmates on one spot step apart after an action
+	Run.new_run()
+	Run.level = Run.make_level("desert", 0)
+	var b: Battle = main.start_battle(0, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var sq: Array = b.squad_alive()
+	sq[1].x = sq[2].x + 3
+	sq[1].y = sq[2].y
+	b.sel = sq[2]
+	b.resolve(func(): await b.wait(2))
+	await until(func(): return not b.busy, 600)
+	check(absf(sq[1].x - sq[2].x) >= 10, "Q4: a stacked squadmate steps aside (%.0f apart)" % absf(sq[1].x - sq[2].x))
+	# Q5: the first END TURN shows THE ENEMY TURN tip before the enemy moves
+	b.coach_left = b.COACH.duplicate()
+	b.end_turn()
+	check(b.state == "player" and b.hud.coach_queue.any(func(pg): return pg[1] == "THE ENEMY TURN"), "Q5: the first END TURN opens the enemy-turn tip instead of ending")
+	b.hud.coach_queue.clear()
+	b.end_turn(true)
+	await until(func(): return b.state != "player")
+	check(true, "Q5: the next END TURN ends the turn")
 	Run.meta = keep
 	Run.save_meta()
 

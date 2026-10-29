@@ -4945,6 +4945,8 @@ func resolve(fn: Callable) -> void:
 			s.fl.erase("hung_shot")
 			drop_hang(s)
 	await until(settled)
+	if state == "player":
+		await unstack_squad()
 	await wait(8)
 	if act_crushed >= 3:
 		announce_unlock(Run.feat("timber"))
@@ -7098,7 +7100,7 @@ func supply_drop(title: String, for_unit) -> void:
 		var who: Array = alive.filter(func(s): return cls.is_empty() or cls.has(s.def.key))
 		# D7: one tile per soldier (figure, name, HP, deck) instead of the same card four times
 		var who_opts: Array = who.map(func(s): return {"kind": "service", "title": s.def.cls.to_upper(), "name": s.def.name,
-			"text": "HP %d/%d. Level %d, %d cards in the deck." % [s.hp, s.max_hp, s.s.lvl, s.s.deck.size()], "soldier": s.s, "label": "GIVE TO " + s.def.name})
+			"text": "HP %d/%d. Level %d, %d cards in the deck." % [s.hp, s.max_hp, s.s.lvl, s.s.deck.size()], "soldier": s.s})  # Q6: the name shows once, under the figure
 		var thing: String = Data.item_name(o0.item) if o0.kind == "item" else Data.card(o0).name
 		var w := await ask("supply_who", "WHO GETS %s?" % thing.to_upper(), "It goes into that soldier's draw pile." if o0.kind == "card" else "They get the chance to equip it.", who_opts)
 		if w < 0:
@@ -7942,6 +7944,11 @@ func ready_count() -> int:
 func end_turn(force := false) -> void:
 	if state != "player" or busy:
 		return
+	if coach_left.has("end") and hud != null:
+		# Q5: the very first END TURN press opens THE ENEMY TURN tip, before the enemy moves
+		coach_hit("end")
+		ui_dirty = true
+		return
 	# first press warns when someone can still act; a second press within ~2.5s ends the turn
 	if not force and ready_count() > 0 and end_confirm_t <= 0:
 		end_confirm_t = 150
@@ -8186,7 +8193,34 @@ func enemy_phase() -> void:
 	if squad_alive().is_empty():
 		game_over()
 		return
+	await unstack_squad()
 	start_player_turn()
+
+func unstack_squad() -> void:
+	## Q4: two squadmates parked on one spot (a recoil, a blast, a fall): the one that isn't selected
+	## steps aside to the nearest free spot, so nobody hides behind a teammate. The step is free.
+	for _pass in 4:
+		var sq := squad_alive().filter(func(o): return not o.air and o.walk == null and o.zip == null and o.drill == null and o.mech == null and not o.hang and not o.sunk)
+		var moved := false
+		for a in sq:
+			for c in sq:
+				if moved or a.id >= c.id or absf(a.x - c.x) >= 10 or absf(a.y - c.y) >= 20:
+					continue
+				var mover: Unit = a if c == sel else c
+				for d in [16.0, -16.0, 32.0, -32.0, 48.0, -48.0]:
+					var nx: float = mover.x + d
+					if nx < cam_x + 14 or nx > cam_x + W - 14:
+						continue
+					var sim := sim_walk(mover, nx, absf(d) + 8)
+					if sim.pts.is_empty() or absf(sim.x - nx) > 3 or absf(sim.y - mover.y) > 24 or mine_under(mover, sim.x, sim.y, 6) != null:
+						continue
+					if sq.any(func(o): return o != mover and absf(o.x - sim.x) < 10 and absf(o.y - sim.y) < 20):
+						continue
+					await walk_along(mover, sim.pts)
+					moved = true
+					break
+		if not moved:
+			return
 
 func best_shot(e: Unit, targets: Array, rng: float):
 	var best = null

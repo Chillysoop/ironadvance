@@ -1941,7 +1941,9 @@ func dmg_text(d) -> String:
 
 func stat_line(c: Dictionary) -> String:
 	if c.type == "AIM":
-		return "DMG %s%s%s BNC %d" % [dmg_text(c.dmg), (" x%d" % c.shots) if c.has("shots") else "", (" x%d" % c.pellets) if c.has("pellets") else "", c.get("bounce", 0)]
+		# Q2: BOUNCE spelled out, and left off when the shot doesn't bounce at all
+		var bn: String = (" BOUNCE %d" % c.bounce) if int(c.get("bounce", 0)) > 0 else ""
+		return "DMG %s%s%s%s" % [dmg_text(c.dmg), (" x%d" % c.shots) if c.has("shots") else "", (" x%d" % c.pellets) if c.has("pellets") else "", bn]
 	if c.has("radius"):
 		return "DMG %d%s BLAST %s" % [c.dmg, (" x%d" % c.count) if c.has("count") else "", meters(c.radius)]
 	if c.has("dmg"):
@@ -1963,7 +1965,7 @@ func stat_line(c: Dictionary) -> String:
 	if c.has("energy"):
 		return "ENERGY +1"
 	if c.has("adrenal"):
-		return "ADR +%d  HP -%d" % [c.adrenal, c.selfdmg]
+		return "ADRENALINE +%d  HP -%d" % [c.adrenal, c.selfdmg]
 	if c.has("rally"):
 		return "MOVE +%s  RNG %s" % [meters(c.rally), meters(c.range)]
 	if c.get("rush", false):
