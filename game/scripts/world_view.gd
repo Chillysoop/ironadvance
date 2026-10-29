@@ -487,7 +487,7 @@ func draw_unit(u: Unit) -> void:
 		# parasite veins showing through the Jackal's skin
 		for k in 3:
 			draw_rect(Rect2(pos.x - 6 + k * 5, pos.y - u.h * 0.75 + (k % 2) * 6, 2, 6), Color(C_OOZE, 0.75 + 0.2 * sin(b.t / 7.0 + k)))
-	if u.dome > 0 and not u.dead:
+	if u.dome > 0 and not u.dead and (b.vfx == null or u.fl.get("vharr", false)):
 		var r := maxf(u.w, u.h) / 2.0 + 8
 		var c := pos + Vector2(0, -u.h / 2.0)
 		draw_circle(c, r, Color(C_OOZE, 0.12 + 0.05 * sin(b.t / 8.0)))
