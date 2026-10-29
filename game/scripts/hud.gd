@@ -1106,9 +1106,19 @@ class Overlay extends Control:
 		var code: String = "FINALE" if b.mission.get("finale", false) else "M%d" % (b.mission_idx + 1)
 		if Run.campaign() and b.mission.has("op"):
 			code = "FORT" if Run.sector(b.mission.op).get("stronghold", false) else str(b.mission.op).to_upper()
-		Art.text(self, "%s %s" % [code, b.mission.name], Vector2(150, 14), 8, Color("e8dcc2"))
 		# alert siren bulbs
 		var ax := 384.0
+		# a long op name (FORT UNDER THE HIVE SHIP) wraps onto the score row instead of running into ALERT
+		var tw := ax - 16 - Art.text_width("ALERT", 8) - 150
+		var tl: Array = [""]
+		for word in ("%s %s" % [code, b.mission.name]).split(" "):
+			var t: String = word if tl[-1] == "" else tl[-1] + " " + word
+			if Art.text_width(t, 8) > tw and tl[-1] != "":
+				tl.append(word)
+			else:
+				tl[-1] = t
+		for i in mini(tl.size(), 2):
+			Art.text(self, tl[i], Vector2(150, 14 + i * 12), 8, Color("e8dcc2"))
 		Art.text(self, "ALERT", Vector2(ax - 6, 22), 8, Color("ff4d3d") if b.alert >= 10 and b.t % 30 < 15 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT)
 		for i in 10:
 			var on := i < b.alert
