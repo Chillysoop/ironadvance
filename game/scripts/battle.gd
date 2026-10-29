@@ -4322,6 +4322,10 @@ func kill(tg: Unit, src) -> void:
 				gain_adr(src, 15)
 			gain_adr(src, 8 + int(src.g("kill_adr")))
 			give_xp(src, 4 + base / 50)
+			# B3: everyone else still standing gets a third of the kill's XP, so the levels don't all pile onto one soldier
+			for h in squad_alive():
+				if h != src:
+					give_xp(h, maxi(1, (4 + base / 50) / 3))
 			if src.g("kill_draw") > 0 and not src.kill_drawn and state == "player":
 				src.kill_drawn = true
 				draw_cards(src, int(src.g("kill_draw")))
@@ -9908,7 +9912,8 @@ func boss_act(bo: Unit) -> void:
 			shake += 4
 			for j in 4:
 				puff(m.x, m.y, 2.0)
-			projs.append(mk_proj({"kind": "shell", "x": m.x, "y": m.y, "vx": sol.vx * k, "vy": sol.vy * k, "wind": 1.0, "r": 44.0, "dmg": int(round(10.5 * (1 + alert * 0.06))), "owner": bo, "trail": true}))
+			# B2: the shell keeps its base damage at any alert (alert already brings airstrikes and paratroopers)
+			projs.append(mk_proj({"kind": "shell", "x": m.x, "y": m.y, "vx": sol.vx * k, "vy": sol.vy * k, "wind": 1.0, "r": 44.0, "dmg": 11, "owner": bo, "trail": true}))
 			await until(settled)
 			await wait(12)
 	var best = best_shot(bo, squad_alive(), Data.ETYPES.boss.range)

@@ -238,6 +238,10 @@ func build_barracks() -> void:
 	var xp := price(Data.XTRAIN_PRICE)
 	tiles.append(["CROSS-TRAIN", xp, "A soldier learns a card from another class: it joins their deck and turns up in their level-ups from now on.", cross_train,
 		Services.short(xp), Run.scrip >= xp])
+	var dp := price(Data.DRILL_PRICE)
+	var behind: Array = Run.soldiers.filter(func(s): return Run.drill_ok(s))
+	tiles.append(["DRILL SERGEANT", dp, "One level for a soldier behind the squad's best, picked like a level-up.%s" % (" Behind: " + ", ".join(behind.map(func(s): return "%s (LV %d)" % [s.def.name, s.lvl])) + "." if behind.size() else ""), drill,
+		"Everyone is already at the squad's top level." if behind.is_empty() else Services.short(dp), behind.size() > 0 and Run.scrip >= dp])
 	if trainee.size():
 		tiles.append(["TRAINING", 0, "%s's free level from Barracks 2. Pick it like a level-up." % trainee[0].def.name, func(): train(trainee[0]), "", true])
 	n_tiles = tiles.size()
@@ -303,7 +307,7 @@ func _draw() -> void:
 		draw_texture_rect(hz, Rect2(x, 0, 32, 8), false)
 	var title := "QUARTERMASTER" if mode == "shop" else "BARRACKS"
 	Art.text(self, title, Vector2(24, 60), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
-	var sub := "Buy cards, gear and items. Card changes are at the Workshop." if mode == "shop" else "Hire replacements. Buy back spent dog tags. Swap in reserves."
+	var sub := "Buy cards, gear and items. Card changes are at the Workshop." if mode == "shop" else "Hire replacements. Buy back dog tags. Swap in reserves. Drill whoever is behind."
 	Art.text(self, sub, Vector2(24 + Art.text_width(title, 16) + 24, 58), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	var sc := "%d SCRIP" % Run.scrip
 	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 16) - 22, 44, 16, 16), false)
@@ -580,6 +584,25 @@ func cross_train() -> void:
 		s["xtrain"] = []
 	s.xtrain.append(k)
 	say("%s cross-trained in %s. It can turn up in their level-ups now." % [s.def.name, Data.CARDS[k].name])
+	build()
+
+func drill() -> void:
+	## B5: pay for a level for a soldier who is behind the squad's best.
+	if Run.scrip < price(Data.DRILL_PRICE):
+		Sfx.play("deny")
+		return
+	var s := await choose_soldier("WHO GETS DRILLED?")
+	if s.is_empty():
+		return
+	if not Run.drill_ok(s):
+		say("%s is already as high a level as anyone in the squad." % s.def.name)
+		return
+	var opts := Run.level_options(s)
+	var i := await choose("%s'S DRILL: PICK ONE" % s.def.name, opts, Vector2(132, 176))
+	if i < 0 or not pay(price(Data.DRILL_PRICE)):
+		return
+	Run.drill_level(s)
+	say("%s is level %d. %s" % [s.def.name, s.lvl, Run.apply_option(s, opts[i])])
 	build()
 
 func train(s: Dictionary) -> void:

@@ -47,6 +47,7 @@ const META_PATH := "user://meta.json"
 # While a campaign is loaded those keys in meta hold the campaign's values and run_base holds the
 # standard run's, so every screen that reads meta works in both modes. Feats and Armory unlocks
 # stay shared (L2).
+const ACT_OPENER := "d1"   # B4: the sector every war starts next to
 const CAMP_KEYS := ["salvage", "bio", "hq", "implants", "memorial"]
 var camp := {}             # campaign state; empty during a standard run
 var roster: Array = []     # campaign: the whole company (C1); soldiers is the squad that deploys
@@ -863,6 +864,18 @@ func xp_for_next(s: Dictionary) -> int:
 		return Data.XP_LEVELS[l]
 	return Data.XP_LEVELS[-1] + (l - Data.XP_LEVELS.size() + 1) * 60
 
+func drill_ok(s: Dictionary) -> bool:
+	## B5: the Drill Sergeant only trains a soldier below the squad's highest level.
+	var top := 0
+	for x in soldiers:
+		if x.alive:
+			top = maxi(top, int(x.lvl))
+	return s.alive and int(s.lvl) < top
+
+func drill_level(s: Dictionary) -> void:
+	s.lvl += 1
+	s.xp = xp_floor(s)
+
 func xp_floor(s: Dictionary) -> int:
 	var l: int = s.lvl - 1
 	if l < Data.XP_LEVELS.size():
@@ -1499,6 +1512,10 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 		lv.plate = int(a.plate * 1.2)
 	if sc.get("queen", false):
 		lv.encounter = "queen"
+	if int(camp.get("act", 0)) == 0 and sc.id == ACT_OPENER and not patrol:
+		# B4: Mudflat Landing, the first op of every war, is plain like a first quick run: no mini-boss, no event
+		lv.walker = false
+		lv.event = ""
 	if int(camp.get("act", 0)) == 2 and sc.get("stronghold", false) and not patrol:
 		lv["vharr_boar"] = true  # S1 Act III: the Infested Works' Boar comes back refit by the Vharr
 	var tour := int(camp.get("tour", 1))
