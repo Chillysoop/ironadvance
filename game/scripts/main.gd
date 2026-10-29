@@ -237,6 +237,10 @@ func campaign_home(st := {}) -> void:
 		if inc[k] != "":
 			news.append(inc[k])
 	news.append_array(inc.challenges)
+	if inc.nemesis != "":
+		news.append(inc.nemesis)
+	news.append_array(inc.orders)
+	news.append_array(inc.bonds)
 	news.append_array(inc.promos)
 	for m in inc.medals:
 		news.append("Medal for " + m + ".")
@@ -409,6 +413,10 @@ func _on_mission_over(won: bool) -> void:
 		downs[u.def.key] = u.downed or u.dead
 	st["xp"] = xp
 	st["kills_by"] = kills
+	for u in battle.units:
+		# W3: a named officer still standing when the op ends gets away
+		if u.fl.has("quarry") and not u.dead and Run.campaign():
+			st["nemesis_escaped"] = {"name": u.fl.get("nemesis", u.fl.quarry), "type": u.type, "elite": u.elite}
 	st["downed_by"] = downs
 	if won:
 		st["bounties"] = Run.pay_bounties(st)  # R5; O1: campaign ops pay them into the company's scrip too
@@ -704,6 +712,10 @@ class Screen extends Control:
 		var ny := iy + 14
 		if Run.threat > 0:
 			Art.text(self, "THREAT %d: %s" % [Run.threat, ", ".join(Data.THREATS.slice(0, Run.threat).map(func(x): return x.name))], Vector2(480, ny), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
+		if m.get("nemesis", {}).size():
+			# W3: an officer who got away before is waiting
+			Art.text(self, "NEMESIS: %s IS HERE. KILL THEM FOR THEIR SIGNATURE GEAR." % Run.nemesis_name(m.nemesis), Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ff4d3d") if t % 50 < 34 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			ny += 14
 		if m.get("specialist", "") != "":
 			# X2: a specialist is held somewhere in this level
 			var D: Dictionary = Run.class_def(m.specialist)

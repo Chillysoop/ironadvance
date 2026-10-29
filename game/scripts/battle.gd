@@ -84,6 +84,7 @@ var fuse_pick := 0       # frames of fuse the player dialed in with the wheel (0
 var feed: Array = []     # kill feed lines: {killer, how, victim, kc, stamp, t}
 var kill_how := ""       # what is dealing the damage right now when it isn't a card (FALL, CRUSHED, BURN)
 var act_card := ""       # name of the card behind the current action, for the kill feed
+var act_type := ""       # its type (AIM, ARC, MELEE...), for personal orders (W5)
 var pop_next := false    # the next kill was an overkill: the Jackal bursts instead of leaving a body
 var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0, "kia": 0, "max_alert": 0, "pows_total": 0, "loot": 0, "tags": 0, "best_combo": 0, "fallen": [], "falls": 0, "downs": 0, "melee_kills": 0}
 var act_once := {}        # tag-team combos that pay out once per action
@@ -287,6 +288,7 @@ func setup(idx: int, custom := {}) -> void:
 	setup_biome()
 	setup_events()
 	place_job()
+	place_nemesis()
 	spawn_map_loot()
 	sel = null
 	for u in units:
@@ -4213,6 +4215,13 @@ func kill(tg: Unit, src) -> void:
 		tg.bow = false
 		drop_loot(tg.x, tg.y - 14, {"type": "bow"}, 0.4)
 	feed_kill(tg, src)
+	if tg.fl.has("nemesis"):
+		# W3: a nemesis put down for good drops a Legendary with their name on it
+		var it := Run.roll_item(Data.TIER_MAX)
+		it["named"] = str(tg.fl.nemesis).capitalize()
+		drop_loot(tg.x, tg.y - 20, {"type": "item", "item": it})
+		stats["nemesis_killed"] = tg.fl.nemesis
+		banner("NEMESIS DOWN!", Color("ffd23a"), "%s IS DEAD" % tg.fl.quarry)
 	if tg.type == "shipplate":
 		drop_plate(tg, src)
 	elif tg.type == "jwalker":
@@ -4480,6 +4489,19 @@ func feed_kill(tg: Unit, src) -> void:
 			how = "ATTACK"
 		else:
 			how = "BLAST"
+	if Run.campaign() and src is Unit and src.team == "squad" and tg.team == "enemy" and src.s.has("order"):
+		# W5: personal orders count the kills that match them
+		var fin := ""
+		match str(src.s.order.id):
+			"headhunter": fin = Run.order_tick(src.s, "headhunter") if last_hit_head else ""
+			"demo": fin = Run.order_tick(src.s, "demo") if act_type == "ARC" or how == "BLAST" else ""
+			"brawler": fin = Run.order_tick(src.s, "brawler") if act_type == "MELEE" else ""
+			"bughunter": fin = Run.order_tick(src.s, "bughunter") if faction(tg) == "vharr" else ""
+			"wrecker": fin = Run.order_tick(src.s, "wrecker") if how in ["FALL", "SLAM", "BONK", "CRUSHED"] else ""
+			"giantkiller": fin = Run.order_tick(src.s, "giantkiller") if tg.elite != "" or is_boss(tg) else ""
+		if fin != "":
+			log_msg(fin)
+			float_text(src, Data.ORDERS[src.s.orders_done.back()].title + "!", Color("ffd23a"), true)
 	var victim: String = (Data.ETYPES[tg.type].name if tg.team == "enemy" else tg.def.name).to_upper()
 	var stamp := ""
 	if pop_next:
@@ -5045,6 +5067,7 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 			drop_hang(u)
 	act_unit = u
 	act_card = c.get("name", "")
+	act_type = c.get("type", "")
 	act_inst = inst
 	u.played += 1
 	if ch != "":
@@ -7394,9 +7417,30 @@ func place_job() -> void:
 				make_elite(q, pick_elite(faction(q) == "vharr"))
 			q.hp *= 2
 			q.max_hp = q.hp
-			q.fl["quarry"] = Data.QUARRY_NAMES[randi() % Data.QUARRY_NAMES.size()]
+			var taken: Array = Run.camp.get("nemeses", []).map(func(n): return n.name) if Run.campaign() else []
+			var names: Array = Data.QUARRY_NAMES.filter(func(n): return not taken.has(n))
+			q.fl["quarry"] = (names if names.size() else Data.QUARRY_NAMES)[randi() % (names.size() if names.size() else Data.QUARRY_NAMES.size())]
 		"hold":
 			job_st = {"on": false, "left": Data.HOLD_PHASES}
+
+func place_nemesis() -> void:
+	## W3: an officer who got away on an earlier op is back: the farthest foe, with a new elite trick
+	## and more health for every escape. WANTED over their head like a hunt's target.
+	var nem: Dictionary = mission.get("nemesis", {})
+	if nem.is_empty():
+		return
+	var foes := units.filter(func(e): return e.team == "enemy" and not e.dead and not is_boss(e) and not e.fl.has("quarry") and e.type != "radio" and not Data.ETYPES[e.type].get("static", false))
+	if foes.is_empty():
+		return
+	foes.sort_custom(func(a, b): return a.x > b.x)
+	var q: Unit = foes[0]
+	var tricks := Data.ELITES.keys().filter(func(k): return Data.ELITES[k].get("vharr", false) == (faction(q) == "vharr") and k != str(nem.get("elite", "")))
+	make_elite(q, tricks[randi() % tricks.size()] if tricks.size() else pick_elite(faction(q) == "vharr"))
+	q.hp = int(q.hp * (2.0 + Data.NEMESIS_HP * int(nem.rank)))
+	q.max_hp = q.hp
+	q.fl["quarry"] = Run.nemesis_name(nem)
+	q.fl["nemesis"] = nem.name
+	stats["nemesis"] = Run.nemesis_name(nem)
 
 func truck():
 	for u in units:
@@ -7719,7 +7763,7 @@ func start_player_turn() -> void:
 		s.energy = 3 + s.banked
 		s.banked = 0
 		if round_n == 1:
-			s.energy += s.s.bonus.energy1 + int(s.g("energy1")) + (1 if Run.has_gear("bandolier") else 0)
+			s.energy += s.s.bonus.energy1 + int(s.g("energy1")) + (1 if Run.has_gear("bandolier") else 0) + (1 if Run.campaign() and Run.buddy_deployed(s.s) else 0)
 		elif round_n == 2 and Run.relic_tier("bandolier") >= 3:
 			s.energy += 1
 		if Run.has_gear("overclock") and (round_n % 2 == 1 or Run.relic_tier("overclock") >= 3):

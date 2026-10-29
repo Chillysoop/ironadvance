@@ -1758,6 +1758,25 @@ const JOBS := {
 	"escort": {"name": "ESCORT", "goal": "GET THE TRUCK THROUGH", "text": "A supply truck rolls forward each enemy phase, but stops while Jackals are close ahead. Keep it alive."},
 	"hunt": {"name": "HUNT", "goal": "KILL THE TARGET", "text": "A named Jackal officer is somewhere in the sector. Kill them and take what they carry."},
 }
+# W3: a hunt's named officer who survives the op gets away and comes back on the next op, tougher
+# each time, with a new trick. Killing one who came back drops a Legendary named after them.
+const NEMESIS_TITLES := ["", "THE SCARRED", "ONE-EYE", "THE UNKILLABLE"]
+const NEMESIS_HP := 0.5   # extra HP multiplier per escape, on top of a hunt quarry's double
+# W5: personal orders. Each soldier gets one at Corporal and a new one with each rank, picked to fit
+# their deck. Finishing one earns a title and a permanent bonus. Nothing happens if you never do it.
+const ORDERS := {
+	"headhunter": {"text": "Make %d headshot kills.", "goal": 4, "title": "DEADEYE", "stats": {"aim_dmg": 2}, "up": "+2 damage on aimed shots"},
+	"demo": {"text": "Kill %d enemies with thrown or lobbed explosives.", "goal": 8, "title": "BOOMER", "stats": {"blast": 0.15}, "up": "+15% blast damage"},
+	"brawler": {"text": "Make %d kills with melee cards.", "goal": 5, "title": "BRUISER", "stats": {"hp": 10}, "up": "+10 max HP"},
+	"bughunter": {"text": "Kill %d Vharr.", "goal": 10, "title": "BUGSPLITTER", "stats": {"aim_dmg": 1, "kill_adr": 5}, "up": "+1 aimed damage, +5 adrenaline per kill"},
+	"wrecker": {"text": "Kill %d enemies with falls, slams, crushes or bonks.", "goal": 5, "title": "WRECKING BALL", "stats": {"hp": 6, "dodge": 4}, "up": "+6 max HP, +4 dodge"},
+	"giantkiller": {"text": "Kill %d elites or bosses.", "goal": 3, "title": "GIANT KILLER", "stats": {"aim_dmg": 2}, "up": "+2 damage on aimed shots"},
+	"ironside": {"text": "Finish %d ops without going down.", "goal": 4, "title": "IRONSIDE", "stats": {"armor_turn": 2}, "up": "2 armor every turn"},
+}
+# W7: two soldiers who finish this many ops in the same squad become battle buddies (up to 2 each)
+const BOND_OPS := 5
+const BOND_MAX := 2
+const RADIO_BOND := ["{mate}, you still owe me from the last op.", "Stick close, {mate}. Same as always.", "Me and {mate} have this side covered.", "{mate}, if I go down, you're buying the drinks."]
 const QUARRY_NAMES := ["MAJOR KROLL", "THE BUTCHER", "COLONEL VASK", "IRON MARTA", "THE SURGEON", "CAPTAIN RUST"]
 const HOLD_PHASES := 5
 const TARGET_HP := 40

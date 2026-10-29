@@ -856,6 +856,8 @@ func run() -> void:
 			await wardeep()
 		"warplus":
 			await warplus()
+		"warpeople":
+			await warpeople()
 		"straggler":
 			await straggler()
 		"hoverwedge":
@@ -5681,6 +5683,105 @@ func warplus() -> void:
 	main.screen.build()
 	await frames_wait(10)
 	await shot("wp_ending_journal")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
+func warpeople() -> void:
+	## Campaign ideas W3, W5, W7: nemesis officers who get away and come back, personal orders with
+	## titles, and battle buddies.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	# W3: the hunt's target survives the op and gets away
+	Run.camp.held.append(Run.sec_key("d1"))
+	var sc: Dictionary = Run.sector("d2").duplicate()
+	sc["job"] = "hunt"
+	Run.level = Run.make_op(sc)
+	var b: Battle = main.start_battle(0, Run.level)
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var q: Array = b.units.filter(func(e): return e.fl.has("quarry"))
+	check(q.size() == 1, "a hunt has its named target (%s)" % [q.map(func(e): return e.fl.quarry)])
+	var qname: String = q[0].fl.quarry
+	b.mission_over.emit(false)
+	await frames_wait(5)
+	var st: Dictionary = Run.history.back()
+	check(st.get("nemesis_escaped", {}).get("name", "") == qname, "the target still standing gets away (%s)" % [st.get("nemesis_escaped")])
+	main.campaign_home(st)
+	await frames_wait(10)
+	var nem := Run.next_nemesis()
+	check(nem.get("name", "") == qname and int(nem.rank) == 1, "they're on the books as a nemesis (%s)" % [nem])
+	check(main.screen.get("news") != null and main.screen.news.any(func(l): return l.contains(qname)), "HQ news says they got away")
+	# they come back on the next op, tougher
+	Run.start_op(Run.sector("d1"), false)
+	check(Run.level.get("nemesis", {}).get("name", "") == qname, "the next op has the nemesis waiting")
+	Run.start_op(Run.sector("d1"), true)
+	check(not Run.level.has("nemesis"), "a patrol doesn't")
+	Run.start_op(Run.sector("d3"))
+	main.show_brief()
+	await frames_wait(10)
+	await shot("pp_brief_nemesis")
+	b = main.start_battle(0, Run.current_mission())
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var n: Array = b.units.filter(func(e): return e.fl.has("nemesis"))
+	check(n.size() == 1 and n[0].fl.quarry.contains("THE SCARRED") and n[0].elite != "", "the nemesis is back with a scar and an elite trick (%s %s hp %d)" % [n[0].fl.quarry if n.size() else "-", n[0].elite if n.size() else "", n[0].hp if n.size() else 0])
+	cam_on(b, n[0].x - 300)
+	await frames_wait(30)
+	await shot("pp_nemesis_field")
+	b.kill(n[0], b.squad()[0])
+	check(b.stats.get("nemesis_killed", "") == qname, "killing them is booked")
+	var named: Array = b.loot.filter(func(l): return l.get("type", "") == "item" and l.item.get("named", "") != "") if "loot" in b else []
+	b.mission_over.emit(true)
+	await frames_wait(5)
+	st = Run.history.back()
+	main.campaign_home(st)
+	await frames_wait(5)
+	check(Run.next_nemesis().is_empty(), "a dead nemesis stays dead")
+	# W5: an order at Corporal, progress from kills, a title and its bonus when done
+	var s0: Dictionary = Run.soldiers[0]
+	s0.erase("order")
+	Run.svc(s0).ops = 1
+	s0.rank = 0
+	var xp := {}
+	for x in Run.soldiers:
+		xp[x.key] = 5
+	var out := Run.book_service({"won": true, "xp": xp, "kills_by": {}, "downed_by": {}})
+	check(Run.rank(s0) == 1 and s0.has("order"), "a new Corporal gets a personal order (%s)" % [s0.get("order")])
+	check(out.orders.any(func(l): return l.contains(s0.def.name)), "the news names the order")
+	s0.order = {"id": "brawler", "n": 4}
+	b = main.start_battle(0, Run.make_op(Run.sector("d1")))
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var me: Unit = b.squad().filter(func(u): return u.s == s0)[0]
+	var foe: Unit = b.units.filter(func(e): return e.team == "enemy" and not e.dead and not b.is_boss(e))[0]
+	b.act_type = "MELEE"
+	b.kill(foe, me)
+	check(not s0.has("order") and s0.orders_done.has("brawler"), "a melee kill finishes BRUISER")
+	check(int(Run.gear_bonus(s0).get("hp", 0)) >= 10 and Run.title_line(s0) == "BRUISER", "the title's bonus counts like gear (%s)" % Run.title_line(s0))
+	main.show_hq(false)
+	await frames_wait(20)
+	main.screen.open_dossier(0)
+	await frames_wait(20)
+	await shot("pp_dossier")
+	main.show_hq(false)
+	await frames_wait(5)
+	# W7: five ops together make buddies
+	var bonds := []
+	for i in Data.BOND_OPS:
+		bonds.append_array(Run.book_service({"won": true, "xp": xp, "kills_by": {}, "downed_by": {}}).bonds)
+	check(Run.buddies(Run.soldiers[0]).size() == Data.BOND_MAX and bonds.size() >= 2, "squadmates become battle buddies, two each at most (%s)" % [bonds])
+	check(Run.buddy_deployed(Run.soldiers[0]), "a buddy in the squad counts")
+	var talk := Run.radio_after({"won": true})
+	check(talk.any(func(l): return Data.RADIO_BOND.any(func(r): return l.text == r.format({"mate": l.text.get_slice(",", 0)}) or l.text.contains("Same as always") or l.text.contains("owe me") or l.text.contains("covered") or l.text.contains("drinks"))), "buddies get a radio line about each other")
+	b = main.start_battle(0, Run.make_op(Run.sector("d1")))
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var e1: Unit = b.squad().filter(func(u): return u.s == Run.soldiers[0])[0]
+	check(e1.energy >= 4, "a soldier with a buddy deployed starts with +1 energy (%d)" % e1.energy)
 	main.show_title()
 	await frames_wait(5)
 	Run.delete_campaign(9)

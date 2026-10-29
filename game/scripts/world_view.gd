@@ -992,7 +992,7 @@ func draw_plate(u: Unit) -> void:
 			lift += 10.0
 		Art.text(self, en, in_view(Vector2(x, y - 4 - lift), en), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		if u.fl.has("quarry"):
-			var wn: String = "WANTED: " + u.fl.quarry
+			var wn: String = ("NEMESIS: " if u.fl.has("nemesis") else "WANTED: ") + u.fl.quarry
 			Art.text(self, wn, in_view(Vector2(x, y - 14 - lift), wn), 8, Color("ff4d3d") if b.t % 40 < 28 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 	draw_statuses(u, x, y - lift - (24 if u.fl.has("quarry") else (14 if u.elite != "" else 4)))
 	if u.type == "radio" and b.radio_t != null and u.active:
