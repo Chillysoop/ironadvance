@@ -41,6 +41,7 @@ var busy := false
 var round_n := 0
 var alert := 0
 var rounds_since_scroll := 0
+var push_warned := -1  # round the "clear the enemies behind first" warning was last shown
 const STALL_ROUNDS := 3   # rounds on one screen before alert starts climbing (one fewer on threat 1)
 var wind := 0
 var score := 0
@@ -1142,6 +1143,12 @@ func mount(u: Unit, type: String, hp := -1, own := false) -> void:
 	u.heavy = true
 	if not own:
 		mech_cards(u)
+	if u.mech_stash.size():
+		# back in a vehicle: the deck's own vehicle cards are shuffled back into the draw pile
+		for c in u.mech_stash:
+			u.draw.insert(randi() % (u.draw.size() + 1), c)
+		u.mech_stash = []
+		ui_dirty = true
 
 func mech_cards(u: Unit) -> void:
 	## A hijacked vehicle's own guns go in the driver's hand, and come back every turn.
@@ -1161,10 +1168,18 @@ func vehicle_pop(u: Unit, mode: String, type: String, added: Array, removed: Arr
 func dismount(u: Unit, launch := true) -> void:
 	if u.mech == null:
 		return
-	var gone: Array = u.hand.filter(func(h): return h.get("mechtemp", false)).map(func(h): return h.key)
-	if not u.mech.own:
-		vehicle_pop(u, "out", u.mech.type, [], gone)
-	u.hand = u.hand.filter(func(h): return not h.get("mechtemp", false))
+	# on foot, vehicle cards are gone at once: the hijacked guns from the hand, and the deck's own
+	# vehicle cards (Gears' walker) from the hand, draw and discard piles until the next mount
+	var is_veh := func(h): return h.get("mechtemp", false) or Data.card(h).get("mech", false)
+	var gone: Array = u.hand.filter(is_veh).map(func(h): return h.key)
+	for pile in [u.hand, u.draw, u.disc]:
+		for h in pile:
+			if is_veh.call(h) and not h.get("mechtemp", false) and not h.get("temp", false):
+				u.mech_stash.append(h)
+	u.hand = u.hand.filter(func(h): return not is_veh.call(h))
+	u.draw = u.draw.filter(func(h): return not is_veh.call(h))
+	u.disc = u.disc.filter(func(h): return not is_veh.call(h))
+	vehicle_pop(u, "out", u.mech.type, [], gone)
 	u.h = u.mech.h0
 	u.w = u.mech.w0
 	u.heavy = u.immovable
@@ -1190,10 +1205,10 @@ func mech_hit(u: Unit, amt: int) -> void:
 		var tp: String = u.mech.type
 		var own: bool = u.mech.own
 		dismount(u)
-		if own:
-			vehicle_pop(u, "wreck", tp, [], [])
-		elif vpop.get("u") == u:
+		if vpop.get("u") == u:
 			vpop.mode = "wreck"
+		elif own:
+			vehicle_pop(u, "wreck", tp, [], [])
 		float_text(u, nm + " WRECKED", Color("ff7a3d"), true)
 		log_msg("%s's %s is wrecked. %s" % [u.def.name, nm.to_lower(), "Patch Job puts him back in one." if u.def.key == "gears" else "They're on foot."])
 	ui_dirty = true
@@ -2768,6 +2783,53 @@ func setup_events() -> void:
 	for id in mission.get("bounties", []):
 		var bt: Dictionary = Run.bounty(id)
 		log_msg("BOUNTY %s (+%d$): %s" % [bt.name, bt.pay, bt.text])
+
+func bounty_board() -> Array:
+	## R5 on the field: each of the level's bounties with "done", "lost" (no longer possible) or ""
+	## and a short progress note, for the board in the top right.
+	if Run.campaign():
+		return []
+	var out: Array = []
+	var foes := units.filter(func(e): return e.team == "enemy" and not e.dead and not e.gone and not e.fl.get("turned", false))
+	for id in mission.get("bounties", []):
+		var bt: Dictionary = Run.bounty(id)
+		var st := ""
+		var prog := ""
+		match id:
+			"nofall":
+				st = "lost" if stats.falls > 0 else ""
+			"nodown":
+				st = "lost" if stats.downs > 0 or stats.kia > 0 else ""
+			"sniperfirst":
+				if stats.has("first_kill"):
+					st = "done" if stats.first_kill == "jsniper" else "lost"
+			"crush2":
+				prog = "%d/2" % mini(2, stats.crushes)
+				if stats.crushes >= 2:
+					st = "done"
+				elif stats.crushes + foes.filter(func(e): return faction(e) == "jackal").size() < 2:
+					st = "lost"
+			"pows":
+				prog = "%d/%d" % [stats.pows, stats.pows_total]
+				if units.any(func(o): return o.kind == "pow" and o.dead and not o.freed):
+					st = "lost"
+			"push3":
+				prog = "%d/3" % mini(3, stats.pushes)
+				if stats.pushes >= 3:
+					st = "done"
+				elif cam_x >= world_w - W - 1:
+					st = "lost"
+			"fast":
+				prog = "RND %d/18" % round_n
+				st = "lost" if round_n > 18 else ""
+			"melee3":
+				prog = "%d/3" % mini(3, stats.melee_kills)
+				if stats.melee_kills >= 3:
+					st = "done"
+				elif stats.melee_kills + foes.size() < 3:
+					st = "lost"
+		out.append({"name": bt.name, "pay": int(bt.pay), "text": bt.text, "state": st, "prog": prog})
+	return out
 
 func troopers() -> Array:
 	return units.filter(func(o): return o.kind == "sentry" and o.loot.get("trooper", false) and not o.dead and not o.gone)
@@ -6240,7 +6302,59 @@ func check_push(u: Unit, x0 = null) -> void:
 	if u.dead or cam_x >= world_w - W:
 		return
 	if u.x - cam_x > W * 0.72:
+		var blk := push_blockers()
+		if blk.size():
+			# the map only moves on once nothing hostile is left behind the line
+			if push_warned != round_n:
+				push_warned = round_n
+				float_text(u, "CLEAR THE ENEMIES BEHIND FIRST", Color("ff7a5c"), true)
+				log_msg("The push zone is locked: %d enem%s still alive behind the line." % [blk.size(), "y" if blk.size() == 1 else "ies"])
+			return
 		await scroll_to(clampf(u.x - W * 0.5, cam_x, world_w - W), "push", u)
+
+func push_blockers() -> Array:
+	## Enemies still alive on this screen short of the push zone line. While any are left, a push won't scroll.
+	var line := cam_x + W * 0.72
+	return units.filter(func(e): return e.team == "enemy" and not e.dead and not e.gone and not e.sunk and e.active and not e.fl.get("turned", false) and e.x < line and e.x > cam_x - 10)
+
+func fall_in(who: Unit) -> void:
+	## After a push, the squadmates left behind regroup behind the soldier who pushed, for free,
+	## and get their full movement back for the rest of the turn.
+	var back: Array = squad_alive().filter(func(s): return s != who and not s.downed and s.zip == null and s.x < who.x - 80)
+	if back.is_empty():
+		return
+	back.sort_custom(func(a, c): return a.x > c.x)
+	var slot := who.x - 34
+	for s in back:
+		# first look for footing level with the pusher (a roof he's on), then for any safe ground
+		var tx: float = s.x
+		var ty = null
+		for near in [true, false]:
+			tx = maxf(slot, s.x)
+			var k := 0
+			while ty == null and k < 80 and tx > s.x:
+				for lift in ([40.0, 120.0, 240.0] if near else [400.0]):
+					ty = T.stand_y(tx, maxf(0, who.y - lift))
+					if ty != null and (ty > WATER_Y - 2 or mine_under(s, tx, ty, 6) != null or (near and absf(ty - who.y) > 160)):
+						ty = null
+					if ty != null:
+						break
+				if ty == null:
+					tx -= 6
+				k += 1
+			if ty != null:
+				break
+		if ty != null and tx > s.x + 4:
+			s.walk = null; s.vx = 0; s.vy = 0; s.hang = false
+			s.face = 1
+			s.zip = {"x0": s.x, "y0": s.y, "x1": tx, "y1": float(ty), "t": 0.0, "arc": 30.0 + absf(tx - s.x) * 0.15}
+			slot = tx - 30
+		else:
+			slot -= 30
+		s.move_left = 0.0 if s.has_st("pinned") else maxf(s.move_left, full_move(s))
+		float_text(s, "FALL IN!", Color("62d26f"))
+	await until(func(): return back.all(func(s): return s.zip == null or s.dead))
+	ui_dirty = true
 
 func check_camp(u: Unit) -> void:
 	## Reaching a camp with the area clear makes camp: the downed get back up, everyone patches up,
@@ -6561,6 +6675,8 @@ func scroll_to(tx: float, reason: String, who = null) -> void:
 	sweep_loot(cam_x)
 	activate_enemies()
 	await until(settled)
+	if reason == "push" and who != null and not who.dead and state == "player":
+		await fall_in(who)
 	ui_dirty = true
 
 func sweep_loot(edge: float) -> void:
@@ -9669,7 +9785,7 @@ func step() -> void:
 			z.t += 1.0 / 20.0
 			var k := minf(1, z.t)
 			u.x = lerpf(z.x0, z.x1, k)
-			u.y = lerpf(z.y0, z.y1, k) - sin(k * PI) * 30
+			u.y = lerpf(z.y0, z.y1, k) - sin(k * PI) * z.get("arc", 30.0)
 			if k >= 1:
 				u.x = z.x1
 				u.y = z.y1
