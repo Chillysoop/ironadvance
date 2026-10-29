@@ -759,7 +759,7 @@ const CH_MU := 0.7          # friction against the ground
 const CH_BREAK := 4.6       # impact speed (px/tick) that splinters a 30-cell piece (about a 50px drop); big ones break sooner
 const CH_CHIP := 30.0       # impact speed x sqrt(cells) at which a heavy piece also gouges what it hits
 const CH_MAX := 48          # never more pieces than this in the air at once
-const CH_LIFE := 540        # a piece still moving after this many ticks is set down where it is
+const CH_LIFE := 300        # a piece still moving after this many ticks is set down where it is
 
 func make_chunk(x0: int, y0: int, w: int, h: int, mask: PackedByteArray, sc: PackedByteArray, cause) -> Dictionary:
 	## x0, y0: the world cell the mask's top-left cell came from (it also keeps the shader pattern stable).
@@ -792,7 +792,7 @@ func make_chunk(x0: int, y0: int, w: int, h: int, mask: PackedByteArray, sc: Pac
 		"pos": Vector2(x0 * CELL, y0 * CELL) + com, "ang": 0.0, "vel": Vector2.ZERO, "av": 0.0,
 		"inv_m": 1.0 / maxf(1, n), "inv_i": 1.0 / maxf(1.0, inertia), "rad": sqrt(w * w + h * h) * CELL / 2.0,
 		"tough": 1.6 if steel * 2 > n else 1.0, "tall": h >= w * 1.4 and w >= 4 and h >= 8,
-		"hit": {}, "cause": cause, "shake": 0, "life": 0, "rest": 0, "nudge": 0, "gen": 0, "thud": 0,
+		"hit": {}, "cause": cause, "shake": 0, "life": 0, "rest": 0, "felt": -99, "drift": Vector2(INF, INF), "drift_ang": 0.0, "nudge": 0, "gen": 0, "thud": 0,
 		"touch": [], "crack": null, "anchor": Vector2.ZERO, "gouged": -99, "anchor_ang": 0.0, "timber": false, "leaned": false, "dead": false, "node": null}
 	chunks.append(c)
 	b.chunk_created(c)
@@ -1084,8 +1084,11 @@ func update_chunk(c: Dictionary) -> void:
 		c.dead = true
 		return
 	_crush_units(c)
-	# at rest once it has sat on something without going anywhere for a few ticks
-	if touched and c.pos.distance_to(c.anchor) < 1.5 and absf(c.ang - c.anchor_ang) < 0.04:
+	# at rest once it has sat on something without going anywhere for a few ticks. A piece sitting on
+	# the ground hops a pixel off its contacts every other tick, so a recent touch counts as touching.
+	if touched:
+		c.felt = c.life
+	if c.life - c.felt < 8 and c.pos.distance_to(c.anchor) < 1.5 and absf(c.ang - c.anchor_ang) < 0.1:
 		c.rest += 1
 	else:
 		c.rest = 0
@@ -1109,6 +1112,14 @@ func update_chunk(c: Dictionary) -> void:
 		settle_chunk(c)
 	elif c.life > CH_LIFE:
 		settle_chunk(c)
+	elif c.life % 30 == 0:
+		# small pieces can rock and shuffle in place on their contacts for ages: if it has been on the
+		# ground and gone nowhere in half a second, it is rubble
+		if c.life - c.felt < 8 and c.pos.distance_to(c.drift) < 3.0 and absf(c.ang - c.drift_ang) < 0.15:
+			settle_chunk(c)
+			return
+		c.drift = c.pos
+		c.drift_ang = c.ang
 
 func _crush_units(c: Dictionary) -> void:
 	var inv: Transform2D = Transform2D(c.ang, c.pos).affine_inverse()
@@ -1199,6 +1210,14 @@ func settle_chunk(c: Dictionary) -> void:
 	check_floating(c.pos.x, c.pos.y, c.rad + 8, c.cause)
 
 var chunk_usec := 0  # time spent moving falling pieces, for the crumble test
+
+func chunks_falling() -> bool:
+	## True while any piece is still dropping, sliding or spinning. Rubble that has landed and is only
+	## rocking on its contacts doesn't count: the turn goes on while it beds down.
+	for c in chunks:
+		if c.shake < 6 or c.life - c.felt >= 8 or c.vel.length() > 0.8 or absf(c.av) > 0.06:
+			return true
+	return false
 
 func update_chunks() -> void:
 	var t0 := Time.get_ticks_usec()
