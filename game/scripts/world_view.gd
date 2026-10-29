@@ -982,7 +982,7 @@ func draw_smokes() -> void:
 			var r: float = g.r * 0.45
 			var pulse := 0.05 * sin(b.t / 20.0 + i)
 			draw_circle(Vector2(g.x + cos(a) * r * 0.9, g.y + sin(a) * r * 0.5), g.r * 0.45, Color(0.55 + pulse, 0.85, 0.3, 0.28))
-	for s in b.smokes:
+	for s in b.smokes if b.vfx == null else []:
 		for i in 9:
 			var a: float = i / 9.0 * TAU + b.t / 200.0 + s.seed
 			var r: float = s.r * 0.45
