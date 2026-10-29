@@ -57,6 +57,7 @@ func watch() -> void:
 		var vis: bool = u.x > b.cam_x - 60 and u.x < b.cam_x + Battle.W + 60 and not u.dead
 		keep(u, "burn", vis and u.has_st("burn"), seen)
 		keep(u, "stun", vis and u.has_st("stun"), seen)
+		keep(u, "dome", vis and u.dome > 0 and not u.fl.get("vharr", false), seen)
 		if u.team == "squad":
 			var was: int = adr_seen.get(u.id, u.adr)
 			adr_seen[u.id] = u.adr
@@ -80,10 +81,33 @@ func keep(u: Unit, kind: String, want: bool, seen: Dictionary) -> void:
 	var e
 	if kind == "burn":
 		e = SfFire.new(src, 0.7, b.wind * 20.0)
+	elif kind == "dome":
+		e = SfShield.new(func(): return Vector2(u.x, u.y), dome_r(u), ground_fn(u.y), SfShield.VHARR)
 	else:
 		e = SfLightning.crackle(src, ground_fn(u.y), 1e9)
 	attached[key] = e
 	add(e)
+
+func dome_r(u: Unit) -> float:
+	## The V8 dome sits on the ground, so it has to clear the unit's head (art px).
+	return roundf(maxf(u.h + 8.0, u.w / 2.0 + 10.0) / Sf.PX)
+
+func dome_hit(u: Unit, src) -> void:
+	## A shot the dome stopped: ripple and sparks on the side facing whoever fired it.
+	var e = attached.get("%d:dome" % u.id)
+	if e == null:
+		return
+	var d := Vector2(-u.face, -0.6)
+	if src is Unit:
+		d = Vector2(src.x - u.x, (src.y - src.h / 2.0) - (u.y - u.h / 2.0))
+	d.y = minf(d.y, -absf(d.x) * 0.25 - 1.0)
+	var p: Vector2 = d.normalized() * dome_r(u) * Sf.PX * 0.98
+	e.hit(u.x + p.x, u.y + p.y)
+
+func dash(u: Unit) -> SfMovement:
+	var e := SfMovement.dash(func(): return Vector2(u.x, u.y), func(): return [] if u.dead or u.gone else silhouette(u), u.face, ground_fn(u.y))
+	add(e)
+	return e
 
 func power_up(u: Unit, palette: Array) -> void:
 	add(SfPowerUp.new(func(): return Vector2(u.x, u.y), silhouette(u), palette, 0.55))
@@ -127,8 +151,10 @@ func ground_fn(y0: float) -> Callable:
 
 func silhouette(u: Unit) -> Array:
 	## The art pixels a unit's body covers right now, [xs, ys, feet], from its sprite frame (or a
-	## box for sheetless units), so fire, crackle and auras can hug the real outline.
+	## box for sheetless units), so fire, crackle and auras can hug the real outline. A fourth entry
+	## holds each pixel's shade, 1 dark to 3 light, for the dash ghosts and blink.
 	var xs := PackedInt32Array()
+	var shade := PackedByteArray()
 	var ys := PackedInt32Array()
 	var fx := floori(u.x / Sf.PX)
 	var fy := floori(u.y / Sf.PX)
@@ -151,15 +177,21 @@ func silhouette(u: Unit) -> Array:
 			var oy: int = int(info.row) * fh
 			var lx := PackedInt32Array()
 			var ly := PackedInt32Array()
+			var lv := PackedByteArray()
 			for j in fh:
 				for i in fw:
-					if ox + i < im.get_width() and oy + j < im.get_height() and im.get_pixel(ox + i, oy + j).a > 0.5:
-						lx.append(i - int(m.anchor[0]))
-						ly.append(j - int(m.anchor[1]))
-			sil_cache[key] = [lx, ly]
+					if ox + i < im.get_width() and oy + j < im.get_height():
+						var pc := im.get_pixel(ox + i, oy + j)
+						if pc.a > 0.5:
+							lx.append(i - int(m.anchor[0]))
+							ly.append(j - int(m.anchor[1]))
+							var l := Sf.lum(pc) * 255.0
+							lv.append(1 if l < 60 else (2 if l < 170 else 3))
+			sil_cache[key] = [lx, ly, lv]
 		var c: Array = sil_cache[key]
 		var lx: PackedInt32Array = c[0]
 		var ly: PackedInt32Array = c[1]
+		shade = c[2]
 		xs.resize(lx.size())
 		ys.resize(ly.size())
 		for i in lx.size():
@@ -172,4 +204,5 @@ func silhouette(u: Unit) -> Array:
 			for i in range(-hw, hw):
 				xs.append(fx + i)
 				ys.append(fy + j)
-	return [xs, ys, Vector2(u.x, u.y)]
+				shade.append(1 if i == -hw or i == hw - 1 or j == -hh else 2)
+	return [xs, ys, Vector2(u.x, u.y), shade]

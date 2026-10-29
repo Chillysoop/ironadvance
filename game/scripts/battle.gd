@@ -1846,12 +1846,17 @@ func _act_magnet(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
 	var L := magnet_line(u, c, p)
 	u.face = 1 if p.x >= u.x else -1
 	Sfx.play("power")
-	for f in 6:
-		if c.get("tongue", false):
-			tracer(L.from.x, L.from.y, L.to.x, L.to.y, Color("d36ba0"))
-		else:
-			lightning(L.from, L.to)
-		await wait(1)
+	if vfx != null and not c.get("tongue", false):
+		# V12: Repulsor pushes in pink, Magnet pulls in cyan
+		vfx.add(SfEnergy.beam(L.from, L.to, vfx.ground_fn(L.to.y), SfEnergy.PINK if c.magnet > 0 else SfEnergy.CYAN, 0.04, 0.1, 2.5))
+		await wait(6)
+	else:
+		for f in 6:
+			if c.get("tongue", false):
+				tracer(L.from.x, L.from.y, L.to.x, L.to.y, Color("d36ba0"))
+			else:
+				lightning(L.from, L.to)
+			await wait(1)
 	if L.hit.is_empty():
 		float_text(u, "NOTHING CAUGHT", Color("9aa2ae"))
 	var pw: float = 7.5 * (1.5 if u.perk("heavypull") else 1.0)
@@ -1912,14 +1917,19 @@ func singularity_at(x: float, y: float, r: float, crush: int, by) -> void:
 	var caught: Array = units.filter(func(o): return not o.dead and not o.gone and (o.team == "enemy" or o.kind == "barrel" or o.kind == "fuel") and not is_boss(o) and not o.immovable and not (o.team == "enemy" and Data.ETYPES[o.type].get("static", false)) and Vector2(o.x - x, o.y - o.h / 2.0 - y).length() < r + o.w / 2.0)
 	float_at(x, y - 30, "SINGULARITY", Color("c47bff"), true)
 	Sfx.play("power")
+	var hole = black_hole(x, y, r, 0.35)
 	for f in 16:
 		for o in caught:
 			o.x = lerpf(o.x, x, 0.12)
 			o.walk = null
-		for k in 3:
-			var a := randf() * TAU
-			part({"x": x + cos(a) * r, "y": y + sin(a) * r * 0.5, "vx": -cos(a) * 3, "vy": -sin(a) * 1.5, "life": 20, "max": 20, "c": Color("c47bff"), "s": 2.0, "g": 0.0})
+		if hole == null:
+			for k in 3:
+				var a := randf() * TAU
+				part({"x": x + cos(a) * r, "y": y + sin(a) * r * 0.5, "vx": -cos(a) * 3, "vy": -sin(a) * 1.5, "life": 20, "max": 20, "c": Color("c47bff"), "s": 2.0, "g": 0.0})
 		await wait(1)
+	if hole != null:
+		# everything is thrown when the hole bursts
+		await wait(maxi(0, hole.ticks_to_burst() - 16))
 	shake += 4
 	for i in caught.size():
 		var o: Unit = caught[i]
@@ -1931,6 +1941,15 @@ func singularity_at(x: float, y: float, r: float, crush: int, by) -> void:
 		fling(o, dir, 7.0, by)
 	await wait(6)
 	await until(settled)
+
+func black_hole(x: float, y: float, r: float, life: float):
+	## V11: a violet black hole over a gravity well or singularity of reach r (cosmetic).
+	if vfx == null:
+		return null
+	var gy: float = vfx.ground_fn(y).call(x)
+	var e := SfBlackHole.new(x, y, clampf(r / 9.0, 10.0, 24.0), vfx.ground_fn(y), life, 1.5, MATCOL.get(T.mat(x, gy + 2), Color("6a5a48")))
+	vfx.add(e)
+	return e
 
 func shockwave(u: Unit, r: float) -> void:
 	shake += 5
@@ -3876,7 +3895,10 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 		return
 	if tg.dome > 0 and not o.get("melee", false) and not o.get("impact", false) and not o.get("status", false):
 		float_text(tg, "DOME", Color("9df25c"))
-		sparks(tg.x, tg.y - tg.h / 2.0, 3)
+		if vfx != null and vfx.attached.has("%d:dome" % tg.id):
+			vfx.dome_hit(tg, src)
+		else:
+			sparks(tg.x, tg.y - tg.h / 2.0, 3)
 		return
 	if tg.type == "hiveship":
 		if ship_plated(tg):
@@ -5677,7 +5699,10 @@ func _act_roll(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
 	u.h = 16
 	u.rolling = true
 	Sfx.play("toss", -6)
+	var dfx = vfx.dash(u) if vfx != null else null
 	await walk_along(u, sim.pts)
+	if dfx != null:
+		dfx.stop()
 	u.rolling = false
 	u.rot = 0.0
 	u.h = h0
@@ -5971,6 +5996,8 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 		float_text(u, "+%d ARMOR" % c.armor, Color("9fb4c9"))
 		Sfx.play("select")
 	if c.has("move"):
+		if vfx != null:
+			vfx.dash(u).stop_at = 0.15
 		u.move_left += c.move
 		float_text(u, "+%d MOVE" % c.move, Color("b48cff"))
 		Sfx.play("select")
@@ -7114,16 +7141,19 @@ func vharr_blink(u: Unit, reach: float) -> void:
 		var ny = T.stand_y(nx, e.y - 40)
 		if ny == null or nx < cam_x + 10 or nx > cam_x + W - 10:
 			continue
-		for k in 6:
-			puff(u.x + randf_range(-8, 8), u.y - randf_range(0, 30), 1.5)
-		u.x = nx
-		u.y = ny
-		u.vx = 0; u.vy = 0; u.air = false; u.walk = null
-		u.face = -side
-		for k in 6:
-			puff(u.x + randf_range(-8, 8), u.y - randf_range(0, 30), 1.5)
-		float_text(u, "BLINK", Color("c47bff"), true)
 		Sfx.play("power")
+		if vfx != null:
+			await teleport(u, Vector2(nx, ny), -side)
+		else:
+			for k in 6:
+				puff(u.x + randf_range(-8, 8), u.y - randf_range(0, 30), 1.5)
+			u.x = nx
+			u.y = ny
+			u.vx = 0; u.vy = 0; u.air = false; u.walk = null
+			u.face = -side
+			for k in 6:
+				puff(u.x + randf_range(-8, 8), u.y - randf_range(0, 30), 1.5)
+		float_text(u, "BLINK", Color("c47bff"), true)
 		await wait(10)
 		return
 	float_text(u, "NOTHING TO BLINK TO", Color("9aa2ae"))
@@ -8444,9 +8474,12 @@ func fire_beam(e: Unit, ang: float) -> void:
 	Sfx.play("snipe")
 	e.muzzle = 4
 	e.muzzle_kind = "beam"
-	for k in 3:
-		tracers.append({"x1": o.x, "y1": o.y + k - 1, "x2": bp.end.x, "y2": bp.end.y + k - 1, "c": Color("c47bff") if k != 1 else Color("9df25c"), "t": 14})
-	sparks(bp.end.x, bp.end.y, 5)
+	if vfx != null:
+		vfx.add(SfEnergy.beam(o, bp.end, vfx.ground_fn(bp.end.y), SfEnergy.VHARR, 0.05, 0.12, 2.5))
+	else:
+		for k in 3:
+			tracers.append({"x1": o.x, "y1": o.y + k - 1, "x2": bp.end.x, "y2": bp.end.y + k - 1, "c": Color("c47bff") if k != 1 else Color("9df25c"), "t": 14})
+		sparks(bp.end.x, bp.end.y, 5)
 	for u in bp.hits:
 		damage(u, int(round(E.dmg * (1 + alert * 0.06))), e, {})
 	await wait(14)
@@ -8539,10 +8572,14 @@ func rune_spot(e: Unit, tg: Unit):
 	return null
 
 func blink(e: Unit, r: Vector2) -> void:
-	for i in 8:
-		part({"x": e.x, "y": e.y - i * 4, "vx": 0.0, "vy": -1.0, "life": 24, "max": 24, "c": Color("c47bff"), "s": 3.0, "g": 0.0})
 	Sfx.play("power")
 	e.face = 1 if r.x >= e.x else -1
+	if vfx != null:
+		await teleport(e, r, e.face)
+		await wait(4)
+		return
+	for i in 8:
+		part({"x": e.x, "y": e.y - i * 4, "vx": 0.0, "vy": -1.0, "life": 24, "max": 24, "c": Color("c47bff"), "s": 3.0, "g": 0.0})
 	e.x = r.x
 	e.y = r.y
 	e.air = false
@@ -8551,6 +8588,21 @@ func blink(e: Unit, r: Vector2) -> void:
 	for i in 8:
 		part({"x": e.x + (i - 4) * 3, "y": e.y - 16, "vx": (i - 4) * 0.5, "vy": -0.5, "life": 24, "max": 24, "c": Color("9df25c"), "s": 3.0, "g": 0.0})
 	await wait(12)
+
+func teleport(u: Unit, to: Vector2, face: int) -> void:
+	## V9 blink: the body crackles and comes apart, and is rebuilt at the far spot. The unit is
+	## hidden in between and lands when the effect says it has arrived.
+	var e := SfMovement.blink(Vector2(u.x, u.y), to, vfx.silhouette(u), vfx.ground_fn(u.y))
+	vfx.add(e)
+	await wait(e.timing(e.OUT))
+	var a0 := u.alpha
+	u.alpha = 0.0
+	u.x = to.x
+	u.y = to.y
+	u.vx = 0; u.vy = 0; u.air = false; u.walk = null
+	u.face = face
+	await wait(e.timing(e.ARRIVE) - e.timing(e.OUT))
+	u.alpha = a0
 
 func blinker_act(e: Unit) -> void:
 	## Teleport behind the nearest target (within 360px; else walk closer) and claw it.
@@ -8741,7 +8793,10 @@ func prism_act(e: Unit) -> void:
 	if dist(e, tg) <= E.range and ray_clear(c.x, c.y, tg.x, tg.y - tg.h / 2.0):
 		await wait(6)
 		Sfx.play("snipe")
-		tracers.append({"x1": c.x, "y1": c.y, "x2": tg.x, "y2": tg.y - tg.h / 2.0, "c": Color("8ff0ff"), "t": 12})
+		if vfx != null:
+			vfx.add(SfEnergy.bolt(c, Vector2(tg.x, tg.y - tg.h / 2.0), vfx.ground_fn(tg.y), SfEnergy.CYAN, 0.0, 2600.0))
+		else:
+			tracers.append({"x1": c.x, "y1": c.y, "x2": tg.x, "y2": tg.y - tg.h / 2.0, "c": Color("8ff0ff"), "t": 12})
 		damage(tg, int(round(E.dmg * (1 + alert * 0.06))), e, {})
 		await wait(10)
 
@@ -8776,6 +8831,7 @@ func warden_act(e: Unit) -> void:
 
 func pull_well(w: Dictionary) -> void:
 	## Everything loose in the well hops up to its pull toward the center.
+	black_hole(w.x, w.y, w.r, 0.15)
 	var E: Dictionary = Data.ETYPES.warden
 	var moved := false
 	for u in units:

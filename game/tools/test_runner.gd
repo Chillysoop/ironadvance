@@ -6,7 +6,7 @@ extends Node
 ## gear (click a slot to see what fits, drag and drop, deck changes, a fifth soldier at HQ),
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
-## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst),
+## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -656,6 +656,8 @@ func run() -> void:
 			await sfvfx()
 		"sfvfx2":
 			await sfvfx2()
+		"sfvfx3":
+			await sfvfx3()
 		"bot":
 			await bot(mission_arg, 70)
 		"levels":
@@ -7112,6 +7114,87 @@ func sfvfx2() -> void:
 		await shot("sf2_tesla_%02d" % f)
 	b.speed = 1.0
 	print("[sfvfx2] done, live effects ", b.vfx.list.size())
+
+func sfvfx3() -> void:
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 0.25
+	var sq: Array = b.squad_alive()
+	var foes: Array = b.units.filter(func(o): return o.team == "enemy" and not o.dead and not o.gone and o.x < b.cam_x + Battle.W - 40)
+	foes.sort_custom(func(p, q): return p.w < q.w)
+	print("[sfvfx3] foes on screen ", foes.size())
+	b.speed = 1.0
+	await frames_wait(100)  # the round banner clears
+	b.speed = 0.25
+	# V8 dome: build, a stopped shot, and the drop
+	var dm: Unit = foes[0] if foes.size() else sq[3]
+	dm.dome = 2
+	for f in [8, 30, 60]:
+		await frames_wait(f - (0 if f == 8 else (8 if f == 30 else 30)))
+		print("[sfvfx3] dome +%d paint %.2f ms" % [f, vfx_cost(b)])
+		await shot("sf3_dome_%02d" % f)
+	check(b.vfx.attached.has("%d:dome" % dm.id), "a domed unit gets the hex dome")
+	var hp0 := dm.hp
+	b.damage(dm, 5, sq[0])
+	check(dm.hp == hp0, "the dome still stops the shot (cosmetic only)")
+	await frames_wait(5)
+	await shot("sf3_dome_hit")
+	dm.dome = 0
+	await frames_wait(14)
+	await shot("sf3_dome_drop")
+	# V9 dash: a soldier rolls 120px
+	var u: Unit = sq[0]
+	u.face = 1
+	var dfx: SfMovement = b.vfx.dash(u)
+	for i in 20:
+		u.x += 6 * u.face
+		await frames_wait(1)
+		if i == 9:
+			await shot("sf3_dash_mid")
+	dfx.stop()
+	await frames_wait(6)
+	await shot("sf3_dash_skid")
+	await frames_wait(60)
+	# V9 blink through the real teleport
+	var bu: Unit = sq[1]
+	var to := Vector2(bu.x + 150, b.T.stand_y(bu.x + 150, bu.y - 40))
+	var bl := {"done": false}
+	var go := func():
+		await b.teleport(bu, to, -1)
+		bl.done = true
+	go.call()
+	for f in [8, 16, 26, 36]:
+		await frames_wait(f - [0, 8, 16, 26][[8, 16, 26, 36].find(f)])
+		await shot("sf3_blink_%02d" % f)
+	await until(func(): return bl.done, 120)
+	check(bu.x == to.x and bu.alpha == 1.0, "blink lands the unit and shows it again")
+	# V11 black hole over the first foes
+	var hx: float = foes[0].x if foes.size() else u.x + 200
+	var hy: float = (foes[0].y if foes.size() else u.y) - 30
+	var hole = b.black_hole(hx, hy, 160, 0.35)
+	for f in [6, 18, 32, 44]:
+		await frames_wait(f - [0, 6, 18, 32][[6, 18, 32, 44].find(f)])
+		print("[sfvfx3] hole +%d paint %.2f ms" % [f, vfx_cost(b)])
+		await shot("sf3_hole_%02d" % f)
+	check(hole.ticks_to_burst() < 60, "the black hole bursts inside a second (%d ticks)" % hole.ticks_to_burst())
+	await frames_wait(60)
+	# V12 a Prism bolt, a Vharr beam, a Repulsor beam
+	var a := Vector2(u.x, u.y - 24)
+	var tgt := Vector2(a.x + 260, a.y - 10)
+	b.vfx.add(SfEnergy.bolt(a, tgt, b.vfx.ground_fn(a.y), SfEnergy.CYAN, 0.1, 1400.0))
+	for f in [4, 10, 16]:
+		await frames_wait(f - [0, 4, 10][[4, 10, 16].find(f)])
+		await shot("sf3_bolt_%02d" % f)
+	await frames_wait(30)
+	b.vfx.add(SfEnergy.beam(a, tgt, b.vfx.ground_fn(a.y), SfEnergy.VHARR, 0.05, 0.12, 2.5))
+	b.vfx.add(SfEnergy.beam(Vector2(a.x, a.y + 30), Vector2(tgt.x, tgt.y + 70), b.vfx.ground_fn(a.y), SfEnergy.PINK, 0.05, 0.12, 2.5))
+	for f in [6, 12]:
+		await frames_wait(6)
+		print("[sfvfx3] beams +%d paint %.2f ms" % [f, vfx_cost(b)])
+		await shot("sf3_beam_%02d" % f)
+	b.speed = 1.0
+	print("[sfvfx3] done, live effects ", b.vfx.list.size())
 
 func e_battle(event: String, bounties := []) -> Battle:
 	var lvl := Run.make_level("desert", 0)
