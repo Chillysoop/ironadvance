@@ -177,6 +177,7 @@ func refresh() -> void:
 			cv.base_y = 470
 			cv.position = Vector2(x0 + i * step, 470)
 			cv.hotkey = str(i + 1)
+			cv.peek = step if i < n - 1 and step < cw else 0.0
 			var idx := i
 			cv.pressed.connect(func(): b.select_card(idx))
 			hand_box.add_child(cv)
@@ -909,6 +910,61 @@ class Overlay extends Control:
 			Art.text(self, r[2], Vector2(28 + Art.text_width(head, 8), ry + 1), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		return hgt + 8
 
+	func draw_bounties(b: Battle, y: float) -> float:
+		## R5: the bounty board stays up in the top right all level. A bounty that can no longer be
+		## earned is struck through, a finished one goes green. Hover it for the full conditions.
+		## Returns the bottom edge so the kill feed sits under it.
+		var rows: Array = b.bounty_board()
+		if rows.is_empty() or b.state == "title":
+			return y
+		var ink := Color(0.05, 0.035, 0.03)
+		var w := 232.0
+		var x := 954.0 - w
+		var m := get_local_mouse_position()
+		var open: bool = Rect2(x, y, w, 16 + rows.size() * 14).has_point(m) and not hud.targeting
+		var lines: Array = []
+		for r in rows:
+			lines.append(CardView.wrap_text(r.text, w - 16, 16) if open else [])
+		var hgt := 22.0
+		for l in lines:
+			hgt += 14 + l.size() * 12
+		var al := 1.0
+		if hud.targeting and Rect2(x, y, w, hgt).grow(16).has_point(m):
+			al = 0.2  # aiming at something behind the board: fade it out of the way
+		draw_rect(Rect2(x - 1, y - 1, w + 2, hgt + 2), Color(ink, 0.9 * al))
+		draw_rect(Rect2(x, y, w, hgt), Color(0.1, 0.11, 0.13, 0.82 * al))
+		draw_rect(Rect2(x, y, w, 2), Color(1, 0.82, 0.23, al))
+		Art.text(self, "BOUNTY BOARD", Vector2(x + 6, y + 13), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 1, false, al)
+		if not open:
+			Art.text(self, "HOVER", Vector2(x + w - 6, y + 13), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT, 1, false, al)
+		var ry := y + 29
+		for i in rows.size():
+			var r: Dictionary = rows[i]
+			var lost: bool = r.state == "lost"
+			var done: bool = r.state == "done"
+			var col := Color("6c7480") if lost else (Color("62d26f") if done else Color("e8dcc2"))
+			var nm: String = r.name
+			Art.text(self, nm, Vector2(x + 6, ry), 8, col, HORIZONTAL_ALIGNMENT_LEFT, 1, false, al)
+			var tail: String = "+%d$" % r.pay
+			if done:
+				tail = "DONE " + tail
+			elif r.prog != "" and not lost:
+				tail = r.prog + " " + tail
+			Art.text(self, tail, Vector2(x + w - 6, ry), 8, Color("6c7480") if lost else (Color("62d26f") if done else Color("ffd23a")), HORIZONTAL_ALIGNMENT_RIGHT, 1, false, al)
+			var l: Array = lines[i]
+			for k in l.size():
+				Art.text(self, l[k], Vector2(x + 12, ry + 12 + k * 12), 16, col.darkened(0.1), HORIZONTAL_ALIGNMENT_LEFT, 1, true, al)
+			if lost:
+				# struck through: the name, the pay and the conditions under it
+				var sx := Art.text_width(nm, 8)
+				draw_rect(Rect2(x + 4, ry - 5, sx + 4, 2), Color(0.85, 0.24, 0.17, al))
+				var tw := Art.text_width(tail, 8)
+				draw_rect(Rect2(x + w - 8 - tw, ry - 5, tw + 4, 2), Color(0.85, 0.24, 0.17, al))
+				for k in l.size():
+					draw_rect(Rect2(x + 10, ry + 7 + k * 12, Art.text_width(l[k], 16, true) + 4, 1), Color(0.85, 0.24, 0.17, al))
+			ry += 14 + l.size() * 12
+		return y + hgt
+
 	func _draw() -> void:
 		var b: Battle = hud.b
 		if b == null:
@@ -1010,7 +1066,7 @@ class Overlay extends Control:
 			Art.text(self, b.log_lines[i], Vector2(10, ly + i * 14), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		draw_action_panel(b)
 		# U1 kill feed, top right: KILLER [HOW] VICTIM, sliding in, with a flashing stamp for the good ones
-		var fy := 50.0
+		var fy := maxf(50.0, draw_bounties(b, 40.0) + 12)
 		for f in b.feed:
 			var al: float = clampf((480 - f.t) / 40.0, 0, 1)
 			var slide: float = maxf(0, 1 - f.t / 8.0) * 160

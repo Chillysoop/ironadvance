@@ -1103,12 +1103,20 @@ func draw_targeting() -> void:
 	var m: Vector2 = b.mouse
 	var pz := b.cam_x + Battle.W * 0.72
 	if b.cam_x < b.world_w - Battle.W:
+		# the label sits left of the line, clear of the bounty board in the top right. With an
+		# enemy still alive behind the line the zone is locked and turns red.
+		var lock: int = b.push_blockers().size()
+		var zc := Color(1, 0.7, 0.24) if lock == 0 else Color(1, 0.3, 0.24)
 		var yy := 48.0
 		while yy < Battle.H:
-			draw_rect(Rect2(pz, yy, 2, 6), Color(1, 0.7, 0.24, 0.5))
+			draw_rect(Rect2(pz, yy, 2, 6), Color(zc, 0.5))
 			yy += 12
-		draw_rect(Rect2(pz, 40, Battle.W * 0.28, Battle.H - 40), Color(1, 0.7, 0.24, 0.05))
-		Art.text(self, "PUSH ZONE >>", Vector2(pz + 8, 58), 8, Color("ffb23e"))
+		draw_rect(Rect2(pz, 40, Battle.W * 0.28, Battle.H - 40), Color(zc, 0.05))
+		if lock == 0:
+			Art.text(self, "PUSH ZONE >>", Vector2(pz - 6, 58), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_RIGHT)
+		else:
+			Art.text(self, "PUSH ZONE LOCKED", Vector2(pz - 6, 58), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
+			Art.text(self, ("1 ENEMY BEHIND THE LINE" if lock == 1 else "%d ENEMIES BEHIND THE LINE" % lock), Vector2(pz - 6, 72), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_RIGHT)
 	if b.jet_armed:
 		var sim := b.sim_body(u, 0.0, 0.0, m, u.fuel)
 		draw_dashed_line(Vector2(u.x, u.y - u.h / 2.0), m, Color(0.33, 0.83, 0.89, 0.6), 1.0, 4.0)
