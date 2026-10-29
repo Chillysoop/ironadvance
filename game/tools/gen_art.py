@@ -6,7 +6,7 @@ All art is authored here (Python 3 + Pillow + NumPy) as tiny ASCII part maps plu
 animation frame and given a dark outer outline, so it stays consistent and is
 easy to tweak. One art pixel is drawn as 2x2 world units in game.
 """
-import json, math, os, random
+import shutil, json, math, os, random
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -709,6 +709,26 @@ def sf_icons():
         out = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
         out.alpha_composite(im, ((16 - im.width) // 2, (16 - im.height) // 2))
         out.save(dest)
+
+def sf_normals(meta):
+    """G6: normal maps for the character sheets, made by Sprite Fusion from the sheets themselves
+    (tools/sf_api.py normals, stored palette-quantised in tools/sf_src/normals). A map is only copied
+    if its alpha still matches the sheet; a sheet redrawn since then prints a warning and draws flat
+    until the maps are fetched again."""
+    d = os.path.join(SF_SRC, 'normals')
+    for k in sorted(meta):
+        src = os.path.join(d, k + '.png')
+        dest = os.path.join(OUT, 'sprites', k + '_n.png')
+        if not os.path.exists(src):
+            continue
+        n = Image.open(src).convert('RGBA')
+        s = Image.open(os.path.join(OUT, 'sprites', k + '.png')).convert('RGBA')
+        if n.size != s.size or not np.array_equal(np.array(n)[..., 3] > 0, np.array(s)[..., 3] > 0):
+            print('normal map out of date, skipped:', k)
+            if os.path.exists(dest):
+                os.remove(dest)
+            continue
+        shutil.copyfile(src, dest)  # keep the stored palette PNG, it is a third the size
 
 # ---------------------------------------------------------------- big pieces: brute, POW, boss, MG nest
 def brute_frames():
@@ -2275,6 +2295,7 @@ def main():
     decor()
     ui()
     sf_icons()
+    sf_normals(meta)
     with open(os.path.join(OUT, 'sprites', 'meta.json'), 'w') as f:
         json.dump(meta, f, indent=1)
     print('art generated')
