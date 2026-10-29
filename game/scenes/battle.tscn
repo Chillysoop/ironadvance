@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/battle.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/backdrop.gd" id="2"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/effects.gd" id="fx1"]
 [ext_resource type="Script" path="res://scripts/foreground.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/vfx.gd" id="vfx1"]
+[ext_resource type="Script" path="res://scripts/lights.gd" id="lit1"]
 
 [node name="Battle" type="Node2D"]
 script = ExtResource("1")
@@ -35,6 +36,9 @@ script = ExtResource("fx1")
 script = ExtResource("vfx1")
 
 [node name="VfxLight" type="Node2D" parent="."]
+
+[node name="Lights" type="Node2D" parent="."]
+script = ExtResource("lit1")
 
 [node name="Foreground" type="Node2D" parent="."]
 script = ExtResource("5")

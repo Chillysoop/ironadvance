@@ -4,6 +4,7 @@ extends Node
 const PX := 2.0  # one art pixel = 2 world units
 
 var meta := {}
+var lit := {}  # G6: sheet -> CanvasTexture of the sheet plus its Sprite Fusion normal map
 var tex := {}
 var font: Font      # Press Start 2P, for numbers and stencil labels
 var font_b: Font    # VT323, for body text
@@ -138,7 +139,7 @@ func draw_char(ci: CanvasItem, sheet: String, anim: String, frame: int, pos: Vec
 	var s := PX * scale
 	ci.draw_set_transform(pos, rot, Vector2(s * face, s))
 	var mod := Color(tint.r, tint.g, tint.b, alpha)
-	ci.draw_texture_rect_region(tex[sheet], Rect2(-ax, -ay, fw, fh), src, mod)
+	ci.draw_texture_rect_region(lit_tex(sheet), Rect2(-ax, -ay, fw, fh), src, mod)
 	if big_heads and info.has("shoulder"):
 		# the rows above the shoulders again, 1.8x, growing up and out from the neck
 		var hy: float = info.shoulder[fi][1] - 2
@@ -157,6 +158,22 @@ func draw_char(ci: CanvasItem, sheet: String, anim: String, frame: int, pos: Vec
 		ci.draw_set_transform_matrix(xf)
 		ci.draw_texture_rect(gt, Rect2(-gp[0], -gp[1], gt.get_width(), gt.get_height()), false, mod)
 	ci.draw_set_transform_matrix(Transform2D.IDENTITY)
+
+func lit_tex(sheet: String) -> Texture2D:
+	## The sheet with its normal map (gen_art.py sf_normals) so 2D lights shade it; a recoloured look
+	## sheet ("base|hat|shirt|pants") borrows its base's map. Sheets without one draw flat.
+	if lit.has(sheet):
+		return lit[sheet]
+	var t: Texture2D = tex[sheet]
+	var p := "res://assets/sprites/%s_n.png" % sheet.split("|")[0]
+	if ResourceLoader.exists(p):
+		var ct := CanvasTexture.new()
+		ct.diffuse_texture = t
+		ct.normal_texture = load(p)
+		ct.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		t = ct
+	lit[sheet] = t
+	return t
 
 func muzzle_offset(sheet: String, anim: String, frame: int, gun_angle: float) -> Vector2:
 	## Muzzle position relative to the feet, in world units, for a unit facing right.
