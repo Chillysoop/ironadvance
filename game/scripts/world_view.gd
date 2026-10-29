@@ -977,7 +977,11 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 		var pts := PackedVector2Array([Vector2(x - 6, by), Vector2(x + 6, by), Vector2(x, by + 7)])
 		draw_colored_polygon(PackedVector2Array([Vector2(x - 7, by - 1), Vector2(x + 7, by - 1), Vector2(x, by + 8)]), C_DARK)
 		draw_colored_polygon(pts, Color("ffb23e"))
-		Art.text(self, "%s LV%d" % [u.def.name, u.s.lvl], Vector2(x, by - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		# ALT intel rows sit right here, and already name everyone
+		if not b.inspect:
+			var tag := "%s LV%d" % [u.def.name, u.s.lvl]
+			var hw := Art.text_width(tag, 8) / 2.0 + 2
+			Art.text(self, tag, Vector2(clampf(x, b.cam_x + hw, b.cam_x + Battle.W - hw), by - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_statuses(u: Unit, x: float, y: float) -> void:
 	## Short colored tags for C5 statuses, plus AIR for a body a squadmate launched (SKEET bait).
@@ -1234,8 +1238,11 @@ func draw_targeting() -> void:
 				for d in [-c.spread, c.spread]:
 					draw_line(Vector2(aa.mx, aa.my), Vector2(aa.mx + cos(aa.a + d) * sp, aa.my + sin(aa.a + d) * sp), Color(1, 0.35, 0.35, 0.35), 1.0)
 			var seen: Array = tr.hits.filter(func(hh): return hh.d <= L and hh.u != u)  # a round back into the shooter has its own warning
+			var tagged: Array = []   # [unit, label spot]: one tag per target, none printed over another
 			for hh in seen:
 				var tg: Unit = hh.u
+				if tagged.any(func(q): return q[0] == tg):
+					continue
 				var col := Color("ffb23e") if hh.head else Color("ff4d3d")
 				draw_brackets(Rect2(tg.x - tg.w / 2 - 4, tg.y - tg.h - 4, tg.w + 8, tg.h + 8), col)
 				var lab := "BODY"
@@ -1251,7 +1258,11 @@ func draw_targeting() -> void:
 				elif tg.type == "boss" and tg.plate > 0: lab = "ARMOR"
 				elif tg.type == "hiveship" and b.ship_plated(tg): lab = "ARMOR: HIT THE PLATES"
 				elif tg.type == "shipplate": lab = "DROP IT"
-				Art.text(self, lab, Vector2(tg.x, tg.y - tg.h - 22), 16 if hh.head else 8, col, HORIZONTAL_ALIGNMENT_CENTER)
+				var spot := Vector2(tg.x, tg.y - tg.h - 22)
+				while tagged.any(func(q): return absf(q[1].x - spot.x) < 50 and absf(q[1].y - spot.y) < 12):
+					spot.y -= 12
+				tagged.append([tg, spot])
+				Art.text(self, lab, spot, 16 if hh.head else 8, col, HORIZONTAL_ALIGNMENT_CENTER)
 			if seen.is_empty() and not cut_short and not back:
 				var ls: Array = tr.segs[-1]
 				var em: int = tr.end.m if tr.end != null else 0
@@ -1682,6 +1693,11 @@ func draw_hover(cv: CanvasItem) -> void:
 			lines.append("It takes every hit; %s's HP is safe." % h.def.name)
 			if not h.mech.own:
 				lines.append("VEHICLE CARDS: " + Data.vehicle_card_names(h.mech.type))
+	# long notes wrap instead of running off both sides of the screen
+	var wrapped: Array = []
+	for l in lines:
+		wrapped.append_array(CardView.wrap_text(l, 480, 16))
+	lines = wrapped
 	var w := 0.0
 	for l in lines:
 		w = maxf(w, Art.text_width(l, 16, true))

@@ -374,7 +374,7 @@ const ITEMS := {
 	"steeltoe": {"name": "Steel-Toe Rig", "slot": "armor", "stats": {"hp": 2, "fall_half": 1}, "text": "Half damage from falls and slams."},
 	"sparemag": {"name": "Spare Mag", "slot": "kit", "stats": {"kill_draw": 1}, "text": "ON KILL: draw a card (once a turn)."},
 	"flashhider": {"name": "Flash Hider", "slot": "kit", "stats": {"head_adr": 15}, "text": "ON HEADSHOT: gain adrenaline."},
-	"ammopouch": {"name": "Ammo Pouch", "slot": "kit", "stats": {"energy1": 1}, "text": "+1 energy on round 1."},
+	"ammopouch": {"name": "Ammo Pouch", "slot": "kit", "stats": {"energy1": 1}, "text": "Spare mags clipped where you can reach them."},
 	"luckycoin": {"name": "Lucky Coin", "slot": "kit", "stats": {"luck": 1}, "text": "Better loot for the whole squad."},
 	"scope": {"name": "4x Scope", "slot": "kit", "stats": {"laser_step": 1}, "text": "This soldier's aim laser reaches a step further."},
 	"griptape": {"name": "Grip Tape", "slot": "kit", "stats": {"sway": 0.2}, "set": "desert", "text": "Less sway on every gun."},
@@ -1089,7 +1089,7 @@ const BOUNTIES := [
 	{"id": "sniperfirst", "name": "COUNTER-SNIPE", "text": "The first Jackal you kill is a Sniper.", "pay": 35},
 	{"id": "crush2", "name": "TIMBER", "text": "Crush 2 Jackals under falling terrain.", "pay": 35},
 	{"id": "pows", "name": "NO ONE LEFT BEHIND", "text": "Free every POW.", "pay": 30},
-	{"id": "push3", "name": "FORWARD", "text": "Make 3 aggressive pushes.", "pay": 30},
+	{"id": "push3", "name": "FORWARD", "text": "Push the screen forward 3 times.", "pay": 30},
 	{"id": "fast", "name": "BLITZ", "text": "Beat the level in 18 rounds or fewer.", "pay": 40},
 	{"id": "melee3", "name": "UP CLOSE", "text": "Kill 3 enemies with melee.", "pay": 30},
 ]
@@ -1168,7 +1168,7 @@ const ELITE_BIO := 2     # share of max HP everyone gets back just for reaching 
 
 # Briefing intel (W2): each mission rolls one condition.
 const INTEL := {
-	"clear": {"name": "CLEAR SKIES", "text": "No surprises.", "w": 3},
+	"clear": {"name": "QUIET SECTOR", "text": "No surprises.", "w": 3},
 	"monsoon": {"name": "MONSOON", "text": "Everything is soaked: fire does 1 damage and doesn't spread.", "w": 2},
 	"fog": {"name": "FOG", "text": "Jackals see 30% less far.", "w": 2},
 	"surplus": {"name": "SURPLUS", "text": "Twice the crates on the map.", "w": 2},
@@ -1686,7 +1686,7 @@ const TUT_LINES := [
 	["Listen up, recruits. This is a drill: nothing here counts.", "Click the ground to walk. Move anyone a few steps forward."],
 	["Target Jackal ahead. Click RIFLE SHOT, or press its number key.", "Aim at him with the mouse and click to fire. Right-click cancels. SHIFT steadies your aim."],
 	["Supply crate up ahead. Shoot it open.", "Loot you leave lying around is collected when the screen moves on."],
-	["Two Jackals bunched up ahead. Arm the FRAG GRENADE and lob it at their feet.", "Only the start of the throw is shown, so judge the bounces yourself. The mouse wheel sets the fuse."],
+	["Jackals bunched up ahead. Arm the FRAG GRENADE and lob it at their feet.", "Only the start of the throw is shown, so judge the bounces yourself. The mouse wheel sets the fuse."],
 	["Each soldier gets 3 ENERGY a turn. NEXT (SPACE) picks who can still act. END TURN (ENTER) ends it.", "Now push. Walk someone into the PUSH ZONE on the right and the screen moves on."],
 	["These ones shoot back. After your turn, every enemy moves and fires.", "Use cover, knock them off ledges, finish them. Go."],
 ]

@@ -680,24 +680,25 @@ class Screen extends Control:
 			Art.text(self, "DAILY OP  %s" % Run.daily, Vector2(480, 62), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 		if Data.EVENTS.has(m.get("event", "")):
 			var ev: Dictionary = Data.EVENTS[m.event]
-			draw_rect(Rect2(16, 296, 290, 150), Color(0.05, 0.035, 0.03, 0.8))
-			draw_rect(Rect2(16, 296, 290, 150), Color("ffb23e"), false, 1)
+			# 270 wide, so the panel stops short of Moss on the left of the squad line
+			draw_rect(Rect2(16, 296, 270, 150), Color(0.05, 0.035, 0.03, 0.8))
+			draw_rect(Rect2(16, 296, 270, 150), Color("ffb23e"), false, 1)
 			Art.text(self, "EVENT: " + ev.name, Vector2(28, 316), 8, Color("ffb23e"))
 			var y := 336.0
-			for line in CardView.wrap_text(ev.text, 266, 16):
+			for line in CardView.wrap_text(ev.text, 246, 16):
 				Art.text(self, line, Vector2(28, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 				y += 16
 		var bs: Array = m.get("bounties", [])
 		if bs.size():
-			draw_rect(Rect2(654, 296, 290, 150), Color(0.05, 0.035, 0.03, 0.8))
-			draw_rect(Rect2(654, 296, 290, 150), Color("ffd23a"), false, 1)
-			Art.text(self, "BOUNTY BOARD", Vector2(666, 316), 8, Color("ffd23a"))
+			draw_rect(Rect2(674, 296, 270, 150), Color(0.05, 0.035, 0.03, 0.8))
+			draw_rect(Rect2(674, 296, 270, 150), Color("ffd23a"), false, 1)
+			Art.text(self, "BOUNTY BOARD", Vector2(686, 316), 8, Color("ffd23a"))
 			var y := 334.0
 			for id in bs:
 				var bt: Dictionary = Run.bounty(id)
-				Art.text(self, bt.name, Vector2(666, y), 8, Color.WHITE)
+				Art.text(self, bt.name, Vector2(686, y), 8, Color.WHITE)
 				Art.text(self, "+%d$" % bt.pay, Vector2(932, y), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
-				Art.text(self, bt.text, Vector2(666, y + 15), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+				Art.text(self, bt.text, Vector2(686, y + 15), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 				y += 36
 	func dial_card(i: int) -> Rect2:
 		## Where biome card i sits: two wide cards, or three narrower ones with Gate Control.
@@ -817,8 +818,8 @@ class Screen extends Control:
 		## The stat table squeezes its rows together so the last one stays clear of the squad's heads.
 		var step := minf(20.0, (345.0 - top) / maxf(1, rows.size()))
 		for i in rows.size():
-			Art.text(self, rows[i][0], Vector2(330, top + i * step), 8, Color("e8dcc2"))
-			Art.text(self, rows[i][1], Vector2(630, top + i * step), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
+			Art.text(self, rows[i][0], Vector2(300, top + i * step), 8, Color("e8dcc2"))
+			Art.text(self, rows[i][1], Vector2(660, top + i * step), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
 	func draw_op_result() -> void:
 		var op: Dictionary = stats.get("op", {})
 		var title := "OP FAILED"
