@@ -8,7 +8,7 @@ extends Node
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
 ## crumble (falling structures tip, spin, splinter and crush),
-## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), polish1 (overnight polish round 1: log wrap, label overlaps, dial rows), polish2 (round 2: card titles, shelf text, memorial, boss bar), dcalls (D1-D12 from the full-build playtest page), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
+## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), polish1 (overnight polish round 1: log wrap, label overlaps, dial rows), polish2 (round 2: card titles, shelf text, memorial, boss bar), polish3 (round 3: campaign War Room and brief), dcalls (D1-D12 from the full-build playtest page), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -877,6 +877,8 @@ func run() -> void:
 			await polish1()
 		"polish2":
 			await polish2()
+		"polish3":
+			await polish3()
 		"fieldfix":
 			await fieldfix()
 		"synergies":
@@ -8397,6 +8399,29 @@ func polish2() -> void:
 	await shot("polish2_bossbar")
 	b.boss_active = false
 	Run.meta = keep
+	Run.save_meta()
+	main.show_title()
+	await frames_wait(10)
+
+func polish3() -> void:
+	## Overnight polish round 3: the campaign War Room and op brief.
+	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate(), "tips_off": Run.meta.get("tips_off", false)}
+	Run.meta["tips_off"] = true
+	Run.delete_campaign(2)
+	Run.new_campaign(2)
+	main.show_war_room()
+	await frames_wait(20)
+	var subs: Array = main.screen.find_children("*", "", true, false).filter(func(c): return "sub" in c and str(c.get("text")) == "COMPANY").map(func(c): return c.sub)
+	check(subs.size() == 1 and str(subs[0]).begins_with("SQUAD "), "the COMPANY button says SQUAD n OF m (%s)" % [subs])
+	await shot("polish3_warroom")
+	main.screen.attack.emit(Run.sector(main.screen.sel), false)
+	await frames_wait(20)
+	await shot("polish3_brief")
+	Run.leave_campaign()
+	Run.delete_campaign(2)
+	Run.meta.salvage = keep.salvage
+	Run.meta.hq = keep.hq
+	Run.meta["tips_off"] = keep.tips_off
 	Run.save_meta()
 	main.show_title()
 	await frames_wait(10)
