@@ -750,13 +750,15 @@ class Screen extends Control:
 					Art.text(self, "BOSS HP %d   ARMOR %d" % [lv.boss_hp, lv.plate], Vector2(cx, 452), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 			# how each soldier's deck fits this biome
 			y += 38
-			var step := minf(30.0, (430.0 - y) / maxf(1, al.size()))  # five soldiers still fit inside the card
+			# five soldiers still fit inside the card; the bottom is free unless Gate Control 3 prints there
+			var bottom := 430.0 if Run.hq("gate") >= 3 and Run.dial_levels.has(id) else 456.0
+			var step := minf(30.0, (bottom - y) / maxf(1, al.size()))
 			for j in al.size():
 				var so: Dictionary = al[j]
 				var f := Run.fit(so, id)
 				var fc: Color = {"great": Color("62d26f"), "ok": Color("e8dcc2"), "rough": Color("ff7a5a")}[f]
 				var row := y + j * step
-				Art.draw_char(self, Art.look_sheet(so), "idle", (t / 12 + j) % 4, Vector2(x + 40, row + 14), 1, false, 0, 1.0, 0, true, 0.8)
+				Art.draw_char(self, Art.look_sheet(so), "idle", (t / 12 + j) % 4, Vector2(x + 32, row + 14), 1, false, 0, 1.0, 0, true, 0.8)
 				Art.text(self, so.def.name, Vector2(x + 60, row + 8), 8, Color.WHITE)
 				Art.text(self, f.to_upper(), Vector2(x + cw - 20, row + 8), 8, fc, HORIZONTAL_ALIGNMENT_RIGHT)
 				var sh := Run.styles(so)
@@ -768,7 +770,8 @@ class Screen extends Control:
 					draw_rect(Rect2(bx + k, row + 1, w, 7), {"long": Color("53d4e2"), "close": Color("ffb23e"), "arc": Color("ff4d3d")}[st])
 					k += w
 				draw_rect(Rect2(bx, row + 1, bw, 7), Color("6c7480"), false, 1)
-				Art.text(self, loadout_line(so), Vector2(x + 60, row + 21), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+				if step >= 26:  # too tight for a second line: the bar already says it
+					Art.text(self, loadout_line(so), Vector2(x + 60, row + 21), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		var lx := 330.0
 		for lg in [["DECK BAR:", Color("9aa2ae")], ["LONG GUNS", Color("53d4e2")], ["CLOSE", Color("ffb23e")], ["EXPLOSIVES", Color("ff4d3d")]]:
 			Art.text(self, lg[0], Vector2(lx, 528), 8, lg[1])

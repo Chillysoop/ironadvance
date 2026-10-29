@@ -86,8 +86,8 @@ func setup(battle: Battle) -> void:
 	undo_btn.pressed.connect(func(): b.undo_last_walk())
 	root.add_child(undo_btn)
 	swap_btn = PixButton.new()
-	swap_btn.text = "SWAP 1E"
-	swap_btn.sub = "R"
+	swap_btn.text = "SWAP"
+	swap_btn.sub = "1E  R"
 	swap_btn.color = Color("ffd23a")
 	swap_btn.position = Vector2(894, ty)
 	swap_btn.size = Vector2(58, 24)
@@ -162,7 +162,7 @@ func refresh() -> void:
 	move_btn.disabled = not my_turn
 	undo_btn.disabled = not b.can_undo()
 	swap_btn.disabled = not (b.rummage_armed or b.can_rummage(u))
-	swap_btn.text = "CANCEL" if b.rummage_armed else "SWAP 1E"
+	swap_btn.text = "CANCEL" if b.rummage_armed else "SWAP"
 	jet_btn.visible = my_turn and u != null and not u.dead and u.fuel_max > 0
 	jet_btn.disabled = u == null or u.fuel <= 0
 	jet_btn.position = Vector2(maxf(160.0, hand_x0 - 52), 410)
@@ -592,7 +592,12 @@ class BeltSlot extends Control:
 		var it: Dictionary = Run.belt[idx]
 		var icon: String = Data.BELT_ICONS.get(Data.ITEMS[it.id].use, "ic_card")
 		draw_texture_rect(Art.tex[icon], Rect2(size.x / 2 - 8, 3, 16, 16), false)
-		Art.text(self, Data.item_name(it).split(" ")[0].to_upper().substr(0, 5), Vector2(size.x / 2, 28), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+		# the first word whole, in the small font when the pixel font would spill past the slot
+		var word: String = Data.item_name(it).split(" ")[0].to_upper()
+		if Art.text_width(word, 8) <= size.x - 4:
+			Art.text(self, word, Vector2(size.x / 2, 28), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+		else:
+			Art.text(self, word, Vector2(size.x / 2, 28), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
 		if hover:
 			var tip := "%s: %s" % [Data.item_name(it), Data.ITEMS[it.id].text]
 			var tw := Art.text_width(tip, 16, true) + 12
@@ -1157,7 +1162,11 @@ class Overlay extends Control:
 		ly += draw_boosts(b, ly - 12)
 		for i in b.log_lines.size():
 			var a := 0.55 + 0.45 * float(i + 1) / b.log_lines.size()
-			Art.text(self, b.log_lines[i], Vector2(10, ly + i * 14), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+			# wrapped short of the push zone label and the bounty board on the right
+			var wl: Array = CardView.wrap_text(b.log_lines[i], 540, 16)
+			for k in wl.size():
+				Art.text(self, ("  " if k > 0 else "") + wl[k], Vector2(10, ly), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+				ly += 14
 		draw_action_panel(b)
 		# U1 kill feed, top right: KILLER [HOW] VICTIM, sliding in, with a flashing stamp for the good ones
 		var fy := maxf(50.0, draw_bounties(b, draw_synergies(b, 40.0)) + 12)
