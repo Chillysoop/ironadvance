@@ -940,6 +940,35 @@ class Overlay extends Control:
 			Art.text(self, r[2], Vector2(28 + Art.text_width(head, 8), ry + 1), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		return hgt + 8
 
+	func draw_synergies(b: Battle, y: float) -> float:
+		## The squad's switched-on synergies, top right above the bounty board. Hover one for what it
+		## does. Returns where the bounty board starts.
+		var rows: Array = b.synergy_board()
+		if rows.is_empty() or b.state == "title":
+			return y
+		var w := 232.0
+		var x := 954.0 - w
+		var hgt := 22.0 + rows.size() * 14
+		var m := get_local_mouse_position()
+		var al := 0.2 if hud.targeting and Rect2(x, y, w, hgt).grow(16).has_point(m) else 1.0
+		draw_rect(Rect2(x - 1, y - 1, w + 2, hgt + 2), Color(0.05, 0.035, 0.03, 0.9 * al))
+		draw_rect(Rect2(x, y, w, hgt), Color(0.1, 0.11, 0.13, 0.82 * al))
+		draw_rect(Rect2(x, y, w, 2), Color(0.71, 0.55, 1, al))
+		Art.text(self, "SYNERGIES", Vector2(x + 6, y + 13), 8, Color("b48cff"), HORIZONTAL_ALIGNMENT_LEFT, 1, false, al)
+		Art.text(self, "HOVER", Vector2(x + w - 6, y + 13), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT, 1, false, al)
+		var ry := y + 29
+		for r in rows:
+			var row := Rect2(x, ry - 11, w, 14)
+			var on: bool = not hud.targeting and row.has_point(m)
+			if on:
+				draw_rect(row, Color(r.c, 0.18))
+			Art.text(self, r.name, Vector2(x + 6, ry), 8, r.c if not on else Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 1, false, al)
+			Art.text(self, r.who, Vector2(x + w - 6, ry), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 1, false, al)
+			if not hud.targeting:
+				Tip.zone(self, row, r.name, r.text, r.c)
+			ry += 14
+		return y + hgt + 6
+
 	func draw_bounties(b: Battle, y: float) -> float:
 		## R5: the bounty board stays up in the top right all level. A bounty that can no longer be
 		## earned is struck through, a finished one goes green. Hover it for the full conditions.
@@ -996,6 +1025,7 @@ class Overlay extends Control:
 		return y + hgt
 
 	func _draw() -> void:
+		Tip.clear(self)
 		var b: Battle = hud.b
 		if b == null:
 			return
@@ -1096,7 +1126,7 @@ class Overlay extends Control:
 			Art.text(self, b.log_lines[i], Vector2(10, ly + i * 14), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		draw_action_panel(b)
 		# U1 kill feed, top right: KILLER [HOW] VICTIM, sliding in, with a flashing stamp for the good ones
-		var fy := maxf(50.0, draw_bounties(b, 40.0) + 12)
+		var fy := maxf(50.0, draw_bounties(b, draw_synergies(b, 40.0)) + 12)
 		for f in b.feed:
 			var al: float = clampf((480 - f.t) / 40.0, 0, 1)
 			var slide: float = maxf(0, 1 - f.t / 8.0) * 160

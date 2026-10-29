@@ -583,6 +583,7 @@ func para(txt: String, p: Vector2, w: float, col := Color("e8dcc2"), max_lines :
 	return y
 
 func _draw() -> void:
+	Tip.clear(self)
 	draw_rect(Rect2(0, 0, 960, 540), Color("1a1d22"))
 	for y in range(0, 540, 24):
 		for x in range(0, 960, 24):
@@ -727,6 +728,7 @@ func draw_right(me: Dictionary) -> void:
 			break
 		var ready: bool = ch.need.is_empty()
 		Art.text(self, ch.name, Vector2(x, y), 8, Color("b48cff") if ready else Color("6c7480"))
+		Tip.zone(self, Rect2(x - 2, y - 10, w + 4, 28), "CHAIN " + ch.name, "%s chain. %s" % [ch.branch, ch.text] + ("" if ready else " Needs %s in the deck." % ", ".join(ch.need)), Color("b48cff"))
 		y += 4
 		y = para("ready" if ready else "needs " + ", ".join(ch.need), Vector2(x, y + 10), w, Color("e8dcc2") if ready else Color("8a9099"), 1)
 		y += 4
@@ -766,13 +768,23 @@ func draw_sheet(me: Dictionary) -> void:
 	para("%s: %s" % [od.name, od.text], Vector2(x + 90, y), MID.size.x - 90, Color("ffb23e"), 2)
 	y += 26
 	head("DUOS", Vector2(x, y))
+	# the duos this squad can pull off, hover one for what it does; the class's others fold into one word
 	var duos: Array = []
+	var away: Array = []
 	for d in Data.DUOS:
 		if d.pair.has(me.key):
 			var other: String = d.pair[0] if d.pair[1] == me.key else d.pair[1]
-			duos.append("%s with %s" % [Data.CARDS[d.card].name, Run.soldier(other).get("def", {}).get("name", other.to_upper())])
-	para(", ".join(duos) + ". Both Overdrives ready and standing close.", Vector2(x + 90, y), MID.size.x - 90, Color("e8dcc2"), 2)
-	y += 30
+			var os := Run.soldier(other)
+			if os.get("alive", false):
+				duos.append({"kind": "duo", "name": Data.CARDS[d.card].name.to_upper(), "prog": "+ " + os.def.name, "done": true, "text": Run.duo_tip(d)})
+			else:
+				away.append("%s with %s" % [Data.CARDS[d.card].name, other.to_upper()])
+	if away.size():
+		duos.append({"kind": "duo", "name": "+%d" % away.size(), "prog": "", "done": false, "title": "OTHER DUOS",
+			"text": "Recruit the partner to unlock: %s." % ", ".join(away)})
+	if duos.is_empty():
+		para("None for this class.", Vector2(x + 90, y), MID.size.x - 90, Color("9aa2ae"), 1)
+	y = maxf(y + 30, Tip.chips(self, duos, Vector2(x + 90, y + 1), MID.size.x - 90) + 6)
 	var rt := recruit_trait()
 	if not rt.is_empty():
 		head("RECRUIT", Vector2(x, y))
@@ -819,16 +831,8 @@ func draw_gear(me: Dictionary) -> void:
 	head("STASH %d/%d  (SHARED)" % [Run.stash.size(), Data.STASH_MAX], Vector2(x, MID.position.y + 182), Color("ffb23e"))
 	head("BELT  (SHARED, USE ANY TIME)", Vector2(x, MID.position.y + 308), Color("62d26f"))
 	var it = gear_item()
-	var sets := ""
-	var counts := {}
-	for sl in me.equip:
-		var e = me.equip[sl]
-		if e != null and Data.ITEMS[e.id].has("set"):
-			counts[Data.ITEMS[e.id].set] = counts.get(Data.ITEMS[e.id].set, 0) + 1
-	for k in counts:
-		sets += "%s %d/2%s  " % [Data.SETS[k].name, counts[k], " ACTIVE" if counts[k] >= 2 else ""]
-	if sets != "":
-		Art.text(self, sets, Vector2(x + 280, MID.position.y + 46), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+	# gear sets and kit evolutions, each one hoverable
+	Tip.chips(self, Run.synergies(me).filter(func(sy): return sy.kind != "duo"), Vector2(x + 280, MID.position.y + 46), MID.size.x - 280)
 	var gb := Data.stat_lines(Run.gear_bonus(me))
 	var y := MID.position.y + 380
 	if not readonly and gear_pick.get("where", "") == "equip":
@@ -938,11 +942,11 @@ func draw_squad() -> void:
 		draw_line(Vector2(x, fy - 12), Vector2(r.end.x - 8, fy - 12), Color("4a505a"), 1.0)
 		Art.text(self, "OVERDRIVE", Vector2(x, fy), 8, Color("ffb23e"))
 		Art.text(self, Data.CARDS[Run.od_key(me)].name, Vector2(x, fy + 12), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
-		var duos: Array = []
-		for d in Data.DUOS:
-			if d.pair.has(me.key):
-				var other: String = d.pair[0] if d.pair[1] == me.key else d.pair[1]
-				if Run.soldier(other).get("alive", false):
-					duos.append(Run.soldier(other).def.name)
+		var duos: Array = Run.synergies(me).filter(func(sy): return sy.kind == "duo")
 		Art.text(self, "DUOS", Vector2(x, fy + 28), 8, Color("b48cff"))
-		Art.text(self, ", ".join(duos) if duos.size() else "none in the squad", Vector2(x + 40, fy + 28), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		if duos.is_empty():
+			Art.text(self, "none in the squad", Vector2(x + 40, fy + 28), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		else:
+			# just the partners' names here; the tip names the duo card
+			Tip.chips(self, duos.map(func(sy): return {"kind": "duo", "name": sy.prog, "prog": "", "done": true, "title": sy.name, "text": sy.text}),
+				Vector2(x + 40, fy + 28), r.end.x - 8 - x - 40)

@@ -178,7 +178,7 @@ func _draw() -> void:
 			stat = "  ".join(Data.stat_lines(Data.item_stats(it)))
 			body = d.text
 			if d.has("set"):
-				body += " SET: %s." % Data.SETS[d.set].name
+				body += " SET %s: %s" % [Data.SETS[d.set].name.to_upper(), Data.SETS[d.set].text]
 			var evo := Data.evolve_hint(it.id)
 			if evo != "":
 				body += " " + evo

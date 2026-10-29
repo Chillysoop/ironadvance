@@ -869,6 +869,8 @@ func run() -> void:
 			await newplayer3()
 		"fieldfix":
 			await fieldfix()
+		"synergies":
+			await synergies()
 		"operator":
 			await operator_call()
 		"training":
@@ -1988,6 +1990,88 @@ func newplayer3() -> void:
 	await shot("newplayer3")
 	Run.meta = keep
 	Run.save_meta()
+
+func hover_at(p: Vector2) -> void:
+	## Rest the mouse on a 960x540 point, for Tip boxes.
+	var vp := get_viewport()
+	var k: float = vp.get_visible_rect().size.x / 960.0
+	vp.warp_mouse(p * k)
+	var mv := InputEventMouseMotion.new(); mv.position = p * k; mv.global_position = p * k
+	Input.parse_input_event(mv)
+	await frames_wait(8)
+
+func synergies() -> void:
+	## Every synergy (gear sets, kit evolutions, duos) explains itself on hover, and the field lists
+	## the switched-on ones above the bounty board (2026-10-29).
+	Run.new_run()
+	var s0: Dictionary = Run.soldiers[0]
+	Run.equip(s0, Run.new_item("ghillie"))
+	Run.equip(s0, Run.new_item("griptape"))
+	Run.equip(s0, Run.new_item("scope"))
+	Run.equip(Run.soldiers[1], Run.new_item("plate"))
+	var syn: Array = Run.synergies(s0)
+	print("[synergies] ", s0.key, " ", syn.map(func(sy): return "%s %s %s" % [sy.kind, sy.name, sy.done]))
+	check(syn.any(func(sy): return sy.kind == "set" and sy.done and sy.text.contains("+20 move")), "a full Desert Rat set is ACTIVE and says what it gives")
+	check(Run.synergies(Run.soldiers[1]).any(func(sy): return sy.kind == "set" and not sy.done and sy.prog == "1/2"), "one Boar piece reads 1/2 and is not on yet")
+	check(syn.any(func(sy): return sy.kind == "duo" and sy.text.contains("Overdrive")), "duo partners in the squad are listed with their card")
+	Run.scrip = 500
+	main.show_shop()
+	await frames_wait(10)
+	main.screen.open_armory()
+	await frames_wait(10)
+	var arm = main.screen.get_children()[-1]
+	await hover_at(Vector2(arm.col_x(0) + 12, 190))
+	check(Tip.cur.get("title", "") == "DESERT RAT", "hovering the set in the Armory opens its tip (%s)" % Tip.cur.get("title", ""))
+	await shot("syn_armory")
+	main.show_hq(false)
+	await frames_wait(20)
+	main.screen.open_dossier(0, "gear")
+	await frames_wait(20)
+	var d: Control = main.screen.sub
+	await hover_at(Vector2(d.MID.position.x + 292, d.MID.position.y + 42))
+	check(Tip.cur.get("title", "") == "DESERT RAT", "hovering the set in the Dossier gear tab opens its tip (%s)" % Tip.cur.get("title", ""))
+	await shot("syn_dossier_gear")
+	d.set_tab("sheet")
+	await frames_wait(10)
+	await hover_at(Vector2(d.MID.position.x + 100, d.MID.end.y - 4))
+	check(Tip.cur.get("title", "") == "SPOTTER STRIKE", "the sheet's duos are hoverable (%s)" % Tip.cur.get("title", ""))
+	await shot("syn_dossier_sheet")
+	await hover_at(Vector2(d.RIGHT.position.x + 30, d.RIGHT.position.y + 175))
+	check(Tip.cur.get("title", "").begins_with("CHAIN "), "the sheet's chains are hoverable (%s)" % Tip.cur.get("title", ""))
+	await shot("syn_dossier_chain")
+	# on the field: switched-on synergies above the bounty board, each one hoverable
+	Run.mission = 0
+	Run.pick_biome("city")
+	var m: Dictionary = Run.current_mission().duplicate(true)
+	m["bounties"] = ["nofall", "melee3", "fast"]
+	var b: Battle = main.start_battle(0, m)
+	await until(func(): return b.state == "player" and not b.busy)
+	await frames_wait(20)
+	var rows: Array = b.synergy_board()
+	print("[synergies] field ", rows.map(func(r): return r.name + " " + r.who))
+	check(rows.size() >= 2 and rows[0].name == "DESERT RAT", "the field lists the full set and the duo pairs")
+	check(not rows.any(func(r): return r.name == "BOAR SALVAGE"), "a half set stays off the field list")
+	await hover_at(Vector2(954 - 232 + 30, 40 + 29 - 4))
+	check(Tip.cur.get("title", "") == "DESERT RAT", "hovering a field synergy opens its tip (%s)" % Tip.cur.get("title", ""))
+	await shot("syn_field")
+	await hover_at(Vector2(954 - 232 + 30, 40 + 29 + 14 - 4))
+	check(Tip.cur.get("title", "") == "DUO PAIRS" and Tip.cur.text.contains("Spotter Strike (MOSS+VEE)"), "the duo pairs row lists every pair on the field (%s)" % Tip.cur.get("title", ""))
+	await shot("syn_field_pairs")
+	# a duo card in hand gets its own READY row
+	var moss: Unit = b.squad_alive().filter(func(o): return o.def.key == "moss")[0]
+	var vee: Unit = b.squad_alive().filter(func(o): return o.def.key == "vee")[0]
+	moss.hand.append({"id": -1, "key": Data.OD.moss, "tier": Data.OD_TIER, "od": true})
+	vee.hand.append({"id": -2, "key": Data.OD.vee, "tier": Data.OD_TIER, "od": true})
+	vee.x = moss.x + 30
+	b.refresh_duos()
+	await frames_wait(4)
+	rows = b.synergy_board()
+	check(rows.any(func(r): return r.name == "DUO SPOTTER STRIKE" and r.who == "READY"), "a duo card in hand shows as READY on the list")
+	await hover_at(Vector2(954 - 232 + 30, 40 + 29 + 14 - 4))
+	check(Tip.cur.get("title", "") == "DUO SPOTTER STRIKE", "the ready duo has its own tip (%s)" % Tip.cur.get("title", ""))
+	await shot("syn_field_duo")
+	await hover_at(Vector2(300, 300))
+	check(Tip.cur.is_empty(), "the tip closes when the mouse leaves")
 
 func fieldfix() -> void:
 	## Bounty board on the field, big hands, vehicle cards on exit, zone advance (2026-10-29).

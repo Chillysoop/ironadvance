@@ -543,6 +543,7 @@ func _process(_d: float) -> void:
 	queue_redraw()
 
 func _draw() -> void:
+	Tip.clear(self)
 	draw_rect(Rect2(0, 0, 960, 540), Color("1a1d22"))
 	for y in range(0, 540, 24):
 		for x in range(0, 960, 24):
@@ -563,9 +564,8 @@ func _draw() -> void:
 		Art.text(self, ("HP %d/%d" % [s.hp, Run.eff_max_hp(s)]) if s.alive else "KIA", Vector2(x + w, 66), 8, Color("9aa2ae") if s.alive else Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
 		var gear_cards: int = s.deck.filter(func(c): return c.get("src", -1) != -1).size()
 		Art.text(self, "DECK %d%s" % [s.deck.size(), ", %d from gear" % gear_cards if gear_cards else " cards"], Vector2(x, 180), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
-		var sets := active_sets(s)
-		if sets != "":
-			Art.text(self, sets, Vector2(x, 194), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		# gear sets and kit evolutions, each one hoverable
+		Tip.chips(self, Run.synergies(s).filter(func(sy): return sy.kind != "duo"), Vector2(x, 194), w)
 	Art.text(self, "STASH %d/%d" % [Run.stash.size(), Data.STASH_MAX], Vector2(24, 214), 8, Color("ffb23e") if Run.stash.size() <= Data.STASH_MAX else Color("ff4d3d"))
 	Art.text(self, "BELT: USE MID-MISSION, NO CARD NEEDED", Vector2(470, 214), 8, Color("62d26f"))
 	if shop_mode and shelf.size():
@@ -655,17 +655,6 @@ func draw_help() -> void:
 				return
 			Art.text(self, ln, Vector2(x, y), 16, l[1], HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 			y += 12
-
-func active_sets(s: Dictionary) -> String:
-	var counts := {}
-	for sl in s.equip:
-		var it = s.equip[sl]
-		if it != null and Data.ITEMS[it.id].has("set"):
-			counts[Data.ITEMS[it.id].set] = counts.get(Data.ITEMS[it.id].set, 0) + 1
-	var out: Array = []
-	for k in counts:
-		out.append("%s %d/2%s" % [Data.SETS[k].name, counts[k], " ACTIVE" if counts[k] >= 2 else ""])
-	return "  ".join(out)
 
 # ================================================================ item tile
 class ItemTile extends Control:
