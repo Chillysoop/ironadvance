@@ -3079,7 +3079,7 @@ func tut_update() -> void:
 				break
 		if card_idx >= 0 and (at < 0 or card_idx < at):
 			card_idx += 1
-		elif card_idx == at:
+		elif at >= 0 and card_idx == at:
 			card_idx = 0
 		sel.hand.insert(0, sel.hand.pop_at(at) if at >= 0 else {"id": -2, "key": need, "tier": Data.base_tier(need), "temp": true})
 		ui_dirty = true
