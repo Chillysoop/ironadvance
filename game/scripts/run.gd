@@ -1165,6 +1165,10 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 		var gs: Dictionary = Data.gear(id).get("stats", {})
 		for k in gs:
 			out[k] = out.get(k, 0) + (3 if id == "nanites" and relic_tier(id) >= 3 else gs[k])
+	for id in s.get("orders_done", []):  # W5: finished personal orders
+		var os: Dictionary = Data.ORDERS[id].stats
+		for k in os:
+			out[k] = out.get(k, 0) + os[k]
 	if s.has("key"):
 		for id in implants_of(s):
 			var st: Dictionary = Data.SURGERIES[id].get("stats", {})
@@ -1561,6 +1565,9 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 	lv["op"] = sc.id
 	lv["act"] = int(camp.get("act", 0))
 	lv["job"] = job
+	var nem := next_nemesis()
+	if not patrol and not nem.is_empty() and not lv.get("finale", false):
+		lv["nemesis"] = nem.duplicate()  # W3: an officer who got away is waiting on this op
 	if sc.get("varga", false) and not patrol:
 		lv["guest"] = "varga"  # S3: the colonel fights alongside the company this once
 	lv["patrol"] = patrol
@@ -1659,6 +1666,7 @@ func after_op(st := {}) -> Dictionary:
 	inc["engineer"] = engineer_joins()
 	inc["bonus"] = roll_bonus()
 	inc["challenges"] = check_challenges(st)
+	inc["nemesis"] = book_nemesis(st)
 	write_journal(st, inc)
 	scrip += inc.scrip
 	meta.salvage = int(meta.get("salvage", 0)) + inc.salvage
@@ -1701,6 +1709,42 @@ func engineer_joins() -> String:
 	var names: Array = Data.CALLSIGNS.filter(func(c): return not used.has(c))
 	var s := enlist(spec_offer("engineer", names[randi() % names.size()] if names.size() else "SPARKS"))
 	return "%s, a Gate Engineer, joined the company with Vharr tech." % s.def.name
+
+func next_nemesis() -> Dictionary:
+	## W3: the oldest officer still at large.
+	for n in camp.get("nemeses", []):
+		if n.alive:
+			return n
+	return {}
+
+func nemesis_name(n: Dictionary) -> String:
+	var t: String = Data.NEMESIS_TITLES[clampi(int(n.rank), 0, Data.NEMESIS_TITLES.size() - 1)]
+	return n.name + ("" if t == "" else " " + t)
+
+func book_nemesis(st: Dictionary) -> String:
+	## W3: an officer who got away comes back next op, one rank tougher; one who fell is done for good.
+	var ns: Array = camp.get("nemeses", [])
+	var out := ""
+	if st.get("nemesis_killed", "") != "":
+		for n in ns:
+			if n.name == st.nemesis_killed:
+				n.alive = false
+				out = "%s is dead. Their signature gear is in the stash." % nemesis_name(n)
+	var esc: Dictionary = st.get("nemesis_escaped", {})
+	if not esc.is_empty():
+		var found := false
+		for n in ns:
+			if n.name == esc.name:
+				found = true
+				n.rank = mini(int(n.rank) + 1, Data.NEMESIS_TITLES.size() - 1)
+				n.elite = esc.get("elite", n.elite)
+				out = "%s got away again. Next time they'll be tougher." % nemesis_name(n)
+		if not found:
+			var n := {"name": esc.name, "rank": 1, "type": esc.get("type", ""), "elite": esc.get("elite", ""), "alive": true}
+			ns.append(n)
+			out = "%s got away with a scar. They'll be back on the next op." % nemesis_name(n)
+	camp["nemeses"] = ns
+	return out
 
 func write_journal(st: Dictionary, inc: Dictionary) -> void:
 	## W8: one line per op in the war journal.
@@ -1872,15 +1916,15 @@ func make_guest(id: String) -> Dictionary:
 	return s
 
 # ---------------------------------------------------------------- S2/S3 radio
-func radio_line(who: String, text: String, sq: Array) -> Dictionary:
+func radio_line(who: String, text: String, sq: Array, by := {}, mate_name := "") -> Dictionary:
 	## One line of chatter. A squad line goes to a random soldier; {name}/{rank}/{mate} are filled in.
 	var out := {"who": who, "text": text}
 	if who == "sq":
 		if sq.is_empty():
 			return {}
-		var s: Dictionary = sq[randi() % sq.size()]
+		var s: Dictionary = by if not by.is_empty() else sq[randi() % sq.size()]
 		var mates: Array = sq.filter(func(m): return m != s)
-		var mate: String = mates[randi() % mates.size()].def.name.capitalize() if mates.size() else "Command"
+		var mate: String = mate_name.capitalize() if mate_name != "" else mates[randi() % mates.size()].def.name.capitalize() if mates.size() else "Command"
 		out["s"] = s
 		out["name"] = "%s %s" % [rank_name(s), s.def.name]
 		out["role"] = s.def.cls.to_upper()
@@ -1925,7 +1969,14 @@ func radio_after(st: Dictionary) -> Array:
 		var i: int = Data.ACTS.map(func(x): return x.name).find(op.act_done)
 		if i >= 0:
 			raw.append_array(Data.RADIO_ACT_DONE[i])
-	return raw.map(func(r): return radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())
+	var lines: Array = raw.map(func(r): return radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())
+	# W7: battle buddies in the squad get a line about each other
+	for s in sq:
+		var bud: Array = buddies(s).filter(func(n): return sq.any(func(x): return x.def.name == n))
+		if bud.size():
+			lines.append(radio_line("sq", Data.RADIO_BOND[randi() % Data.RADIO_BOND.size()], sq, s, bud[0]))
+			break
+	return lines
 
 # ---------------------------------------------------------------- the company (C1-C6)
 func svc(s: Dictionary) -> Dictionary:
@@ -2042,7 +2093,7 @@ func award(s: Dictionary, id: String) -> bool:
 
 func book_service(st: Dictionary) -> Dictionary:
 	## After an op: service records, medals, promotions and bench XP. Returns lines for the news.
-	var out := {"medals": [], "promos": [], "bench": 0}
+	var out := {"medals": [], "promos": [], "bench": 0, "orders": [], "bonds": []}
 	var won: bool = st.get("won", false)
 	var xps: Array = []
 	for s in soldiers:
@@ -2071,10 +2122,37 @@ func book_service(st: Dictionary) -> Dictionary:
 			got.append("ace")
 		for m in got:
 			out.medals.append("%s: %s" % [s.def.name, Data.MEDALS[m].name])
+		if not down:
+			var fin := order_tick(s, "ironside")
+			if fin != "":
+				out.orders.append(fin)
+		var promoted := false
 		while rank(s) < Data.RANKS.size() - 1 and int(sv.ops) >= int(Data.RANKS[rank(s) + 1].ops):
 			s.rank = rank(s) + 1
 			s.promo = int(s.get("promo", 0)) + 1
+			promoted = true
 			out.promos.append("%s is now a %s." % [s.def.name, Data.RANKS[rank(s)].name.capitalize()])
+		if promoted and rank(s) >= 1 and not s.has("order"):
+			var oid := assign_order(s)
+			if oid != "":
+				out.orders.append("%s has a personal order: %s" % [s.def.name, order_text(oid)])
+	# W7: soldiers who keep finishing ops together become battle buddies
+	var team: Array = soldiers.filter(func(x): return x.alive and not x.has("guest"))
+	for a in team:
+		for b in team:
+			if a == b:
+				continue
+			var m: Dictionary = svc(a).get("mates", {})
+			m[b.def.name] = int(m.get(b.def.name, 0)) + 1
+			svc(a)["mates"] = m
+	for i in team.size():
+		for k in range(i + 1, team.size()):
+			var a: Dictionary = team[i]
+			var b: Dictionary = team[k]
+			if int(svc(a).mates.get(b.def.name, 0)) >= Data.BOND_OPS and not buddies(a).has(b.def.name) and buddies(a).size() < Data.BOND_MAX and buddies(b).size() < Data.BOND_MAX:
+				a["buddies"] = buddies(a) + [b.def.name]
+				b["buddies"] = buddies(b) + [a.def.name]
+				out.bonds.append("%s and %s are battle buddies now: +1 energy on the first turn when they deploy together." % [a.def.name, b.def.name])
 	# C4: the bench trains on half the squad's average XP; any level they gain is picked at HQ
 	var avg := 0.0
 	if xps.size():
@@ -2087,6 +2165,50 @@ func book_service(st: Dictionary) -> Dictionary:
 				s["train"] = int(s.get("train", 0)) + gained
 		out.bench = bx
 	return out
+
+func buddies(s: Dictionary) -> Array:
+	return s.get("buddies", [])
+
+func buddy_deployed(s: Dictionary) -> bool:
+	## W7: a battle buddy is in the same squad.
+	return buddies(s).any(func(n): return soldiers.any(func(x): return x.alive and x.def.name == n))
+
+func order_text(id: String) -> String:
+	return Data.ORDERS[id].text % int(Data.ORDERS[id].goal)
+
+func assign_order(s: Dictionary) -> String:
+	## W5: pick an order that fits the soldier's deck, one they haven't finished yet.
+	var n := {"AIM": 0, "ARC": 0, "MELEE": 0}
+	for c in s.get("deck", []):
+		var ty: String = Data.CARDS.get(c.key, {}).get("type", "")
+		if n.has(ty):
+			n[ty] += 1
+	var score := {"headhunter": n.AIM * 1.0, "demo": n.ARC * 1.5, "brawler": n.MELEE * 2.0, "giantkiller": n.AIM * 0.6 + 2.0,
+		"bughunter": 6.0 if int(camp.get("act", 0)) >= 1 else 0.0, "wrecker": 3.0, "ironside": 3.0}
+	var best := ""
+	for id in score:
+		if s.get("orders_done", []).has(id):
+			continue
+		if best == "" or score[id] + randf() * 0.5 > score[best]:
+			best = id
+	if best != "":
+		s["order"] = {"id": best, "n": 0}
+	return best
+
+func order_tick(s: Dictionary, id: String, k := 1) -> String:
+	## W5: progress on a personal order. Returns a news line when it is finished, else "".
+	var o: Dictionary = s.get("order", {})
+	if o.is_empty() or o.id != id:
+		return ""
+	o.n = int(o.n) + k
+	if int(o.n) < int(Data.ORDERS[id].goal):
+		return ""
+	s.erase("order")
+	s["orders_done"] = s.get("orders_done", []) + [id]
+	return "%s finished a personal order and earned the title %s: %s." % [s.def.name, Data.ORDERS[id].title, Data.ORDERS[id].up]
+
+func title_line(s: Dictionary) -> String:
+	return ", ".join(s.get("orders_done", []).map(func(id): return Data.ORDERS[id].title))
 
 func pending_picks() -> Array:
 	## Promotions and training levels waiting for a pick, across the company.

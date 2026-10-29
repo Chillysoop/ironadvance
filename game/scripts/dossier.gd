@@ -541,7 +541,10 @@ func stats() -> Array:
 		["HAND", "%d cards" % hand],
 		["ENERGY", "3 a turn" + (" +%d first" % e1 if e1 > 0 else "")],
 		["XP", "%d / %d" % [me.xp, Run.xp_for_next(me)]],
-	] + ([["RANK", Data.RANKS[Run.rank(me)].name], ["OPS / KILLS", "%d / %d" % [int(Run.svc(me).ops), int(Run.svc(me).kills)]]] if Run.campaign() else [])
+	] + ([["RANK", Data.RANKS[Run.rank(me)].name], ["OPS / KILLS", "%d / %d" % [int(Run.svc(me).ops), int(Run.svc(me).kills)]]] if Run.campaign() else []) \
+	+ ([["ORDER", "%s %d/%d" % [Data.ORDERS[me.order.id].title, int(me.order.n), int(Data.ORDERS[me.order.id].goal)]]] if Run.campaign() and me.has("order") else []) \
+	+ ([["TITLES", Run.title_line(me)]] if Run.campaign() and me.get("orders_done", []).size() else []) \
+	+ ([["BUDDIES", ", ".join(Run.buddies(me))]] if Run.campaign() and Run.buddies(me).size() else [])
 
 func trait_line() -> Array:
 	return s().def.trait
