@@ -625,14 +625,23 @@ func draw_header() -> void:
 func draw_news() -> void:
 	## Campaign: the after-op report, fading out after a few seconds.
 	var a := clampf((420 - t) / 60.0, 0, 1)
-	var w := 460.0
+	# a field call up in the top right takes that corner, so the report wraps and keeps left of it
+	var right := 944.0
+	for c in get_tree().get_nodes_in_group("op_call"):
+		if c.i >= 0:
+			right = c.home.x - 10
+	var maxw := minf(right - 16, 640.0)
+	var rows: Array = []
 	for line in news:
+		rows.append_array(CardView.wrap_text(line, maxw - 24, 16))
+	var w := minf(460.0, maxw)
+	for line in rows:
 		w = maxf(w, Art.text_width(line, 16, true) + 24)
-	var r := Rect2(480 - w / 2, 132, w, 20 + news.size() * 16)
+	var r := Rect2(clampf(480 - w / 2, 16, right - w), 132, w, 20 + rows.size() * 16)
 	draw_rect(r, Color(0.05, 0.035, 0.03, 0.9 * a))
 	draw_rect(r, Color(0.38, 0.82, 0.44, a), false, 2)
-	for i in news.size():
-		Art.text(self, news[i], r.position + Vector2(12, 22 + i * 16), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true, a)
+	for i in rows.size():
+		Art.text(self, rows[i], r.position + Vector2(12, 22 + i * 16), 16, Color(0.91, 0.86, 0.76, a), HORIZONTAL_ALIGNMENT_LEFT, 2, true, a)
 
 func draw_badges() -> void:
 	## H2: a bobbing tag over each building with something ready.

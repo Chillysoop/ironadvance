@@ -18,6 +18,7 @@ var home := Vector2(596, 120)
 var face: Control
 
 func _ready() -> void:
+	add_to_group("op_call")
 	size = Vector2(W, H)
 	position = home + Vector2(W + 40, 0)
 	mouse_filter = Control.MOUSE_FILTER_STOP

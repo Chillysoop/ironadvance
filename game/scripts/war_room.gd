@@ -221,6 +221,12 @@ func _draw() -> void:
 			Art.text(self, "!", bp + Vector2(0, 4), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
 		var tag: String = "FORT" if big else sc.id.to_upper()
 		Art.text(self, tag, p + Vector2(0, 5), 8, Color(0.05, 0.035, 0.03) if st != "locked" or big else Color("c9ccd1"), HORIZONTAL_ALIGNMENT_CENTER, 0)
+		# a soft plate under the name and perk, so a link running past never cuts through the words
+		var what_w := 0.0
+		if sc.has("perk") or sc.has("hold"):
+			what_w = Art.text_width(Data.SECTOR_PERKS[sc.perk].name if sc.has("perk") else hold_text(sc.hold), 16, true)
+		var pw := maxf(Art.text_width(sc.name, 8), what_w) + 8
+		draw_rect(Rect2(p.x - pw / 2, p.y + sz / 2 + 4, pw, 32.0 if what_w > 0 else 14.0), Color(0.06, 0.1, 0.12, 0.55))
 		Art.text(self, sc.name, p + Vector2(0, sz / 2 + 14), 8, Color.WHITE if st != "locked" else Color("8a929c"), HORIZONTAL_ALIGNMENT_CENTER)
 		if sc.has("perk") or sc.has("hold"):
 			var what: String = Data.SECTOR_PERKS[sc.perk].name if sc.has("perk") else hold_text(sc.hold)

@@ -1168,7 +1168,7 @@ const ELITE_BIO := 2     # share of max HP everyone gets back just for reaching 
 
 # Briefing intel (W2): each mission rolls one condition.
 const INTEL := {
-	"clear": {"name": "QUIET SECTOR", "text": "No surprises.", "w": 3},
+	"clear": {"name": "QUIET SECTOR", "text": "No extra conditions.", "w": 3},
 	"monsoon": {"name": "MONSOON", "text": "Everything is soaked: fire does 1 damage and doesn't spread.", "w": 2},
 	"fog": {"name": "FOG", "text": "Jackals see 30% less far.", "w": 2},
 	"surplus": {"name": "SURPLUS", "text": "Twice the crates on the map.", "w": 2},
