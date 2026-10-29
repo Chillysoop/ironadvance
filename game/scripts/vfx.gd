@@ -19,6 +19,14 @@ var sil_cache := {}   # sheet|anim|frame -> [xs, ys] opaque pixels relative to t
 var sheet_img := {}   # sheet -> Image
 var hp_seen := {}     # unit id -> hp last tick, to catch heals (V14)
 var pools: Array = [] # [acid or gas dictionary, effect] for the V10 puddles and clouds
+var weather: Array = []  # the biome's V18-V21/V23 SfWeather, never culled
+var weather_set := false
+var sky_cache := {}      # terrain column -> surface y, for the weather
+var smoke_tex: Texture2D
+const WEATHER := {
+	"lake": ["snow"], "volcano": ["embers"], "jungle": ["rain", "leaves", "sparkle"], "delta": ["rain", "leaves"],
+	"harbor": ["rain"], "city": ["rain"], "mine": ["fog"], "hive": ["fog"], "palace": ["fireflies", "sparkle"],
+}
 
 func _ready() -> void:
 	back_node = b.get_node("VfxBack")
@@ -44,9 +52,18 @@ func _process(_d: float) -> void:
 	if steps <= 0:
 		return
 	watch()
+	if not weather_set:
+		start_weather()
+	if b.t % 60 == 0:
+		sky_cache.clear()
+	for w in weather:
+		w.follow(b.cam_x)
+		w.wind = b.wind
 	for i in steps:
 		for e in list:
 			e.update(DT)
+		for w in weather:
+			w.update(DT)
 	list = list.filter(func(e): return not e.done())
 	paint()
 
@@ -143,6 +160,36 @@ func dash(u: Unit) -> SfMovement:
 func power_up(u: Unit, palette: Array) -> void:
 	add(SfPowerUp.new(func(): return Vector2(u.x, u.y), silhouette(u), palette, 0.55))
 
+func start_weather() -> void:
+	weather_set = true
+	for k in WEATHER.get(b.mission.get("biome", ""), []):
+		weather.append(SfWeather.make(k, sky_fn, b.cam_x))
+
+func sky_fn(x: float) -> float:
+	## The first surface down from the sky at x (or the waterline), cached per column.
+	var k := floori(x / Terrain.CELL)
+	if not sky_cache.has(k):
+		var y = b.T.stand_y(k * Terrain.CELL + Terrain.CELL / 2.0, -40)
+		sky_cache[k] = minf(y if y != null else 1e9, Data.WATER_Y)
+	return sky_cache[k]
+
+func draw_smokes(back: Sf.Px, front: Sf.Px) -> void:
+	## V21 for the Smoke Can: each cloud is a rolling fog puff, the deep half behind the fight.
+	if b.smokes.is_empty():
+		return
+	if smoke_tex == null:
+		smoke_tex = load("res://assets/vfx/fog_smoke.png")
+	for s in b.smokes:
+		var r: float = s.r
+		for i in 2:
+			var bob := sin(b.t / 50.0 + s.seed + i * 2.1) * 3.0
+			var sc := 1.0 if i == 0 else 0.8
+			var w := r * 2.2 * sc
+			var h := r * 1.26 * sc
+			var flip := -1.0 if i == 1 else 1.0
+			var rect := Rect2(s.x - w / 2 * flip + i * flip * 8, s.y - h * 0.55 + bob, w * flip, h)
+			RenderingServer.canvas_item_add_texture_rect((back if i == 1 else front).ci, rect, smoke_tex.get_rid(), false, Color(1, 1, 1, 0.92))
+
 func heal(u: Unit) -> void:
 	add(SfHeal.new(func(): return Vector2(u.x, u.y), func(): return [] if u.dead or u.gone else silhouette(u), 12 if u.h < 50 else 18))
 
@@ -171,16 +218,21 @@ func paint() -> void:
 	var cis := [back_node.get_canvas_item(), get_canvas_item(), light_node.get_canvas_item()]
 	for ci in cis:
 		RenderingServer.canvas_item_clear(ci)
-	if list.is_empty():
+	if list.is_empty() and weather.is_empty() and b.smokes.is_empty():
 		return
 	var clip := Rect2i(floori(b.cam_x / Sf.PX) - 24, -60, int(Battle.W / Sf.PX) + 48, int(Battle.H / Sf.PX) + 84)
 	var back := Sf.Px.new(cis[0], false, clip)
 	var front := Sf.Px.new(cis[1], false, clip)
 	var light := Sf.Px.new(cis[2], true, clip)
+	for w in weather:
+		w.draw(back, light, 0)
+	draw_smokes(back, front)
 	for e in list:
 		e.draw(back, light, 0)
 	for e in list:
 		e.draw(front, light, 1)
+	for w in weather:
+		w.draw(front, light, 1)
 
 func ground_fn(y0: float) -> Callable:
 	## The floor under x for particles that started near height y0: the first open-to-solid step

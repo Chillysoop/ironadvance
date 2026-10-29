@@ -6,7 +6,7 @@ extends Node
 ## gear (click a slot to see what fits, drag and drop, deck changes, a fifth soldier at HQ),
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
-## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles),
+## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -660,6 +660,11 @@ func run() -> void:
 			await sfvfx3()
 		"sfvfx4":
 			await sfvfx4()
+		"sfvfx5":
+			await sfvfx5()
+		"bakefog":
+			SfWeather.bake_pngs(ProjectSettings.globalize_path("res://assets/vfx"))
+			print("[bakefog] wrote assets/vfx/fog_*.png")
 		"bot":
 			await bot(mission_arg, 70)
 		"levels":
@@ -7293,6 +7298,31 @@ func sfvfx4() -> void:
 		await shot("sf4_bubbles_%02d" % f)
 	b.speed = 1.0
 	print("[sfvfx4] done, live effects ", b.vfx.list.size())
+
+func sfvfx5() -> void:
+	## V18-V21, V23: each biome's weather, its paint cost, and the Smoke Can fog.
+	for biome in ["lake", "volcano", "jungle", "harbor", "city", "mine", "hive", "palace"]:
+		Run.new_run()
+		var lvl := Run.make_level(biome, 0)
+		lvl["event"] = ""
+		lvl["encounter"] = ""
+		Run.level = lvl
+		var b: Battle = main.start_battle(0, lvl)
+		b.autopick = 0
+		await until(func(): return b.state == "player" and not b.busy)
+		await frames_wait(160)
+		var kinds: Array = b.vfx.weather.map(func(w): return w.kind)
+		check(kinds == b.vfx.WEATHER[biome], "%s gets its weather %s" % [biome, kinds])
+		var worst := 0.0
+		for i in 20:
+			await frames_wait(1)
+			worst = maxf(worst, vfx_cost(b))
+		print("[sfvfx5] %s %s worst paint %.2f ms" % [biome, kinds, worst])
+		if biome == "mine":
+			b.smokes.append({"x": b.squad_alive()[0].x + 120, "y": b.squad_alive()[0].y - 30, "r": 64.0, "turns": 2, "seed": 0.0})
+			await frames_wait(6)
+		await shot("sf5_" + biome)
+	print("[sfvfx5] done")
 
 func e_battle(event: String, bounties := []) -> Battle:
 	var lvl := Run.make_level("desert", 0)

@@ -23,7 +23,9 @@ func _draw() -> void:
 	if fore == null:
 		return
 	var cx := b.cam_x
-	match theme:
+	# biomes with Sprite Fusion weather (vfx.gd WEATHER) drop these old motes
+	var sf: bool = b.vfx != null and not b.vfx.weather.is_empty()
+	match theme if not sf else "":
 		"dusk":
 			motes(cx, 26, Color("ffb23e"), Vector2(0.15, -0.35), 2.0, true)
 			motes(cx, 18, Color(0.55, 0.5, 0.52, 0.7), Vector2(0.1, 0.25), 2.0, false, 40)
