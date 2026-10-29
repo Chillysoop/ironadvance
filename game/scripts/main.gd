@@ -684,16 +684,16 @@ class Screen extends Control:
 		if Data.EVENTS.has(m.get("event", "")):
 			var ev: Dictionary = Data.EVENTS[m.event]
 			# 270 wide, so the panel stops short of Moss on the left of the squad line
-			draw_rect(Rect2(16, 296, 270, 150), Color(0.05, 0.035, 0.03, 0.8))
+			draw_rect(Rect2(16, 296, 270, 150), Color(0.05, 0.035, 0.03, 0.94))  # solid enough that a rifle tip never shows through
 			draw_rect(Rect2(16, 296, 270, 150), Color("ffb23e"), false, 1)
 			Art.text(self, "EVENT: " + ev.name, Vector2(28, 316), 8, Color("ffb23e"))
 			var y := 336.0
 			for line in CardView.wrap_text(ev.text, 246, 16):
 				Art.text(self, line, Vector2(28, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 				y += 16
-		var bs: Array = m.get("bounties", [])
+		var bs: Array = m.get("bounties", []) if not Run.campaign() else []  # campaign ops don't pay bounties
 		if bs.size():
-			draw_rect(Rect2(674, 296, 270, 150), Color(0.05, 0.035, 0.03, 0.8))
+			draw_rect(Rect2(674, 296, 270, 150), Color(0.05, 0.035, 0.03, 0.94))
 			draw_rect(Rect2(674, 296, 270, 150), Color("ffd23a"), false, 1)
 			Art.text(self, "BOUNTY BOARD", Vector2(686, 316), 8, Color("ffd23a"))
 			var y := 334.0

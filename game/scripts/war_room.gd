@@ -66,7 +66,7 @@ func build() -> void:
 	cb.position = Vector2(662, 494)
 	cb.color = Color("53d4e2")
 	cb.text = "DONE" if company_open else "COMPANY"
-	cb.sub = "" if company_open else "%d IN SQUAD, %d" % [Run.soldiers.size(), Run.company().size()]
+	cb.sub = "" if company_open else "SQUAD %d OF %d" % [Run.soldiers.size(), Run.company().size()]
 	cb.pressed.connect(func(): Sfx.play("click"); company_open = not company_open; msg = ""; build())
 	add_child(cb)
 	var sc := Run.sector(sel)
@@ -335,14 +335,14 @@ func draw_side() -> void:
 	# M4: how each soldier's deck suits this biome
 	Art.text(self, "FIT", Vector2(x, y + 4), 8, Color("ffb23e"))
 	Art.text(self, "GOOD FOR " + Data.STYLES[bm.favor], Vector2(SIDE.end.x - 12, y + 4), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_RIGHT)
-	y += 12
+	y += 18  # room for the first soldier's head under the FIT line
 	var al: Array = Run.soldiers.filter(func(s): return s.alive)
 	for j in al.size():
 		var so: Dictionary = al[j]
 		var f := Run.fit(so, sc.biome)
 		var row := y + j * 26
 		Art.draw_char(self, Art.look_sheet(so), "idle", (t / 12 + j) % 4, Vector2(x + 12, row + 22), 1, false, 0, 1.0, 0, true, 0.8)
-		Art.text(self, so.def.name, Vector2(x + 30, row + 16), 8, Color.WHITE)
+		Art.text(self, so.def.name, Vector2(x + 40, row + 16), 8, Color.WHITE)  # clear of the rifle
 		var stars: String = {"great": "***", "ok": "**", "rough": "*"}[f]
 		Art.text(self, "%s %s" % [stars, f.to_upper()], Vector2(SIDE.end.x - 12, row + 16), 8, {"great": Color("62d26f"), "ok": Color("e8dcc2"), "rough": Color("ff7a5a")}[f], HORIZONTAL_ALIGNMENT_RIGHT)
 	# M2: the war's income, paid after every op
