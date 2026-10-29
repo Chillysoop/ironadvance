@@ -1098,7 +1098,7 @@ class Overlay extends Control:
 		draw_texture_rect(Art.tex.ic8_coin, Rect2(90, 18, 10, 10), false)
 		Art.text(self, "%d" % Run.scrip, Vector2(104, 28), 8, Color("ffd23a"))
 		# a campaign op goes by its sector code (S1, M2...), the same one the war map shows
-		var code: String = "M%d" % (b.mission_idx + 1)
+		var code: String = "FINALE" if b.mission.get("finale", false) else "M%d" % (b.mission_idx + 1)
 		if Run.campaign() and b.mission.has("op"):
 			code = "FORT" if Run.sector(b.mission.op).get("stronghold", false) else str(b.mission.op).to_upper()
 		Art.text(self, "%s %s" % [code, b.mission.name], Vector2(150, 14), 8, Color("e8dcc2"))
