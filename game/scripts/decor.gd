@@ -17,6 +17,8 @@ var tex := {}
 var flower_cols: Array = []
 var fire_cd := 90
 var bursts: Array = []           # pending cosmetic shots: {u, tg, at}
+var posts: Array = []            # W11: friendly sandbag posts on ground the company holds: {x, y, guards}
+var liberated := false
 
 const CRIT_ROW := {"crow": 0, "gull": 1, "parrot": 2, "frog": 3, "rat": 4, "fly": 5}
 const SCARE := 64.0
@@ -38,6 +40,13 @@ func setup() -> void:
 			var top: float = T.ground_at(s.x) - s.h
 			flags.append({"x": s.x + 21.0, "y": top - 16, "px": s.x + 21.0, "py": top - 12})
 	place_props()
+	liberated = b.mission.get("liberated", false)
+	if liberated:
+		# W11: held ground looks held. A garrison post at the start, more up the line, company flags.
+		for x in [70.0, b.world_w * 0.35, b.world_w * 0.65]:
+			var y := surface(x)
+			if y > 0:
+				posts.append({"x": x, "y": y, "guards": 2 if x < 100 else 1})
 	# a few critters already about when the mission opens
 	for i in 4:
 		spawn_critter(b.cam_x + 260 + i * 170 + randf() * 80)
@@ -336,6 +345,8 @@ func _draw() -> void:
 		if p.x > b.cam_x - 80 and p.x < b.cam_x + Battle.W + 80:
 			draw_prop(p)
 	draw_flags()
+	if liberated:
+		draw_posts()
 	draw_grass()
 	for c in crits:
 		draw_crit(c)
@@ -402,11 +413,33 @@ func draw_fire(x: float, y: float) -> void:
 		var s := 4 + age / 20.0
 		draw_rect(Rect2(roundf(x - s / 2 + age * 0.15 * signf(b.wind + 0.1)), roundf(y - 22 - age * 0.5), s, s), Color(0.55, 0.5, 0.48, 0.28 * (1 - age / 120.0)))
 
+func draw_posts() -> void:
+	## W11: sandbags, a company flag, and a garrison trading idle shots up the line now and then.
+	var guards := ["sq_rook", "sq_moss"]
+	for p in posts:
+		if p.x < b.cam_x - 80 or p.x > b.cam_x + Battle.W + 80:
+			continue
+		for g in int(p.guards):
+			var gx: float = p.x - 18 + g * 22
+			Art.draw_char(self, guards[g % 2], "idle", (b.t / 12 + g) % 4, Vector2(gx, p.y), 1, false, 0, 0.9, -0.08, true, 1.0, Color(0.85, 0.95, 0.85))
+			if (b.t + g * 37 + int(p.x)) % 150 < 4:
+				var tip := Vector2(gx + 16, p.y - 13)
+				draw_line(tip, tip + Vector2(26, -1), Color(1.0, 0.85, 0.4, 0.8), 1)
+				draw_circle(tip, 2, Color(1.0, 0.9, 0.5))
+		for k in 5:
+			var sx: float = p.x - 26 + k * 11
+			draw_rect(Rect2(sx, p.y - 8 - (4 if k % 2 == 1 else 0), 12, 8), Color("18120e"))
+			draw_rect(Rect2(sx + 1, p.y - 7 - (4 if k % 2 == 1 else 0), 10, 6), Color("8a7a52"))
+		draw_rect(Rect2(p.x + 30, p.y - 40, 2, 40), Color("18120e"))
+		var wave := sin(b.t / 8.0) * 1.5
+		draw_rect(Rect2(p.x + 32, p.y - 40 + wave * 0.3, 14, 8), Color("62d26f"))
+		draw_rect(Rect2(p.x + 32, p.y - 36 + wave * 0.3, 14, 1), Color("2c5a33"))
+
 func draw_flags() -> void:
 	var tx: Texture2D = tex.flag
 	var w := tx.get_width()
 	var h := tx.get_height()
-	var tint := Color(b.th.tint, 1.0)
+	var tint := Color(b.th.tint, 1.0) if not liberated else Color(0.45, 1.0, 0.55)  # W11: company colours on held ground
 	for f in flags:
 		if f.get("dead", false):
 			continue

@@ -239,6 +239,8 @@ func campaign_home(st := {}) -> void:
 	news.append_array(inc.challenges)
 	if inc.nemesis != "":
 		news.append(inc.nemesis)
+	if inc.varga != "":
+		news.append(inc.varga)
 	news.append_array(inc.orders)
 	news.append_array(inc.bonds)
 	news.append_array(inc.promos)
@@ -407,6 +409,7 @@ func _on_mission_over(won: bool) -> void:
 	var downs := {}
 	for u in battle.squad():
 		if u.s.has("guest"):
+			st["varga_alive"] = not (u.dead and not u.downed)  # W13: still standing (or only down) when it ends
 			continue
 		xp[u.def.key] = u.xp_gain
 		kills[u.def.key] = u.kills
@@ -715,6 +718,10 @@ class Screen extends Control:
 		if m.get("nemesis", {}).size():
 			# W3: an officer who got away before is waiting
 			Art.text(self, "NEMESIS: %s IS HERE. KILL THEM FOR THEIR SIGNATURE GEAR." % Run.nemesis_name(m.nemesis), Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ff4d3d") if t % 50 < 34 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			ny += 14
+		if m.get("story", "") == "varga":
+			# W13: the colonel's last stand
+			Art.text(self, "LAST STAND: BRING COLONEL VARGA OUT ALIVE AND HE JOINS THE COMPANY.", Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 			ny += 14
 		if m.get("specialist", "") != "":
 			# X2: a specialist is held somewhere in this level

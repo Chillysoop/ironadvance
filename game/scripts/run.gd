@@ -1444,7 +1444,7 @@ func sector_held(id: String) -> bool:
 
 func held_count() -> int:
 	## Sectors taken this act, not counting the stronghold.
-	return act().sectors.filter(func(sc): return not sc.get("stronghold", false) and camp.held.has(sec_key(sc.id))).size()
+	return act().sectors.filter(func(sc): return not sc.get("stronghold", false) and not sc.has("story") and camp.held.has(sec_key(sc.id))).size()
 
 func sector_open(sc: Dictionary) -> bool:
 	## M1: open when it touches ground you hold. The stronghold waits for "need" sectors.
@@ -1568,9 +1568,12 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 	var nem := next_nemesis()
 	if not patrol and not nem.is_empty() and not lv.get("finale", false):
 		lv["nemesis"] = nem.duplicate()  # W3: an officer who got away is waiting on this op
-	if sc.get("varga", false) and not patrol:
+	if sc.get("varga", false) and not patrol and camp.get("varga", "") != "joined":
 		lv["guest"] = "varga"  # S3: the colonel fights alongside the company this once
 	lv["patrol"] = patrol
+	lv["liberated"] = patrol or bonus != ""  # W11: the company already holds this ground
+	if sc.has("story") and not patrol:
+		lv["story"] = sc.story
 	lv["stronghold"] = sc.get("stronghold", false) and not patrol
 	lv["bonus"] = bonus
 	lv["banner"] = "BONUS OP" if bonus != "" else "PATROL" if patrol else ("STRONGHOLD ASSAULT" if lv.stronghold else "OP %d START!" % (int(camp.ops) + 1))
@@ -1667,6 +1670,7 @@ func after_op(st := {}) -> Dictionary:
 	inc["bonus"] = roll_bonus()
 	inc["challenges"] = check_challenges(st)
 	inc["nemesis"] = book_nemesis(st)
+	inc["varga"] = varga_stand(st)
 	write_journal(st, inc)
 	scrip += inc.scrip
 	meta.salvage = int(meta.get("salvage", 0)) + inc.salvage
@@ -1809,7 +1813,7 @@ func check_challenges(st: Dictionary) -> Array:
 		match id:
 			"clean": ok = not fell
 			"fast": ok = int(st.get("rounds", 99)) <= Data.BLITZ_ROUNDS
-			"sweep": ok = took_fort and act(a).sectors.all(func(sc): return sc.get("stronghold", false) or camp.held.has(sec_key(sc.id, a)))
+			"sweep": ok = took_fort and act(a).sectors.all(func(sc): return sc.get("stronghold", false) or sc.has("story") or camp.held.has(sec_key(sc.id, a)))
 			"threat": ok = took_fort and threat >= 2
 			"bonus": ok = level.get("bonus", "") != ""
 		if not ok:
@@ -1902,13 +1906,28 @@ func second_tour(vet: Dictionary) -> void:
 	toggle_squad(v)
 	save_campaign()
 
+func varga_stand(st: Dictionary) -> String:
+	## W13: win Varga's last stand with the colonel still standing and he joins the company for good.
+	if level.get("story", "") != "varga" or not st.get("won", false) or camp.has("varga"):
+		return ""
+	if not st.get("varga_alive", false):
+		camp["varga"] = "fell"
+		return "Colonel Varga fell covering his men. They join the war in his name."
+	camp["varga"] = "joined"
+	var s := make_guest("varga")
+	s.erase("guest")
+	s["spec"] = "colonel"
+	s.def["trait"] = ["JACKAL COLONEL", "Varga's own deck and a lifetime of bad habits. Joined Iron Company in Act IV."]
+	roster.append(s)
+	return "Colonel Varga joined Iron Company as a Jackal Colonel, with his own deck."
+
 func make_guest(id: String) -> Dictionary:
 	## S3: Colonel Varga, on loan for one op. Not part of the company, never on the Memorial.
 	var d: Dictionary = Data.SQUAD_DEFS.filter(func(x): return x.key == "rook")[0].duplicate()
 	d.name = "VARGA"
 	d.cls = "Jackal Colonel"
 	d.hp = 40
-	d.deck = ["hmg", "hmg", "burst", "rifle", "rifle", "haymaker", "frag", "sprint", "knife"]
+	d.deck = Data.VARGA_DECK.duplicate()
 	var s := make_soldier(d)
 	s["guest"] = id
 	s.lvl = 5
@@ -1951,7 +1970,9 @@ func radio_before() -> Array:
 		if randf() < 0.5:
 			var tl: Array = Data.RADIO_TAUNT[a]
 			raw.append(tl[randi() % tl.size()])
-	if level.get("guest", "") == "varga":
+	if level.get("story", "") == "varga":
+		raw.append_array(Data.RADIO_VARGA_STAND)
+	elif level.get("guest", "") == "varga":
 		raw.append_array(Data.RADIO_VARGA_OP)
 	return raw.map(func(r): return radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())
 
