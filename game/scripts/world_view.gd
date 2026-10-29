@@ -558,7 +558,7 @@ func draw_pad(u: Unit, pos: Vector2) -> void:
 		Art.text(self, B.glyph, Vector2(pos.x + 1, pos.y - 16), 8, Color(B.c, 0.8), HORIZONTAL_ALIGNMENT_CENTER, 0)
 		var cd: String = "%s IN %d" % [B.name, L.t]
 		# wider than the pad itself, so it clears a Jackal's tags across its whole width
-		if word_ok(pos, false, Art.text_width(cd, 8) / 2.0 + 16):
+		if word_ok(pos, false, Art.text_width(cd, 8) / 2.0 + 16) and not stood_on(pos):
 			Art.text(self, cd, in_view(Vector2(pos.x, pos.y - 30), cd), 8, Color(B.c, 0.85), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_drill(u: Unit, d: Vector2, spin: bool) -> void:
@@ -663,6 +663,14 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			draw_rect(Rect2(p.x - 1, p.y - 9, 2, 8), C_DARK)
 			if t >= 3 and b.t % 30 < 4:
 				draw_rect(Rect2(p.x + 5, p.y - 14, 2, 2), Color.WHITE)
+
+func stood_on(pos: Vector2) -> bool:
+	## A soldier, an ally or a parked vehicle on a pad covers its countdown words, so they wait.
+	return b.units.any(func(e): return e.kind in ["soldier", "sentry", "ride", "slug", "truck", "hulk"] and not e.dead and not e.gone and absf(e.x - pos.x) < 18 + e.w / 2.0 and absf(e.y - pos.y) < 40)
+
+func coach_up() -> bool:
+	## A tip box is open: the cursor is reading it, not choosing where to walk.
+	return b.hud != null and b.hud.coach_box != null and b.hud.coach_box.get_child_count() > 0
 
 func word_ok(pos: Vector2, sel_too := true, reach := 40.0) -> bool:
 	## A pickup's word label gives way to the selected soldier's name tag right beside it, and to a
@@ -1264,7 +1272,7 @@ func draw_targeting() -> void:
 					Art.text(self, "CLIMB %s" % Data.meters(pl.cost), Vector2(LD.offx, LD.top - 44), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 				else:
 					Art.text(self, "LADDER: OUT OF REACH", Vector2(LD.x, LD.top - 14), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
-			elif hov == null and get_viewport().get_mouse_position().y >= 34:  # a click on the top bar doesn't walk
+			elif hov == null and get_viewport().get_mouse_position().y >= 34 and not coach_up():  # a click on the top bar (or a tip) doesn't walk
 				var sim := b.sim_walk(u, m.x, u.move_left)
 				if sim.pts.size():
 					var i := 0
@@ -1707,6 +1715,8 @@ func draw_barks() -> void:
 		var w := Art.text_width(bk.text, 16, true) + 14
 		var x := u.x
 		var y := u.y - u.h - 52
+		if u == b.sel and b.state == "player" and not b.inspect:
+			y -= 14  # clear of the selected soldier's name tag and its arrow
 		var bx := clampf(x - w / 2, b.cam_x + 4, b.cam_x + Battle.W - w - 4)
 		draw_rect(Rect2(bx - 1, y - 19, w + 2, 24), C_DARK)
 		draw_rect(Rect2(bx, y - 18, w, 22), Color("efe7d2"))

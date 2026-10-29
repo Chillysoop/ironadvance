@@ -654,6 +654,7 @@ class Screen extends Control:
 		var y := 170.0
 		var jb: String = m.get("job", "push")
 		var txt: String = m.brief if jb == "push" else Run.job_text(jb)
+		brief_plate(m, CardView.wrap_text(txt, 620, 16).size())
 		for line in CardView.wrap_text(txt, 620, 16):
 			Art.text(self, line, Vector2(480, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 			y += 16
@@ -686,6 +687,17 @@ class Screen extends Control:
 		Art.text(self, "%d SCRIP" % Run.scrip, Vector2(426, sy), 8, Color("ffd23a"))
 		squad_line(382, "idle")  # feet low enough that heads clear the SPECIALIST POW line
 		draw_extras(m)  # over the squad, so no rifle pokes through the boards
+	func brief_plate(m: Dictionary, n: int) -> void:
+		## A dark plate under the brief's text, so the small lines read even over the dusk sun.
+		## Mirrors draw_brief's row math: brief lines, GOOD FOR, intel, threat and specialist.
+		var y := 170.0 + n * 16 + 4
+		var sy := y + (32.0 if y > 210.0 else 40.0)
+		var last := sy + (14.0 if y > 210.0 else 18.0)
+		if Run.threat > 0:
+			last += 14
+		if m.get("specialist", "") != "":
+			last += 14
+		draw_rect(Rect2(122, 154, 716, last - 148), Color(0.05, 0.035, 0.03, 0.55))
 	func draw_extras(m: Dictionary) -> void:
 		## R2-R5: the level's event on the left, its bounty board on the right. D2: the daily tag.
 		if Run.daily != "":
@@ -835,6 +847,8 @@ class Screen extends Control:
 	func draw_rows(rows: Array, top: float) -> void:
 		## The stat table squeezes its rows together so the last one stays clear of the squad's heads.
 		var step := minf(20.0, (332.0 - top) / maxf(1, rows.size()))  # cheering arms reach up to ~335
+		# a dark plate under the table, so the numbers read even over the dusk sun
+		draw_rect(Rect2(286, top - 13, 388, (rows.size() - 1) * step + 20), Color(0.05, 0.035, 0.03, 0.55))
 		for i in rows.size():
 			Art.text(self, rows[i][0], Vector2(300, top + i * step), 8, Color("e8dcc2"))
 			Art.text(self, rows[i][1], Vector2(660, top + i * step), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)

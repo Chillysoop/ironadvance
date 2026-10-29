@@ -754,8 +754,11 @@ class ItemTile extends Control:
 		if black:
 			Art.text(self, "BLACK MARKET", Vector2(w / 2, -3), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER, 1)
 		if sold:
+			# a stamp plate, so SOLD never sits on top of the item's own text
 			draw_rect(Rect2(1, 1, w - 2, h - 2), Color(0, 0, 0, 0.6))
-			Art.text(self, "SOLD", Vector2(w / 2, h / 2 + 4), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			draw_rect(Rect2(w / 2 - 26, h / 2 - 9, 52, 17), ink)
+			draw_rect(Rect2(w / 2 - 25, h / 2 - 8, 50, 15), Color("8a3a2a"))
+			Art.text(self, "SOLD", Vector2(w / 2, h / 2 + 4), 8, Color("e4d6b0"), HORIZONTAL_ALIGNMENT_CENTER)
 		elif price >= 0:
 			draw_rect(Rect2(w - 40, h - 12, 40, 12), ink)
 			Art.text(self, "%d$" % price, Vector2(w - 3, h - 2), 8, Color("ffd23a") if Run.scrip >= price else Color("8a7a40"), HORIZONTAL_ALIGNMENT_RIGHT)

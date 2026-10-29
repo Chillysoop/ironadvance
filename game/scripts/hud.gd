@@ -1286,6 +1286,8 @@ class VehiclePop extends Control:
 		var b: Battle = hud.b
 		var p: Dictionary = b.vpop if b != null else {}
 		var live: bool = p.size() > 0 and b.t - p.t0 < DUR and b.state != "title"
+		if live and p.mode == "in" and (p.u.dead or p.u.gone):
+			live = false  # the driver went down: "X IS DRIVING" is no longer true
 		if not live:
 			if visible:
 				Tip.clear(self)
