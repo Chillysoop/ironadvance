@@ -7520,6 +7520,7 @@ func job_round() -> void:
 				await wait(20)
 				return
 			float_text(tr, "ROLLING", Color("62d26f"))
+			rounds_since_scroll = 0  # the truck sets the pace on an escort: while it rolls, the line isn't stalled
 			var x0: float = tr.x
 			for i in 20:
 				tr.x = lerpf(x0, nx, (i + 1) / 20.0)
@@ -8137,8 +8138,10 @@ func enemy_phase() -> void:
 	if squad_alive().is_empty():
 		game_over()
 		return
-	# alert only climbs when you stall; the radioman's clock is what brings fresh bodies
-	rounds_since_scroll += 1
+	# alert only climbs when you stall; the radioman's clock is what brings fresh bodies.
+	# Digging in on a HOLD job is the order, not a stall.
+	if not (job() == "hold" and job_st.get("on", false)):
+		rounds_since_scroll += 1
 	var before := alert
 	var calls := 0
 	if stalled():

@@ -5473,6 +5473,25 @@ func campfix() -> void:
 	for k in keys:
 		uniq[k] = true
 	check(uniq.size() == keys.size(), "the squad is still one of each class (%s)" % [keys])
+	# an escort's truck rolling counts as moving the line; digging in on a hold is not a stall
+	b = await op_battle("escort")
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	var tr = b.truck()
+	b.rounds_since_scroll = 5
+	var tx0: float = tr.x
+	await b.job_round()
+	check(tr.x > tx0 and b.rounds_since_scroll == 0, "the truck rolling resets the stall clock (x %d -> %d, stall %d)" % [int(tx0), int(tr.x), b.rounds_since_scroll])
+	b = await op_battle("hold")
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	b.job_st["on"] = true
+	b.job_st["left"] = 4
+	b.rounds_since_scroll = 1
+	await b.enemy_phase()
+	check(b.rounds_since_scroll == 1, "holding the far end doesn't stall the line (%d)" % b.rounds_since_scroll)
 	# a radio call still going when the War Room opens moves off the sector panel
 	main.show_hq(false)
 	main.call_in(Run.radio_after({"won": true}))
