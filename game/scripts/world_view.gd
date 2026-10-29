@@ -955,7 +955,8 @@ func draw_plate(u: Unit) -> void:
 		# a pack of the same weight shares one tag instead of printing LIGHTLIGHT
 		var wt := u.weight.to_upper()
 		var tw := Art.text_width(wt, 8) + 4
-		if not b.units.any(func(o): return o != u and o.id < u.id and o.kind == "enemy" and not o.dead and not o.gone and o.weight == u.weight and o.elite == "" and absf(o.x - u.x) < tw and absf(o.y - o.h - u.y + u.h) < 12):
+		# and it gives way to an elite's name right beside it (BROOD over LIGHT read as BRLIGHT)
+		if not b.units.any(func(o): return o != u and o.kind == "enemy" and not o.dead and not o.gone and absf(o.y - o.h - u.y + u.h) < 12 and ((o.id < u.id and o.weight == u.weight and o.elite == "" and absf(o.x - u.x) < tw) or (o.elite != "" and absf(o.x - u.x) < (tw + Art.text_width(Data.ELITES[o.elite].name, 8)) / 2.0 + 4))):
 			Art.text(self, wt, in_view(Vector2(x, y - 4), wt), 8, C_ALIEN, HORIZONTAL_ALIGNMENT_CENTER)
 	var lift := 0.0
 	if u.elite != "":
