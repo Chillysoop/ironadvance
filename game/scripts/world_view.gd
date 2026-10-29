@@ -251,11 +251,12 @@ func draw_unit(u: Unit) -> void:
 			var moving: bool = u.kind == "hulk"
 			draw_vehicle(u.loot.type, pos, u.face, white, moving, false, vc)
 			draw_vehicle(u.loot.type, pos, u.face, white, moving, true, vc)
-			if u.kind == "ride":
+			# aiming, or a Jackal standing at it: their tags own this space
+			if u.kind == "ride" and b.card_idx < 0 and not b.units.any(func(e): return e.kind == "enemy" and not e.dead and not e.gone and absf(e.x - u.x) < 50):
 				var ly: float = -Data.VEHICLES[u.loot.type].seat - 26
 				if b.t % 60 < 44:
-					Art.text(self, "HIJACK " + Data.VEHICLES[u.loot.type].name, pos + Vector2(0, ly - 12), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
-				Art.text(self, "WALK ONTO IT TO DRIVE", pos + Vector2(0, ly), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+					Art.text(self, "HIJACK " + Data.VEHICLES[u.loot.type].name, in_view(pos + Vector2(0, ly - 12), "HIJACK " + Data.VEHICLES[u.loot.type].name), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
+				Art.text(self, "WALK ONTO IT TO DRIVE", in_view(pos + Vector2(0, ly), "WALK ONTO IT TO DRIVE"), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif u.kind == "hulk" and b.t % 8 < 4:
 				draw_rect(Rect2(pos.x - 2, pos.y - 30, 4, 4), Color("ff4d3d"))
 			return
@@ -384,7 +385,7 @@ func draw_unit(u: Unit) -> void:
 			draw_texture_rect_region(Art.tex.pow, Rect2(-12, -24, 24, 24), Rect2(fr * 24, 0, 24, 24))
 			draw_set_transform_matrix(Transform2D.IDENTITY)
 			if not u.freed:
-				Art.text(self, "HELP!", pos + Vector2(0, -44 + sin(b.t / 10.0) * 2), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+				Art.text(self, "HELP!", in_view(pos + Vector2(0, -44 + sin(b.t / 10.0) * 2), "HELP!"), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
 			return
 	if u.type == "boss":
 		draw_boss(u, pos, white)
@@ -597,6 +598,11 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 	var L: Dictionary = u.loot
 	var bob := sin((b.t + u.id * 13) / 9.0) * 2 if not u.air else 0.0
 	var p := pos + Vector2(0, -6 + bob)
+	# the selected soldier's name tag wins: a pickup right beside them drops its word label
+	# and so do a Jackal's plate and tags, or a POW's HELP!, when one stands on it
+	var lab: bool = not (b.state == "player" and b.sel != null and absf(b.sel.x - pos.x) < 70 and absf(b.sel.y - pos.y) < 60)
+	if lab and b.units.any(func(e): return e.kind in ["enemy", "pow"] and not e.dead and not e.gone and absf(e.x - pos.x) < 40 and absf(e.y - pos.y) < 60):
+		lab = false
 	match L.type:
 		"letter":
 			draw_circle(p + Vector2(0, -4), 10, C_DARK)
@@ -610,19 +616,23 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			draw_rect(Rect2(p.x - 9, p.y - 7, 18, 5), C_DARK)
 			draw_rect(Rect2(p.x - 8, p.y - 6, 16, 3), Color("6c7078"))
 			draw_rect(Rect2(p.x - 4, p.y - 3, 3, 4), C_DARK)
-			Art.text(self, Data.CARDS[L.card].name.to_upper(), p + Vector2(0, -14), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			if lab:
+				Art.text(self, Data.CARDS[L.card].name.to_upper(), p + Vector2(0, -14), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		"colors", "yellow":
 			draw_flag(pos, L.type, false)
-			Art.text(self, "THEIR COLORS" if L.type == "colors" else "MARKED MAN", pos + Vector2(0, -40), 8, Color("ff7a3d") if L.type == "colors" else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			if lab:
+				Art.text(self, "THEIR COLORS" if L.type == "colors" else "MARKED MAN", pos + Vector2(0, -40), 8, Color("ff7a3d") if L.type == "colors" else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		"bow":
 			draw_circle(p + Vector2(0, -4), 11, Color(1, 0.48, 0.24, 0.3 + 0.2 * sin(b.t / 5.0)))
 			draw_bow(p + Vector2(0, -4), 0.0)
-			Art.text(self, "RAMBO BOW", p + Vector2(0, -20), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			if lab:
+				Art.text(self, "RAMBO BOW", p + Vector2(0, -20), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
 		"relic":
 			# G8: a boss trophy, squad gear only bosses carry
 			draw_circle(p + Vector2(0, -4), 13, Color(1, 0.7, 0.12, 0.35 + 0.25 * sin(b.t / 4.0)))
 			draw_texture_rect(Art.tex[Data.gear(L.id).icon], Rect2(p.x - 8, p.y - 12, 16, 16), false)
-			Art.text(self, Data.gear(L.id).name.to_upper(), p + Vector2(0, -22), 8, Color("ffb21e"), HORIZONTAL_ALIGNMENT_CENTER)
+			if lab:
+				Art.text(self, Data.gear(L.id).name.to_upper(), p + Vector2(0, -22), 8, Color("ffb21e"), HORIZONTAL_ALIGNMENT_CENTER)
 		"flare":
 			# a reinforcement flare: a red stick spitting green smoke, with a chute over it
 			draw_circle(p + Vector2(0, -4), 12, Color(0.38, 0.82, 0.44, 0.25 + 0.2 * sin(b.t / 5.0)))
@@ -632,7 +642,8 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			for k in 3:
 				var ph := fmod(b.t / 40.0 + k / 3.0, 1.0)
 				draw_circle(p + Vector2(sin(ph * 6.0 + k) * 4, -14 - ph * 22), 2 + ph * 4, Color(0.38, 0.82, 0.44, 0.6 * (1.0 - ph)))
-			Art.text(self, "REINFORCEMENTS", p + Vector2(0, -42), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+			if lab:
+				Art.text(self, "REINFORCEMENTS", in_view(p + Vector2(0, -42), "REINFORCEMENTS"), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 		"trophy":
 			draw_circle(p + Vector2(0, -4), 11, Color(1, 0.7, 0.12, 0.3 + 0.2 * sin(b.t / 5.0)))
 			draw_texture_rect(Art.tex.ic_star, Rect2(p.x - 8, p.y - 12, 16, 16), false)
@@ -646,6 +657,11 @@ func draw_loot(u: Unit, pos: Vector2) -> void:
 			draw_rect(Rect2(p.x - 1, p.y - 9, 2, 8), C_DARK)
 			if t >= 3 and b.t % 30 < 4:
 				draw_rect(Rect2(p.x + 5, p.y - 14, 2, 2), Color.WHITE)
+
+func in_view(p: Vector2, text: String) -> Vector2:
+	## A centered world label pulled in so it never runs off either edge of the view.
+	var hw := Art.text_width(text, 8) / 2.0 + 2
+	return Vector2(clampf(p.x, b.cam_x + hw, b.cam_x + Battle.W - hw), p.y)
 
 func draw_flag(pos: Vector2, kind: String, carried: bool, face := 1) -> void:
 	## O1/O3: a battle flag on a pole, the Jackal colors (red, skull white) or the Marked Man yellow.
@@ -1146,7 +1162,7 @@ func draw_targeting() -> void:
 			Art.text(self, "PUSH ZONE >>", Vector2(pz - 6, 58), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_RIGHT)
 		else:
 			Art.text(self, "PUSH ZONE LOCKED", Vector2(pz - 6, 58), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
-			Art.text(self, ("1 ENEMY BEHIND THE LINE" if lock == 1 else "%d ENEMIES BEHIND THE LINE" % lock), Vector2(pz - 6, 72), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_RIGHT)
+			Art.text(self, ("1 ENEMY IN IT" if lock == 1 else "%d ENEMIES IN IT" % lock), Vector2(pz - 6, 72), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_RIGHT)
 	if b.jet_armed:
 		var sim := b.sim_body(u, 0.0, 0.0, m, u.fuel)
 		draw_dashed_line(Vector2(u.x, u.y - u.h / 2.0), m, Color(0.33, 0.83, 0.89, 0.6), 1.0, 4.0)
@@ -1283,9 +1299,13 @@ func draw_targeting() -> void:
 				elif em: lab = "BLOCKED"
 				Art.text(self, lab, Vector2(ls[2], ls[3] - 10), 8, Color("ffd23a") if em == 3 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 			var gun: Dictionary = Data.GUNS.get(c.get("gun", "rifle"), Data.GUNS.rifle)
-			Art.text(self, "%s SIGHT %s" % [gun.name, ("FULL" if L > 9999.0 else "%dpx" % int(L))], Vector2(m.x + 12, m.y + 22), 8, Color("ff8a80"))
+			var sight := "%s SIGHT %s" % [gun.name, ("FULL" if L > 9999.0 else "%dpx" % int(L))]
 			var sw := b.sway_of(u, c)
-			Art.text(self, "STEADY" if sw < 0.01 else ("WILD SWAY" if sw > 0.06 else ("SWAY  [SHIFT] HOLD" if not b.aim_hold else "HOLDING")), Vector2(aa.mx, u.y + 30), 8, Color("ff7a3d") if sw > 0.06 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+			var swt := "STEADY" if sw < 0.01 else ("WILD SWAY" if sw > 0.06 else ("SWAY  [SHIFT] HOLD" if not b.aim_hold else "HOLDING"))
+			# a dark plate under the cursor notes, so the tags of whatever you aim at never mix in
+			draw_rect(Rect2(m.x + 8, m.y + 12, maxf(Art.text_width(sight, 8), Art.text_width(swt, 8)) + 8, 27), Color(C_DARK, 0.75))
+			Art.text(self, sight, Vector2(m.x + 12, m.y + 22), 8, Color("ff8a80"))
+			Art.text(self, swt, Vector2(m.x + 12, m.y + 34), 8, Color("ff7a3d") if sw > 0.06 else Color("e8dcc2"))  # under the sight line: below the soldier the hint strip hid it
 			draw_reticle(m, Color(1, 0.3, 0.3))
 			draw_recoil(u, c, aa.a)
 		"ARC":
@@ -1823,9 +1843,9 @@ func draw_trooper(u: Unit, pos: Vector2, white: bool) -> void:
 	if pinned and trs.size() and trs[0] == u:
 		# one label over the pair, above the Jackals' name plates
 		var mid := pos + Vector2((trs[-1].x - u.x) / 2.0, 0)
-		Art.text(self, "FIRE TEAM PINNED DOWN", mid + Vector2(0, -64), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		Art.text(self, "FIRE TEAM PINNED DOWN", in_view(mid + Vector2(0, -64), "FIRE TEAM PINNED DOWN"), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		if b.t % 40 < 20:
-			Art.text(self, "REACH US!", mid + Vector2(0, -76), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "REACH US!", in_view(mid + Vector2(0, -76), "REACH US!"), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 	var w := 20.0
 	draw_rect(Rect2(pos.x - w / 2, pos.y - 36, w, 3), C_DARK)
 	draw_rect(Rect2(pos.x - w / 2 + 1, pos.y - 35, (w - 2) * u.hp / maxf(1, u.max_hp), 1), Color("62d26f"))

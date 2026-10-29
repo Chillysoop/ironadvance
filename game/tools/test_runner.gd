@@ -8,7 +8,7 @@ extends Node
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
 ## crumble (falling structures tip, spin, splinter and crush),
-## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), dcalls (D1-D12 from the full-build playtest page), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
+## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), polish1 (overnight polish round 1: log wrap, label overlaps, dial rows), dcalls (D1-D12 from the full-build playtest page), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -873,6 +873,8 @@ func run() -> void:
 			await dcalls()
 		"pcalls":
 			await pcalls()
+		"polish1":
+			await polish1()
 		"fieldfix":
 			await fieldfix()
 		"synergies":
@@ -8348,3 +8350,29 @@ func pcalls() -> void:
 	Run.first_run = false
 	lv = Run.make_level("city", 0)
 	check(lv.event != "" and lv.bounties.size() == 3, "P8: later runs keep them on level 1")
+
+func polish1() -> void:
+	## Overnight polish round 1: text that ran under panels or off the screen, and labels piled on each other.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.meta["tips_off"] = true
+	Run.new_run()
+	Run.first_run = false
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	# a long log line wraps short of the push zone label instead of running under the bounty board
+	b.log_msg("VEE carries the yellow flag: their kills pay double scrip, and every Jackal wants them. Walk past a teammate to hand it over.")
+	var wl: Array = CardView.wrap_text(b.log_lines[-1], 540, 16)
+	check(wl.size() >= 2 and wl.all(func(l): return Art.text_width(l, 16, true) <= 540), "a long log line wraps inside 540px (%d lines)" % wl.size())
+	check(main.hud.swap_btn.text == "SWAP", "the SWAP button keeps its cost on the key line, so the text fits")
+	# a centered world label is pulled back inside the view
+	var wv = b.get_node("WorldView")
+	var p: Vector2 = wv.in_view(Vector2(b.cam_x + Battle.W - 4, 100), "FIRE TEAM PINNED DOWN")
+	check(p.x + Art.text_width("FIRE TEAM PINNED DOWN", 8) / 2.0 <= b.cam_x + Battle.W, "labels near the right edge stay on screen")
+	p = wv.in_view(Vector2(b.cam_x + 3, 100), "HELP!")
+	check(p.x - Art.text_width("HELP!", 8) / 2.0 >= b.cam_x, "labels near the left edge stay on screen")
+	await frames_wait(10)
+	await shot("polish1_battle")
+	Run.meta = keep
+	Run.save_meta()
+	main.show_title()
+	await frames_wait(10)

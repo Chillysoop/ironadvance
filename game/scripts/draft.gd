@@ -94,7 +94,7 @@ func _draw() -> void:
 			Art.text(self, "?", r.get_center() + Vector2(0, -28), 32, Color("3a4048"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 			Art.text(self, d.cls.to_upper(), Vector2(r.get_center().x, r.position.y + 118), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_CENTER)
 			Art.text(self, "LOCKED", Vector2(r.get_center().x, r.position.y + 140), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
-			Art.text(self, "Held as a POW in a run", Vector2(r.get_center().x, r.position.y + 162), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+			Art.text(self, "Free them as a POW", Vector2(r.get_center().x, r.position.y + 162), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 			continue
 		Art.draw_char(self, "sq_" + d.key, "idle", (t / 10 + i * 3) % 12, Vector2(r.get_center().x, r.position.y + 90), 1, false, 0.0, 1.0 if on or picked.size() < 4 else 0.5, 0.0, true, 1.3)
 		Art.text(self, d.name, Vector2(r.get_center().x, r.position.y + 116), 16, Color("ffd23a") if on else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2)
