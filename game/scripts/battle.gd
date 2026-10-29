@@ -4416,7 +4416,8 @@ func kill(tg: Unit, src) -> void:
 			tg.s.tags = maxi(0, tg.s.tags - 1)
 			tg.downed = true
 			float_text(tg, "DOWN! %d TAG%s LEFT" % [tg.s.tags, "" if tg.s.tags == 1 else "S"], Color("ffb23e"), true)
-			log_msg("%s is down until the next camp. %d dog tag%s left." % [tg.def.name, tg.s.tags, "" if tg.s.tags == 1 else "s"])
+			var back := "until the next camp" if T.camps.any(func(c): return not c.used) else "for the rest of this fight"
+			log_msg("%s is down %s. %d dog tag%s left." % [tg.def.name, back, tg.s.tags, "" if tg.s.tags == 1 else "s"])
 		else:
 			stats.fallen.append(tg.def.name)
 			float_text(tg, "KIA", Color("ff4d3d"), true)
