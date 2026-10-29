@@ -1355,7 +1355,10 @@ func draw_targeting() -> void:
 			if fz != null:
 				# grenades are skill shots, like Worms: the same short arc as any lob, never the bounces or the burst
 				var eff: int = int(fz / 2) if u.perk("shortfuse") else fz
-				Art.text(self, "FUSE %.1fs  [WHEEL]" % (eff / 60.0), Vector2(m.x + 12, m.y + 22), 8, Color("ffd23a"))
+				var fl: String = "FUSE %.1fs  [WHEEL]" % (eff / 60.0)
+				# on the same dark plate as the AIM notes, so a Jackal's tags never mix into it
+				draw_rect(Rect2(m.x + 8, m.y + 12, Art.text_width(fl, 8) + 8, 14), Color(C_DARK, 0.75))
+				Art.text(self, fl, Vector2(m.x + 12, m.y + 22), 8, Color("ffd23a"))
 			var sim := b.sim_arc(v.hx, v.hy, v.vx, v.vy, b.wind_of(u, c), 40)
 			for i in sim.pts.size():
 				if i % 2 == 0:
