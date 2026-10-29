@@ -666,6 +666,10 @@ func word_ok(pos: Vector2, sel_too := true, reach := 40.0) -> bool:
 		return false
 	return not b.units.any(func(e): return e.kind in ["enemy", "pow"] and not e.dead and not e.gone and absf(e.x - pos.x) < reach and absf(e.y - pos.y) < 60)
 
+func note_x(m: Vector2, w: float) -> float:
+	## Left edge of a note beside the cursor: to its right, or to its left near the right edge of the view.
+	return m.x + 8 if m.x + 8 + w < b.cam_x + Battle.W - 2 else m.x - 8 - w
+
 func in_view(p: Vector2, text: String) -> Vector2:
 	## A centered world label pulled in so it never runs off either edge of the view.
 	var hw := Art.text_width(text, 8) / 2.0 + 2
@@ -1216,7 +1220,8 @@ func draw_targeting() -> void:
 		var sim := b.sim_body(u, 0.0, 0.0, m, u.fuel)
 		draw_dashed_line(Vector2(u.x, u.y - u.h / 2.0), m, Color(0.33, 0.83, 0.89, 0.6), 1.0, 4.0)
 		draw_ghost(u, sim, Color("53d4e2"), "JET")
-		Art.text(self, "HOLD CLICK TO FLY   FUEL %d" % u.fuel, Vector2(m.x + 12, m.y + 22), 8, Color("53d4e2"))
+		var jt := "HOLD CLICK TO FLY   FUEL %d" % u.fuel
+		Art.text(self, jt, Vector2(note_x(m, Art.text_width(jt, 8) + 8) + 4, m.y + 22), 8, Color("53d4e2"))
 		draw_reticle(m, Color("53d4e2"))
 		return
 	if b.card_idx < 0:
@@ -1352,9 +1357,11 @@ func draw_targeting() -> void:
 			var sw := b.sway_of(u, c)
 			var swt := "STEADY" if sw < 0.01 else ("WILD SWAY" if sw > 0.06 else ("SWAY  [SHIFT] HOLD" if not b.aim_hold else "HOLDING"))
 			# a dark plate under the cursor notes, so the tags of whatever you aim at never mix in
-			draw_rect(Rect2(m.x + 8, m.y + 12, maxf(Art.text_width(sight, 8), Art.text_width(swt, 8)) + 8, 27), Color(C_DARK, 0.75))
-			Art.text(self, sight, Vector2(m.x + 12, m.y + 22), 8, Color("ff8a80"))
-			Art.text(self, swt, Vector2(m.x + 12, m.y + 34), 8, Color("ff7a3d") if sw > 0.06 else Color("e8dcc2"))  # under the sight line: below the soldier the hint strip hid it
+			var pw := maxf(Art.text_width(sight, 8), Art.text_width(swt, 8)) + 8
+			var nx := note_x(m, pw)
+			draw_rect(Rect2(nx, m.y + 12, pw, 27), Color(C_DARK, 0.75))
+			Art.text(self, sight, Vector2(nx + 4, m.y + 22), 8, Color("ff8a80"))
+			Art.text(self, swt, Vector2(nx + 4, m.y + 34), 8, Color("ff7a3d") if sw > 0.06 else Color("e8dcc2"))  # under the sight line: below the soldier the hint strip hid it
 			draw_reticle(m, Color(1, 0.3, 0.3))
 			draw_recoil(u, c, aa.a)
 		"ARC":
@@ -1365,8 +1372,9 @@ func draw_targeting() -> void:
 				var eff: int = int(fz / 2) if u.perk("shortfuse") else fz
 				var fl: String = "FUSE %.1fs  [WHEEL]" % (eff / 60.0)
 				# on the same dark plate as the AIM notes, so a Jackal's tags never mix into it
-				draw_rect(Rect2(m.x + 8, m.y + 12, Art.text_width(fl, 8) + 8, 14), Color(C_DARK, 0.75))
-				Art.text(self, fl, Vector2(m.x + 12, m.y + 22), 8, Color("ffd23a"))
+				var fx := note_x(m, Art.text_width(fl, 8) + 8)
+				draw_rect(Rect2(fx, m.y + 12, Art.text_width(fl, 8) + 8, 14), Color(C_DARK, 0.75))
+				Art.text(self, fl, Vector2(fx + 4, m.y + 22), 8, Color("ffd23a"))
 			var sim := b.sim_arc(v.hx, v.hy, v.vx, v.vy, b.wind_of(u, c), 40)
 			for i in sim.pts.size():
 				if i % 2 == 0:
