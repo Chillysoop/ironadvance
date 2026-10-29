@@ -7,6 +7,7 @@ extends Node
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
+## crumble (falling structures tip, spin, splinter and crush),
 ## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -764,6 +765,8 @@ func run() -> void:
 			await soldat6()
 		"drill":
 			await drill()
+		"crumble":
+			await crumble()
 		"jumppack":
 			await jumppack()
 		"draft":
@@ -7589,3 +7592,124 @@ func events10_test() -> void:
 	await shot("d3_memorial")
 	Run.meta = keep
 	Run.save_meta()
+
+func watch_chunks(b: Battle, max_frames: int) -> Dictionary:
+	## Step frames until every falling piece has come to rest; note how far they turned and how many were in the air.
+	var st := {"frames": 0, "ang": 0.0, "most": 0, "usec": 0}
+	while st.frames < max_frames:
+		for c in b.T.chunks:
+			st.ang = maxf(st.ang, absf(c.ang))
+		st.most = maxi(st.most, b.T.chunks.size())
+		var t0 := Time.get_ticks_usec()
+		await get_tree().process_frame
+		st.usec += Time.get_ticks_usec() - t0
+		st.frames += 1
+		if b.T.chunks.is_empty():
+			break
+	return st
+
+func drop_block(b: Battle, x: float, y: float, w: float, h: float, m: int):
+	## Lift a block of cells off the map at (x, y) and let it fall as one piece.
+	var cells: Array = []
+	for ry in int(h / 4):
+		for rx in int(w / 4):
+			cells.append([int(x / 4) + rx, int(y / 4) + ry, m, 0])
+	return b.T.chunk_from_cells(cells, null)
+
+func crumble() -> void:
+	## Falling structures are rigid pieces: they tip off edges instead of balancing, spin as they go,
+	## splinter when they land hard, and still crush what they land on.
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	# a tower blown out at the base topples rather than dropping straight down
+	var tw: Dictionary = b.T.structs.filter(func(s): return s.t == "tower")[0]
+	cam_on(b, tw.x)
+	await shot("crumble_tower_0")
+	b.explode(tw.x, b.T.ground_at(tw.x) - 14, 14, 0, b.sel)
+	for k in 8:
+		await frames_wait(10)
+		await shot("crumble_tower_f%d" % k)
+	var st := await watch_chunks(b, 1500)
+	await shot("crumble_tower_2")
+	check(b.T.chunks.is_empty(), "the tower's pieces all come to rest (%d frames)" % st.frames)
+	check(st.ang > 0.6, "the tower tips over as it falls (turned %.2f rad)" % st.ang)
+	check(b.T.chunk_usec / maxi(1, st.frames) < 4000, "the collapse is cheap (%d us of physics a frame)" % (b.T.chunk_usec / maxi(1, st.frames)))
+	# a test yard: flat ground, nobody near
+	var x := 1400.0
+	flat_strip(b, x, 700)
+	for o in b.units:
+		if absf(o.x - x - 350) < 500:
+			o.gone = true
+	cam_on(b, x + 250)
+	var gy: float = Data.WATER_Y - 96
+	# a slab hanging well off a narrow post slides off it
+	b.T.fill_r(x + 100, gy - 40, 8, 40, 2)
+	b.T.flush()
+	drop_block(b, x + 92, gy - 52, 80, 12, 3)
+	st = await watch_chunks(b, 900)
+	await shot("crumble_ledge")
+	var above := count_cells(b, x + 60, gy - 60, 140, 20)
+	check(above < 20, "a slab hanging off a post doesn't balance on it (%d cells left on top)" % above)
+	# a slab resting with its weight right over the edge of its post goes over too
+	b.T.fill_r(x + 300, gy - 40, 16, 40, 2)
+	b.T.flush()
+	drop_block(b, x + 272, gy - 48, 60, 8, 3)
+	st = await watch_chunks(b, 900)
+	await shot("crumble_edge")
+	above = count_cells(b, x + 260, gy - 56, 80, 16)
+	check(above < 15, "no knife-edge balancing: a slab with its weight at the post's edge tips off (%d cells left on top)" % above)
+	# a block dropped from high up splinters when it lands
+	b.T.fill_r(x + 420, 0, 200, gy, 0)
+	b.T.flush()
+	drop_block(b, x + 480, gy - 260, 40, 40, 4)
+	for k in 12:
+		await frames_wait(6)
+		if k >= 6:
+			await shot("crumble_splinter_f%d" % k)
+			print("[chunks] ", b.T.chunks.map(func(c): return "%d@%d,%d v%.1f,%.1f a%.2f" % [c.n, c.pos.x - x, c.pos.y - gy, c.vel.x, c.vel.y, c.ang]))
+	st = await watch_chunks(b, 900)
+	await shot("crumble_splinter_2")
+	check(st.most >= 3, "a block dropped from 260px splinters into pieces (%d at once)" % st.most)
+	var rub := count_cells(b, x + 380, gy - 60, 320, 60)
+	check(rub > 40 and rub < 100, "the pieces settle as rubble on the ground, a little lost to dust (%d of 100 cells)" % rub)
+	# crush damage still lands
+	var e := b.mk_enemy("grunt", x + 560, gy)
+	e.active = true
+	e.hp = 60; e.max_hp = 60
+	b.units.append(e)
+	b.T.fill_r(x + 520, 0, 100, gy, 0)
+	b.T.flush()
+	drop_block(b, x + 548, gy - 150, 24, 24, 2)
+	st = await watch_chunks(b, 900)
+	await shot("crumble_crush")
+	check(e.hp <= 60 - 10 or e.dead, "a falling block still crushes a Jackal (%d -> %d)" % [60, e.hp])
+	# cascade: a tall brick chimney cut at the foot topples into a stone column and knocks its top off too
+	x = 2300.0
+	flat_strip(b, x, 600)
+	for o in b.units:
+		if absf(o.x - x - 300) < 500:
+			o.gone = true
+	cam_on(b, x + 300)
+	b.T.fill_r(x + 100, gy - 200, 24, 200, 2)
+	b.T.fill_r(x + 220, gy - 130, 8, 130, 4)
+	b.T.flush()
+	await frames_wait(4)
+	await shot("crumble_chimney_0")
+	var col0 := count_cells(b, x + 216, gy - 130, 16, 70)
+	b.T.chunk_usec = 0
+	b.T.fill_r(x + 96, gy - 12, 32, 12, 0)  # cut it clean through at the foot
+	b.T.check_floating(x + 112, gy - 100, 120, b.sel)
+	for k in 10:
+		await frames_wait(9)
+		await shot("crumble_chimney_f%d" % k)
+	st = await watch_chunks(b, 1500)
+	await shot("crumble_chimney_end")
+	check(b.T.chunks.is_empty(), "the chimney and everything it hit come to rest (%d frames)" % st.frames)
+	check(st.most >= 4, "the chimney breaks up as it comes down (%d pieces at once)" % st.most)
+	check(count_cells(b, x + 90, gy - 200, 44, 120) < 30, "the chimney is no longer standing")
+	var col1 := count_cells(b, x + 216, gy - 130, 16, 70)
+	check(col1 < col0 - 4, "the falling chimney breaks a lump off the top of the column it hits (%d -> %d cells)" % [col0, col1])
+	check(b.T.chunk_usec / maxi(1, st.frames + 90) < 4000, "the chimney collapse is cheap (%d us of physics a frame)" % (b.T.chunk_usec / maxi(1, st.frames + 90)))
+	await until(func(): return b.settled(), 600)
+	check(b.T.chunks.is_empty(), "nothing left in the air")
