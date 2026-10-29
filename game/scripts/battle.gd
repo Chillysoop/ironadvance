@@ -2824,8 +2824,6 @@ func synergy_board() -> Array:
 func bounty_board() -> Array:
 	## R5 on the field: each of the level's bounties with "done", "lost" (no longer possible) or ""
 	## and a short progress note, for the board in the top right.
-	if Run.campaign():
-		return []
 	var out: Array = []
 	var foes := units.filter(func(e): return e.team == "enemy" and not e.dead and not e.gone and not e.fl.get("turned", false))
 	for id in mission.get("bounties", []):

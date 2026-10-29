@@ -26,6 +26,7 @@ var corner := ""             # tiny origin tag at the bottom-left (SHOP, LVL, GU
 var no_move := false         # hand only: Hop or Drill with no movement left, crossed out
 var peek := 0.0              # hand only: how much of the card shows when the next card overlaps it (0 = all)
 var cropped := ""            # the full text when the body didn't fit; hovering shows it (outside battle)
+var fit_body := false        # O6 (shop): a body that would be cut steps down to a smaller font first
 var tip: Control = null
 
 const PAPER := Color("e4d6b0")
@@ -228,8 +229,30 @@ func _draw() -> void:
 	var bottom := h - (22 if price >= 0 else 8)
 	var cut := false
 	var lh := 12.0
+	var bfs := 16
+	var min_lh := 10.0
+	if fit_body:
+		# O6: the whole rule in a slightly smaller font beats "..." on a card you're about to buy
+		min_lh = 11.0
+		if bl.size() > 1 and y + (bl.size() - 1) * min_lh > bottom:
+			bfs = 14
+			bl = wrap_text(body, w - 8, bfs)
+			lh = 10.0
+			min_lh = 10.0
+		# still too long: stop at the last whole sentence that fits; hovering shows the rest
+		var room := int(floorf((bottom - y) / min_lh)) + 1
+		if bl.size() > room:
+			var shown := ""
+			for sentence in body.split(". "):
+				var t := (shown + " " if shown != "" else "") + sentence.trim_suffix(".") + "."
+				if wrap_text(t, w - 8, bfs).size() > room:
+					break
+				shown = t
+			if shown != "":
+				bl = wrap_text(shown, w - 8, bfs)
+				cut = true
 	if bl.size() > 1 and y + (bl.size() - 1) * lh > bottom:
-		lh = maxf(10.0, floorf((bottom - y) / (bl.size() - 1)))
+		lh = maxf(min_lh, floorf((bottom - y) / (bl.size() - 1)))
 	for i in bl.size():
 		if y > bottom:
 			cut = true
@@ -238,10 +261,10 @@ func _draw() -> void:
 		if i < bl.size() - 1 and y + lh > bottom:
 			line = line.trim_suffix(".") + "..."
 			# the dots can push a long last word ("Ricochets...") past the card's edges
-			while Art.text_width(line, 16, true) > w - 6 and line.length() > 4:
+			while Art.text_width(line, bfs, true) > w - 6 and line.length() > 4:
 				line = line.substr(0, line.length() - 4) + "..."
 			cut = true
-		Art.text(self, line, Vector2(w / 2.0, y + 2), 16, Color("3a3024") if not dim else Color("4a4030"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
+		Art.text(self, line, Vector2(w / 2.0, y + 2), bfs, Color("3a3024") if not dim else Color("4a4030"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
 		y += lh
 	cropped = (name_ + "\n" + (stat + "\n" if stat != "" else "") + body) if cut else ""
 	if supercharged and not dim:
@@ -434,13 +457,22 @@ func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 static func wrap_stat(s: String, width: float) -> Array:
 	## Like wrap_text, but a number stays on the line with its label ("BNC 1", never "BNC" / "1").
 	var groups: Array = []
-	for tok in s.split(" ", false):
-		var c := tok.substr(0, 1)
-		var num := c.is_valid_int() or c in ["+", "-", "x", "%"] and tok.length() > 1
-		if num and groups.size():
-			groups[-1] += " " + tok
-		else:
-			groups.append(tok)
+	for part in s.split("  ", false):
+		# a double space already splits stats ("RADIUS 56  3 RNDS"): never pair across it,
+		# and a stat that fits stays whole ("3 RNDS", never "3" / "RNDS")
+		part = part.strip_edges()
+		if Art.text_width(part, 16, true) <= width:
+			groups.append(part)
+			continue
+		var first := true
+		for tok in part.split(" ", false):
+			var c := tok.substr(0, 1)
+			var num := c.is_valid_int() or c in ["+", "-", "x", "%"] and tok.length() > 1
+			if num and groups.size() and not first:
+				groups[-1] += " " + tok
+			else:
+				groups.append(tok)
+			first = false
 	var out: Array = []
 	var line := ""
 	for g in groups:

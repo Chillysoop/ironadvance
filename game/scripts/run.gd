@@ -897,7 +897,7 @@ func stat_text(id: String, t: int) -> String:
 		"hp":
 			return "+%d max HP and heal %d." % [STAT_TIERS.hp[t], STAT_TIERS.hp[t]]
 		"move":
-			return "+%d movement every turn." % STAT_TIERS.move[t]
+			return "+%s movement every turn." % Data.meters(STAT_TIERS.move[t])
 		"dodge":
 			return "+%d dodge. Enemy shots drift wider." % STAT_TIERS.dodge[t]
 		"upgrade":
