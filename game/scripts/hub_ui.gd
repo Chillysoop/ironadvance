@@ -97,7 +97,8 @@ class SquadBar extends Control:
 				Art.text(self, "KIA", pb.get_center() + Vector2(0, 4), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			var x := r.position.x + 42
 			Art.text(self, s.def.name, Vector2(x, r.position.y + 14), 8, Color.WHITE if s.alive else Color("8a7a7a"))
-			Art.text(self, "LV%d" % s.lvl, Vector2(x + 52, r.position.y + 14), 8, Color("ffd23a"))
+			# a long name (DIESEL, a recruit's) pushes the level tag right instead of touching it
+			Art.text(self, "LV%d" % s.lvl, Vector2(maxf(x + 52, x + Art.text_width(s.def.name, 8) + 8), r.position.y + 14), 8, Color("ffd23a"))
 			Art.text(self, str(i + 1), Vector2(r.end.x - 8, r.position.y + 14), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)
 			if s.alive:
 				var mx := Run.eff_max_hp(s)

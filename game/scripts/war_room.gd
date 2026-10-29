@@ -266,12 +266,13 @@ func draw_company() -> void:
 		Art.text(self, "%s %s" % [Run.rank_name(s), s.def.name], Vector2(r.position.x + 8, y), 8, Color.WHITE)
 		Art.text(self, "%s  LV%d" % [s.def.cls, s.lvl], Vector2(r.position.x + 8, y + 16), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		var sv := Run.svc(s)
-		Art.text(self, "%d OPS  %d KILLS" % [int(sv.ops), int(sv.kills)], Vector2(r.position.x + 8, y + 32), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		Art.text(self, "%d OP%s  %d KILL%s" % [int(sv.ops), "" if int(sv.ops) == 1 else "S", int(sv.kills), "" if int(sv.kills) == 1 else "S"], Vector2(r.position.x + 8, y + 32), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		if sv.medals.size():
 			Art.text(self, "%d MEDAL%s" % [sv.medals.size(), "" if sv.medals.size() == 1 else "S"], Vector2(r.position.x + 8, y + 48), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 		if not sc.is_empty():
 			var f := Run.fit(s, sc.biome)
-			Art.text(self, f.to_upper(), Vector2(r.position.x + 8, r.end.y - 8), 8, {"great": Color("62d26f"), "ok": Color("e8dcc2"), "rough": Color("ff7a5a")}[f])
+			# a row above IN SQUAD / BENCH, so "GREAT" doesn't read as part of "GREAT IN SQUAD"
+			Art.text(self, "FIT " + f.to_upper(), Vector2(r.position.x + 8, r.end.y - 22), 8, {"great": Color("62d26f"), "ok": Color("e8dcc2"), "rough": Color("ff7a5a")}[f])
 
 func hold_text(h: Dictionary) -> String:
 	var parts: Array = []
@@ -428,7 +429,7 @@ class SlotPicker extends Control:
 			Art.text(self, ("WAR WON" if h.get("done", false) else "ACT %s" % A.roman) + ("  TOUR %d" % int(h.get("tour", 1)) if int(h.get("tour", 1)) > 1 else ""), Vector2(cr.position.x + 16, cr.position.y + 58), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 			Art.text(self, A.name, Vector2(cr.position.x + 16, cr.position.y + 80), 8, Color("ff7a3d"))
 			var mins := int(float(h.secs) / 60.0)
-			Art.text(self, "%d OPS   %dH %02dM" % [int(h.ops), mins / 60, mins % 60], Vector2(cr.position.x + 16, cr.position.y + 104), 8, Color("e8dcc2"))
+			Art.text(self, "%d OP%s   %dH %02dM" % [int(h.ops), "" if int(h.ops) == 1 else "S", mins / 60, mins % 60], Vector2(cr.position.x + 16, cr.position.y + 104), 8, Color("e8dcc2"))
 			var names: Array = h.get("names", [])
 			for j in names.size():
 				Art.text(self, names[j], Vector2(cr.position.x + 16 + (j % 2) * 120, cr.position.y + 130 + (j / 2) * 18), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
@@ -680,7 +681,7 @@ class EndingScreen extends Control:
 			Art.text(self, "%s %s" % [Run.rank_name(s), s.def.name], Vector2(r.get_center().x, r.position.y + 76), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
 			Art.text(self, s.def.cls, Vector2(r.get_center().x, r.position.y + 92), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 			var sv := Run.svc(s)
-			Art.text(self, "%d OPS  %d KILLS" % [int(sv.ops), int(sv.kills)], Vector2(r.get_center().x, r.position.y + 110), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+			Art.text(self, "%d OP%s  %d KILL%s" % [int(sv.ops), "" if int(sv.ops) == 1 else "S", int(sv.kills), "" if int(sv.kills) == 1 else "S"], Vector2(r.get_center().x, r.position.y + 110), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 			if sv.medals.size():
 				Art.text(self, "%d MEDAL%s" % [sv.medals.size(), "" if sv.medals.size() == 1 else "S"], Vector2(r.get_center().x, r.position.y + 128), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 		# the Memorial
