@@ -177,7 +177,9 @@ func _draw() -> void:
 			var d: Dictionary = Data.ITEMS[it.id]
 			title = Data.SLOT_NAMES[d.slot]
 			name_ = d.name
-			stat = "  ".join(Data.stat_lines(Data.item_stats(it)))
+			# plain stats first and "ON X:" triggers last, so a trigger never reads as owning the stats after it
+			var sl: Array = Data.stat_lines(Data.item_stats(it))
+			stat = "  ".join(sl.filter(func(l): return not l.begins_with("ON ")) + sl.filter(func(l): return l.begins_with("ON ")))
 			body = d.text
 			if d.has("set"):
 				body += " SET %s: %s" % [Data.SETS[d.set].name.to_upper(), Data.SETS[d.set].text]
