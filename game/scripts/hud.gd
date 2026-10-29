@@ -716,7 +716,7 @@ class PauseMenu extends Control:
 				opts = [["BACK", Color("9aa2ae"), func(): go("menu")]]
 			"quit":
 				opts = [["QUIT", Color("ff4d3d"), quit], ["STAY", Color("62d26f"), func(): go("menu")]]
-		var y := 300.0 if page != "controls" else 430.0
+		var y := 300.0 if page != "controls" else 446.0
 		if page == "menu":
 			y = 210.0
 		for i in opts.size():
@@ -762,7 +762,7 @@ class PauseMenu extends Control:
 		queue_redraw()
 	func _draw() -> void:
 		draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.8))
-		var r := Rect2(220, 110, 520, 380) if page == "controls" else Rect2(280, 130, 400, 220 if page == "menu" else 240)
+		var r := Rect2(150, 90, 660, 410) if page == "controls" else Rect2(280, 130, 400, 220 if page == "menu" else 240)
 		if page == "quit":
 			r = Rect2(200, 170, 560, 190)
 		draw_rect(r.grow(2), Color(0.05, 0.035, 0.03))
@@ -772,10 +772,11 @@ class PauseMenu extends Control:
 			"menu":
 				Art.text(self, "PAUSED", Vector2(480, 172), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 			"controls":
-				Art.text(self, "CONTROLS", Vector2(480, 140), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+				Art.text(self, "CONTROLS", Vector2(480, 120), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+				# every row clear of the BACK button and inside the panel, the longest (R) included
 				for i in CONTROLS.size():
-					Art.text(self, CONTROLS[i][0], Vector2(470, 172 + i * 22), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
-					Art.text(self, CONTROLS[i][1], Vector2(490, 172 + i * 22), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+					Art.text(self, CONTROLS[i][0], Vector2(420, 150 + i * 21), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
+					Art.text(self, CONTROLS[i][1], Vector2(440, 150 + i * 21), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 			"quit":
 				Art.text(self, "QUIT TO TITLE?", Vector2(480, 210), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 				var line := "This op is lost. The war picks up from your last HQ save." if Run.campaign() else "This run is lost. Salvage, bio-parts, HQ upgrades and unlocks you already earned are kept."
