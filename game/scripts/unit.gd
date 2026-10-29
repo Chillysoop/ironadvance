@@ -96,6 +96,7 @@ var move_left := 0.0
 var draw: Array = []
 var hand: Array = []
 var disc: Array = []
+var mech_stash: Array = []  # vehicle cards pulled from the deck while on foot; back in on remount
 var overwatch := 0
 var moved := false
 var attacked := false

@@ -251,8 +251,11 @@ func draw_unit(u: Unit) -> void:
 			var moving: bool = u.kind == "hulk"
 			draw_vehicle(u.loot.type, pos, u.face, white, moving, false, vc)
 			draw_vehicle(u.loot.type, pos, u.face, white, moving, true, vc)
-			if u.kind == "ride" and b.t % 60 < 44:
-				Art.text(self, "HIJACK " + Data.VEHICLES[u.loot.type].name, pos + Vector2(0, -Data.VEHICLES[u.loot.type].seat - 26), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
+			if u.kind == "ride":
+				var ly: float = -Data.VEHICLES[u.loot.type].seat - 26
+				if b.t % 60 < 44:
+					Art.text(self, "HIJACK " + Data.VEHICLES[u.loot.type].name, pos + Vector2(0, ly - 12), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
+				Art.text(self, "WALK ONTO IT TO DRIVE", pos + Vector2(0, ly), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif u.kind == "hulk" and b.t % 8 < 4:
 				draw_rect(Rect2(pos.x - 2, pos.y - 30, 4, 4), Color("ff4d3d"))
 			return
@@ -874,7 +877,9 @@ func draw_slug(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_set_transform(pos, 0, Vector2(-Art.PX, Art.PX))
 	draw_texture_rect_region(tx, Rect2(-32, -40, 64, 40), Rect2(ph * 64, 0, 64, 40), mod)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
-	Art.text(self, "SV-001", pos + Vector2(0, -92), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+	Art.text(self, "SV-001", pos + Vector2(0, -102), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+	# it drives itself: say so, so nobody walks up to it expecting to climb in
+	Art.text(self, "AUTO: NO BOARDING", pos + Vector2(0, -90), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_wreck(u: Unit, pos: Vector2) -> void:
 	## A burnt-out jeep on its rims. Stripped ones lose the panels and the glint.
@@ -1113,12 +1118,20 @@ func draw_targeting() -> void:
 	var m: Vector2 = b.mouse
 	var pz := b.cam_x + Battle.W * 0.72
 	if b.cam_x < b.world_w - Battle.W:
+		# the label sits left of the line, clear of the bounty board in the top right. With an
+		# enemy still alive behind the line the zone is locked and turns red.
+		var lock: int = b.push_blockers().size()
+		var zc := Color(1, 0.7, 0.24) if lock == 0 else Color(1, 0.3, 0.24)
 		var yy := 48.0
 		while yy < Battle.H:
-			draw_rect(Rect2(pz, yy, 2, 6), Color(1, 0.7, 0.24, 0.5))
+			draw_rect(Rect2(pz, yy, 2, 6), Color(zc, 0.5))
 			yy += 12
-		draw_rect(Rect2(pz, 40, Battle.W * 0.28, Battle.H - 40), Color(1, 0.7, 0.24, 0.05))
-		Art.text(self, "PUSH ZONE >>", Vector2(pz + 8, 58), 8, Color("ffb23e"))
+		draw_rect(Rect2(pz, 40, Battle.W * 0.28, Battle.H - 40), Color(zc, 0.05))
+		if lock == 0:
+			Art.text(self, "PUSH ZONE >>", Vector2(pz - 6, 58), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_RIGHT)
+		else:
+			Art.text(self, "PUSH ZONE LOCKED", Vector2(pz - 6, 58), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
+			Art.text(self, ("1 ENEMY BEHIND THE LINE" if lock == 1 else "%d ENEMIES BEHIND THE LINE" % lock), Vector2(pz - 6, 72), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_RIGHT)
 	if b.jet_armed:
 		var sim := b.sim_body(u, 0.0, 0.0, m, u.fuel)
 		draw_dashed_line(Vector2(u.x, u.y - u.h / 2.0), m, Color(0.33, 0.83, 0.89, 0.6), 1.0, 4.0)
@@ -1647,6 +1660,9 @@ func draw_hover(cv: CanvasItem) -> void:
 		lines = ["SENTRY GUN  HP %d/%d" % [h.hp, h.max_hp], "Shoots the nearest enemy along its laser", "at the end of your turn. Your shots pass it."]
 	elif h.kind == "sticky":
 		lines = ["STICKY CHARGE  BLAST %d" % int(h.loot.r), "A Clacker sets it off. So does a Jackal", "stepping on it in their phase."]
+	elif h.kind == "slug":
+		var left: int = h.loot.get("turns", 1)
+		lines = ["SV-001 SLUG  %d ROUND%s LEFT" % [left, "" if left == 1 else "S"], "Your Metal Slug drives itself: after your turn it rolls forward,", "crushes Jackals in its way and shells the three nearest.", "NOBODY CAN CLIMB IN. To drive, walk onto a parked Jackal", "vehicle (the ones marked HIJACK)."]
 	elif h.kind == "ride":
 		var V: Dictionary = Data.VEHICLES[h.loot.type]
 		var hp: int = h.loot.get("hp", -1)

@@ -24,6 +24,7 @@ var chain := ""              # signature chain this card would complete right no
 var badge := ""              # small purple pill on the top-right corner (e.g. fusion progress "2/3")
 var corner := ""             # tiny origin tag at the bottom-left (SHOP, LVL, GUN)
 var no_move := false         # hand only: Hop or Drill with no movement left, crossed out
+var peek := 0.0              # hand only: how much of the card shows when the next card overlaps it (0 = all)
 var cropped := ""            # the full text when the body didn't fit; hovering shows it (outside battle)
 var tip: Control = null
 
@@ -57,13 +58,16 @@ func _process(_d: float) -> void:
 		tip.place(get_global_rect())
 	if hand_mode:
 		# cards you can't pay for sink and grey out so the playable ones stand up
-		var target := -60.0 if (hover or selected) and not disabled else (-10.0 if hover else (14.0 if disabled else 0.0))
+		# a hovered card rises all the way even when you can't play it, so its text can be read
+		var target := -60.0 if hover or selected else (14.0 if disabled else 0.0)
 		if selected:
 			target = -64.0
 		if ghost:
 			target = 0.0 if selected else 30.0
 		lift = lerpf(lift, target, 0.3)
 		position.y = base_y + roundf(lift)
+		# the hovered or armed card draws over its neighbours in a crowded hand
+		z_index = 2 if hover or selected else 0
 	queue_redraw()
 
 func type_color() -> Color:
@@ -180,6 +184,9 @@ func _draw() -> void:
 				body += " " + evo
 		"service":
 			title = opt.get("title", "SERVICE"); name_ = opt.name; body = opt.text
+	if compact():
+		draw_compact(kind, title, name_, dim)
+		return
 	Art.text(self, title, Vector2(w / 2.0, 12), 8, Color.WHITE if not dim else Color("cccccc"), HORIZONTAL_ALIGNMENT_CENTER, 1)
 	# cost bubble
 	if kind == "card":
@@ -278,6 +285,51 @@ func _draw() -> void:
 		var sw := Art.text_width(sh, 8) + 10
 		draw_rect(Rect2(w / 2.0 - sw / 2.0, h - 30, sw, 13), INK)
 		Art.text(self, sh, Vector2(w / 2.0, h - 20), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_CENTER, 0)
+
+func compact() -> bool:
+	## A crowded hand overlaps its cards; each one shows only its left strip until it's hovered.
+	return hand_mode and peek > 0.0 and peek < size.x - 4 and not hover and not selected
+
+func draw_compact(kind: String, title: String, name_: String, dim: bool) -> void:
+	## The strip of an overlapped hand card: cost, type and the full name wrapped into the part
+	## that shows, so every card in a big hand can be told apart at a glance.
+	var pw := peek
+	var tw := pw - 6
+	var tt := title
+	while tt.length() > 1 and Art.text_width(tt, 8) > tw:
+		tt = tt.left(tt.length() - 1)
+	if kind == "card" and Data.card(opt).get("mech", false):
+		tt = "VEH"
+	Art.text(self, tt, Vector2(4, 12), 8, Color.WHITE if not dim else Color("cccccc"), HORIZONTAL_ALIGNMENT_LEFT, 1)
+	if kind == "card":
+		var cc := cost if cost >= 0 else int(Data.card(opt).cost)
+		draw_circle(Vector2(10, 24), 9, INK)
+		draw_circle(Vector2(10, 24), 7, Color("ffd23a") if not dim else Color("8a7a40"))
+		Art.text(self, str(cc), Vector2(10, 29), 8, INK, HORIZONTAL_ALIGNMENT_CENTER, 0)
+	if hotkey != "":
+		Art.text(self, hotkey, Vector2(pw - 4, 28), 8, Color("6a5a40"), HORIZONTAL_ALIGNMENT_RIGHT, 0)
+	var y := 45.0
+	for line in wrap_text(name_, tw, 16):
+		var ln: String = line
+		while ln.length() > 1 and Art.text_width(ln, 16, true) > tw:
+			ln = ln.left(ln.length() - 1)
+		Art.text(self, ln, Vector2(4, y), 16, INK if not dim else Color("4a4030"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		y += 12
+	if supercharged and not dim:
+		var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 150.0)
+		draw_rect(Rect2(0, 0, size.x, size.y - 2), Color(1, 0.48, 0.24, pulse), false, 2.0)
+	var t := tier()
+	if t >= 0:
+		draw_rarity(size.x, size.y, t, dim)
+	if not dim and cost == 0 and kind == "card":
+		var pulse := 0.35 + 0.25 * sin(Time.get_ticks_msec() / 220.0)
+		draw_rect(Rect2(0, 0, size.x, size.y - 2), Color(0.38, 0.82, 0.44, pulse), false, 1.0)
+	if chain != "" and not dim:
+		var cp := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 120.0)
+		draw_rect(Rect2(-2, -2, size.x + 4, size.y + 2), Color(0.88, 0.69, 1.0, cp), false, 2.0)
+	if no_move:
+		draw_line(Vector2(4, 18), Vector2(pw - 4, 66), Color("c0392b"), 2.0)
+		draw_line(Vector2(pw - 4, 18), Vector2(4, 66), Color("c0392b"), 2.0)
 
 func draw_picto(kind: String, c: Vector2, dim: bool) -> void:
 	var mod := Color(1, 1, 1, 0.45 if dim else 1.0)

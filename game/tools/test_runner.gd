@@ -7,7 +7,7 @@ extends Node
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
-## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest),
+## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -862,6 +862,8 @@ func run() -> void:
 			await ui_clarity()
 		"newplayer3":
 			await newplayer3()
+		"fieldfix":
+			await fieldfix()
 		"operator":
 			await operator_call()
 		"training":
@@ -1980,6 +1982,113 @@ func newplayer3() -> void:
 	await shot("newplayer3")
 	Run.meta = keep
 	Run.save_meta()
+
+func fieldfix() -> void:
+	## Bounty board on the field, big hands, vehicle cards on exit, zone advance (2026-10-29).
+	Run.new_run()
+	Run.mission = 0
+	Run.pick_biome("city")
+	var m: Dictionary = Run.current_mission().duplicate(true)
+	m["bounties"] = ["nofall", "melee3", "fast"]
+	var b: Battle = main.start_battle(0, m)
+	await until(func(): return b.state == "player" and not b.busy)
+	await frames_wait(30)
+	await shot("fieldfix_start")
+	# the bounty board stays up; one that can't be earned any more is struck through
+	var bb: Array = b.bounty_board()
+	check(bb.size() == 3 and bb.all(func(r): return r.state == ""), "three open bounties on the field board")
+	b.stats.falls = 1
+	b.stats.melee_kills = 3
+	bb = b.bounty_board()
+	check(bb[0].state == "lost", "SURE FOOTED is lost after a fall")
+	check(bb[1].state == "done", "UP CLOSE is done after 3 melee kills")
+	b.round_n = 19
+	check(b.bounty_board()[2].state == "lost", "BLITZ is lost after round 18")
+	b.round_n = 1
+	await frames_wait(4)
+	await shot("fieldfix_board")
+	# a 10-card hand like the one in the 2026-10-29 screenshot: every overlapped card shows its name in its strip, the hovered one draws on top
+	var u: Unit = b.sel
+	for k in ["frag", "knife", "pistol", "cluster", "frag"]:
+		u.hand.append(Run.new_card(k) if Data.CARDS.has(k) else Run.new_card("frag"))
+	u.energy = 3
+	b.ui_dirty = true
+	await frames_wait(6)
+	var hud = b.hud
+	check(hud.cards.size() == u.hand.size() and hud.cards[0].compact(), "a crowded hand shows compact strips (%d cards)" % hud.cards.size())
+	await shot("fieldfix_hand")
+	hud.cards[3].hover = true
+	await frames_wait(12)
+	check(hud.cards[3].z_index > hud.cards[4].z_index and not hud.cards[3].compact(), "the hovered card rises over its neighbours in full")
+	await shot("fieldfix_hand_hover")
+	hud.cards[3].hover = false
+	# leaving a vehicle strips every vehicle card: hijacked guns in hand, the deck's own in every pile
+	u.hand = u.hand.slice(0, 4)
+	b.mount(u, "walker", -1, false)
+	var own1: Dictionary = Run.new_card("vulcan")
+	var own2: Dictionary = Run.new_card("stomp")
+	var own3: Dictionary = Run.new_card("mcannon")
+	u.hand.append(own1)
+	u.draw.append(own2)
+	u.disc.append(own3)
+	check(u.hand.any(func(h): return h.get("mechtemp", false)), "a hijacker holds the vehicle's cards")
+	b.dismount(u, false)
+	var veh := func(h): return h.get("mechtemp", false) or Data.card(h).get("mech", false)
+	check(not u.hand.any(veh) and not u.draw.any(veh) and not u.disc.any(veh), "on foot, no vehicle card is left in hand, draw or discard")
+	check(u.mech_stash.size() == 3, "the deck's own vehicle cards are set aside (%d)" % u.mech_stash.size())
+	await frames_wait(10)
+	await shot("fieldfix_dismount")
+	b.mount(u, "walker", -1, true)
+	check(u.mech_stash.is_empty() and u.draw.has(own1) and u.draw.has(own2) and u.draw.has(own3), "back in a vehicle, they return to the draw pile")
+	b.dismount(u, false)
+	b.vpop = {}
+	# the push zone stays locked while an enemy lives behind the line
+	b.busy = false
+	var line: float = b.cam_x + Battle.W * 0.72
+	var foe: Unit = null
+	for e in b.units:
+		if e.team == "enemy" and not e.dead and e.x < b.cam_x + 1200:
+			e.dead = true  # clear the screen so only the test's grunt is behind the line
+			e.gone = true
+	foe = b.mk_enemy("grunt", line - 60, b.T.stand_y(line - 60, 0))
+	foe.active = true
+	b.units.append(foe)
+	var others: Array = b.squad_alive().filter(func(o): return o != u)
+	for o in others:
+		o.move_left = 0
+	var cam0: float = b.cam_x
+	u.x = line + 40
+	u.y = b.T.stand_y(u.x, 0)
+	await b.check_push(u)
+	check(b.cam_x == cam0 and b.push_blockers().size() == 1, "an enemy behind the line keeps the map from moving")
+	await frames_wait(4)
+	await shot("fieldfix_locked")
+	foe.dead = true
+	foe.gone = true
+	var xs0: Array = others.map(func(o): return o.x)
+	await b.check_push(u)
+	check(b.cam_x > cam0, "with the line clear, the push scrolls")
+	var moved := true
+	for i in others.size():
+		var o: Unit = others[i]
+		if o.x <= xs0[i] + 20 or o.x < u.x - 200:
+			moved = false
+		print("[fieldfix] %s x %d -> %d (pusher %d) move %d/%d" % [o.def.key, xs0[i], o.x, u.x, o.move_left, b.full_move(o)])
+	check(moved, "squadmates left behind fall in behind the pusher for free")
+	check(others.all(func(o): return o.move_left >= b.full_move(o)), "and their movement is refilled")
+	await frames_wait(10)
+	await shot("fieldfix_fallin")
+	# the SV-001 Slug drives itself: it says so over it and on hover
+	b.vpop = {}
+	b.call_slug(u)
+	var sl: Unit = b.units.back()
+	await until(func(): return not sl.air, 600)
+	for o in b.squad_alive():
+		o.x = minf(o.x, sl.x - 60)
+	check(b.unit_at_p(Vector2(sl.x, sl.y - 20)) == sl, "hovering the Slug finds it for the info box")
+	get_viewport().warp_mouse(b.get_global_transform_with_canvas() * Vector2(sl.x, sl.y - 20))
+	await frames_wait(6)
+	await shot("fieldfix_slug")
 
 func check(ok: bool, what: String) -> void:
 	print("[hazard] ", "PASS " if ok else "FAIL ", what)
