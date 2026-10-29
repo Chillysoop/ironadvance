@@ -2797,6 +2797,28 @@ func setup_events() -> void:
 		var bt: Dictionary = Run.bounty(id)
 		log_msg("BOUNTY %s (+%d$): %s" % [bt.name, bt.pay, bt.text])
 
+func synergy_board() -> Array:
+	## The squad's switched-on synergies for the top right, above the bounty board: full gear sets,
+	## duos whose card is in hand right now, and one line for every duo pair still on the field.
+	var out: Array = []
+	var sq := squad_alive()
+	for u in sq:
+		for sy in Run.synergies(u.s):
+			if sy.kind == "set" and sy.done:
+				out.append({"name": sy.name, "who": u.def.name, "text": sy.text, "c": Color("62d26f")})
+	var pairs: Array = []
+	for d in Data.DUOS:
+		var pair: Array = sq.filter(func(u): return d.pair.has(u.def.key))
+		if pair.size() < 2:
+			continue
+		pairs.append("%s (%s+%s)" % [Data.CARDS[d.card].name, pair[0].def.name, pair[1].def.name])
+		if pair.any(func(u): return u.hand.any(func(c): return c.get("duo", "") != "" and c.key == d.card)):
+			out.append({"name": "DUO " + Data.CARDS[d.card].name.to_upper(), "who": "READY", "text": Run.duo_tip(d) + " In hand now.", "c": Color("ffb23e")})
+	if pairs.size():
+		out.append({"name": "DUO PAIRS", "who": str(pairs.size()), "c": Color("b48cff"),
+			"text": "When both soldiers of a pair have an Overdrive ready and stand close, a duo Overdrive card appears. On the field: %s." % ", ".join(pairs)})
+	return out
+
 func bounty_board() -> Array:
 	## R5 on the field: each of the level's bounties with "done", "lost" (no longer possible) or ""
 	## and a short progress note, for the board in the top right.

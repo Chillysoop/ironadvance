@@ -15,6 +15,7 @@ Data="*res://scripts/data.gd"
 Run="*res://scripts/run.gd"
 Sfx="*res://scripts/sfx.gd"
 Art="*res://scripts/art.gd"
+Tip="*res://scripts/tip.gd"
 Tester="*res://tools/test_runner.gd"
 
 [display]

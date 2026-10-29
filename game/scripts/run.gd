@@ -266,6 +266,63 @@ func evolutions(s: Dictionary) -> Array:
 				break
 	return out
 
+func synergies(s: Dictionary) -> Array:
+	## Every synergy a soldier is part of, for hover tips: gear sets, kit evolutions and duo partners.
+	## Each is {kind, name, prog, done, text}; done means it is switched on right now.
+	var out: Array = []
+	if not s.has("equip"):
+		return out
+	var sets := {}
+	for sl in s.equip:
+		var it = s.equip[sl]
+		if it != null and Data.ITEMS[it.id].has("set"):
+			sets[Data.ITEMS[it.id].set] = sets.get(Data.ITEMS[it.id].set, 0) + 1
+	for k in sets:
+		out.append({"kind": "set", "name": Data.SETS[k].name.to_upper(), "prog": "%d/2" % mini(2, sets[k]), "done": sets[k] >= 2,
+			"text": set_tip(k, sets[k])})
+	for sl in ["kit1", "kit2"]:
+		var it = s.equip.get(sl)
+		if it == null:
+			continue
+		for rule in Data.EVOLUTIONS:
+			if rule.kit != it.id:
+				continue
+			var cards: Array = s.deck.filter(func(c): return c.key == rule.card and not c.has("src"))
+			var epic: bool = cards.any(func(c): return Data.tier_of(c) >= 3)
+			var into: Dictionary = Data.CARDS[rule.into]
+			var now := "READY: the Workshop can evolve your Epic %s now." % Data.CARDS[rule.card].name if epic else (
+				"Polish a %s to Epic first." % Data.CARDS[rule.card].name if cards.size() else "No %s in this deck yet." % Data.CARDS[rule.card].name)
+			out.append({"kind": "evo", "name": "EVOLVE " + into.name.to_upper(), "prog": "READY" if epic else "", "done": epic,
+				"text": "%s kit + an Epic %s: the Workshop evolves it into %s. %s %s" % [Data.ITEMS[rule.kit].name, Data.CARDS[rule.card].name, into.name, into.text, now]})
+	for d in Data.DUOS:
+		if not d.pair.has(s.get("key", "")):
+			continue
+		var other := soldier(d.pair[0] if d.pair[1] == s.key else d.pair[1])
+		if other.is_empty() or not other.get("alive", false):
+			continue
+		out.append({"kind": "duo", "name": "DUO " + Data.CARDS[d.card].name.to_upper(), "prog": other.def.name, "done": true, "text": duo_tip(d)})
+	return out
+
+func set_tip(k: String, n := -1) -> String:
+	## What a gear set needs and gives, and how far this soldier is.
+	var st: Dictionary = Data.SETS[k]
+	var t := "Gear set. %s" % st.text
+	if n >= 2:
+		t += " ACTIVE on this soldier."
+	elif n >= 0:
+		t += " Wearing %d: one more piece on the same soldier switches it on." % n
+	return t
+
+func duo_tip(d: Dictionary) -> String:
+	## A duo Overdrive: who, what it does, and how it shows up.
+	var a := soldier(d.pair[0])
+	var b := soldier(d.pair[1])
+	var an: String = a.def.name if not a.is_empty() else d.pair[0].to_upper()
+	var bn: String = b.def.name if not b.is_empty() else d.pair[1].to_upper()
+	var h := soldier(d.holder)
+	var c: Dictionary = Data.CARDS[d.card]
+	return "%s + %s duo Overdrive. When both have an Overdrive ready and stand close, %s gets %s: %s" % [an, bn, h.def.name if not h.is_empty() else d.holder.to_upper(), c.name, c.text]
+
 func evolve(c: Dictionary, rule: Dictionary) -> void:
 	c.key = rule.into
 	c["from"] = "evolved"
