@@ -666,7 +666,7 @@ class Tag extends Control:
 				Art.text(self, "DONE", Vector2(x0 + w - 6, 20), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT, 1)
 			if b.inspect:
 				# P7: ALT intel sits on the plate's top row, instead of stacked over the squad
-				var info := "%dE MV%d ADR%d%s" % [u.energy, int(maxf(0, u.move_left)), u.adr, " OW" if u.overwatch > 0 else ""]
+				var info := "%dE MV%s ADR%d%s" % [u.energy, Data.meters(maxf(0, u.move_left)), u.adr, " OW" if u.overwatch > 0 else ""]
 				draw_rect(Rect2(x0 + 34, 2, w - 36, 11), Color(0.05, 0.035, 0.03, 0.95))
 				Art.text(self, info, Vector2(x0 + 36, 11), 8, Color("62d26f") if b.can_act(u) else Color("9aa2ae"))
 		if not u.dead:
@@ -937,7 +937,7 @@ class Overlay extends Control:
 		draw_rect(Rect2(r.position.x + 4, my + 4, 38.0 * clampf(mv / full_mv, 0, 1), 5), Color("62d26f") if mv > 1 else Color("4a505a"))
 		if mv > full_mv:
 			draw_rect(Rect2(r.position.x + 4, my + 4, 38, 1), Color("b48cff"))
-		Art.text(self, "%d" % int(mv), Vector2(r.get_center().x, my + 21), 8, Color("62d26f") if mv > 1 else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+		Art.text(self, Data.meters(mv), Vector2(r.get_center().x, my + 21), 8, Color("62d26f") if mv > 1 else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 
 	func draw_boosts(b: Battle, y: float) -> float:
 		## Top left: every power-up and status on the selected soldier (Predator, Berserker, Burning...),

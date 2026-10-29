@@ -253,12 +253,16 @@ func draw_unit(u: Unit) -> void:
 			var moving: bool = u.kind == "hulk"
 			draw_vehicle(u.loot.type, pos, u.face, white, moving, false, vc)
 			draw_vehicle(u.loot.type, pos, u.face, white, moving, true, vc)
-			# aiming, or a Jackal standing at it: their tags own this space
-			if u.kind == "ride" and b.card_idx < 0 and not b.units.any(func(e): return e.kind == "enemy" and not e.dead and not e.gone and absf(e.x - u.x) < 90):  # the label is ~170px wide
+			if u.kind == "ride":
+				# O4: a small steering wheel marks a hull you can take; the words only come on hover
 				var ly: float = -Data.VEHICLES[u.loot.type].seat - 26
-				if b.t % 60 < 44:
-					Art.text(self, "HIJACK " + Data.VEHICLES[u.loot.type].name, in_view(pos + Vector2(0, ly - 12), "HIJACK " + Data.VEHICLES[u.loot.type].name), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
-				Art.text(self, "WALK ONTO IT TO DRIVE", in_view(pos + Vector2(0, ly), "WALK ONTO IT TO DRIVE"), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+				var wc := pos + Vector2(0, ly - 8 + (1.0 if b.t % 60 < 30 else 0.0))
+				draw_wheel(wc)
+				var hov: bool = b.mouse.distance_to(wc) < 14  # hovering the hull shows the full tooltip instead
+				# aiming, or a Jackal standing at it: their tags own this space
+				if hov and b.card_idx < 0 and not b.units.any(func(e): return e.kind == "enemy" and not e.dead and not e.gone and absf(e.x - u.x) < 90):  # the label is ~170px wide
+					Art.text(self, "HIJACK " + Data.VEHICLES[u.loot.type].name, in_view(pos + Vector2(0, ly - 32), "HIJACK " + Data.VEHICLES[u.loot.type].name), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER)
+					Art.text(self, "WALK ONTO IT TO DRIVE", in_view(pos + Vector2(0, ly - 20), "WALK ONTO IT TO DRIVE"), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif u.kind == "hulk" and b.t % 8 < 4:
 				draw_rect(Rect2(pos.x - 2, pos.y - 30, 4, 4), Color("ff4d3d"))
 			return
@@ -671,6 +675,14 @@ func note_x(m: Vector2, w: float) -> float:
 	## Left edge of a note beside the cursor: to its right, or to its left near the right edge of the view.
 	return m.x + 8 if m.x + 8 + w < b.cam_x + Battle.W - 2 else m.x - 8 - w
 
+func draw_wheel(c: Vector2) -> void:
+	## O4: the hijack mark over a parked Jackal vehicle, an amber steering wheel
+	draw_circle(c, 7, C_DARK)
+	draw_arc(c, 5, 0, TAU, 16, Color("ffb23e"), 2.0)
+	for a in [PI / 2, PI / 2 + TAU / 3, PI / 2 + 2 * TAU / 3]:
+		draw_line(c, c + Vector2(cos(a), -sin(a)) * 5, Color("ffb23e"), 1.0)
+	draw_circle(c, 1.5, Color("ffb23e"))
+
 func in_view(p: Vector2, text: String) -> Vector2:
 	## A centered world label pulled in so it never runs off either edge of the view.
 	var hw := Art.text_width(text, 8) / 2.0 + 2
@@ -812,7 +824,7 @@ func draw_vehicle(type: String, pos: Vector2, face: int, white: bool, moving: bo
 		var vt: Texture2D = Art.tex["veh_" + type + ("_w" if white else ("_sq" if col.g > col.r else ""))]
 		var sz := Vector2(vt.get_width(), vt.get_height()) * Art.PX
 		var base: float = {"walker": -14.0 + ph * 1.5, "bike": absf(ph) * -1.0, "tank": 0.0}[type]
-		draw_texture_rect(vt, Rect2(pos.x - sz.x / 2.0 * f, pos.y + base - sz.y, sz.x * f, sz.y), false)
+		draw_texture_rect(vt, Rect2(pos.x - sz.x / 2.0, pos.y + base - sz.y, sz.x * f, sz.y), false)
 		return
 	# the walker's legs stay procedural so they can stride, drawn behind the driver
 	for side in [-1.0, 1.0]:
@@ -1249,7 +1261,7 @@ func draw_targeting() -> void:
 						draw_rect(Rect2(pl.pts[i][0] - 1, pl.pts[i][1] - 3, 3, 3), Color.WHITE)
 						i += 4
 					Art.draw_char(self, u.sheet, "idle", 0, Vector2(LD.offx, LD.top), u.face, false, 0, 0.45)
-					Art.text(self, "CLIMB %dpx" % int(pl.cost), Vector2(LD.offx, LD.top - 44), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+					Art.text(self, "CLIMB %s" % Data.meters(pl.cost), Vector2(LD.offx, LD.top - 44), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 				else:
 					Art.text(self, "LADDER: OUT OF REACH", Vector2(LD.x, LD.top - 14), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif hov == null and get_viewport().get_mouse_position().y >= 34:  # a click on the top bar doesn't walk
@@ -1260,7 +1272,7 @@ func draw_targeting() -> void:
 						draw_rect(Rect2(sim.pts[i][0] - 1, sim.pts[i][1] - 3, 3, 3), Color.WHITE)
 						i += 4
 					Art.draw_char(self, u.sheet, "idle", 0, Vector2(sim.x, sim.y), -1 if sim.x < u.x else 1, false, 0, 0.45)
-					Art.text(self, "%dpx" % int(sim.used), Vector2(sim.x, sim.y - 44), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+					Art.text(self, Data.meters(sim.used), Vector2(sim.x, sim.y - 44), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
 		return
 	if b.card_idx >= u.hand.size():
 		return
@@ -1357,7 +1369,7 @@ func draw_targeting() -> void:
 				elif em: lab = "BLOCKED"
 				Art.text(self, lab, Vector2(ls[2], ls[3] - 10), 8, Color("ffd23a") if em == 3 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 			var gun: Dictionary = Data.GUNS.get(c.get("gun", "rifle"), Data.GUNS.rifle)
-			var sight := "%s SIGHT %s" % [gun.name, ("FULL" if L > 9999.0 else "%dpx" % int(L))]
+			var sight := "%s SIGHT %s" % [gun.name, ("FULL" if L > 9999.0 else Data.meters(L))]
 			var sw := b.sway_of(u, c)
 			var swt := "STEADY" if sw < 0.01 else ("WILD SWAY" if sw > 0.06 else ("SWAY  [SHIFT] HOLD" if not b.aim_hold else "HOLDING"))
 			# a dark plate under the cursor notes, so the tags of whatever you aim at never mix in
@@ -1433,7 +1445,7 @@ func draw_targeting() -> void:
 				draw_dashed_line(o, o + d * reach, Color(1, 0.82, 0.23, 0.35), 1.0, 4.0)
 				draw_drill(u, d, false)
 				if sim.pts.size():
-					draw_ghost(u, sim, Color("ffd23a"), "DRILL %dpx" % int(Vector2(sim.x, sim.y).distance_to(Vector2(u.x, u.y))))
+					draw_ghost(u, sim, Color("ffd23a"), "DRILL %s" % Data.meters(Vector2(sim.x, sim.y).distance_to(Vector2(u.x, u.y))))
 				else:
 					Art.text(self, "CAN'T DRILL THERE", Vector2(u.x, u.y - u.h - 8), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.get("roll", false):
@@ -1444,7 +1456,7 @@ func draw_targeting() -> void:
 					i += 3
 				if sim.pts.size():
 					Art.draw_char(self, u.sheet, "idle", 0, Vector2(sim.x, sim.y), 1 if sim.x >= u.x else -1, false, 0, 0.45, 0.0, false, 1.0, Color("e8dcc2"))
-					Art.text(self, "ROLL %dpx" % int(absf(sim.x - u.x)), Vector2(sim.x, sim.y - u.h - 8), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+					Art.text(self, "ROLL %s" % Data.meters(absf(sim.x - u.x)), Vector2(sim.x, sim.y - u.h - 8), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 				else:
 					Art.text(self, "NO ROOM TO ROLL", Vector2(u.x, u.y - u.h - 8), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.get("zipline", false):
@@ -1762,20 +1774,20 @@ func draw_hover(cv: CanvasItem) -> void:
 	elif h.is_prop():
 		lines = ["FUEL BARREL", "Explodes when hit. Blast 44."]
 	elif h.kind == "sentry" and h.loot.get("trooper", false):
-		lines = ["FIRE TEAM  HP %d/%d" % [h.hp, h.max_hp], "Pinned down: walk within 140px to bring them in." if h.loot.get("pinned", false) else "Shoots the nearest enemy at the end of your turn.", "They head back to the lines at the next camp."]
+		lines = ["FIRE TEAM  HP %d/%d" % [h.hp, h.max_hp], "Pinned down: walk within 7m to bring them in." if h.loot.get("pinned", false) else "Shoots the nearest enemy at the end of your turn.", "They head back to the lines at the next camp."]
 	elif h.kind == "dealer":
 		lines = ["ARMS DEALER", "Walk up to him to see his %d items and prices." % h.loot.stock.size()]
 	elif h.kind == "sentry":
 		lines = ["SENTRY GUN  HP %d/%d" % [h.hp, h.max_hp], "Shoots the nearest enemy along its laser", "at the end of your turn. Your shots pass it."]
 	elif h.kind == "sticky":
-		lines = ["STICKY CHARGE  BLAST %d" % int(h.loot.r), "A Clacker sets it off. So does a Jackal", "stepping on it in their phase."]
+		lines = ["STICKY CHARGE  BLAST %s" % Data.meters(h.loot.r), "A Clacker sets it off. So does a Jackal", "stepping on it in their phase."]
 	elif h.kind == "slug":
 		var left: int = h.loot.get("turns", 1)
-		lines = ["SV-001 SLUG  %d ROUND%s LEFT" % [left, "" if left == 1 else "S"], "Your Metal Slug drives itself: after your turn it rolls forward,", "crushes Jackals in its way and shells the three nearest.", "NOBODY CAN CLIMB IN. To drive, walk onto a parked Jackal", "vehicle (the ones marked HIJACK)."]
+		lines = ["SV-001 SLUG  %d ROUND%s LEFT" % [left, "" if left == 1 else "S"], "Your Metal Slug drives itself: after your turn it rolls forward,", "crushes Jackals in its way and shells the three nearest.", "NOBODY CAN CLIMB IN. To drive, walk onto a parked Jackal", "vehicle (the ones with a steering wheel over them)."]
 	elif h.kind == "ride":
 		var V: Dictionary = Data.VEHICLES[h.loot.type]
 		var hp: int = h.loot.get("hp", -1)
-		lines = ["PARKED JACKAL %s  HP %s" % [V.name, str(hp) if hp >= 0 else str(V.hp)], V.pitch, "%s. %s" % [Data.vehicle_move(h.loot.type), Data.VEHICLE_RULES], "CARDS WHILE DRIVING: " + Data.vehicle_card_names(h.loot.type), "Walk onto it to climb in."]
+		lines = ["HIJACK: PARKED JACKAL %s  HP %s" % [V.name, str(hp) if hp >= 0 else str(V.hp)], V.pitch, "%s. %s" % [Data.vehicle_move(h.loot.type), Data.VEHICLE_RULES], "CARDS WHILE DRIVING: " + Data.vehicle_card_names(h.loot.type), "Walk onto it to climb in."]
 	elif h.kind == "dog":
 		var g = h.loot.get("guard")
 		lines = ["REX  HP %d/%d" % [h.hp, h.max_hp], "Moves only when Track plays a dog card.", "GUARDING " + g.def.name if g is Unit else "Your shots pass him."]
@@ -1784,7 +1796,7 @@ func draw_hover(cv: CanvasItem) -> void:
 	elif h.team != "squad":
 		return
 	else:
-		lines = ["%s  %s  LV%d" % [h.def.name, h.def.cls.to_upper(), h.s.lvl], "HP %d/%d   ADRENALINE %d" % [h.hp, h.max_hp, h.adr], "ENERGY %d   MOVE %dpx" % [h.energy, int(h.move_left)]]
+		lines = ["%s  %s  LV%d" % [h.def.name, h.def.cls.to_upper(), h.s.lvl], "HP %d/%d   ADRENALINE %d" % [h.hp, h.max_hp, h.adr], "ENERGY %d   MOVE %s" % [h.energy, Data.meters(h.move_left)]]
 		if h.mech != null and h.mech.max > 0:
 			var V: Dictionary = Data.VEHICLES[h.mech.type]
 			lines.append("DRIVING %s  VEHICLE HP %d/%d  %s" % [V.name, maxi(0, h.mech.hp), h.mech.max, Data.vehicle_move(h.mech.type)])

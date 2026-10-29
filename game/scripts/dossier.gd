@@ -535,7 +535,7 @@ func stats() -> Array:
 	var hand: int = 4 + me.bonus.hand + (1 if me.perks.has("fieldkit") else 0) + (1 if Run.implanted(me, "thirdarm") else 0)
 	var e1: int = me.bonus.energy1 + int(gb.get("energy1", 0))
 	return [
-		["MOVE", str(me.def.spd + me.bonus.move + int(gb.get("move", 0)))],
+		["MOVE", Data.meters(me.def.spd + me.bonus.move + int(gb.get("move", 0)))],
 		["DODGE", "%d%%" % (me.def.dodge + me.bonus.dodge + int(gb.get("dodge", 0)))],
 		["HAND", "%d cards" % hand],
 		["ENERGY", "3 a turn" + (" +%d first" % e1 if e1 > 0 else "")],
