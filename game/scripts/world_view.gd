@@ -551,8 +551,9 @@ func draw_pad(u: Unit, pos: Vector2) -> void:
 		draw_rect(Rect2(pos.x - 6, pos.y - 26, 12, 22), Color(B.c, a * 0.25))
 		draw_rect(Rect2(pos.x - 6, pos.y - 26, 12, 12), Color(B.c, a), false, 1.0)
 		Art.text(self, B.glyph, Vector2(pos.x + 1, pos.y - 16), 8, Color(B.c, 0.8), HORIZONTAL_ALIGNMENT_CENTER, 0)
-		if word_ok(pos, false):
-			var cd := "%s IN %d" % [B.name, L.t]
+		var cd: String = "%s IN %d" % [B.name, L.t]
+		# wider than the pad itself, so it clears a Jackal's tags across its whole width
+		if word_ok(pos, false, Art.text_width(cd, 8) / 2.0 + 16):
 			Art.text(self, cd, in_view(Vector2(pos.x, pos.y - 30), cd), 8, Color(B.c, 0.85), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_drill(u: Unit, d: Vector2, spin: bool) -> void:
@@ -762,8 +763,10 @@ func draw_relay(u: Unit, pos: Vector2) -> void:
 		var bf: Dictionary = Data.RELAY_BUFFS[u.loot.buff]
 		var rl: String = "RELAY: " + bf.name
 		# a wide label: it gives way to any Jackal plate or tag it would run across
-		if word_ok(pos, false, Art.text_width(rl, 8) / 2.0 + 24):
-			Art.text(self, rl, in_view(pos + Vector2(0, -44), rl), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+		# (measured from where it lands once pulled in from the view edge, not from the relay)
+		var rp := in_view(pos + Vector2(0, -44), rl)
+		if word_ok(Vector2(rp.x, pos.y), false, Art.text_width(rl, 8) / 2.0 + 24):
+			Art.text(self, rl, rp, 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_sentry(u: Unit, pos: Vector2, white: bool) -> void:
 	## N2: a squat tripod turret in Bolt's orange, with its laser on whatever it will shoot.
