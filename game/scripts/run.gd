@@ -39,6 +39,7 @@ var burned: Array = []     # biomes skipped or already played this run; they nev
 var dial_levels := {}      # biome id -> the level it would build, rolled with the dial (Gate Control 3 shows it)
 var dial_rerolled := false # Gate Control 2: one reroll per HQ visit
 var sway_mul := 1.0        # the current biome's sway rule, read by Data.card during a battle
+var first_run := false     # P8: the player's first-ever quick run (level 1 skips bounties and the event)
 var daily := ""            # D2: the date of today's Daily Op while one is running, else ""
 var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "bio": 0, "hq": {}, "implants": {}}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
 const META_PATH := "user://meta.json"
@@ -203,6 +204,9 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	for i in range(bpool.size() - 1, 0, -1):
 		var j := er.randi() % (i + 1)
 		var t = bpool[i]; bpool[i] = bpool[j]; bpool[j] = t
+	if tier == 0 and first_run and daily == "" and not campaign():
+		event = ""  # P8: the first fight is the level, the POWs and the Boar; both start from level 2
+		bpool = []
 	return {"event": event, "bounties": bpool.slice(0, 3), "name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "breach": breach, "encounter": enc, "boss": boss, "walker": walker, "miniboss": miniboss,
 		"segments": ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")],
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
@@ -331,6 +335,8 @@ func evolve(c: Dictionary, rule: Dictionary) -> void:
 	c.erase("nick")
 
 func new_run() -> void:
+	# P8: a brand-new player (no run, win, fallen soldier or beaten Boar on record) gets a plainer level 1
+	first_run = not meta.get("ran", false) and meta.get("wins", 0) == 0 and meta.get("memorial", []).is_empty() and not meta.get("boar_down", false) and not OS.get_cmdline_user_args().has("--iatest")
 	soldiers.clear()
 	gear.clear()
 	history.clear()

@@ -966,12 +966,12 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 		for i in u.energy:
 			draw_texture_rect(Art.tex.ic8_bolt, Rect2(x - u.energy * 4.5 + i * 9, y - 12 - u.h - 8, 8, 8), false)
 	if b.inspect and b.state == "player":
-		var info := "%s  %dE  MOVE %d  ADR %d%s" % [u.def.name, u.energy, int(maxf(0, u.move_left)), u.adr, "  OW" if u.overwatch > 0 else ""]
-		var tw := Art.text_width(info, 8) + 6
-		var iy := u.y - u.h - 58 - b.squad().find(u) * 13
+		# P7: ALT puts the numbers on the roster plates; over the field each soldier only gets a name
+		var tw := Art.text_width(u.def.name, 8) + 6
+		var iy := u.y - u.h - 58
 		var ix := clampf(x, b.cam_x + tw / 2 + 2, b.cam_x + Battle.W - 2 - tw / 2)
 		draw_rect(Rect2(ix - tw / 2, iy, tw, 12), Color(C_DARK, 0.85))
-		Art.text(self, info, Vector2(ix, iy + 10), 8, Color("62d26f") if b.can_act(u) else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+		Art.text(self, u.def.name, Vector2(ix, iy + 10), 8, Color("62d26f") if b.can_act(u) else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 	if sel and b.state == "player":
 		var by := u.y - u.h - 36 + sin(b.t / 8.0) * 2
 		var pts := PackedVector2Array([Vector2(x - 6, by), Vector2(x + 6, by), Vector2(x, by + 7)])
