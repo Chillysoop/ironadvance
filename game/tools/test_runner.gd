@@ -2123,7 +2123,7 @@ func synergies() -> void:
 	Run.equip(Run.soldiers[1], Run.new_item("plate"))
 	var syn: Array = Run.synergies(s0)
 	print("[synergies] ", s0.key, " ", syn.map(func(sy): return "%s %s %s" % [sy.kind, sy.name, sy.done]))
-	check(syn.any(func(sy): return sy.kind == "set" and sy.done and sy.text.contains("+20 move")), "a full Desert Rat set is ACTIVE and says what it gives")
+	check(syn.any(func(sy): return sy.kind == "set" and sy.done and sy.text.contains("+1m move")), "a full Desert Rat set is ACTIVE and says what it gives")
 	check(Run.synergies(Run.soldiers[1]).any(func(sy): return sy.kind == "set" and not sy.done and sy.prog == "1/2"), "one Boar piece reads 1/2 and is not on yet")
 	check(syn.any(func(sy): return sy.kind == "duo" and sy.text.contains("Overdrive")), "duo partners in the squad are listed with their card")
 	Run.scrip = 500

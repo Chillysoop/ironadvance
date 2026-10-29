@@ -385,8 +385,8 @@ func _on_mission_over(won: bool) -> void:
 	st["xp"] = xp
 	st["kills_by"] = kills
 	st["downed_by"] = downs
-	if won and not Run.campaign():
-		st["bounties"] = Run.pay_bounties(st)  # R5
+	if won:
+		st["bounties"] = Run.pay_bounties(st)  # R5; O1: campaign ops pay them into the company's scrip too
 	Run.history.append(st)
 	clear()
 	var s := Screen.new()
@@ -695,7 +695,7 @@ class Screen extends Control:
 			var evl: Array = CardView.wrap_text(ev.text, 246, 16)
 			# 270 wide, so the panel stops short of Moss on the left of the squad line; as tall as its text
 			# (full height beside a bounty board, so the two match)
-			var eh := 150.0 if m.get("bounties", []).size() and not Run.campaign() else minf(150.0, 54.0 + evl.size() * 16)
+			var eh := 150.0 if m.get("bounties", []).size() else minf(150.0, 54.0 + evl.size() * 16)
 			draw_rect(Rect2(16, 296, 270, eh), Color(0.05, 0.035, 0.03, 0.94))  # solid enough that a rifle tip never shows through
 			draw_rect(Rect2(16, 296, 270, eh), Color("ffb23e"), false, 1)
 			Art.text(self, "EVENT: " + ev.name, Vector2(28, 316), 8, Color("ffb23e"))
@@ -703,7 +703,7 @@ class Screen extends Control:
 			for line in evl:
 				Art.text(self, line, Vector2(28, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 				y += 16
-		var bs: Array = m.get("bounties", []) if not Run.campaign() else []  # campaign ops don't pay bounties
+		var bs: Array = m.get("bounties", [])
 		if bs.size():
 			draw_rect(Rect2(674, 296, 270, 150), Color(0.05, 0.035, 0.03, 0.94))
 			draw_rect(Rect2(674, 296, 270, 150), Color("ffd23a"), false, 1)
@@ -864,6 +864,8 @@ class Screen extends Control:
 			rows.append(["SALVAGE FOR HQ", str(stats.salvage)])
 		if stats.get("fallen", []).size():
 			rows.append(["KILLED IN ACTION", ", ".join(stats.fallen)])
+		for bt in stats.get("bounties", []):
+			rows.append(["BOUNTY " + bt[0], ("+%d$" % bt[1]) if bt[2] else "MISSED"])
 		rows.append(["OPS FOUGHT", str(Run.camp.get("ops", 0))])
 		draw_rows(rows, 160.0)
 		squad_line(420, "cheer" if mode == "op_won" else "idle")

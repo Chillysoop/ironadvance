@@ -560,8 +560,12 @@ func _draw() -> void:
 		var s: Dictionary = Run.soldiers[i]
 		var x := col_x(i)
 		var w := col_w()
-		Art.text(self, s.def.name, Vector2(x, 66), 8, Color.WHITE if s.alive else Color("8a7a7a"))
-		Art.text(self, ("HP %d/%d" % [s.hp, Run.eff_max_hp(s)]) if s.alive else "KIA", Vector2(x + w - 10, 66), 8, Color("9aa2ae") if s.alive else Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
+		# O5: a header plate over each soldier's column, so name and HP read as one soldier's
+		draw_rect(Rect2(x, 54, w, 15), Color(0.05, 0.035, 0.03))
+		draw_rect(Rect2(x + 1, 55, w - 2, 13), Color("2b3038") if s.alive else Color("2a2224"))
+		draw_rect(Rect2(x + 1, 55, 3, 13), Color("ffd23a") if s.alive else Color("ff4d3d"))
+		Art.text(self, s.def.name, Vector2(x + 8, 66), 8, Color.WHITE if s.alive else Color("8a7a7a"))
+		Art.text(self, ("HP %d/%d" % [s.hp, Run.eff_max_hp(s)]) if s.alive else "KIA", Vector2(x + w - 5, 66), 8, Color("9aa2ae") if s.alive else Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
 		var gear_cards: int = s.deck.filter(func(c): return c.get("src", -1) != -1).size()
 		Art.text(self, "DECK %d%s" % [s.deck.size(), ", %d from gear" % gear_cards if gear_cards else " cards"], Vector2(x, 180), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		# gear sets and kit evolutions, each one hoverable
@@ -669,6 +673,7 @@ class ItemTile extends Control:
 	var mystery := false
 	var black := false
 	var tw := 104
+	var tall := false          # O3 (shop shelf): room for the whole name and effect, no hover needed
 	var ref := {}              # where the tile sits: {where: stash|belt|equip|shelf, i} or {where, s, slot}
 	var fit := 0               # 1: the held item can go here (lit), -1: it can't (dimmed)
 	var clickable_empty := false
@@ -676,7 +681,7 @@ class ItemTile extends Control:
 	var ghost := false         # the copy that follows the mouse
 	var t := 0
 	func _ready() -> void:
-		size = Vector2(tw, 44)
+		size = Vector2(tw, 72 if tall else 44)
 		mouse_filter = Control.MOUSE_FILTER_IGNORE if ghost else Control.MOUSE_FILTER_STOP
 		mouse_entered.connect(func(): hover = true)
 		mouse_exited.connect(func(): hover = false)
@@ -732,12 +737,16 @@ class ItemTile extends Control:
 				icon = Data.BELT_ICONS.get(d.get("use", ""), "ic_heart")
 			draw_texture_rect(Art.tex[icon], Rect2(5, 6, 16, 16), false)
 			var nm: String = d.name
-			nm = ItemTile.fit_text(nm, w - 31)
-			Art.text(self, nm, Vector2(27, 15), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 			var sl: Array = Data.stat_lines(Data.item_stats(item))
-			var line: String = sl[0] if sl.size() else d.text
-			line = ItemTile.fit_text(line, w - 31, true)
-			Art.text(self, line, Vector2(27, 28), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			if tall:
+				draw_tall_text(nm, sl, d.text, w, h)
+			else:
+				nm = ItemTile.fit_text(nm, w - 31)
+				Art.text(self, nm, Vector2(27, 15), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			if not tall:
+				var line: String = sl[0] if sl.size() else d.text
+				line = ItemTile.fit_text(line, w - 31, true)
+				Art.text(self, line, Vector2(27, 28), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		# the full slot word along the bottom, clear of the icon and the price
 		if item != null:
 			var sn: String = Data.SLOT_NAMES[Data.ITEMS[item.id].slot]
@@ -751,6 +760,22 @@ class ItemTile extends Control:
 			draw_rect(Rect2(w - 40, h - 12, 40, 12), ink)
 			Art.text(self, "%d$" % price, Vector2(w - 3, h - 2), 8, Color("ffd23a") if Run.scrip >= price else Color("8a7a40"), HORIZONTAL_ALIGNMENT_RIGHT)
 		draw_marks()
+	func draw_tall_text(nm: String, sl: Array, text: String, w: float, h: float) -> void:
+		## O3: the name over up to two lines beside the icon, then every stat (or the rule) under it.
+		var nl: Array = CardView.wrap_text(nm, w - 31, 16).slice(0, 2)
+		var y := 15.0
+		for l in nl:
+			Art.text(self, ItemTile.fit_text(l, w - 31), Vector2(27, y), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			y += 12
+		y = maxf(y, 28.0) + 1
+		var el: Array = CardView.wrap_text(", ".join(sl) if sl.size() else text, w - 10, 16)
+		var room := int((h - 14 - y) / 11.0) + 1
+		for i in mini(el.size(), room):
+			var l: String = el[i]
+			if i == room - 1 and el.size() > room:
+				l = ItemTile.fit_text(l + " " + el[i + 1], w - 10, true)
+			Art.text(self, l, Vector2(5, y), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			y += 11
 	func draw_marks() -> void:
 		## Lit (fits), dimmed (doesn't) and the hole a dragged item left behind.
 		var w := size.x

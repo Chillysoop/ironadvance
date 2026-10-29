@@ -14,7 +14,7 @@ const Services := preload("res://scripts/services.gd")
 
 const BAR := Vector2(16, 80)
 const CARD_Y := 148.0
-const SHELF_Y := 372.0
+const SHELF_Y := 400.0
 const BARKS := [
 	"Cards up top go into one soldier's deck. Click a card, then the soldier. Or drag it onto them.",
 	"Squad gear helps everyone at once. Shelf items go to the stash; equip them at the Armory or from a soldier's Dossier.",
@@ -111,7 +111,8 @@ func build() -> void:
 		var o: Dictionary = stock_cards[i]
 		var cv := CardView.new()
 		cv.opt = o
-		cv.size = Vector2(cw, 146)
+		cv.size = Vector2(cw, 176)
+		cv.fit_body = true
 		cv.position = Vector2(24 + i * (cw + 8), CARD_Y)
 		cv.price = o.price
 		cv.disabled = o.get("sold", false) or Run.scrip < o.price
@@ -123,7 +124,8 @@ func build() -> void:
 		var o: Dictionary = stock_gear[i]
 		var cv := CardView.new()
 		cv.opt = o
-		cv.size = Vector2(cw, 146)
+		cv.size = Vector2(cw, 176)
+		cv.fit_body = true
 		cv.position = Vector2(600 + i * (cw + 8), CARD_Y)
 		cv.price = o.price
 		cv.disabled = o.get("sold", false) or Run.scrip < o.price
@@ -137,6 +139,7 @@ func build() -> void:
 		tile.item = null if o.get("mystery", false) else o.item
 		tile.mystery = o.get("mystery", false)
 		tile.black = o.get("black", false)
+		tile.tall = true
 		tile.price = -1 if o.get("sold", false) else price(o.price)
 		tile.sold = o.get("sold", false)
 		tile.position = Vector2(24 + i * 112, SHELF_Y)
@@ -171,8 +174,8 @@ func build() -> void:
 	rs.line = "Replace the cards, gear and shelf on sale."
 	rs.ok = Run.scrip >= rs.cost
 	rs.why = Services.short(rs.cost)
-	rs.size = Vector2(220, 52)
-	rs.position = Vector2(24, SHELF_Y + 64)
+	rs.size = Vector2(220, 48)
+	rs.position = Vector2(24, SHELF_Y + 80)
 	rs.pressed.connect(reroll)
 	add_child(rs)
 	add_child(back_button())
@@ -304,7 +307,7 @@ func _draw() -> void:
 		Art.text(self, "FIELD CARDS: ONE SOLDIER'S DECK", Vector2(24, 140), 8, Color("53d4e2"))
 		Art.text(self, "SQUAD GEAR: HELPS EVERYONE", Vector2(600, 140), 8, Color("62d26f"))
 		for x in range(0, 960, 32):
-			draw_texture_rect(hz, Rect2(x, 346, 32, 6), false)
+			draw_texture_rect(hz, Rect2(x, 376, 32, 6), false)
 		Art.text(self, "ITEM SHELF: GOES TO THE STASH", Vector2(24, SHELF_Y - 8), 8, Color("ffb23e"))
 		draw_card_fits()
 	else:
@@ -348,15 +351,15 @@ func draw_card_fits() -> void:
 		var x := 24.0 + i * 112
 		var us := users(o.key)
 		for k in us.size():
-			Art.draw_char(self, Art.look_sheet(us[k]), "idle", 0, Vector2(x + 10 + k * 22, CARD_Y + 186), 1, false, 0, 1.0, 0, false, 0.6)
+			Art.draw_char(self, Art.look_sheet(us[k]), "idle", 0, Vector2(x + 10 + k * 22, CARD_Y + 216), 1, false, 0, 1.0, 0, false, 0.6)
 		if us.is_empty():
-			Art.text(self, "ANYONE", Vector2(x, CARD_Y + 180), 8, Color("6c7480"))
+			Art.text(self, "ANYONE", Vector2(x, CARD_Y + 210), 8, Color("6c7480"))
 		for s in Run.soldiers:
 			if not s.alive:
 				continue
 			var fit := Services.branch_fit(s, o.key)
 			if fit != "":
-				Art.text(self, "FITS " + fit.to_upper(), Vector2(x + 52, CARD_Y + 196), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+				Art.text(self, "FITS " + fit.to_upper(), Vector2(x + 52, CARD_Y + 226), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 				break
 
 # ---------------------------------------------------------------- choosers
@@ -443,7 +446,7 @@ func buy_card(i: int) -> void:
 	if cand.is_empty():
 		return
 	var drag := {"opt": o, "held": Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)}
-	var k := await pick_tile("WHO GETS %s?" % Data.card(o).name.to_upper(), cand, Rect2(24 + i * 112, CARD_Y, 104, 146), hint, drag)
+	var k := await pick_tile("WHO GETS %s?" % Data.card(o).name.to_upper(), cand, Rect2(24 + i * 112, CARD_Y, 104, 176), hint, drag)
 	if k < 0 or not pay(o.price):
 		return
 	var s: Dictionary = cand[k]
