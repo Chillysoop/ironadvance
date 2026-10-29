@@ -1193,6 +1193,12 @@ func draw_targeting() -> void:
 			ty = 92.0
 		elif b.job_left() != "":
 			ty = 72.0
+		# a soldier up a tower has their name tag right here: the zone words drop under their feet
+		var pw := Art.text_width("PUSH ZONE LOCKED", 8)
+		var tg_y := u.y - u.h - 40
+		var tg_w := Art.text_width("%s LV%d" % [u.def.name, u.s.lvl], 8) / 2.0
+		if tg_y > ty - 22 and tg_y < ty + 26 and u.x - tg_w < pz and u.x + tg_w > pz - 6 - pw:
+			ty = u.y + 34
 		if lock == 0:
 			Art.text(self, "PUSH ZONE >>", Vector2(pz - 6, ty), 8, Color("ffb23e"), HORIZONTAL_ALIGNMENT_RIGHT)
 		else:
