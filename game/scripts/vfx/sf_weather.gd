@@ -459,7 +459,9 @@ func bake_smoke() -> Image:
 	return img
 
 func fog_draw(buf: Sf.Px, layer: int, bot: float) -> void:
-	## Banks 0 and 1 roll in front of the fight, bank 2 (the deepest) behind it.
+	## Banks 0 and 1 roll in front of the fight, bank 2 (the deepest) behind it. The front banks
+	## are thinned so soldiers and Jackals stay readable through them.
+	var tint := Color(1, 1, 1, 1.0 if layer == 0 else 0.45)
 	for i in fog_tex.size():
 		if (i == 2) != (layer == 0):
 			continue
@@ -472,7 +474,7 @@ func fog_draw(buf: Sf.Px, layer: int, bot: float) -> void:
 		var start := xa - fposmod(xa + drift, w)
 		var x := start
 		while x < x1 / Sf.PX:
-			RenderingServer.canvas_item_add_texture_rect(buf.ci, Rect2(x * Sf.PX, y * Sf.PX, w * Sf.PX, h * Sf.PX), f[0].get_rid())
+			RenderingServer.canvas_item_add_texture_rect(buf.ci, Rect2(x * Sf.PX, y * Sf.PX, w * Sf.PX, h * Sf.PX), f[0].get_rid(), false, tint)
 			x += w
 
 # --- V23 fireflies, falling leaves, sparkle -----------------------------------------------------
