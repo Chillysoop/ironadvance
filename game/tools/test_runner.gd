@@ -5067,6 +5067,8 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 				b.do_move(u, tx)
 				bot_stats.actions += 1
 				await until(func(): return res.done or not b.busy, 20000)
+				if res.done:
+					break  # the move ended the mission and Main freed the battle
 				# take a ladder when one is right ahead and the way on foot is blocked
 				var climbed := false
 				for L in b.T.ladders:
