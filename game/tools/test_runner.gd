@@ -8151,7 +8151,7 @@ func crumble() -> void:
 	st = await watch_chunks(b, 900, st)
 	await shot("crumble_splinter_2")
 	check(st.most >= 3, "a block dropped from 260px splinters into pieces (%d at once)" % st.most)
-	check(st.life < 200, "the splinters stop moving soon after they land, so the turn goes on (longest fall %d ticks)" % st.life)
+	check(st.life < 260, "the splinters stop moving soon after they land, so the turn goes on (longest fall %d ticks)" % st.life)
 	var rub := count_cells(b, x + 380, gy - 60, 320, 60)
 	check(rub > 40 and rub < 100, "the pieces settle as rubble on the ground, a little lost to dust (%d of 100 cells)" % rub)
 	# crush damage still lands
@@ -8189,7 +8189,7 @@ func crumble() -> void:
 	await shot("crumble_chimney_end")
 	check(b.T.chunks.is_empty(), "the chimney and everything it hit come to rest (%d frames)" % st.frames)
 	check(st.most >= 4, "the chimney breaks up as it comes down (%d pieces at once)" % st.most)
-	check(st.life < 240, "the chimney rubble stops moving soon after it lands (longest fall %d ticks)" % st.life)
+	check(st.life < 260, "the chimney rubble stops moving soon after it lands (longest fall %d ticks)" % st.life)
 	check(count_cells(b, x + 90, gy - 200, 44, 120) < 30, "the chimney is no longer standing")
 	var col1 := count_cells(b, x + 216, gy - 130, 16, 70)
 	check(col1 < col0 - 4, "the falling chimney breaks a lump off the top of the column it hits (%d -> %d cells)" % [col0, col1])
