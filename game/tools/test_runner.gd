@@ -873,6 +873,8 @@ func run() -> void:
 			await dcalls()
 		"pcalls":
 			await pcalls()
+		"newplayer5":
+			await newplayer5()
 		"polish1":
 			await polish1()
 		"polish2":
@@ -2060,6 +2062,57 @@ func newplayer4() -> void:
 			c.resume()
 	check(main.call_layer.visible and not get_tree().paused, "RESUME brings the tablet back")
 	await shot("newplayer4")
+	Run.meta = keep
+	Run.save_meta()
+
+func newplayer5() -> void:
+	## Fixes from the new-player playtest of the build after #130.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.meta["tips_off"] = true
+	Run.new_run()
+	Run.level = Run.make_level("desert", 0)
+	var b: Battle = main.start_battle(0, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	# a player who walks first never gets the MOVING page after their first card
+	b.coach_left = b.COACH.duplicate()
+	var u: Unit = b.sel
+	var sim: Dictionary = b.sim_walk(u, u.x + 60, u.move_left)
+	b.resolve(func(): await b._act_walk(u, sim.pts, sim.used))
+	await until(func(): return not b.busy)
+	check(not b.coach_left.has("card") and not b.coach_left.has("walk"), "walking first drops the MOVING page and queues NEXT AND END TURN")
+	# movement gains read in meters, like every other distance
+	b.texts.clear()
+	b.float_text(u, "+%s MOVE" % Data.meters(b.KILL_MOVE), Color.WHITE)
+	check(b.texts[-1].text.ends_with("m MOVE"), "move gains are in meters (%s)" % b.texts[-1].text)
+	# the boarding toast goes away when its driver goes down
+	var vp = null
+	for r in main.hud.get_children():
+		for c in r.get_children():
+			if "CHIP_H" in c:
+				vp = c
+	b.vpop = {"u": u, "mode": "in", "type": "walker", "added": [], "removed": [], "t0": b.t}
+	await frames_wait(4)
+	check(vp != null and vp.visible, "the boarding toast shows while its driver drives")
+	u.dead = true
+	await frames_wait(4)
+	check(vp != null and not vp.visible, "the boarding toast hides once its driver is down")
+	u.dead = false
+	b.vpop = {}
+	# a pad's countdown waits while someone stands on it
+	var wv = b.view
+	var pad := Vector2(u.x + 300, u.y)
+	check(wv != null and not wv.stood_on(pad), "an empty pad shows its countdown")
+	if wv != null:
+		var ox := u.x
+		u.x = pad.x
+		check(wv.stood_on(pad), "a soldier on a pad hides its countdown words")
+		u.x = ox
+		check(not wv.coach_up(), "no tip box open, so the walk ghost draws")
+	await shot("newplayer5")
+	# the brief's text sits on a dark plate over the dusk sun
+	main.show_brief()
+	await frames_wait(6)
+	await shot("newplayer5_brief")
 	Run.meta = keep
 	Run.save_meta()
 

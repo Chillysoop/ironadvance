@@ -324,6 +324,7 @@ func open_preview(id: String) -> void:
 				var out := Services.fuse(me, c)
 				if not out.is_empty():
 					sel = out
+					filt = ""  # the fused card rarely passes the FUSE filter, and it should be in view
 					Sfx.play("levelup")
 					say("Fused into %s %s." % [Data.tier_name(Data.tier_of(out)).capitalize(), Data.card(out).name])
 		"evolve":

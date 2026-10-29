@@ -333,8 +333,9 @@ func _draw() -> void:
 			Art.text(self, s.def.name, Vector2(x + 8, 378), 8, Color.WHITE if s.alive else Color("8a7a7a"))
 	if msg_t > 0 and not chooser is TilePicker:
 		var w := Art.text_width(msg, 16, true) + 20
-		# the barracks lore runs through y 316 under a second row of tiles, so its notes sit in the gap above the tiles
-		var my := 128.0 if mode == "barracks" else 316.0
+		# the barracks lore runs through y 316 under a second row of tiles, so its notes sit in the gap above the tiles;
+		# the Quartermaster's rarity row sits at 316, so its notes go in the open strip under the shelf
+		var my := 128.0 if mode == "barracks" else 486.0
 		draw_rect(Rect2(480 - w / 2, my, w, 20), Color(0.05, 0.035, 0.03, 0.9))
 		Art.text(self, msg, Vector2(480, my + 15), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
 

@@ -4250,7 +4250,7 @@ func kill(tg: Unit, src) -> void:
 			if state == "player" and not src.dead:
 				# D1 kill momentum: a kill opens up the next step
 				src.move_left += KILL_MOVE
-				float_text(src, "+%d MOVE" % KILL_MOVE, Color("b48cff"))
+				float_text(src, "+%s MOVE" % Data.meters(KILL_MOVE), Color("b48cff"))
 				if not act_once.has("moveup"):
 					act_once["moveup"] = true
 					bark(src, "MOVE UP!")
@@ -6203,7 +6203,7 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 		if vfx != null:
 			vfx.dash(u).stop_at = 0.15
 		u.move_left += c.move
-		float_text(u, "+%d MOVE" % c.move, Color("b48cff"))
+		float_text(u, "+%s MOVE" % Data.meters(c.move), Color("b48cff"))
 		Sfx.play("select")
 	if c.get("overwatch", false):
 		u.overwatch = c.get("ow", 1) * (2 if u.perk("sentinel") else 1)
@@ -6221,7 +6221,7 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 			if absf(s.x - u.x) <= c.range:
 				s.move_left += c.rally
 				gain_adr(s, 10)
-				float_text(s, "+%d MOVE" % c.rally, Color("b48cff"))
+				float_text(s, "+%s MOVE" % Data.meters(c.rally), Color("b48cff"))
 	if c.has("fortify"):
 		await fortify(u, c)
 	if c.has("nest"):
@@ -6426,6 +6426,7 @@ func undo_last_walk() -> void:
 func _act_walk(u: Unit, pts: Array, cost: float) -> void:
 	u.move_left = maxf(0, u.move_left - cost)
 	u.moved = true
+	coach_left.erase("card")  # the MOVING page explains walking, and they just walked
 	coach_hit("walk")
 	var x0 := u.x
 	await walk_along(u, pts)
