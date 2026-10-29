@@ -3025,6 +3025,7 @@ const TUT_THROW := 3
 const TUT_PUSH := 4
 const TUT_FIGHT := 5
 const TUT_DONE := 6
+const TUT_FLAG_X := 300.0     # D2: the walk step's flag; reaching it ends the step
 
 func tutorial() -> bool:
 	return mission.get("tutorial", false)
@@ -3039,7 +3040,7 @@ func tut_update() -> void:
 	var done := false
 	match tut_step:
 		TUT_MOVE:
-			done = squad_alive().any(func(u): return u.x >= 300)
+			done = squad_alive().any(func(u): return u.x >= TUT_FLAG_X - 6)
 		TUT_SHOOT:
 			done = tut_clear("target")
 		TUT_CRATE:
@@ -3052,7 +3053,9 @@ func tut_update() -> void:
 	if done:
 		tut_step += 1
 		Sfx.play("coin")
-	if tut_said < tut_step and tut_step < TUT_DONE:
+	# D1: the sergeant waits until the banner and any faction intro have closed
+	var quiet: bool = banners.is_empty() and (hud == null or (hud.coach_queue.is_empty() and hud.coach_box.get_child_count() == 0))
+	if quiet and tut_said < tut_step and tut_step < TUT_DONE:
 		tut_said = tut_step
 		var main = get_tree().current_scene
 		if main != null and main.has_method("call_in"):
@@ -3066,7 +3069,10 @@ func tut_update() -> void:
 			select_unit(fresh[0])
 	if need != "" and sel != null and not sel.dead:
 		if not sel.hand.any(func(c): return c.key == need):
-			sel.hand.append({"id": -2, "key": need, "tier": Data.base_tier(need), "temp": true})
+			# D3: first in the hand, so "press its number" is always 1
+			sel.hand.insert(0, {"id": -2, "key": need, "tier": Data.base_tier(need), "temp": true})
+			if card_idx >= 0:
+				card_idx += 1
 			ui_dirty = true
 
 func practice_round() -> void:
@@ -7059,13 +7065,16 @@ func supply_drop(title: String, for_unit) -> void:
 		var o0: Dictionary = opts[ch]
 		# a class card (Whistle, Vulcan) only goes to a soldier of that class
 		var cls: Array = Data.card_classes(o0.key) if o0.kind == "card" else []
-		var who_opts: Array = alive.filter(func(s): return cls.is_empty() or cls.has(s.def.key)).map(func(s): return o0.merged({"u": s}))
+		var who: Array = alive.filter(func(s): return cls.is_empty() or cls.has(s.def.key))
+		# D7: one tile per soldier (figure, name, HP, deck) instead of the same card four times
+		var who_opts: Array = who.map(func(s): return {"kind": "service", "title": s.def.cls.to_upper(), "name": s.def.name,
+			"text": "HP %d/%d. Level %d, %d cards in the deck." % [s.hp, s.max_hp, s.s.lvl, s.s.deck.size()], "soldier": s.s, "label": "GIVE TO " + s.def.name})
 		var thing: String = Data.item_name(o0.item) if o0.kind == "item" else Data.card(o0).name
 		var w := await ask("supply_who", "WHO GETS %s?" % thing.to_upper(), "It goes into that soldier's draw pile." if o0.kind == "card" else "They get the chance to equip it.", who_opts)
 		if w < 0:
 			ch = -1  # skipping the second pick passes on the drop, like skipping the first
 		else:
-			opts[ch] = who_opts[w]
+			opts[ch] = o0.merged({"u": who[w]})
 	if ch >= 0 and opts[ch].kind == "item":
 		await offer_item(opts[ch].u, opts[ch].item)
 	elif ch >= 0:

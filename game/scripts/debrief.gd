@@ -137,7 +137,7 @@ func _draw() -> void:
 		draw_texture_rect(hz, Rect2(x, 0, 32, 8), false)
 	if stage == "command":
 		Art.text(self, "COMMAND", Vector2(480, 62), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
-		Art.text(self, "Pick one order for the whole squad. It lasts the rest of the %s." % ("war" if Run.campaign() else "run"), Vector2(480, 88), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		Art.text(self, "Pick one order for the whole squad. It lasts the rest of the %s unless it says ONE USE." % ("war" if Run.campaign() else "run"), Vector2(480, 88), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 		if Run.cmd.size():
 			Art.text(self, "STANDING ORDERS: " + ", ".join(Run.cmd.map(func(c): return Data.COMMANDS.filter(func(x): return x.id == c)[0].name)), Vector2(480, 140), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 		return

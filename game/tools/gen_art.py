@@ -710,6 +710,16 @@ def sf_icons():
         out.alpha_composite(im, ((16 - im.width) // 2, (16 - im.height) // 2))
         out.save(dest)
 
+def sf_move_icons():
+    """D6: movement card icons from Sprite Fusion (tools/sf_src/icons_move): Hop, Sprint, Jump Pack
+    and Girder, which shared the boot and rocket icons. Cropped to their own size (up to 22 px);
+    the card draws them with the longer side at 32."""
+    for f in sorted(os.listdir(os.path.join(SF_SRC, 'icons_move'))):
+        if not f.endswith('.png'):
+            continue
+        im = sf_clean([Image.open(os.path.join(SF_SRC, 'icons_move', f)).convert('RGBA')], 10)[0]
+        im.crop(im.getbbox()).save(os.path.join(OUT, 'ui', 'ic_' + f))
+
 def sf_normals(meta):
     """G6: normal maps for the character sheets, made by Sprite Fusion from the sheets themselves
     (tools/sf_api.py normals, stored palette-quantised in tools/sf_src/normals). A map is only copied
@@ -2295,6 +2305,7 @@ def main():
     decor()
     ui()
     sf_icons()
+    sf_move_icons()
     sf_normals(meta)
     with open(os.path.join(OUT, 'sprites', 'meta.json'), 'w') as f:
         json.dump(meta, f, indent=1)

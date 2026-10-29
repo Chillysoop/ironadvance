@@ -42,7 +42,8 @@ func flash(x: float, y: float, r: float, col: Color, life := 18) -> void:
 func _process(_d: float) -> void:
 	if b.T == null:
 		return
-	shade.color = Color(0.74, 0.76, 0.9) if b.theme == "night" else Color.WHITE
+	# D9: a lighter night floor so ice edges and far-shore Jackals still read; the lights do the drama
+	shade.color = Color(0.84, 0.86, 0.96) if b.theme == "night" else Color.WHITE
 	if last_t < 0:
 		last_t = b.t
 	var steps := b.t - last_t

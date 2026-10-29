@@ -180,7 +180,8 @@ func refresh() -> void:
 			c.queue_free()
 		cards.clear()
 		var n := want.size()
-		var cw := 100.0
+		# D5: past 8 cards the hand narrows so fewer names get cut under the next card
+		var cw := 100.0 if n <= 8 else 90.0
 		var gap := 6.0
 		# keep clear of the energy panel on the left and the belt/buttons on the right;
 		# a big hand overlaps its cards instead of covering the panel
@@ -225,7 +226,8 @@ func refresh() -> void:
 func _process(_d: float) -> void:
 	if b == null:
 		return
-	if coach_queue.size() and coach_box.get_child_count() == 0 and b.state == "player" and not b.busy and not modal.visible and not deck_open:
+	# D1: one box at a time, so the coach waits for the mission banner to clear
+	if coach_queue.size() and coach_box.get_child_count() == 0 and b.state == "player" and not b.busy and not modal.visible and not deck_open and b.banners.is_empty():
 		var cb := Coach.new()
 		cb.hud = self
 		coach_box.add_child(cb)

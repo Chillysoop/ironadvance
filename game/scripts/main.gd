@@ -735,7 +735,7 @@ class Screen extends Control:
 				y += 16
 			y = maxf(y + 6, 272)
 			Art.text(self, "GOOD FOR " + Data.STYLES[bm.favor], Vector2(cx, y), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
-			Art.text(self, "ROUGH ON " + Data.STYLES[bm.rough], Vector2(cx, y + 14), 8, Color("ff7a5a"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "ROUGH ON " + Data.STYLES[bm.rough] + (": " + bm.why if bm.has("why") else ""), Vector2(cx, y + 14), 8, Color("ff7a5a"), HORIZONTAL_ALIGNMENT_CENTER)
 			if Run.hq("gate") >= 3 and Run.dial_levels.has(id):
 				# Gate Control 3: the address shows what is on the other side
 				var lv: Dictionary = Run.dial_levels[id]
