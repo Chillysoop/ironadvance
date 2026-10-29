@@ -16,6 +16,7 @@ const Services := preload("res://scripts/services.gd")
 const HubUI := preload("res://scripts/hub_ui.gd")
 const HudScript := preload("res://scripts/hud.gd")
 const ArmoryScript := preload("res://scripts/armory.gd")
+const WarRoomScriptRef := preload("res://scripts/war_room.gd")
 
 var out_dir := "user://shots"
 var scenario := ""
@@ -847,6 +848,10 @@ func run() -> void:
 			await aliens8()
 		"playtest":
 			await playtest()
+		"campaignplay":
+			await campaignplay()
+		"campfix":
+			await campfix()
 		"straggler":
 			await straggler()
 		"hoverwedge":
@@ -5316,6 +5321,163 @@ func playtest() -> void:
 				for x in Run.soldiers:
 					if x.alive:
 						x.hp = Run.eff_max_hp(x)
+
+func campaignplay() -> void:
+	## Autoplays a whole campaign through the real screens: War Room, brief, the bot's op, the
+	## result, HQ news and pick queue, salvage spent on the upgrade board, act by act to the ending.
+	## A sector the bot loses three times is booked as taken so the war keeps moving ([forced]).
+	## One [cp] JSON line per op. --seed=N
+	playtest_debug = true
+	seed(seed_arg)
+	var slot := 5 + seed_arg
+	Run.delete_campaign(slot)
+	var keep := Run.meta.duplicate(true)
+	Run.new_campaign(slot)
+	main.show_hq(false)
+	await frames_wait(20)
+	await shot("cp_hq_start")
+	var losses := {}
+	var shots := {}
+	var ms_war := Time.get_ticks_msec()
+	for n in 80:
+		if Run.camp.get("done", false):
+			break
+		main.show_war_room()
+		await frames_wait(8)
+		var A: Dictionary = Run.act()
+		if not shots.has("room%d" % int(Run.camp.act)):
+			shots["room%d" % int(Run.camp.act)] = true
+			await shot("cp_room_act%d" % int(Run.camp.act))
+		var open: Array = A.sectors.filter(func(sc): return Run.sector_open(sc))
+		var bon: Array = A.sectors.filter(func(sc): return Run.sector_held(sc.id) and Run.bonus_at(sc) != "")
+		var sc: Dictionary
+		var forts: Array = open.filter(func(x): return x.get("stronghold", false))
+		if forts.size():
+			sc = forts[0]
+		elif bon.size() and randf() < 0.5:
+			sc = bon[0]
+		elif open.size():
+			sc = open[randi() % open.size()]
+		else:
+			print("[cp] stuck: nothing open in act %d" % int(Run.camp.act))
+			break
+		var key := Run.sec_key(sc.id)
+		if int(losses.get(key, 0)) >= 3 and Run.bonus_at(sc) == "":
+			print("[forced] %s" % key)
+			Run.start_op(sc)
+			var res := Run.op_over(true)
+			Run.after_op({"won": true, "op": res})
+			losses.erase(key)
+			continue
+		main.screen.attack.emit(sc, false)
+		await frames_wait(6)
+		var lv: Dictionary = Run.current_mission()
+		var before := {"scrip": Run.scrip, "sal": int(Run.meta.salvage), "bio": int(Run.meta.bio), "co": Run.company().size()}
+		pt_tag = "cp%d_op%d" % [seed_arg, n]
+		var ms0 := Time.get_ticks_msec()
+		var ok := await bot(int(A.tier), 70, false, lv)
+		await frames_wait(6)
+		var st: Dictionary = Run.history.back() if Run.history.size() else {}
+		if not shots.has("res%d" % int(Run.camp.act)):
+			shots["res%d" % int(Run.camp.act)] = true
+			await shot("cp_result_act%d" % int(Run.camp.act))
+		if not ok:
+			losses[key] = int(losses.get(key, 0)) + 1
+		main.campaign_home(st)
+		await frames_wait(10)
+		if main.screen is WarRoomScriptRef.PickQueue:
+			if not shots.has("picks"):
+				shots["picks"] = true
+				await shot("cp_picks")
+			while main.screen is WarRoomScriptRef.PickQueue and Run.pending_picks().size():
+				main.screen.pick(randi() % main.screen.opts.size())
+				await frames_wait(2)
+			await frames_wait(4)
+		# spend salvage on the upgrade board, cheapest first
+		var bought := []
+		for _i in 6:
+			var bs: Array = Run.hq_buildings().filter(func(B): return Run.hq(B.id) < 3 and int(Run.meta.salvage) >= Data.HQ_COST[Run.hq(B.id)])
+			if bs.is_empty():
+				break
+			bs.sort_custom(func(a, b): return Run.hq(a.id) < Run.hq(b.id))
+			Run.hq_upgrade(bs[0].id)
+			bought.append(bs[0].id)
+		var row := {"n": n, "act": int(Run.camp.act), "sec": sc.id, "job": lv.get("job", ""), "bonus": lv.get("bonus", ""), "won": ok,
+			"rounds": bot_stats.get("rounds", 0), "kills": bot_stats.get("kills", 0), "downs": bot_stats.get("downs", 0), "fallen": bot_stats.get("fallen", []),
+			"secs": (Time.get_ticks_msec() - ms0) / 1000.0, "scrip": [before.scrip, Run.scrip], "sal": [before.sal, int(Run.meta.salvage)], "bio": [before.bio, int(Run.meta.bio)],
+			"co": [before.co, Run.company().size()], "bought": bought, "op": st.get("op", {}), "news": main.screen.get("news") if main.screen.get("news") != null else [],
+			"ranks": Run.company().map(func(s): return Run.rank(s)), "lv": Run.company().map(func(s): return s.lvl), "decks": Run.soldiers.map(func(s): return s.deck.size()),
+			"stash": Run.stash.size(), "mem": Run.meta.memorial.size()}
+		print("[cp] ", JSON.stringify(row))
+		if not shots.has("home%d" % int(Run.camp.act)):
+			shots["home%d" % int(Run.camp.act)] = true
+			await frames_wait(20)
+			await shot("cp_home_act%d" % int(Run.camp.act))
+	print("[cp] war over done=%s ops=%d mins=%.1f" % [Run.camp.get("done", false), int(Run.camp.ops), (Time.get_ticks_msec() - ms_war) / 60000.0])
+	if Run.camp.get("done", false):
+		main.show_ending()
+		await frames_wait(20)
+		await shot("cp_ending")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(slot)
+	Run.meta = keep
+	Run.save_meta()
+
+func campfix() -> void:
+	## Bugs from the 2026-10-29 campaign autoplay: the Slug rolling into the water froze the enemy
+	## phase, and a campaign paradrop could put a second soldier of one class in the squad.
+	var keep := Run.meta.duplicate(true)
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	b.call_slug(b.squad()[0])
+	var sl: Unit = b.units.back()
+	await until(func(): return not sl.air, 600)
+	var done := {"v": false}
+	(func(): await b.slug_act(sl); done.v = true).call()
+	await frames_wait(2)
+	sl.y = Battle.WATER_Y + 3  # off the lip and into the water mid-rush
+	var ok := await until(func(): return done.v, 600)
+	check(ok and sl.sunk, "a Slug that rolls into the water ends its attack (sunk %s)" % sl.sunk)
+	main.show_title()
+	await frames_wait(5)
+	# campaign paradrop: the bench only sends a class the squad is missing
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	var twin: Dictionary = Run.soldiers[0].duplicate(true)
+	twin.def = twin.def.duplicate()
+	twin.def.name = "TWIN"
+	Run.roster.append(twin)
+	b = main.start_battle(0)
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var sq: Array = b.squad()
+	var other: Unit = sq.filter(func(u): return u.s.key != twin.key)[0]
+	b.kill(other, null)
+	await until(func(): return other.dead, 120)
+	await b.call_reinforcements(b.squad_alive()[0])
+	var keys: Array = Run.soldiers.map(func(x): return x.key)
+	check(not Run.soldiers.has(twin), "no bench soldier of a class already in the squad jumps in (%s)" % [keys])
+	var same: Unit = b.squad().filter(func(u): return u.s.key == twin.key and not u.gone)[0]
+	b.kill(same, null)
+	await until(func(): return same.dead, 120)
+	await b.call_reinforcements(b.squad_alive()[0])
+	keys = Run.soldiers.map(func(x): return x.key)
+	check(Run.soldiers.has(twin), "the bench soldier jumps in for a downed soldier of their own class")
+	var uniq := {}
+	for k in keys:
+		uniq[k] = true
+	check(uniq.size() == keys.size(), "the squad is still one of each class (%s)" % [keys])
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
 
 func warmap() -> void:
 	## Campaign step 1: save slots, a separate base, the War Room, sector income and perks, the
