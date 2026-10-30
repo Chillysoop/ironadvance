@@ -2580,7 +2580,8 @@ func setup_biome() -> void:
 
 func biome_round() -> void:
 	## End of every enemy phase: the biome's clockwork moves one tick, always on a count you can see.
-	if rules.get("lava", 0.0) > 0 and lava_k < LAVA_MAX:
+	# V1: the lava holds still for the first rounds on a screen, the same stall clock as the alert
+	if rules.get("lava", 0.0) > 0 and lava_k < LAVA_MAX and rounds_since_scroll > stall_limit():
 		lava_k += 1
 		float_at(cam_x + W / 2.0, lava_y() - 16, "THE LAVA RISES", Color("ff7a3d"), true)
 		Sfx.play("splash")
@@ -2645,7 +2646,11 @@ func cart_ram(c: Unit) -> void:
 
 # --- M5 Volcano
 func lava_y() -> float:
-	return WATER_Y - lava_k * float(rules.get("lava", 10.0))
+	return WATER_Y - lava_k * lava_step()
+
+func lava_step() -> float:
+	## V2: half steps on level 2 or earlier, so the first volcano a squad meets reaches half as high.
+	return float(rules.get("lava", 10.0)) * (0.5 if mission_idx <= 1 and not mission.get("finale", false) and not Run.campaign() else 1.0)
 
 func lava_eat() -> void:
 	## The lava burns away wood, ice and rubber below its line, and scorches everything else.
@@ -6919,8 +6924,8 @@ func scroll_to(tx: float, reason: String, who = null) -> void:
 	if tx <= cam_x + 4:
 		return
 	cam_tx = tx
+	lava_drain()  # V1: any step forward drains the lava, as the volcano's brief says
 	if reason == "push":
-		lava_drain()
 		banner("AGGRESSIVE PUSH!", Color("ffb23e"), "ALERT -1  +1 ENERGY")
 		score += 250
 		alert = maxi(0, alert - 1)
