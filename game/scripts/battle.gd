@@ -6730,11 +6730,22 @@ func detour_text(id: String) -> String:
 		return t % Data.POW_RESCUE_ROUNDS
 	if id == "salvage":
 		return t % Data.WRECK_SALVAGE
+	if id == "signal":
+		var sg: Dictionary = Data.SIGNALS[signal_kind()]
+		return "%s: %s" % [sg.name, sg.text]
 	return t
 
 func detour_pays(id: String) -> String:
 	var p: String = Data.DETOURS[id].pays
+	if id == "signal":
+		var sp: String = Data.SIGNALS[signal_kind()].pays
+		return sp % [Data.SIGNAL_BIO, Data.SIGNAL_SALVAGE] if signal_kind() == "gate" else sp
 	return p % Data.COLORS_SALVAGE if id == "colors" else p
+
+func signal_kind() -> String:
+	## Which Strange Signal this level holds (rolled with the level, shown on the card).
+	var k: String = detour.get("ev", mission.get("signal", "gate"))
+	return k if Data.SIGNALS.has(k) else "gate"
 
 func colors_post() -> float:
 	## O1: the green post the stolen colors go back to, at the near end of the clearing (never off screen).
@@ -6746,8 +6757,47 @@ func pick_detour() -> void:
 	opts.append({"kind": "service", "title": "NO DETOUR", "icon": "ic_boot", "name": "PRESS ON", "text": "Leave the clearing empty and keep moving.", "id": ""})
 	var ch := await ask("detour", "PICK A DETOUR", "The clearing past camp has room for one side job. Each pays in a different currency.", opts)
 	var id: String = opts[ch].id if ch >= 0 else ""  # skipping the pick means pressing on
-	if id != "":
+	if id == "tent":
+		await field_tent()
+	elif id != "":
 		start_detour(id)
+
+func field_tent() -> void:
+	## The Doc's field tent: no fight. Pick a soldier, then one of three surgeries for them, free.
+	detour = {"id": "tent", "x0": T.yard[0], "x1": T.yard[1], "done": true, "left": 0, "scav": 0, "mod": ""}
+	stats["detour"] = "tent"
+	var D: Dictionary = Data.DETOURS.tent
+	banner(D.name, Color("9df25c"), "PAYS: " + D.pays)
+	var who: Array = squad_alive().filter(func(u): return u.s.has("key") and not u.s.get("guest", false))
+	if who.is_empty():
+		return
+	var who_opts: Array = who.map(func(u): return {"kind": "service", "title": u.def.cls.to_upper(), "name": u.def.name,
+		"text": "HP %d/%d. %d surgeries so far." % [u.hp, u.max_hp, Run.implants_of(u.s).size() + u.s.get("field_ops", []).size()], "soldier": u.s})
+	var w := await ask("supply_who", "WHO GOES UNDER THE KNIFE?", "The Doc operates for free. It lasts as long as they do.", who_opts)
+	if w < 0:
+		return
+	var u: Unit = who[w]
+	var pool: Array = Data.SURGERIES.keys().filter(func(k): return int(Data.SURGERIES[k].get("rank", 1)) <= 1 and not Run.implanted(u.s, k))
+	pool.shuffle()
+	pool = pool.slice(0, 3)
+	if pool.is_empty():
+		return
+	var opts: Array = pool.map(func(k): return {"kind": "service", "title": "FIELD SURGERY", "icon": "ic_heart", "name": Data.SURGERIES[k].name, "text": Data.SURGERIES[k].up, "id": k})
+	var ch := await ask("tent", "%s: FIELD SURGERY" % u.def.name, "Pick one. It stays with %s until they fall." % u.def.name, opts, u)
+	if ch < 0:
+		return
+	var sid: String = opts[ch].id
+	var hp0 := u.max_hp
+	Run.field_op(u.s, sid)
+	u.gb = Run.gear_bonus(u.s)
+	u.max_hp = Run.eff_max_hp(u.s)
+	u.hp = mini(u.max_hp, u.hp + maxi(0, u.max_hp - hp0))
+	u.dodge = u.def.dodge + u.s.bonus.dodge
+	float_text(u, Data.SURGERIES[sid].name, Color("9df25c"), true)
+	Sfx.play("power")
+	log_msg("The Doc's field tent: %s gets the %s. %s" % [u.def.name, Data.SURGERIES[sid].name.capitalize(), Data.SURGERIES[sid].up])
+	Run.save_meta()
+	ui_dirty = true
 
 func start_detour(id: String) -> void:
 	var x0: float = T.yard[0]
@@ -6784,8 +6834,31 @@ func start_detour(id: String) -> void:
 				detour_enemy(sp[0], x0 + sp[1], "")
 			var cu := mk_unit(); cu.team = "neutral"; cu.kind = "crate"; cu.x = x0 + 660; cu.y = T.stand_y(cu.x, 0); cu.w = 16; cu.h = 14; cu.hp = 1; cu.max_hp = 1
 			units.append(cu)
+		"signal":
+			detour.ev = signal_kind()
+			if detour.ev == "tank":
+				var r: Unit = null
+				for dx in [420, 360, 480, 300, 540]:
+					r = park_ride(x0 + dx, "tank")
+					if r != null:
+						break
+				if r == null:
+					detour.ev = "gate"  # nowhere solid to park it: the gate misfires instead
+				else:
+					r.detour = true
+					detour_enemy("grunt", r.x - 40, "")
+					detour_enemy("grunt", r.x + 50, "")
+			if detour.ev == "deserter":
+				var p := mk_unit(); p.team = "neutral"; p.kind = "pow"; p.x = x0 + 640; p.y = T.stand_y(p.x, 0); p.face = -1
+				p.pow_name = "THE DESERTER"
+				p.detour = true
+				units.append(p)
+				detour_enemy("grunt", x0 + 420, "")
+			if detour.ev == "gate":
+				for dx in [380, 470, 560]:
+					detour_enemy("skitter", x0 + dx, "")
 	var D: Dictionary = Data.DETOURS[id]
-	banner(D.name, Color("ffb23e"), "PAYS: " + detour_pays(id))
+	banner(Data.SIGNALS[detour.ev].name if id == "signal" else D.name, Color("ffb23e"), "PAYS: " + detour_pays(id))
 	log_msg("Detour: %s %s" % [D.name.capitalize(), detour_text(id)])
 	stats["detour"] = id
 	activate_enemies()
@@ -6824,6 +6897,17 @@ func check_detour() -> void:
 		"salvage":
 			if units.any(func(w): return w.kind == "wreck" and not w.stripped):
 				return
+		"signal":
+			match detour.ev:
+				"tank":
+					if units.any(func(r): return r.detour and r.kind == "ride" and not r.gone):
+						return
+				"deserter":
+					if units.any(func(p): return p.detour and p.kind == "pow" and not p.freed):
+						return
+				_:
+					if units.any(func(e): return e.detour and e.team == "enemy" and not e.dead):
+						return
 		"colors":
 			var post := colors_post()
 			if not squad_alive().any(func(s): return s.carry == "colors" and absf(s.x - post) < 34):
@@ -6875,6 +6959,24 @@ func check_detour() -> void:
 			stats["salvage"] = int(stats.get("salvage", 0)) + Data.COLORS_SALVAGE
 			banner("COLORS CAPTURED!", Color("62d26f"), "%d SALVAGE FOR HQ" % Data.COLORS_SALVAGE)
 			log_msg("Their battle flag is ours: %d salvage for HQ." % Data.COLORS_SALVAGE)
+		"signal":
+			match detour.ev:
+				"tank":
+					banner("TANK DUG OUT!", Color("62d26f"), "IT'S YOURS TO DRIVE")
+					log_msg("The buried tank is ours.")
+				"deserter":
+					var p: Unit = units.filter(func(p): return p.detour and p.kind == "pow")[0]
+					var lu = squad_alive().reduce(func(a, s): return s if a == null or absf(s.x - p.x) < absf(a.x - p.x) else a, null)
+					banner("THE DESERTER PAYS UP", Color("62d26f"), "A LEGENDARY ITEM")
+					drop_loot(p.x, T.ground_at(p.x) - 40, {"type": "item", "item": Run.roll_item(Data.TIER_MAX)})
+					log_msg("The deserter hands over his best kit%s and slips away." % (" to %s" % lu.def.name if lu != null else ""))
+				_:
+					Run.meta.bio = int(Run.meta.get("bio", 0)) + Data.SIGNAL_BIO
+					Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.SIGNAL_SALVAGE
+					stats["bio"] = int(stats.get("bio", 0)) + Data.SIGNAL_BIO
+					stats["salvage"] = int(stats.get("salvage", 0)) + Data.SIGNAL_SALVAGE
+					banner("THE GATE GOES QUIET", Color("62d26f"), "%d BIO-PARTS + %d SALVAGE" % [Data.SIGNAL_BIO, Data.SIGNAL_SALVAGE])
+					log_msg("Picking through what came out of the gate: %d Bio-parts and %d salvage for HQ." % [Data.SIGNAL_BIO, Data.SIGNAL_SALVAGE])
 		"cache":
 			banner("CACHE SECURED!", Color("62d26f"), "+80 SCRIP AND A CARD")
 			give_scrip(80, cx, T.ground_at(cx) - 40, "L6748")
@@ -7334,6 +7436,8 @@ func post_action() -> void:
 		await check_push(front[0])
 	while pow_queue.size():
 		var q: Dictionary = pow_queue.pop_front()
+		if q.pow.detour and q.pow.pow_name == "THE DESERTER":
+			continue  # the Strange Signal deserter pays out in check_detour
 		if q.pow.fl.get("defector", false):
 			sign_defector(q.pow)
 			give_xp(q.u, 8)

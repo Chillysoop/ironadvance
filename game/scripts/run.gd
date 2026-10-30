@@ -209,10 +209,12 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	for i in range(bpool.size() - 1, 0, -1):
 		var j := er.randi() % (i + 1)
 		var t = bpool[i]; bpool[i] = bpool[j]; bpool[j] = t
+	# the Strange Signal detour: which one it is shows on its card (no Jackals in the Hive, so only the gate there)
+	var signal_id: String = "gate" if bm.rules.get("aliens", false) else Data.SIGNALS.keys()[er.randi() % Data.SIGNALS.size()]
 	if tier == 0 and first_run and daily == "" and not campaign():
 		event = ""  # P8: the first fight is the level, the POWs and the Boar; both start from level 2
 		bpool = []
-	return {"event": event, "bounties": bpool.slice(0, 3), "name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "breach": breach, "encounter": enc, "boss": boss, "walker": walker, "miniboss": miniboss,
+	return {"event": event, "bounties": bpool.slice(0, 3), "name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "signal": signal_id, "breach": breach, "encounter": enc, "boss": boss, "walker": walker, "miniboss": miniboss,
 		"segments": ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")],
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
 
@@ -630,7 +632,14 @@ func implants_of(s: Dictionary) -> Array:
 	return implants(s.key) if s.has("key") else []
 
 func implanted(s, id: String) -> bool:
-	return s is Dictionary and s.has("key") and implants_of(s).has(id)
+	return s is Dictionary and s.has("key") and (implants_of(s).has(id) or s.get("field_ops", []).has(id))
+
+func field_op(s: Dictionary, id: String) -> void:
+	## The Doc's field tent: a free surgery on this one soldier. It isn't a Lab slot, and it goes with them when they fall.
+	if not s.has("field_ops"):
+		s["field_ops"] = []
+	if not s.field_ops.has(id):
+		s.field_ops.append(id)
 
 func surgery_block(id: String, who) -> String:
 	## Why this surgery can't go on this class (or, in the campaign, this soldier) right now, or "" when it can.
@@ -640,6 +649,8 @@ func surgery_block(id: String, who) -> String:
 		return "BUILD THE DOC'S LAB"
 	if S.cls != "" and S.cls != cls:
 		return "WRONG CLASS"
+	if int(S.get("rank", 1)) > hq("doc"):
+		return "DOC'S LAB RANK %d" % int(S.rank)
 	if (implants_of(who) if who is Dictionary else implants(cls)).has(id):
 		return "INSTALLED"
 	if int(meta.get("bio", 0)) < Data.SURGERY_BIO or int(meta.get("salvage", 0)) < Data.SURGERY_SALVAGE:
@@ -1187,7 +1198,7 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 		for k in os:
 			out[k] = out.get(k, 0) + os[k]
 	if s.has("key"):
-		for id in implants_of(s):
+		for id in implants_of(s) + s.get("field_ops", []).filter(func(f): return not implants_of(s).has(f)):
 			var st: Dictionary = Data.SURGERIES[id].get("stats", {})
 			for k in st:
 				out[k] = out.get(k, 0) + st[k]

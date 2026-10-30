@@ -662,10 +662,13 @@ func draw_left(me: Dictionary) -> void:
 	head("IMPLANTS", Vector2(x, y))
 	y += 14
 	var imp := Run.implants_of(me)
-	if imp.is_empty():
+	var field: Array = me.get("field_ops", []).filter(func(f): return not imp.has(f))
+	if imp.is_empty() and field.is_empty():
 		y = para("None. The Doc's Lab installs them.", Vector2(x, y), LEFT.size.x - 20, Color("6c7480"), 2)
 	for id in imp:
 		y = para("%s: %s" % [Data.SURGERIES[id].name.capitalize(), Data.SURGERIES[id].up], Vector2(x, y), LEFT.size.x - 20, Color("9df25c"), 2)
+	for id in field:
+		y = para("%s (field tent): %s" % [Data.SURGERIES[id].name.capitalize(), Data.SURGERIES[id].up], Vector2(x, y), LEFT.size.x - 20, Color("9df25c"), 2)
 
 func draw_right(me: Dictionary) -> void:
 	panel(Rect2(RIGHT.position, RIGHT.size - Vector2(0, 46)))

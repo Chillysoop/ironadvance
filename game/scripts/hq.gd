@@ -193,8 +193,10 @@ func draw_lab_panel() -> void:
 		Art.text(self, "%s KILLS %d / %d   COST %d BIO + %d SALVAGE" % [Data.ETYPES[T.alien].name.to_upper(), mini(n, need), need, Data.TECH_BIO, Data.TECH_SALVAGE], Vector2(bx + bw + 12, r.position.y + 63), 8, Color("9aa2ae"))
 
 func doc_cell(i: int) -> Rect2:
-	## Surgery i on the lab board: two columns of cards.
-	return Rect2(32 + (i % 2) * 452, 96 + (i / 2) * 56, 444, 50)
+	## Surgery i on the lab board: two columns of cards, packed tighter once the rows pass 7.
+	var rows: int = (Data.SURGERIES.size() + 1) / 2
+	var pitch: int = mini(56, 392 / rows)
+	return Rect2(32 + (i % 2) * 452, 96 + (i / 2) * pitch, 444, pitch - 4)
 
 func doc_targets() -> Array:
 	## Who the Doc operates on: the four classes in a run, the deployed squad in the campaign (B3).
@@ -222,7 +224,7 @@ func open_doc() -> void:
 			bt.small = true
 			bt.size = Vector2(58, 20)
 			var cols := 2 if who.size() <= 4 else 3  # a fifth soldier gets a third column, not a row off the cell
-			bt.position = Vector2(cr.end.x - 62 * cols + (j % cols) * 62, cr.position.y + 4 + (j / cols) * 22)
+			bt.position = Vector2(cr.end.x - 62 * cols + (j % cols) * 62, cr.position.y + 3 + (j / cols) * 21)
 			bt.text = (cls.def.name if cls is Dictionary else Run.class_def(cls).name) + (" OK" if why == "INSTALLED" else "")
 			bt.color = Color("9df25c")
 			bt.disabled = why != ""
@@ -820,7 +822,8 @@ func draw_doc_panel() -> void:
 		draw_rect(cr, Color("9df25c") if on.size() else Color("4a5a4a"), false, 1)
 		# with a third column of soldier buttons the name drops to the small font to stay clear of them
 		Art.text(self, S.name, Vector2(cr.position.x + 10, cr.position.y + 20), 16 if doc_targets().size() <= 4 else 8, Color("ffd23a") if r >= 1 else Color("8a8a6a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
-		Art.text(self, "+ " + S.up, Vector2(cr.position.x + 10, cr.position.y + 38), 8, Color("62d26f") if r >= 1 else Color("6a7a6a"))
+		var locked: bool = int(S.get("rank", 1)) > r
+		Art.text(self, ("RANK %d LAB: " % int(S.rank) if locked else "+ ") + S.up, Vector2(cr.position.x + 10, cr.position.y + 38), 8, Color("6a7a6a") if locked or r < 1 else Color("62d26f"))
 
 # ---------------------------------------------------------------- C3: the campaign's night camp
 func draw_searchlights() -> void:

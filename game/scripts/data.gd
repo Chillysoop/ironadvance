@@ -1119,7 +1119,17 @@ const DETOURS := {
 	"salvage": {"name": "SALVAGE YARD", "pays": "SALVAGE FOR HQ", "icon": "ic_bolt", "text": "Walk over wrecks to strip them, %d salvage each. Scavengers drift in every round. Leave whenever you like."},
 	"cache": {"name": "SUPPLY CACHE", "pays": "SCRIP + A CARD PICK", "icon": "ic_coin", "text": "An easy fight: three Jackals sitting on a supply cache."},
 	"colors": {"name": "STEAL THE COLORS", "pays": "%d SALVAGE FOR HQ", "icon": "ic_star", "text": "Their battle flag flies at the far end of the clearing. Grab it and carry it back to the green post. The carrier is slow, can't jet, and every Jackal goes for them."},
+	"tent": {"name": "DOC'S FIELD TENT", "pays": "A FREE FIELD SURGERY", "icon": "ic_heart", "text": "No fight. The Doc pitches a tent in the clearing and operates on one soldier for free. It lasts as long as they do."},
+	"signal": {"name": "STRANGE SIGNAL", "pays": "%s", "icon": "ic_radio", "text": "%s"},
 }
+# The Strange Signal detour: each level rolls which one it is, and the detour card says so before you pick.
+const SIGNALS := {
+	"tank": {"name": "BURIED TANK", "pays": "A FREE TANK", "text": "A Jackal tank lies half buried in the clearing with two guards dozing on it. Walk onto it and it's yours."},
+	"deserter": {"name": "A DESERTER'S OFFER", "pays": "A LEGENDARY ITEM", "text": "A Jackal waves a white flag at the far end of the clearing. Reach him and he trades his best kit for a way out."},
+	"gate": {"name": "MISFIRING GATE", "pays": "%d BIO-PARTS + %d SALVAGE", "text": "A captured gate sputters in the clearing and spits out a Skitter pack. Put them down and pick through what came through."},
+}
+const SIGNAL_BIO := 3
+const SIGNAL_SALVAGE := 10
 const COLORS_SALVAGE := 15
 const POW_RESCUE_ROUNDS := 5
 
@@ -1129,8 +1139,8 @@ const HQ_BUILDINGS := [
 	{"id": "gate", "name": "GATE CONTROL", "ranks": ["The dial shows 3 biomes instead of 2.", "Reroll the dial once per HQ visit.", "Biome cards list their stretches and the boss's armor."]},
 	{"id": "barracks", "name": "BARRACKS", "ranks": ["Choose from 3 recruits instead of 2.", "Recruits arrive at level 2.", "Recruits cost half."]},
 	{"id": "armory", "name": "ARMORY", "ranks": ["+1 Luck at the start of every run.", "Quartermaster prices are 10% lower.", "Elite outposts pay Legendary gear."]},
-	{"id": "mess", "name": "MESS HALL", "ranks": ["Camps heal 5 more HP.", "Start each run with 40 more scrip.", "Camps offer all 4 detours."]},
-	{"id": "doc", "name": "DOC'S LAB", "ranks": ["Opens surgery: 1 implant slot per class.", "2 implant slots per class.", "3 implant slots per class."]},
+	{"id": "mess", "name": "MESS HALL", "ranks": ["Camps heal 5 more HP.", "Start each run with 40 more scrip.", "Camps offer 4 detours instead of 3."]},
+	{"id": "doc", "name": "DOC'S LAB", "ranks": ["Opens surgery: 1 implant slot per class.", "2 implant slots per class.", "3 implant slots per class, and the Doc's strangest surgeries."]},
 	{"id": "motor", "name": "MOTOR POOL", "ranks": ["The SV-001 Slug is on call once per level.", "The Slug stays for 2 rounds.", "The Slug is on call twice per level."]},
 ]
 # B4: campaign-only buildings, each opening with an act (index into ACTS)
@@ -1162,6 +1172,9 @@ const SURGERIES := {
 	"boom": {"name": "BLAST AMPLIFIER", "cls": "", "up": "Your explosions are 20% bigger.", "stats": {"blast": 0.2}},
 	"instinct": {"name": "KILLER INSTINCT", "cls": "", "up": "Kills give 10 more adrenaline.", "stats": {"kill_adr": 10}},
 	"medchip": {"name": "MED CHIP", "cls": "", "up": "Your heals restore 3 more HP.", "stats": {"heal": 3}},
+	# the Doc's strangest work: only once the Lab is rank 3, and each one stacks two upgrades
+	"mantis": {"name": "MANTIS LENSES", "cls": "", "rank": 3, "up": "+3 aimed shot damage and +6 dodge.", "stats": {"aim_dmg": 3, "dodge": 6}},
+	"vharrgland": {"name": "VHARR GLAND", "cls": "", "rank": 3, "up": "+8 max HP and heal 3 HP every turn.", "stats": {"hp": 8, "regen": 3}},
 }
 const SURGERY_BIO := 2
 const SURGERY_SALVAGE := 5
@@ -1658,7 +1671,7 @@ const BONUS_SALVAGE := 6
 # a perk sector's perk lasts the whole war from rank 1 and gets stronger at ranks 2 and 3.
 const FORTIFY_COST := [150, 300, 500]
 const FORTIFY_PERK := {
-	"aid": ["Lasts the whole war.", "Camps also offer all 4 detours.", "Also pays +1 Salvage per op."],
+	"aid": ["Lasts the whole war.", "Camps also offer 4 detours.", "Also pays +1 Salvage per op."],
 	"lookout": ["Lasts the whole war.", "+2 Luck on every op.", "Also pays +1 Salvage per op."],
 	"fuel": ["Lasts the whole war.", "The Slug stays for 2 rounds.", "Also pays +1 Salvage per op."],
 	"supply": ["Lasts the whole war.", "Elite outposts pay Legendary gear.", "Also pays +1 Salvage per op."],

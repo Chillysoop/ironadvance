@@ -7,7 +7,7 @@ extends Node
 ## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
-## crumble (falling structures tip, spin, splinter and crush),
+## crumble (falling structures tip, spin, splinter and crush), detours2 (Doc's field tent, Strange Signal, the Lab's rank 3 surgeries),
 ## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), polish1 (overnight polish round 1: log wrap, label overlaps, dial rows), polish2 (round 2: card titles, shelf text, memorial, boss bar), polish3 (round 3: campaign War Room and brief), dcalls (D1-D12 from the full-build playtest page), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -809,6 +809,8 @@ func run() -> void:
 			await hq_upgrades()
 		"doc":
 			await doc()
+		"detours2":
+			await detours2()
 		"dossier":
 			await dossier()
 		"hub":
@@ -4544,6 +4546,116 @@ func detour_battle(id: String) -> Battle:
 	check(b.detour.get("id") == id, "the mid camp starts the %s detour" % id)
 	return b
 
+func detours2() -> void:
+	## The last of run step 5 and 7: the Doc's field tent and Strange Signal detours, and the Lab's rank 3 surgeries.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.new_run()
+	Run.meta.salvage = 0
+	Run.meta.bio = 0
+	var kinds := {}
+	for i in 40:
+		var lv := Run.make_level(["jungle", "desert", "mountain", "delta"][i % 4], i % 3)
+		check(Data.SIGNALS.has(lv.signal), "every level rolls a Strange Signal kind (%s)" % lv.signal)
+		kinds[lv.signal] = true
+	if Data.BIOMES.has("hive"):
+		check(range(10).all(func(_i): return Run.make_level("hive", 2).signal == "gate"), "the Hive only ever holds the misfiring gate")
+	check(kinds.size() == Data.SIGNALS.size(), "all three signals turn up across levels: %s" % [kinds.keys()])
+	# the field tent: no fight, the soldier picks one of three surgeries, free, Lab or not
+	Run.meta.hq = {}
+	var b: Battle = await detour_battle("tent")
+	var u: Unit = b.squad()[0]
+	var f: Array = u.s.get("field_ops", [])
+	check(f.size() == 1 and Data.SURGERIES.has(f[0]) and Run.implanted(u.s, f[0]), "the field tent installs one surgery on the first soldier (%s)" % [f])
+	check(not b.units.any(func(e): return e.detour and e.team == "enemy"), "the field tent has no fight")
+	check(int(Run.meta.get("bio", 0)) == 0 and int(Run.meta.get("salvage", 0)) == 0 and Run.implants(u.s.key).is_empty(), "it's free and takes no Lab slot")
+	main.clear()
+	# a stat surgery from the tent lands in the bonus table
+	u.s.field_ops = ["reflex"]
+	check(int(Run.gear_bonus(u.s).get("dodge", 0)) >= 8, "a field Reflex Wiring adds its dodge")
+	u.s.field_ops = ["spine"]
+	check(Run.eff_max_hp(u.s) == u.s.max_hp + int(Run.gear_bonus(u.s).get("hp", 0)) + 6, "a field Titanium Spine adds its HP")
+	u.s.erase("field_ops")
+	# Strange Signal: the misfiring gate
+	Run.level = Run.make_level("desert", 0)
+	b = await signal_battle("gate")
+	var sk: Array = b.units.filter(func(e): return e.detour and e.team == "enemy")
+	check(sk.size() == 3 and sk.all(func(e): return e.type == "skitter"), "the misfiring gate spits out three Skitters")
+	for e in sk:
+		e.dead = true
+	await b.check_detour()
+	check(b.detour.done and int(Run.meta.bio) == Data.SIGNAL_BIO and int(Run.meta.salvage) == Data.SIGNAL_SALVAGE, "putting them down pays Bio-parts and salvage")
+	main.clear()
+	# Strange Signal: the buried tank
+	b = await signal_battle("tank")
+	var r: Array = b.units.filter(func(t): return t.detour and t.kind == "ride")
+	check(b.detour.ev == "gate" or (r.size() == 1 and r[0].loot.type == "tank"), "a tank is parked in the clearing")
+	if r.size():
+		var d: Unit = b.squad()[0]
+		d.x = r[0].x
+		d.y = b.T.stand_y(d.x, 0)
+		await frames_wait(10)
+		await b.check_detour()
+		check(d.mech != null and b.detour.done, "walking onto the buried tank boards it and ends the detour")
+	main.clear()
+	# Strange Signal: the deserter
+	b = await signal_battle("deserter")
+	var p: Array = b.units.filter(func(q): return q.detour and q.kind == "pow")
+	check(p.size() == 1 and p[0].pow_name == "THE DESERTER", "the deserter waits at the far end")
+	p[0].freed = true
+	await b.check_detour()
+	check(b.detour.done and b.units.any(func(l): return l.kind == "loot" and l.loot.get("item", {}).get("tier", 0) >= Data.TIER_MAX), "reaching him drops a Legendary item")
+	main.clear()
+	# the Lab's rank 3: the strangest surgeries open only then
+	Run.meta.hq = {}
+	Run.meta.bio = 40
+	Run.meta.salvage = 300
+	var strange: Array = Data.SURGERIES.keys().filter(func(k): return int(Data.SURGERIES[k].get("rank", 1)) >= 3)
+	check(strange.size() >= 2, "the Doc has rank 3 surgeries: %s" % [strange])
+	Run.hq_upgrade("doc")
+	Run.hq_upgrade("doc")
+	check(Run.surgery_block(strange[0], "moss") == "DOC'S LAB RANK 3", "locked below rank 3")
+	main.show_hq(false)
+	await frames_wait(20)
+	main.screen.open_doc()
+	await frames_wait(20)
+	await shot("detours2_lab_rank2")
+	Run.hq_upgrade("doc")
+	var moss: Dictionary = Run.soldier("moss")
+	var gb0 := Run.gear_bonus(moss)
+	var hp0 := Run.eff_max_hp(moss)
+	check(Run.operate("mantis", "moss") and Run.operate("vharrgland", "moss"), "rank 3 installs both strange surgeries")
+	var gb1 := Run.gear_bonus(moss)
+	check(int(gb1.get("aim_dmg", 0)) == int(gb0.get("aim_dmg", 0)) + 3 and int(gb1.get("dodge", 0)) == int(gb0.get("dodge", 0)) + 6 and int(gb1.get("regen", 0)) == int(gb0.get("regen", 0)) + 3 and Run.eff_max_hp(moss) == hp0 + 8, "Mantis Lenses and Vharr Gland add both their stats")
+	main.screen.open_doc()
+	await frames_wait(20)
+	await shot("detours2_lab_rank3")
+	main.clear()
+	Run.meta = keep
+	Run.save_meta()
+
+func signal_battle(ev: String) -> Battle:
+	## A desert level with only the Strange Signal detour, set to this kind.
+	var b: Battle = null
+	Run.level = Run.make_level("desert", 0)
+	Run.level.detours = ["signal"]
+	Run.level.signal = ev
+	b = main.start_battle(0, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	var c: Dictionary = b.T.camps[0]
+	for e in b.units.filter(func(e): return e.team == "enemy" and e.x < c.x1 + 200):
+		e.dead = true
+		e.gone = true
+	var u: Unit = b.squad()[0]
+	u.x = c.fire + 20
+	u.y = b.T.stand_y(u.x, 0)
+	b.autopick = 0
+	await b.check_camp(u)
+	cam_on(b, b.T.yard[0] + 200)
+	await frames_wait(30)
+	await shot("detours2_signal_" + ev)
+	check(b.detour.get("id") == "signal", "the mid camp starts the Strange Signal (%s)" % ev)
+	return b
+
 func doc() -> void:
 	## Step 7: the Doc's surgeries go on a class, cost Bio-parts and Salvage, and do exactly what they say.
 	var keep: Dictionary = Run.meta.duplicate(true)
@@ -4555,7 +4667,7 @@ func doc() -> void:
 	check(Run.surgery_block("cybereye", "moss") == "BUILD THE DOC'S LAB", "no surgery before the Doc's Lab is built")
 	Run.hq_upgrade("doc")
 	check(Data.SURGERIES.size() >= 12, "at least 12 surgeries (%d)" % Data.SURGERIES.size())
-	check(Data.SQUAD_DEFS.all(func(d): return Data.SURGERIES.keys().all(func(k): return Run.surgery_block(k, d.key) == "")), "every class can take every surgery")
+	check(Data.SQUAD_DEFS.all(func(d): return Data.SURGERIES.keys().all(func(k): return Run.surgery_block(k, d.key) == "" or int(Data.SURGERIES[k].get("rank", 1)) > Run.hq("doc"))), "every class can take every surgery its Lab rank allows")
 	for op in [["cybereye", "moss"], ["thirdarm", "hex"], ["asbestos", "vee"], ["spine", "rook"]]:
 		check(Run.operate(op[0], op[1]), "%s installs on %s" % op)
 	check(int(Run.meta.bio) == 20 - 4 * Data.SURGERY_BIO and int(Run.meta.salvage) == 190 - 4 * Data.SURGERY_SALVAGE, "each surgery costs %d Bio and %d Salvage" % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE])
@@ -4666,7 +4778,7 @@ func hq_upgrades() -> void:
 	var lv: Dictionary = Run.dial_levels[id]
 	Run.pick_biome(id)
 	check(Run.level == lv, "Gate Control 3: the level you play is the one the card listed")
-	check(Run.level.detours.size() == 4, "Mess Hall 3: camps offer all 4 detours")
+	check(Run.level.detours.size() == 4, "Mess Hall 3: camps offer 4 detours")
 	check(Run.recruit_offers().size() == 3, "Barracks 1: 3 recruits to choose from")
 	Run.soldiers[2].alive = false
 	var r := Run.hire(2, Run.recruit_offers()[0])
