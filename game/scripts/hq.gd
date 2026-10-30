@@ -622,7 +622,8 @@ func _draw() -> void:
 
 func draw_header() -> void:
 	draw_rect(Rect2(0, 0, 960, 70), Color(0.05, 0.035, 0.03, 0.75))
-	Art.text(self, "FIELD HQ  ACT %s" % Run.act().roman if Run.campaign() else "IRON ADVANCE HQ", Vector2(24, 34), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+	var tour := int(Run.camp.get("tour", 1)) if Run.campaign() else 1
+	Art.text(self, ("FIELD HQ  ACT %s" % Run.act().roman + ("  TOUR %d" % tour if tour > 1 else "")) if Run.campaign() else "IRON ADVANCE HQ", Vector2(24, 34), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 	var line := "Kit out the squad, then dial the gate for level 1."
 	if Run.campaign():
 		line = "Act %s: %s. Kit out the squad, then pick the next op in the War Room." % [Run.act().roman, Run.act().name.capitalize()]

@@ -695,6 +695,8 @@ class Screen extends Control:
 		var y := 170.0
 		var jb: String = m.get("job", "push")
 		var txt: String = m.brief if jb == "push" else Run.job_text(jb)
+		if m.get("story", "") == "varga":
+			txt = Data.VARGA_STAND_BRIEF  # W13: the prisoners are his garrison, not ours
 		brief_plate(m, CardView.wrap_text(txt, 620, 16).size())
 		for line in CardView.wrap_text(txt, 620, 16):
 			Art.text(self, line, Vector2(480, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
@@ -750,6 +752,9 @@ class Screen extends Control:
 			last += 14
 		if m.get("specialist", "") != "":
 			last += 14
+		for k in ["nemesis", "pincer", "story"]:
+			if m.get(k, false):
+				last += 14  # W3/W9/W13 lines under the intel
 		draw_rect(Rect2(122, 154, 716, last - 148), Color(0.05, 0.035, 0.03, 0.55))
 	func draw_extras(m: Dictionary) -> void:
 		## R2-R5: the level's event on the left, its bounty board on the right. D2: the daily tag.
@@ -920,6 +925,9 @@ class Screen extends Control:
 				line = "%s: %s" % [op.bonus, {"salvage": "+%d SALVAGE FOR HQ." % Data.BONUS_SALVAGE, "defector": "A JACKAL DEFECTOR JOINS THE COMPANY.", "crash": "ALIEN KILLS COUNT DOUBLE AT THE LAB."}.get(op.get("pay", ""), "EPIC GEAR IN THE STASH.")]
 			elif op.has("perk"):
 				line = "%s: %s" % [Data.SECTOR_PERKS[op.perk].name, Data.SECTOR_PERKS[op.perk].text.to_upper()]
+			elif Run.level.get("story", "") == "varga" and not Run.level.get("patrol", false):
+				# W13: the last stand's payoff, not just another sector
+				line = "COLONEL VARGA MADE IT OUT. HE JOINS IRON COMPANY." if stats.get("varga_alive", false) else "COLONEL VARGA FELL COVERING HIS MEN."
 			elif op.has("took"):
 				line = "%s IS YOURS. IT PAYS AFTER EVERY OP FROM NOW ON." % op.took
 		Art.text(self, title, Vector2(480, 96), 32, Color("62d26f") if mode == "op_won" else Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER, 3)

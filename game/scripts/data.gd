@@ -1750,6 +1750,10 @@ const RADIO_ACT_DONE := [
 ]
 # W13: Varga's last stand, the story op in Act IV
 const RADIO_VARGA_STAND := [["varga", "Iron Company. The Vharr turned on my garrison. The fort is coming down around us."], ["varga", "Get my men out and I am yours. I have nowhere else to go."], ["cmd", "Your call, Iron Company. Bring him home or leave him to it."]]
+const RADIO_VARGA_SAVED := [["varga", "You came for my men. I do not forget that."], ["varga", "Colonel Varga, Iron Company. Point me at the Vharr."], ["sq", "Never thought I'd share a foxhole with him, {mate}."]]
+const RADIO_VARGA_FELL := [["cmd", "Varga's gone. He held the gate long enough for his men to get clear."], ["sq", "He went down fighting the right side, {mate}."]]
+const RADIO_PINCER := [["cmd", "Squad B is down on the far side of the harbor. Press G, or the SQUAD B button, to switch between your two squads."], ["cmd", "Push them toward each other. When the two halves meet, they fight as one squad."]]
+const VARGA_STAND_BRIEF := "The Vharr turned on Varga's garrison. Three of his men are held across the fort: walk up to each one to cut them loose."
 const VARGA_DECK := ["hmg", "hmg", "burst", "rifle", "rifle", "haymaker", "frag", "sprint", "knife"]
 const RADIO_VARGA_OP := [["varga", "Iron Company. I'll go in with you this once. Don't make me regret it."], ["sq", "Colonel Varga on our side. Write that down, {mate}."]]
 
