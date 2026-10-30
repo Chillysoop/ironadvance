@@ -6,6 +6,7 @@ extends Node2D
 @onready var b: Battle = get_parent()
 var tip: Node2D = null   # hover info box, on its own layer over the weather and foreground
 var push_rect := Rect2()   # the PUSH ZONE words on screen this frame, so the kill feed can step under them
+var cine := false   # trailer capture: no plates, barks or push zone words over the action
 
 class HoverTip extends Node2D:
 	func _draw() -> void:
@@ -64,12 +65,14 @@ func _draw() -> void:
 		draw_line(Vector2(tr.x1, tr.y1), Vector2(tr.x2, tr.y2), c, 2.0)
 	draw_parts()
 	draw_fx()
-	for u in b.units:
-		draw_plate(u)
+	if not cine:
+		for u in b.units:
+			draw_plate(u)
 	Art.big_heads = false
 	draw_targeting()
 	draw_texts()
-	draw_barks()
+	if not cine:
+		draw_barks()
 	if tip != null:
 		tip.queue_redraw()
 
@@ -1239,7 +1242,7 @@ func draw_targeting() -> void:
 		draw_tut_flag(b.TUT_FLAG_X)
 	var pz := b.cam_x + Battle.W * 0.72
 	push_rect = Rect2()
-	if b.cam_x < b.world_w - Battle.W:
+	if b.cam_x < b.world_w - Battle.W and not cine:
 		# the label sits left of the line, clear of the bounty board in the top right. With an
 		# enemy still alive behind the line the zone is locked and turns red.
 		var lock: int = b.push_blockers().size()
@@ -1728,7 +1731,14 @@ func draw_reticle(p: Vector2, col: Color) -> void:
 
 # ---------------------------------------------------------------- text
 func draw_texts() -> void:
+	var seen := {}
 	for tx in b.texts:
+		if cine:
+			# trailer: the big callouts and the damage numbers, once each, not every BONK and perk bark
+			var num: bool = tx.text.is_valid_int() or (tx.text.begins_with("-") and tx.text.substr(1).is_valid_int())
+			if not (tx.big or num) or seen.has(tx.text):
+				continue
+			seen[tx.text] = true
 		var x: float = (tx.u.x if tx.u != null else tx.x)
 		var y: float = tx.y - tx.t * 0.6
 		var al: float = (70 - tx.t) / 20.0 if tx.t > 50 else 1.0
