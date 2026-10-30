@@ -41,6 +41,7 @@ var busy := false
 var round_n := 0
 var alert := 0
 var rounds_since_scroll := 0
+var regroup := false  # X7: a soldier went down: the stall clock skips the next enemy phase
 var push_warned := -1  # round the "clear the enemies behind first" warning was last shown
 var pincer := {}       # W9: Iron Harbor with two squads: {on, view "a"/"b", a_cam, b_cam}; squad B wears fl.wing = "b"
 const STALL_ROUNDS := 3   # rounds on one screen before alert starts climbing (one fewer on threat 1)
@@ -52,6 +53,7 @@ var sel: Unit = null
 var card_idx := -1
 var mouse := Vector2(200, 300)
 var log_lines: Array = []
+var log_at: Array = []       # X6: the frame each log line came in, so old news fades
 var pow_queue: Array = []
 var para_queue: Array = []   # soldiers who picked up a reinforcement flare, waiting on the call-in
 var job_st := {}   # O4: {"on", "left"} while holding the far end
@@ -107,6 +109,8 @@ var relay_intel := false
 var slug_given := false
 var vpop := {}           # the boarding card: {u, type, mode: in|out|wreck, added, removed, t0}
 var loot_queue: Array = []   # pickups waiting for a decision (equip or stash) after the current action
+var drop_queue: Array = []   # X3: supply drops earned on the player's turn, [title, unit], opened at END TURN
+var flushing := false        # X3: the queued rewards are being handed out now
 var mission: Dictionary = {}
 var mission_idx := 0
 var uid := 1
@@ -3139,8 +3143,10 @@ func log_msg(m: String) -> void:
 	if debug:
 		print("[log r%d] %s" % [round_n, m])
 	log_lines.append(m)
+	log_at.append(t)
 	if log_lines.size() > 4:
 		log_lines.pop_front()
+		log_at.pop_front()
 	ui_dirty = true
 
 func wait(n: int) -> void:
@@ -3657,6 +3663,48 @@ func bounce_bonus(a: Unit, sc: bool) -> int:
 		n += 2
 	return n
 
+func aim_est(a: Unit, c: Dictionary, hh: Dictionary, tr: Dictionary) -> Array:
+	## X1: what one shot of this card does to a target the laser touches, as [low, high, rounds].
+	## Mirrors fire_bullet and damage() for the fixed modifiers; the dice, spread and skeet bonus stay out.
+	var tg: Unit = hh.u
+	var sc: bool = a.team == "squad" and a.adr >= 50
+	var banks: int = tr.ping_d.filter(func(pd): return pd < hh.d).size()
+	var add: int = int(a.g("aim_dmg")) + int(c.get("bankdmg", 0)) * banks
+	if hh.get("thru", false) and ks(a, "xrayscope"):
+		add += 4
+	var head: bool = hh.head or (c.get("forcehead", false) and not tg.is_prop())
+	var angled: bool = a.perk("angles") and banks > 0
+	var out: Array = []
+	for d0 in [c.dmg[0] + add, c.dmg[1] + add]:
+		var d: int = d0
+		if ks(a, "tungsten"):
+			d = int(round(d * (1.0 + 0.25 * banks)))
+		if a.perk("patience") and not a.moved:
+			d = int(round(d * 1.3))
+		if sc:
+			d = int(round(d * 1.25))
+		if tg.elite == "armored":
+			d = maxi(1, int(round(d * 0.5)))
+		if head:
+			d = int(round(d * (2.0 if a.def.key == "moss" else 1.5)))
+		if tg.team == "squad" and ks(tg, "riotshield") and signf(hh.dx) == -tg.face:
+			d = maxi(1, int(round(d * 0.25)))
+		elif tg.shield and hh.dx > 0 and not angled:
+			d = maxi(1, int(round(d * (0.1 if wall_locked(tg) else 0.25))))
+		if a.has_st("berserk"):
+			d *= 2
+		if tg.has_st("vest"):
+			d = int(ceil(d / 2.0))
+		if tg.team == "enemy" and tg.has_st("flared"):
+			d += flare_bonus()
+		if tg.team == "enemy" and tg.has_st("mark"):
+			d = int(round(d * 1.5))
+		if tg.team == "enemy":
+			d += a.payback
+		out.append(d)
+	out.append(int(c.get("shots", 1)) * int(c.get("pellets", 1)))
+	return out
+
 func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: bool) -> void:
 	var pm := -1 if c.get("phase", false) else (3 if c.get("woodpass", false) else 0)
 	var tr := trace_bullet(x, y, ang, c.range, c.get("bounce", 0) + bounce_bonus(a, sc), a, c.get("pierce", false), pm, c.get("softpass", 0), c.get("bodypass", 0))
@@ -4135,6 +4183,9 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 				float_text(tg, "LAZARUS!", Color("62d26f"), true)
 				log_msg("Hex drags %s back up." % tg.def.name)
 		tg.hp -= amt
+		if amt > 0:
+			var hk := "hurt_" + hurt_kind(src)
+			stats[hk] = int(stats.get(hk, 0)) + amt  # X2
 		if vfx != null and amt > 0 and not o.get("status", false):
 			vfx.bleed(tg, src, amt)
 		tg.pose = "hurt"; tg.pose_t = 16
@@ -4205,15 +4256,36 @@ func rookie_boar() -> bool:
 
 func who_did(tg: Unit, src) -> String:
 	## N3: a plain name for whatever downed a soldier, for the mission-failed screen.
+	## X2: own fire names the card, terrain names how (drowned, fall, bonk, burn).
+	if tg.sunk:
+		return "DROWNED"
 	if src is Unit and src.team == "enemy":
 		if src.type == "boss":
 			return "THE VHARR BOAR" if src.fl.get("vharr", false) else "THE IRON BOAR"
 		return "A " + str(Data.ETYPES[src.type].name).to_upper()
+	var card := (" (%s)" % act_card.to_upper()) if act_card != "" and act_unit == src else ""
 	if src is Unit and src == tg:
-		return "THEIR OWN BLAST"
+		return "THEIR OWN BLAST" + card
 	if src is Unit and src.team == "squad":
-		return "FRIENDLY FIRE (%s)" % src.def.name.to_upper()
+		return "FRIENDLY FIRE: %s%s" % [src.def.name.to_upper(), card]
+	var how := kill_how if kill_how != "" else str(last_hit_o.get("how", ""))
+	match how:
+		"BONK": return "A BONK INTO SOMETHING HARD"
+		"FALL": return "A FALL"
+		"BURN": return "FIRE"
+		"TOXIC": return "POISON"
+		"CRUSHED", "CRUSH", "SLAM": return "FALLING DEBRIS"
+	if tg.y >= lava_y():
+		return "LAVA"
 	return "A FALL OR DEBRIS"
+
+func hurt_kind(src) -> String:
+	## X2: who hurt the squad, for the debrief's damage split
+	if src is Unit and src.team == "enemy":
+		return "enemy"
+	if src is Unit and src.team == "squad":
+		return "own"
+	return "terrain"
 
 const KILL_MOVE := 40  # D1: movement a soldier gets back for each kill on their turn
 
@@ -4447,7 +4519,11 @@ func kill(tg: Unit, src) -> void:
 	elif tg.team == "squad":
 		stats.kia += 1
 		stats.downs += 1
-		stats["last_down"] = "%s, BY %s" % [tg.def.name.to_upper(), who_did(tg, src)]
+		var cause := who_did(tg, src)
+		stats["last_down"] = "%s, BY %s" % [tg.def.name.to_upper(), cause]
+		banner("%s DOWN" % tg.def.name.to_upper(), Color("ffb23e"), cause)  # X2: say what did it
+		if state == "player" or state == "enemy":
+			regroup = true  # X7: the line waits one round before the stall clock counts again
 		if tg.s.tags > 0 or mission.get("patrol", false):
 			# a dog tag buys their life: out until the next camp, or back next mission.
 			# A campaign patrol (M5) never costs a life: an empty-tagged soldier is only knocked out.
@@ -4455,11 +4531,11 @@ func kill(tg: Unit, src) -> void:
 			tg.downed = true
 			float_text(tg, "DOWN! %d TAG%s LEFT" % [tg.s.tags, "" if tg.s.tags == 1 else "S"], Color("ffb23e"), true)
 			var back := "until the next camp" if T.camps.any(func(c): return not c.used) else "for the rest of this fight"
-			log_msg("%s is down %s. %d dog tag%s left." % [tg.def.name, back, tg.s.tags, "" if tg.s.tags == 1 else "s"])
+			log_msg("%s is down %s (%s). %d dog tag%s left." % [tg.def.name, back, cause.to_lower(), tg.s.tags, "" if tg.s.tags == 1 else "s"])
 		else:
 			stats.fallen.append(tg.def.name)
 			float_text(tg, "KIA", Color("ff4d3d"), true)
-			log_msg("%s is killed in action. No dog tags left." % tg.def.name)
+			log_msg("%s is killed in action (%s). No dog tags left." % [tg.def.name, cause.to_lower()])
 		Sfx.play("bad")
 		for s in squad_alive():
 			gain_adr(s, 25)
@@ -5420,6 +5496,10 @@ func commit_aim(p: Vector2) -> void:
 		resolve(func(): await _act_eject(u, idx, c, p))
 		return
 	if c.type == "AIM":
+		if aim_hold and sway_of(u, c) >= 0.01 and u.move_left > 0:
+			# X4: planting for a steady shot spends the rest of the walk
+			u.move_left = 0
+			float_text(u, "STEADIED: NO MORE MOVE", Color("e8dcc2"))
 		resolve(func(): await _act_aim(u, idx, c, p, sc))
 		return
 	if c.get("bodythrow", false):
@@ -7324,6 +7404,11 @@ func supply_drop(title: String, for_unit) -> void:
 	var alive := squad_alive()
 	if alive.is_empty():
 		return
+	if defer_rewards():
+		drop_queue.append([title, for_unit])
+		float_at(cam_x + W / 2.0, 150, "SUPPLY DROP WAITS FOR END TURN", Color("ffd23a"))
+		ui_dirty = true
+		return
 	var pool: Array = Data.offer_keys(Run.squad_classes() if for_unit == null else [for_unit.def.key])
 	pool.shuffle()
 	var opts: Array = []
@@ -7427,6 +7512,36 @@ func apply_level_option(u: Unit, o: Dictionary) -> void:
 	Sfx.play("power")
 	ui_dirty = true
 
+func defer_rewards() -> bool:
+	## X3: level-ups, item finds and supply drops earned on the player's turn wait for END TURN
+	return state == "player" and not flushing and not tutorial() and not won and not lost
+
+func pending_rewards(u = null) -> int:
+	if u == null:
+		return lvl_queue.size() + loot_queue.size() + drop_queue.size()
+	return lvl_queue.count(u) + loot_queue.filter(func(q): return q.u == u).size()
+
+func flush_rewards() -> void:
+	## X3: hand out everything the turn earned, item finds first, then supply drops, then level-ups
+	if flushing:
+		return
+	flushing = true
+	while loot_queue.size():
+		var lq: Dictionary = loot_queue.pop_front()
+		if lq.u.dead:
+			Run.add_loot(lq.item)
+			continue
+		await offer_item(lq.u, lq.item)
+	while drop_queue.size():
+		var dq: Array = drop_queue.pop_front()
+		await supply_drop(dq[0], null if dq[1] == null or dq[1].dead else dq[1])
+	while lvl_queue.size():
+		var u: Unit = lvl_queue.pop_front()
+		await wait(20)
+		await level_up(u)
+	flushing = false
+	ui_dirty = true
+
 func post_action() -> void:
 	refresh_mounts()
 	await leg_check()
@@ -7470,18 +7585,10 @@ func post_action() -> void:
 		if not q.pow.detour:
 			await supply_drop("%s says thanks" % q.pow.pow_name, null if q.u.dead else q.u)
 	await check_detour()
-	while loot_queue.size():
-		var lq: Dictionary = loot_queue.pop_front()
-		if lq.u.dead:
-			Run.add_loot(lq.item)
-			continue
-		await offer_item(lq.u, lq.item)
 	while para_queue.size():
 		await call_reinforcements(para_queue.pop_front())
-	while lvl_queue.size():
-		var u: Unit = lvl_queue.pop_front()
-		await wait(20)
-		await level_up(u)
+	if not defer_rewards() or squad_alive().is_empty() or boss_dead:
+		await flush_rewards()
 	refresh_duos()
 	if squad_alive().is_empty():
 		game_over()
@@ -7492,6 +7599,7 @@ func post_action() -> void:
 		return
 	if mission.get("outpost", false) and not units.any(func(e): return e.team == "enemy" and not e.dead):
 		await until(settled)
+		await flush_rewards()
 		victory()
 		return
 	if await job_ends():
@@ -7752,6 +7860,7 @@ func job_ends() -> bool:
 		return true
 	if job_done():
 		await until(settled)
+		await flush_rewards()
 		victory()
 		return true
 	return false
@@ -8279,6 +8388,14 @@ func end_turn(force := false) -> void:
 		ui_dirty = true
 		return
 	end_confirm_t = 0
+	if pending_rewards() > 0:
+		# X3: the turn's promotions and finds come out before the enemy moves
+		busy = true
+		ui_dirty = true
+		await flush_rewards()
+		busy = false
+		if state != "player" or won or lost:
+			return
 	coach_hit("end")
 	for r in units.filter(func(o): return o.kind == "relay" and o.loot.hold < Data.RELAY_HOLD):
 		var on = null
@@ -8455,7 +8572,11 @@ func enemy_phase() -> void:
 		return
 	# alert only climbs when you stall; the radioman's clock is what brings fresh bodies.
 	# Digging in on a HOLD job is the order, not a stall.
-	if not (job() == "hold" and job_st.get("on", false)):
+	if regroup:
+		regroup = false
+		if rounds_since_scroll >= stall_limit() - 1:
+			log_msg("REGROUP: with a soldier down, the line holds one round before the alert climbs.")
+	elif not (job() == "hold" and job_st.get("on", false)):
 		rounds_since_scroll += 1
 	var before := alert
 	var calls := 0
@@ -10364,10 +10485,16 @@ func sync_back() -> void:
 	Run.total_score += score
 
 # ---------------------------------------------------------------- update loop
+const FAST_ENEMY := 3.0  # X5: enemy phase speed while Space is held (or F is toggled on)
+
+func fast_forward() -> bool:
+	return state == "enemy" and (Input.is_key_pressed(KEY_SPACE) or bool(Run.meta.get("ff", false)))
+
 func _process(delta: float) -> void:
-	acc += minf(0.1, delta) * 60.0 * speed
+	var sp := speed * (FAST_ENEMY if fast_forward() else 1.0)
+	acc += minf(0.1, delta) * 60.0 * sp
 	var n := 0
-	while acc >= 1.0 and n < int(4 * speed):
+	while acc >= 1.0 and n < int(4 * sp):
 		step()
 		acc -= 1.0
 		n += 1
@@ -11242,6 +11369,13 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if not ev.pressed or ev.echo:
 			return
 		if busy and ev.keycode in [KEY_SPACE, KEY_ESCAPE, KEY_ENTER] and stop_drill():
+			return
+		if ev.keycode == KEY_F and not (hud != null and hud.deck_open):
+			# X5: F keeps every enemy phase on fast-forward
+			Run.meta["ff"] = not bool(Run.meta.get("ff", false))
+			Run.save_meta()
+			float_at(cam_x + W / 2.0, 120, "FAST ENEMY TURNS " + ("ON" if Run.meta.ff else "OFF"), Color("53d4e2"), true)
+			ui_dirty = true
 			return
 		if ev.keycode == KEY_ESCAPE and hud != null and hud.close_deck():
 			return

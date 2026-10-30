@@ -254,7 +254,9 @@ func _process(_d: float) -> void:
 	targeting = b.card_idx >= 0 and b.state == "player"
 	var over_unit: bool = targeting and b.unit_at_p(b.get_global_mouse_position()) != null
 	var near_hand := hand_box.get_local_mouse_position().y > 440
-	hand_box.modulate.a = lerpf(hand_box.modulate.a, (0.2 if near_hand else 0.45) if targeting else 1.0, 0.3)
+	# X10: the selected soldier down in a pit behind the hand shows through it until the mouse comes near
+	var buried: bool = b.sel != null and not b.sel.dead and b.sel.y - b.sel.h * 0.5 > 440.0 and not near_hand
+	hand_box.modulate.a = lerpf(hand_box.modulate.a, (0.2 if near_hand else 0.45) if targeting else (0.45 if buried else 1.0), 0.3)
 	for cv in cards:
 		cv.ghost = targeting
 		cv.mouse_filter = Control.MOUSE_FILTER_IGNORE if over_unit else Control.MOUSE_FILTER_STOP
@@ -277,7 +279,8 @@ func _process(_d: float) -> void:
 		next_btn.color = Color("9aa2ae")
 	else:
 		next_btn.text = "END TURN"
-		next_btn.sub = "SPACE"
+		var pr: int = b.pending_rewards() if b.state == "player" else 0
+		next_btn.sub = ("+%d REWARD%s WAITING" % [pr, "" if pr == 1 else "S"]) if pr > 0 else "SPACE"  # X3
 		next_btn.color = Color("ff4d3d") if b.t % 40 < 20 or b.state != "player" else Color("ff7a3d")
 
 func preview_cost() -> int:
@@ -291,7 +294,7 @@ func preview_cost() -> int:
 
 func hint_text() -> String:
 	if b.state == "enemy":
-		return "The Jackals are moving. Overwatch triggers automatically."
+		return "The Jackals are moving. Hold SPACE to speed it up (F: always fast)."
 	var u := b.sel
 	if b.state != "player" or u == null:
 		return ""
@@ -346,9 +349,15 @@ func hint_text() -> String:
 		if b.tut_step == b.TUT_PUSH and b.push_blockers().size():
 			return "The PUSH ZONE is locked while Jackals are left short of the line. Finish them, then walk someone in."
 		return Data.TUT_LINES[b.tut_step][1 if b.tut_step == b.TUT_PUSH else 0]
+	if seasoned():
+		return ""  # X10: after the first mission the walking hints stop covering the ground
 	if u.move_left > 1:
 		return "Click ground to move %s. Hold ALT for intel. Click a ladder top to climb. Ending in the push zone scrolls early and cuts the alert." % u.def.name
 	return "%s is out of movement. Play cards, switch soldier (TAB) or end the turn." % u.def.name
+
+func seasoned() -> bool:
+	## X10: the player has finished a mission before (this run or any earlier one)
+	return Run.mission > 0 or Run.history.size() > 0 or int(Run.meta.get("wins", 0)) > 0 or Run.campaign()
 
 # ---------------------------------------------------------------- modal: pick one
 func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> int:
@@ -683,8 +692,14 @@ class Tag extends Control:
 			draw_texture_rect(Art.tex.ic8_skull, Rect2(x0 + 16, 6, 12, 12), false)
 		Art.draw_tags(self, Vector2(x0 + 20, 16), u.s.tags, 0.75)
 		Art.text(self, u.def.name, Vector2(x0 + 36, 11), 8, Color.WHITE if not u.dead else Color("8a7a7a"))
-		Art.text(self, "LV%d" % u.s.lvl, Vector2(x0 + w - 4, 11), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
 		var b: Battle = hud.b
+		var waiting: int = b.pending_rewards(u)
+		if waiting > 0 and not u.dead:
+			# X3: promotions and finds wait for END TURN; the tag shows how many
+			var tx := "+%d LV%d" % [waiting, u.s.lvl]
+			Art.text(self, tx, Vector2(x0 + w - 4, 11), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_RIGHT)
+		else:
+			Art.text(self, "LV%d" % u.s.lvl, Vector2(x0 + w - 4, 11), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
 		if not u.dead and b.state == "player":
 			# energy pips after the name, then a DONE stamp once they have nothing left
 			var nb := maxi(3, u.energy)
@@ -722,13 +737,14 @@ class PauseMenu extends Control:
 		["RIGHT-CLICK / ESC", "Cancel the armed card"],
 		["CLICK GROUND", "Walk the selected soldier"],
 		["CLICK A SOLDIER / TAB, E, Q", "Select a soldier"],
-		["SPACE", "NEXT: the next soldier who can act"],
+		["SPACE", "NEXT soldier; hold in the enemy turn to speed it up"],
+		["F", "Always fast-forward enemy turns (on/off)"],
 		["ENTER", "END TURN (asks twice while anyone can act)"],
 		["M", "Auto-move with mobility cards"],
 		["BACKSPACE", "Undo the last walk, if nothing happened on it"],
 		["R", "Swap a card for a new draw (1 energy, once a turn)"],
 		["WHEEL / [ ]", "Set a grenade's fuse"],
-		["SHIFT", "Hold a steady aim"],
+		["SHIFT", "Hold a steady aim (ends that soldier's walking)"],
 		["ALT / V", "Intel on every soldier"],
 		["J", "Jet Boots, when equipped"],
 	]
@@ -1021,6 +1037,13 @@ class Overlay extends Control:
 				return true
 		return false
 
+	func squad_behind(b: Battle, r: Rect2) -> bool:
+		## X10: one of the squad stands behind this panel
+		for e in b.squad_alive():
+			if r.intersects(Rect2(e.x - b.cam_x - e.w / 2.0, e.y - e.h, e.w, e.h)):
+				return true
+		return false
+
 	func draw_synergies(b: Battle, y: float) -> float:
 		## The squad's switched-on synergies, top right above the bounty board. Hover one for what it
 		## does. Returns where the bounty board starts.
@@ -1028,6 +1051,8 @@ class Overlay extends Control:
 		var rows: Array = all_rows.filter(func(r): return not r.get("quiet", false))
 		if rows.is_empty() or b.state == "title":
 			return y
+		if Run.mission == 0 and not Run.campaign() and not b.inspect:
+			return y  # X6: the first level of a run keeps the corner quiet (ALT still shows them)
 		var w := 232.0
 		var x := 954.0 - w
 		var hgt := 22.0 + rows.size() * 14
@@ -1227,8 +1252,13 @@ class Overlay extends Control:
 			Art.text(self, jl, Vector2(480, ly), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 			ly += 16
 		ly += draw_boosts(b, ly - 12)
-		for i in b.log_lines.size():
-			var a := 0.55 + 0.45 * float(i + 1) / b.log_lines.size()
+		# X6: only the two newest lines, and each fades out after about eight seconds (ALT shows all four)
+		var first := 0 if b.inspect else maxi(0, b.log_lines.size() - 2)
+		for i in range(first, b.log_lines.size()):
+			var age: int = b.t - int(b.log_at[i]) if i < b.log_at.size() else 0
+			var a := (0.55 + 0.45 * float(i + 1) / b.log_lines.size()) * (1.0 if b.inspect else clampf((540 - age) / 60.0, 0, 1))
+			if a <= 0.01:
+				continue
 			# wrapped short of the push zone label and the bounty board on the right
 			var wl: Array = CardView.wrap_text(b.log_lines[i], 540, 16)
 			for k in wl.size():
@@ -1283,8 +1313,8 @@ class Overlay extends Control:
 			# a hovered card lifts into the strip's spot: get out of its way
 			if hud.cards.any(func(cv): return cv.hover):
 				al = 0.0
-			elif al > 0.35 and foe_behind(b, strip):
-				al = 0.35  # an enemy in a dip behind the strip stays visible
+			elif al > 0.35 and (foe_behind(b, strip) or squad_behind(b, strip)):
+				al = 0.35  # an enemy in a dip behind the strip stays visible (X10: and so does the squad)
 			draw_rect(strip, Color(0.05, 0.035, 0.03, 0.7 * al))
 			for i in lines.size():
 				Art.text(self, lines[i], Vector2(480, top + 11 + i * 14), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0, true, al)
