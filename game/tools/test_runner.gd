@@ -5184,6 +5184,18 @@ var bot_stats := {}
 var pt_tag := "bot"
 var stuck_shot := {}
 var bot_last := ""
+# trailer: the bot plays at normal speed, lingers on its aim like a player, and the trailer can deal it cards
+var bot_speed := 0.0
+var bot_hold := 0
+var bot_hook := Callable()
+
+func bot_commit(b: Battle, p: Vector2) -> void:
+	if bot_hold > 0:
+		b.mouse = p + Vector2(randf_range(-30, 30), randf_range(-20, 20))
+		await frames_wait(bot_hold / 2 + randi() % (bot_hold / 2 + 1))
+		b.mouse = p
+		await frames_wait(bot_hold / 2)
+	b.commit_aim(p)
 
 func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 	## A simple autoplayer: shoot the nearest visible enemy, lob at clusters, heal, push right.
@@ -5193,7 +5205,7 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 	cur_b = b
 	stuck_shot = {}
 	b.autopick = 0
-	b.speed = 24.0 if playtest_debug else 8.0
+	b.speed = bot_speed if bot_speed > 0 else (24.0 if playtest_debug else 8.0)
 	b.debug = playtest_debug
 	bot_stats = {"actions": 0, "enemy_ticks": 0, "hp_lost": 0, "round_hp": []}
 	var res := {"done": false, "won": false, "line": ""}
@@ -5209,6 +5221,8 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 		await until(func(): return res.done or (b.state == "player" and not b.busy), 20000)
 		if res.done:
 			break
+		if bot_hook.is_valid():
+			await bot_hook.call(b)
 		for u in b.squad_alive():
 			if res.done or b.state != "player":
 				break
@@ -5277,7 +5291,7 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 							if safe and tr.hits.any(func(h): return h.u.team == "enemy" or h.u.is_prop() or h.u.kind == "dump"):
 								bot_last = c.get("name", "?")
 								b.select_card(i)
-								b.commit_aim(Vector2(e.x, e.y - e.h * 0.6))
+								await bot_commit(b, Vector2(e.x, e.y - e.h * 0.6))
 								played = true
 						elif e.kind == "charge":
 							continue
@@ -5293,12 +5307,12 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 								bot_last = c.get("name", "?")
 								b.select_card(i)
 								var pw := Vector2(sol.vx, sol.vy).length()
-								b.commit_aim(Vector2(hx, hy) + Vector2(sol.vx, sol.vy).normalized() * (pw / 13.0 * 220))
+								await bot_commit(b, Vector2(hx, hy) + Vector2(sol.vx, sol.vy).normalized() * (pw / 13.0 * 220))
 								played = true
 						elif c.type == "LINE" and not c.get("grapple", false) and not c.get("jump", false) and not c.get("rush", false) and not c.get("drill", false) and absf(e.x - u.x) > 80 and rocket_safe(b, u, c, e):
 							bot_last = c.get("name", "?")
 							b.select_card(i)
-							b.commit_aim(Vector2(e.x, e.y - 12))
+							await bot_commit(b, Vector2(e.x, e.y - 12))
 							played = true
 						elif c.type == "MELEE" and b.melee_valid(u, e, c):
 							bot_last = c.get("name", "?")
@@ -5330,6 +5344,8 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 					tx = minf(tx, u.x + 10)
 				if tx < u.x + 4:
 					tx = u.x - 30 if order.find(u) > 0 else u.x
+				if bot_hold > 0:
+					tx += randf_range(-28, 28)  # trailer: nobody walks to the exact pixel
 				# stop short of mines, live charges and leaking fuel instead of walking onto them
 				var hz: Array = b.units.filter(func(o): return not o.dead and not o.gone and ((o.kind == "mine" and not o.primed) or o.kind == "charge" or (o.kind == "fuel" and o.leak != null)) and o.x > u.x - 4 and absf(o.y - u.y) < 40)
 				for o in hz:
@@ -5357,7 +5373,7 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 				if not climbed and di >= 0 and not u.dead and u.move_left > 20 and b.state == "player" and b.sim_walk(u, u.x + 40, 40).used < 4 and b.drill_face(u, u.x, u.y, Vector2(1, 0)):
 					var x0d: float = u.x
 					b.select_card(di)
-					b.commit_aim(Vector2(u.x + 200, u.y - u.h / 2.0))
+					await bot_commit(b, Vector2(u.x + 200, u.y - u.h / 2.0))
 					await until(func(): return res.done or not b.busy, 20000)
 					if res.done:
 						break
