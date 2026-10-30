@@ -533,6 +533,7 @@ const DOG_TAGS := 2        # going down spends a tag; going down with none left 
 const RECRUIT_PRICE := 80
 const TAG_PRICE := 70
 const XTRAIN_PRICE := 60   # P3: Barracks cross-training
+const DRILL_PRICE := 60    # B5: Drill Sergeant, one level for a soldier behind the squad's best
 
 func cross_ok(key: String) -> bool:
 	## Cards another class can learn: nothing that needs Rex, a vehicle or an Overdrive.
@@ -1598,7 +1599,7 @@ const BIOME_ALIENS := {
 }
 
 const LEVELS := [
-	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "lake", "city", "mine"], "hp_mul": 1.0, "boss_hp": 120, "plate": 36},
+	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "lake", "city", "mine"], "hp_mul": 1.0, "boss_hp": 100, "plate": 30},  # B1: a softer level 1 Boar
 	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "harbor", "palace", "lake", "city", "mine", "train", "volcano", "carrier"], "hp_mul": 1.15, "boss_hp": 160, "plate": 46},
 	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "harbor", "palace", "lake", "city", "mine", "train", "volcano", "carrier", "hive"], "hp_mul": 1.3, "boss_hp": 210, "plate": 60},
 ]

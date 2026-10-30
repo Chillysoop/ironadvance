@@ -322,7 +322,7 @@ func collect(u: Unit, p: Unit) -> void:
 		vfx.pickup(u, p, L.type == "scrip")
 	match L.type:
 		"scrip":
-			give_scrip(L.n, p.x, p.y - 20)
+			give_scrip(L.n, p.x, p.y - 20, "L308")
 			Sfx.play("coin")
 		"letter":
 			var key: String = Data.LETTERS[L.key]
@@ -450,7 +450,7 @@ func use_belt(i: int) -> void:
 			var h := mini(d.n, u.max_hp - u.hp)
 			u.hp += h
 			float_text(u, "+%d HP" % h, Color("62d26f"))
-			give_scrip(15, u.x, u.y - 50)
+			give_scrip(15, u.x, u.y - 50, "L436")
 		"smoke":
 			smokes.append({"x": u.x, "y": u.y - 24, "r": 64.0, "turns": 2, "seed": randf() * 10})
 			for k in 5:
@@ -978,7 +978,7 @@ func _act_dog(u: Unit, idx: int, c: Dictionary, p: Vector2) -> void:
 	if u.perk("pockets"):
 		draw_cards(u, 1)
 	if u.perk("scrounger"):
-		give_scrip(10, rx.x, rx.y - 20)
+		give_scrip(10, rx.x, rx.y - 20, "L964")
 	float_text(rx, "FETCHED!" if got else "SNIFF...", Color("62d26f") if got else Color("9aa2ae"))
 	await wait(12)
 	if got:
@@ -3874,9 +3874,11 @@ func give_xp(u, n: int) -> void:
 		Sfx.play("levelup")
 	ui_dirty = true
 
-func give_scrip(n: int, x: float, y: float) -> void:
+func give_scrip(n: int, x: float, y: float, why := "") -> void:
 	if n <= 0:
 		return
+	if debug:
+		print("[scrip] %d %s" % [n, why])
 	Run.scrip += n
 	stats.scrip += n
 	float_at(x, y, "+%d$" % n, Color("ffd23a"))
@@ -4325,7 +4327,7 @@ func kill(tg: Unit, src) -> void:
 					give_xp(h, 2)
 			stats["turncoat"] = int(stats.get("turncoat", 0)) + 1
 		var marked: bool = src is Unit and src.team == "squad" and src.carry == "yellow"
-		give_scrip(int(maxi(2, base / 25) * (1.5 if Run.has_cmd("warchest") else 1.0)) * (2 if marked else 1), tg.x, tg.y - tg.h - 50)
+		give_scrip(int(maxi(2, base / 25) * (1.5 if Run.has_cmd("warchest") else 1.0)) * (2 if marked else 1), tg.x, tg.y - tg.h - 50, "L4304")
 		if tg.has_st("toxic") and squad_alive().any(func(h): return h.perk("pandemic")):
 			for o2 in units:
 				if o2.team == "enemy" and not o2.dead and o2 != tg and absf(o2.x - tg.x) < 90 and absf(o2.y - tg.y) < 60:
@@ -4344,6 +4346,10 @@ func kill(tg: Unit, src) -> void:
 				gain_adr(src, 15)
 			gain_adr(src, 8 + int(src.g("kill_adr")))
 			give_xp(src, 4 + base / 50)
+			# B3: everyone else still standing gets a third of the kill's XP, so the levels don't all pile onto one soldier
+			for h in squad_alive():
+				if h != src:
+					give_xp(h, maxi(1, (4 + base / 50) / 3))
 			if src.g("kill_draw") > 0 and not src.kill_drawn and state == "player":
 				src.kill_drawn = true
 				draw_cards(src, int(src.g("kill_draw")))
@@ -6701,7 +6707,7 @@ func camp_pick(c: Dictionary) -> void:
 				float_text(s, Data.card(cd).name.to_upper(), Color("b48cff"))
 			Sfx.play("levelup")
 		"cache":
-			give_scrip(60, c.fire, T.ground_at(c.fire) - 40)
+			give_scrip(60, c.fire, T.ground_at(c.fire) - 40, "L6587")
 		"quiet":
 			alert = 0
 			for s in squad_alive():
@@ -6852,7 +6858,7 @@ func check_detour() -> void:
 					float_text(need[0], "+1 DOG TAG", Color("62d26f"), true)
 				else:
 					banner("ALL PRISONERS FREE!", Color("62d26f"), "+50 SCRIP")
-					give_scrip(50, cx, T.ground_at(cx) - 40)
+					give_scrip(50, cx, T.ground_at(cx) - 40, "L6738")
 		"salvage":
 			banner("YARD STRIPPED!", Color("62d26f"), "%d SALVAGE FOR HQ" % int(stats.get("salvage", 0)))
 		"colors":
@@ -6862,7 +6868,7 @@ func check_detour() -> void:
 			log_msg("Their battle flag is ours: %d salvage for HQ." % Data.COLORS_SALVAGE)
 		"cache":
 			banner("CACHE SECURED!", Color("62d26f"), "+80 SCRIP AND A CARD")
-			give_scrip(80, cx, T.ground_at(cx) - 40)
+			give_scrip(80, cx, T.ground_at(cx) - 40, "L6748")
 			await wait(30)
 			await supply_drop("SUPPLY CACHE", null)
 	Run.save_meta()
@@ -7074,6 +7080,8 @@ func stash_payload(p: Dictionary) -> void:
 		"scrip":
 			Run.scrip += p.n
 			stats.scrip += p.n
+			if debug:
+				print("[scrip] %d stash" % p.n)
 		"relic":
 			Run.add_gear(p.id, Data.TIER_MAX)
 		"trophy":
@@ -7277,7 +7285,7 @@ func level_up(u: Unit) -> void:
 			opts = Run.level_options(u.s)
 			continue
 		if ch < 0:
-			give_scrip(15, u.x, u.y - u.h - 20)
+			give_scrip(15, u.x, u.y - u.h - 20, "L7152")
 			return
 		var o: Dictionary = opts[ch]
 		opts.remove_at(ch)
@@ -7327,7 +7335,7 @@ func post_action() -> void:
 		banner("POW RESCUED!", Color("62d26f"), "+500  +25$")
 		score += 500
 		stats.pows += 1
-		give_scrip(25, q.pow.x, q.pow.y - 50)
+		give_scrip(25, q.pow.x, q.pow.y - 50, "L7202")
 		give_xp(q.u, 8)
 		Sfx.play("coin")
 		drop_loot(q.pow.x, q.pow.y - 20, {"type": "item", "item": Run.roll_item(1)})
@@ -7386,7 +7394,7 @@ func post_action() -> void:
 		if rest.size():
 			banner("WAVE CLEAR!", Color("62d26f"), "+300  +15$")
 			score += 300
-			give_scrip(15, cam_x + W / 2.0, 200)
+			give_scrip(15, cam_x + W / 2.0, 200, "L7261")
 			Sfx.play("coin")
 			if Run.has_gear("rations"):
 				var rh := 4 + 2 * Run.relic_tier("rations")
@@ -10080,7 +10088,8 @@ func boss_act(bo: Unit) -> void:
 			shake += 4
 			for j in 4:
 				puff(m.x, m.y, 2.0)
-			projs.append(mk_proj({"kind": "shell", "x": m.x, "y": m.y, "vx": sol.vx * k, "vy": sol.vy * k, "wind": 1.0, "r": 44.0, "dmg": int(round(10.5 * (1 + alert * 0.06))), "owner": bo, "trail": true}))
+			# B2: the shell keeps its base damage at any alert (alert already brings airstrikes and paratroopers)
+			projs.append(mk_proj({"kind": "shell", "x": m.x, "y": m.y, "vx": sol.vx * k, "vy": sol.vy * k, "wind": 1.0, "r": 44.0, "dmg": 11, "owner": bo, "trail": true}))
 			await until(settled)
 			await wait(12)
 	var best = best_shot(bo, squad_alive(), Data.ETYPES.boss.range)
@@ -10126,6 +10135,8 @@ func victory() -> void:
 		pay = int(pay * (Data.PATROL_PAY if mission.get("patrol", false) else 1.0) * (1.0 + Data.CAMP_THREAT_PAY * Run.threat))
 	Run.scrip += pay
 	stats.scrip += pay
+	if debug:
+		print("[scrip] %d levelpay" % pay)
 	stats["pay"] = pay
 	stats["alert_bonus"] = ab
 	stats["surv_bonus"] = sb

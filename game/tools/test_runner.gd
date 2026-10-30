@@ -848,6 +848,10 @@ func run() -> void:
 			await aliens8()
 		"playtest":
 			await playtest()
+		"campsweep":
+			await campsweep()
+		"bcalls":
+			await bcalls()
 		"campaignplay":
 			await campaignplay()
 		"campfix":
@@ -5097,8 +5101,9 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 				if res.done or u.dead:
 					break
 				var played := false
-				var foes: Array = b.units.filter(func(o): return not o.dead and not o.gone and ((o.team == "enemy" and o.active) or (o.kind == "charge" and not o.primed)) and absf(o.x - u.x) < 900)
-				var prio := func(o): return (0 if o.kind == "charge" else (1 if o.type == "radio" else 2)) * 10000 + absf(o.x - u.x)
+				var foes: Array = b.units.filter(func(o): return not o.dead and not o.gone and ((o.team == "enemy" and o.active) or (o.kind == "charge" and not o.primed) or o.kind == "dump") and absf(o.x - u.x) < 900)
+				# B6: a demolish op's supply dumps rank with radios
+				var prio := func(o): return (0 if o.kind == "charge" else (1 if o.type == "radio" or o.kind == "dump" else 2)) * 10000 + absf(o.x - u.x)
 				foes.sort_custom(func(p1, p2): return prio.call(p1) < prio.call(p2))
 				for i in u.hand.size():
 					var c := Data.card(u.hand[i])
@@ -5125,7 +5130,7 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 							var safe: bool = not tr.hits.any(func(h): return h.u.team == "squad" or h.u.kind == "pow")
 							if safe and c.has("radius") and tr.hits.size():
 								safe = not squad_near(b, Vector2(tr.hits[0].x, tr.hits[0].y), c.radius + 20)
-							if safe and tr.hits.any(func(h): return h.u.team == "enemy" or h.u.is_prop()):
+							if safe and tr.hits.any(func(h): return h.u.team == "enemy" or h.u.is_prop() or h.u.kind == "dump"):
 								bot_last = c.get("name", "?")
 								b.select_card(i)
 								b.commit_aim(Vector2(e.x, e.y - e.h * 0.6))
@@ -5333,6 +5338,178 @@ func playtest() -> void:
 				for x in Run.soldiers:
 					if x.alive:
 						x.hp = Run.eff_max_hp(x)
+			bot_shop()
+
+func bot_shop() -> Dictionary:
+	## B6: spend scrip at HQ like a sensible player. Dog tags first, then Drill Sergeant levels for
+	## whoever is behind, then one card each for the lowest-level soldiers. Prints one [shop] line.
+	var spent := {"tags": 0, "drill": 0, "cards": 0, "scrip": 0}
+	var s0 := Run.scrip
+	for x in Run.soldiers:
+		while x.alive and x.tags < Data.DOG_TAGS and Run.scrip >= Services.price(Data.TAG_PRICE):
+			Run.scrip -= Services.price(Data.TAG_PRICE)
+			x.tags += 1
+			spent.tags += 1
+	for k in 3:
+		var behind: Array = Run.soldiers.filter(func(x): return Run.drill_ok(x))
+		if behind.is_empty() or Run.scrip < Services.price(Data.DRILL_PRICE):
+			break
+		behind.sort_custom(func(a, b): return a.lvl < b.lvl)
+		var x: Dictionary = behind[0]
+		var opts := Run.level_options(x)
+		Run.scrip -= Services.price(Data.DRILL_PRICE)
+		Run.drill_level(x)
+		if opts.size():
+			Run.apply_option(x, opts[randi() % opts.size()])
+		spent.drill += 1
+	var order: Array = Run.soldiers.filter(func(x): return x.alive)
+	order.sort_custom(func(a, b): return a.lvl < b.lvl)
+	for x in order:
+		var cards: Array = Run.level_options(x).filter(func(o): return o.kind == "card")
+		if cards.is_empty():
+			continue
+		var o: Dictionary = cards[0]
+		var p := Services.price(Data.card_price(o.key, int(o.get("tier", -1))))
+		if Run.scrip < p:
+			break
+		Run.scrip -= p
+		x.deck.append(Run.new_card(o.key, int(o.get("tier", -1)), "shop"))
+		spent.cards += 1
+	spent.scrip = s0 - Run.scrip
+	print("[shop] ", JSON.stringify(spent), " left ", Run.scrip)
+	return spent
+
+func bcalls() -> void:
+	## B1-B6 from the balance pass page (all voted YES). B6 is the bot itself: see bot() and bot_shop().
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.meta["tips_off"] = true
+	# B1: a softer level 1 Boar; later levels keep theirs
+	check(Data.LEVELS[0].boss_hp == 100 and Data.LEVELS[0].plate == 30, "B1: the level 1 Boar has 100 HP and 30 plate")
+	check(Data.LEVELS[1].boss_hp == 160 and Data.LEVELS[2].boss_hp == 210, "B1: the level 2 and 3 Boars are unchanged")
+	Run.new_run()
+	Run.mission = 0
+	Run.level = Run.make_level("jungle", 0)
+	check(int(Run.level.boss_hp) == 100 and int(Run.level.plate) == 30, "B1: a level 1 jungle builds the softer Boar")
+	# B2 + B3 in a real battle
+	var b: Battle = main.start_battle(0, Run.level)
+	await frames_wait(20)
+	var sq := b.squad_alive()
+	var xp0: Array = sq.map(func(u): return int(u.s.xp))
+	var foe: Unit = b.units.filter(func(o): return o.team == "enemy" and not o.dead and o.type != "boss" and not o.heavy)[0]
+	b.damage(foe, 999, sq[0])
+	await frames_wait(5)
+	check(foe.dead, "B3: the %s is down" % foe.type)
+	check(int(sq[0].s.xp) > xp0[0], "B3: the killer gets the kill's XP")
+	var shared := true
+	for i in range(1, sq.size()):
+		shared = shared and int(sq[i].s.xp) >= xp0[i] + 1
+	check(shared, "B3: every other soldier still standing gets a share (%s -> %s)" % [xp0, sq.map(func(u): return int(u.s.xp))])
+	check(int(sq[1].s.xp) - xp0[1] < int(sq[0].s.xp) - xp0[0], "B3: the share is smaller than the killer's XP")
+	var bo: Unit = b.units.filter(func(o): return o.type == "boss")[0]
+	bo.x = b.cam_x + 560
+	bo.y = b.T.stand_y(bo.x, 0)
+	sq[0].x = b.cam_x + 300
+	sq[0].y = b.T.stand_y(sq[0].x, 0)
+	b.alert = 10
+	b.boss_act(bo)
+	await until(func(): return b.projs.any(func(pr): return pr.kind == "shell" and pr.owner == bo), 400)
+	var sh_p: Array = b.projs.filter(func(pr): return pr.kind == "shell" and pr.owner == bo)
+	check(sh_p.size() > 0 and int(sh_p[0].dmg) == 11, "B2: the Boar's shell stays at 11 at alert 10 (%s)" % [sh_p.map(func(pr): return pr.dmg)])
+	await shot("bcalls_boar")
+	main.show_title()
+	await frames_wait(10)
+	# B4: Mudflat Landing is plain; the rest of Act I keeps its mini-boss rolls and events
+	Run.delete_campaign(6)
+	Run.new_campaign(6)
+	for i in 5:
+		Run.start_op(Run.sector("d1"))
+		check(not Run.level.walker and Run.level.event == "", "B4: Mudflat Landing has no mini-boss and no event (try %d)" % i)
+	var ev := 0
+	for i in 10:
+		var lv := Run.make_op(Run.sector("d2"))
+		ev += 1 if lv.event != "" else 0
+	check(ev == 10, "B4: other Act I sectors still roll an event (%d of 10)" % ev)
+	Run.leave_campaign()
+	Run.delete_campaign(6)
+	# B5: the Drill Sergeant trains a soldier who is behind, picked like a level-up
+	Run.new_run()
+	Run.scrip = 500
+	Run.soldiers[0].lvl = 5
+	Run.soldiers[0].xp = Run.xp_floor(Run.soldiers[0])
+	check(not Run.drill_ok(Run.soldiers[0]) and Run.drill_ok(Run.soldiers[1]), "B5: only soldiers below the squad's top level can be drilled")
+	main.show_hq(false)
+	await frames_wait(10)
+	main.screen.open_shop("barracks")
+	await frames_wait(10)
+	await shot("bcalls_barracks")
+	var sh: Control = main.screen.sub
+	var l1: int = Run.soldiers[1].lvl
+	sh.drill()
+	await frames_wait(10)
+	check(sh.chooser != null, "B5: the drill asks who")
+	sh.chosen.emit(1)
+	await frames_wait(10)
+	await shot("bcalls_drill_pick")
+	check(sh.chooser != null, "B5: then shows level-up options")
+	sh.chosen.emit(0)
+	await frames_wait(10)
+	check(Run.soldiers[1].lvl == l1 + 1 and Run.scrip == 500 - Services.price(Data.DRILL_PRICE), "B5: one level for %d scrip (lv %d, scrip %d)" % [Data.DRILL_PRICE, Run.soldiers[1].lvl, Run.scrip])
+	check(Run.soldiers[1].xp == Run.xp_floor(Run.soldiers[1]), "B5: XP sits at the new level's floor")
+	await shot("bcalls_drilled")
+	# B6: the bot spends at HQ
+	Run.new_run()
+	Run.scrip = 900
+	Run.soldiers[0].lvl = 6
+	Run.soldiers[2].tags = 0
+	var spent := bot_shop()
+	check(spent.tags == 2 and spent.drill > 0 and spent.cards > 0, "B6: the bot buys tags, drills and cards (%s)" % [spent])
+	main.show_title()
+	await frames_wait(5)
+	Run.meta = keep
+	Run.save_meta()
+
+func campsweep() -> void:
+	## Balance pass: the bot plays a fresh campaign op by op (stronghold as soon as it opens, else the
+	## first open sector) and prints one [cp] JSON line per op. --seed=N --runs=K (K = ops). Slots 6-8,
+	## one per seed, so three sweeps can run side by side.
+	playtest_debug = true
+	seed(seed_arg * 1000)
+	var slot := 6 + seed_arg % 3
+	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate()}
+	Run.delete_campaign(slot)
+	Run.new_campaign(slot)
+	for n in runs_arg:
+		if Run.camp.get("done", false):
+			break
+		var open: Array = Run.act().sectors.filter(func(sc): return Run.sector_open(sc) and not Run.sector_held(sc.id))
+		if open.is_empty():
+			break
+		var fort: Array = open.filter(func(sc): return sc.get("stronghold", false))
+		var sc: Dictionary = fort[0] if fort.size() else open[0]
+		var act0 := int(Run.camp.act)
+		var scrip0 := Run.scrip
+		Run.start_op(sc)
+		Run.roll_intel()
+		var lv: Dictionary = Run.current_mission()
+		pt_tag = "cp_s%d_o%d" % [seed_arg, n]
+		var ms0 := Time.get_ticks_msec()
+		var won := await bot(int(Run.act().tier), 70, false, lv)
+		var row := bot_stats.duplicate()
+		row.erase("round_hp")
+		row.merge({"seed": seed_arg, "op": n, "act": act0, "sector": sc.id, "job": lv.get("job", ""), "biome": lv.get("biome", ""), "stronghold": sc.get("stronghold", false),
+			"secs": (Time.get_ticks_msec() - ms0) / 1000.0, "scrip_in": scrip0, "scrip_out": Run.scrip, "lv": Run.soldiers.map(func(x): return x.lvl),
+			"hp_out": Run.soldiers.map(func(x): return x.hp if x.alive else -1)})
+		print("[cp] ", JSON.stringify(row))
+		var st: Dictionary = Run.history[-1] if Run.history.size() else {"won": won}
+		main.campaign_home(st)
+		await frames_wait(10)
+		bot_shop()
+	print("[cp] done act %d ops %d held %d" % [int(Run.camp.act), int(Run.camp.ops), Run.camp.held.size()])
+	Run.leave_campaign()
+	Run.delete_campaign(slot)
+	Run.meta.salvage = keep.salvage
+	Run.meta.hq = keep.hq
+	Run.save_meta()
 
 func campaignplay() -> void:
 	## Autoplays a whole campaign through the real screens: War Room, brief, the bot's op, the
