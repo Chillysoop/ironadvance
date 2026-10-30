@@ -901,6 +901,8 @@ func run() -> void:
 			await newplayer5()
 		"newplayer6":
 			await newplayer6()
+		"tcalls":
+			await tcalls()
 		"qcalls":
 			await qcalls()
 		"polish1":
@@ -6074,14 +6076,14 @@ func warfront() -> void:
 	check(Run.act(1).name == "THE BREACH", "the first war runs the home fronts")
 	var vet: Dictionary = Run.roster[0]
 	Run.second_tour(vet)
-	check(int(Run.camp.tour) == 2 and Run.act(0).name == "LANDFALL", "a Second Tour still lands at the delta")
-	check([1, 2, 3].all(func(i): return Run.act(i).name == Data.ALT_ACTS[i].name), "and fights Acts II to IV on their other fronts (%s)" % [[1, 2, 3].map(func(i): return Run.act(i).name)])
+	check(int(Run.camp.tour) == 2 and Run.act(0).name == "OIL COAST" and Run.act(4).name == "SHUT THE GATE", "T8: a Second Tour lands on the oil coast, and still ends at Iron Harbor")
+	check([0, 1, 2, 3].all(func(i): return Run.act(i).name == Data.ALT_ACTS[i].name), "and fights Acts I to IV on their other fronts (%s)" % [[0, 1, 2, 3].map(func(i): return Run.act(i).name)])
 	var f2: Array = Run.camp.fronts.duplicate()
 	var f3 := Run.pick_fronts(3, f2)
-	check(f3 != f2 and int(f3[0]) == 0 and int(f3[4]) == 0, "a third tour never replays the last map exactly (%s)" % [f3])
+	check(f3 != f2 and int(f3[4]) == 0, "a third tour never replays the last map exactly (%s)" % [f3])
 	# every alt sector sets up a real op
 	var bad := []
-	for a in [1, 2, 3]:
+	for a in [0, 1, 2, 3]:
 		Run.camp.act = a
 		Run.camp.held.clear()
 		check(Run.act().sectors.filter(func(sc): return Run.sector_open(sc)).size() >= 2, "Act %s %s opens through two sectors" % [Run.act().roman, Run.act().name])
@@ -9492,7 +9494,11 @@ func newplayer6() -> void:
 	ev.position = wr.card_rect(vi).get_center()
 	wr._gui_input(ev)
 	await frames_wait(5)
-	check(Run.soldiers.has(g) and wr.note.contains("VARGA TAKES") and wr.note.contains("VANGUARD"), "the swap is said out loud (%s)" % wr.note)
+	check(not Run.soldiers.has(g) and wr.msg.contains("FULL"), "T4: Varga is his own slot, so a full squad says so instead of benching Rook (%s)" % wr.msg)
+	Run.soldiers.erase(Run.soldiers.filter(func(x): return x.key != "rook")[0])
+	wr._gui_input(ev)
+	await frames_wait(5)
+	check(Run.soldiers.has(g) and Run.soldiers.any(func(x): return x.key == "rook" and x != g), "and with a free slot he goes in next to Rook")
 	await shot("np6_company_swap")
 	wr.company_open = false
 	# the last stand: its own brief, the map says it's a story op, and the payoff is spoken
@@ -9559,6 +9565,128 @@ func newplayer6() -> void:
 	var wb: Array = b.squad().filter(func(u): return b.wing(u) == "b")
 	check(wb.size() == 4 and wb.all(func(u): return u.x - b.cam_x < 826), "squad B stands left of the button column (%s)" % [wb.map(func(u): return int(u.x - b.cam_x))])
 	await shot("np6_pincer_b")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
+func tcalls() -> void:
+	## Playtest 6 design calls T1-T8.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	# T7: the weather fits the ground
+	var seen := {}
+	Run.mission = 3
+	for bio in ["lake", "volcano", "jungle"]:
+		Run.level = {"biome": bio}
+		seen[bio] = {}
+		for i in 80:
+			Run.roll_intel()
+			seen[bio][Run.intel] = true
+	check(not seen.lake.has("monsoon") and not seen.volcano.has("monsoon") and seen.lake.has("blizzard"), "T7: no monsoon on ice or lava, a blizzard on ice (%s)" % [seen.lake.keys()])
+	check(not seen.jungle.has("blizzard") and seen.jungle.has("monsoon"), "and no blizzard in the jungle (%s)" % [seen.jungle.keys()])
+	Run.level = {}
+	Run.mission = 0
+	# T8 + T1: a Second Tour lands on the oil coast, and Hale welcomes the veteran back
+	var vet: Dictionary = Run.roster[0]
+	Run.second_tour(vet)
+	check(Run.act(0).name == "OIL COAST" and Run.act(0).sectors.filter(func(sc): return Run.sector_open(sc)).size() >= 2, "T8: the tour opens on the oil coast, through two sectors")
+	var op := Run.make_op(Run.sector("o1"))
+	check(not op.walker and op.event == "", "the coast's first op is plain, like Mudflat Landing")
+	var hi: Array = Run.landfall_radio()
+	check(hi.size() == 4 and hi[0].text.contains("Welcome back") and hi[0].text.contains(vet.def.name.capitalize()) and hi[1].text.contains("TANKER BEACH"), "T1: Hale greets %s and names the new front (%s)" % [vet.def.name, hi[0].text if hi.size() else "-"])
+	check(hi[3].get("s", {}) == Run.roster.filter(func(x): return x.get("tour_vet", false))[0], "and the veteran answers")
+	main.show_hq(false)
+	await frames_wait(5)
+	main.call_in(hi)
+	await frames_wait(30)
+	await shot("tc_tour_welcome")
+	main.show_war_room()
+	await frames_wait(20)
+	await shot("tc_oilcoast_map")
+	# T4: Varga is his own slot
+	var g: Dictionary = Run.make_guest("varga")
+	g.erase("guest")
+	g["spec"] = "colonel"
+	Run.roster.append(g)
+	Run.soldiers.erase(Run.soldiers.filter(func(x): return x.key != "rook")[0])
+	Run.toggle_squad(g)
+	check(Run.soldiers.has(g) and Run.soldiers.any(func(x): return x.key == "rook" and x != g), "T4: Varga deploys next to Rook")
+	Run.toggle_squad(g)
+	Run.roster.erase(g)
+	Run.fill_squad()
+	# T5 + T6: the last stand's brief shows him, and he starts pinned down deep in the fort
+	Run.camp.act = 3
+	Run.camp.held = [Run.sec_key("x3")]
+	Run.start_op(Run.sector("v1"))
+	main.show_brief()
+	await frames_wait(10)
+	check(main.screen.guest.get("def", {}).get("name", "") == "VARGA", "T5: the stand's brief line-up has Varga in it")
+	await shot("tc_brief_stand")
+	var b: Battle = main.start_battle(0, Run.current_mission())
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var vu: Array = b.squad().filter(func(u): return u.s.get("guest", "") == "varga")
+	check(vu.size() == 1 and vu[0].trapped and vu[0].x > b.cam_x + b.W, "T6: Varga starts pinned down past the first screen (x %d cam %d trapped %s n %d)" % [int(vu[0].x) if vu.size() else -1, int(b.cam_x), vu[0].trapped if vu.size() else false, vu.size()])
+	check(not b.can_act(vu[0]) and b.sel != vu[0], "and can't act or be picked while he's pinned")
+	await frames_wait(10)
+	await shot("tc_stand_pinned")
+	var mate: Unit = b.squad_alive().filter(func(u): return u != vu[0])[0]
+	mate.x = vu[0].x - 100
+	mate.y = vu[0].y
+	b.free_varga()
+	check(not vu[0].trapped, "a squadmate who reaches him breaks him out")
+	b.state = "over"
+	await frames_wait(5)
+	# T2 + T3 + T5: squad B is yours to pick, the brief shows both squads, the joined bar is compact
+	Run.camp.act = 4
+	Run.camp.held = []
+	while Run.company().size() < Data.PINCER_COMPANY + 1:
+		Run.enlist(Run.recruit_offers(1)[0])
+	check(Run.pincer_ahead(), "the pincer picks show in the last act")
+	var bench: Array = Run.company().filter(func(x): return not Run.soldiers.has(x))
+	var worst: Dictionary = bench[0]
+	for x in bench:
+		if int(x.lvl) < int(worst.lvl):
+			worst = x
+	for x in bench:
+		x.erase("wing")
+	worst.lvl = 1
+	for x in bench:
+		if x != worst:
+			x.lvl = 4
+	check(not Run.pick_wing_b().has(Run.roster.find(worst)), "unmarked, the best four go")
+	main.show_war_room()
+	await frames_wait(5)
+	var wr = main.screen
+	wr.company_open = true
+	wr.build()
+	await frames_wait(5)
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = true
+	ev.position = wr.wing_rect(Run.company().find(worst)).get_center()
+	wr._gui_input(ev)
+	await frames_wait(5)
+	check(worst.get("wing", "") == "b" and Run.pick_wing_b().has(Run.roster.find(worst)), "T2: ticking B sends %s with squad B" % worst.def.name)
+	await shot("tc_company_wing")
+	wr.company_open = false
+	Run.start_op(Run.sector("boss"))
+	check(Run.wing_b().has(worst), "the pincer op takes the picked squad B")
+	main.show_brief()
+	await frames_wait(10)
+	await shot("tc_brief_pincer")
+	b = main.start_battle(0, Run.current_mission())
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	b.pincer.on = false  # the two halves have met
+	b.ui_dirty = true
+	await frames_wait(20)
+	var tg: Array = b.hud.tags.filter(func(t): return t.visible)
+	check(tg.size() == 8 and tg.all(func(t): return t.size.y < 20 and t.position.y >= 430), "T3: the joined squad's eight tags fit the usual corner (%s)" % [tg.map(func(t): return int(t.position.y))])
+	await shot("tc_pincer_joined")
 	main.show_title()
 	await frames_wait(5)
 	Run.delete_campaign(9)

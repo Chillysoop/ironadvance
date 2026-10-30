@@ -189,8 +189,7 @@ func show_slots() -> void:
 			show_hq(false)
 			if not Run.camp.get("landfall", false) and int(Run.camp.get("ops", 0)) == 0:
 				Run.camp["landfall"] = true
-				var sq: Array = Run.soldiers.filter(func(s): return s.alive)
-				call_in(Data.RADIO_LANDFALL.map(func(r): return Run.radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())))
+				call_in(Run.landfall_radio()))
 	p.back.connect(show_title)
 	open(p)
 
@@ -506,6 +505,7 @@ func open(s: Control) -> void:
 # ================================================================ simple full-screen panels
 class Screen extends Control:
 	var mode := "title"
+	var guest := {}  # T5: Colonel Varga as the brief's line-up shows him
 	var stats := {}
 	var buttons: Array = []
 	var unlock := ""
@@ -602,20 +602,38 @@ class Screen extends Control:
 				Art.text(self, "FIELD HOSPITAL", Vector2(480, 110), 32, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 				Art.text(self, "Everyone is patched up and gets one dog tag back. The dead stay dead.", Vector2(480, 150), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 				squad_line(370, "cheer")
-	func squad_line(y: float, anim: String) -> void:
+	func squad_line(y: float, anim: String, line := [], cx := 480.0, gap := 0.0, sc := 2.0, col := Color.WHITE) -> void:
 		var i := 0
-		var line: Array = Run.soldiers if Run.soldiers.size() else Data.SQUAD_DEFS.filter(func(d): return Data.BASE_CLASSES.has(d.key)).map(func(d): return {"key": d.key, "alive": true, "def": d, "lvl": 1})
-		var gap := 100.0 if line.size() <= 4 else 72.0  # a fifth soldier squeezes in between the briefing's side panels
+		if line.is_empty():
+			line = Run.soldiers if Run.soldiers.size() else Data.SQUAD_DEFS.filter(func(d): return Data.BASE_CLASSES.has(d.key)).map(func(d): return {"key": d.key, "alive": true, "def": d, "lvl": 1})
+		if gap <= 0.0:
+			gap = 100.0 if line.size() <= 4 else 72.0  # a fifth soldier squeezes in between the briefing's side panels
 		for s in line:
-			var x := 480 - (line.size() - 1) * gap / 2.0 + i * gap
+			var x := cx - (line.size() - 1) * gap / 2.0 + i * gap
 			var a := anim if s.alive else "die"
-			Art.draw_char(self, Art.look_sheet(s), a, (t / 6) % 8 if a == "run" else ((t / 12 + i) % 4 if a == "idle" else (t / 10) % 2 if a == "cheer" else 5), Vector2(x, y), 1, false, 0, 1.0, 0, a != "cheer" and a != "die", 2.0)
-			Art.text(self, s.def.name, Vector2(x, y + 18), 8, Color.WHITE if s.alive else Color("8a7a7a"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.draw_char(self, Art.look_sheet(s), a, (t / 6) % 8 if a == "run" else ((t / 12 + i) % 4 if a == "idle" else (t / 10) % 2 if a == "cheer" else 5), Vector2(x, y), 1, false, 0, 1.0, 0, a != "cheer" and a != "die", sc)
+			Art.text(self, s.def.name, Vector2(x, y + 18), 8, (col if not s.has("guest") else Color("ff7a3d")) if s.alive else Color("8a7a7a"), HORIZONTAL_ALIGNMENT_CENTER)
 			if s.has("lvl"):
-				Art.text(self, "LV%d" % s.lvl, Vector2(x, y + 30), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+				Art.text(self, ("COL LV%d" if s.has("guest") else "LV%d") % s.lvl, Vector2(x, y + 30), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 			if s.has("tags") and s.alive:
 				Art.draw_tags(self, Vector2(x - 9, y + 36), s.tags)
 			i += 1
+	func brief_line_up(m: Dictionary) -> void:
+		## T5: the brief shows everyone going in: Colonel Varga on his ops, and squad B on the pincer.
+		var sq: Array = Run.soldiers.duplicate()
+		if Run.campaign() and (m.get("story", "") == "varga" or m.get("guest", "") == "varga"):
+			if guest.is_empty():
+				guest = Run.make_guest("varga")
+			sq.append(guest)
+		var wb: Array = Run.wing_b() if m.get("pincer", false) else []
+		if wb.is_empty():
+			squad_line(382, "idle", sq)  # feet low enough that heads clear the SPECIALIST POW line
+			return
+		# two squads of four, each its own group, B in the PINCER line's blue
+		squad_line(384, "idle", sq, 380, 46, 1.5)
+		squad_line(384, "idle", wb, 580, 46, 1.5, Color("53d4e2"))
+		Art.text(self, "SQUAD A", Vector2(380, 300), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+		Art.text(self, "SQUAD B", Vector2(580, 300), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 	const HEROES := [  # key, x, feet y, scale, face, gun angle: a pyramid on the rubble, Rook on top
 		["hex", 314, 408, 2.5, -1, -0.15], ["moss", 392, 388, 2.75, -1, -0.35],
 		["vee", 574, 388, 2.75, 1, -0.3], ["rook", 480, 372, 3.0, 1, -0.55]]
@@ -740,7 +758,7 @@ class Screen extends Control:
 			Art.text(self, "SPECIALIST POW: %s THE %s IS HELD HERE. FREE THEM TO UNLOCK THE CLASS." % [D.name, D.cls.to_upper()], Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		draw_texture_rect(Art.tex.ic8_coin, Rect2(410, sy - 10, 10, 10), false)
 		Art.text(self, "%d SCRIP" % Run.scrip, Vector2(426, sy), 8, Color("ffd23a"))
-		squad_line(382, "idle")  # feet low enough that heads clear the SPECIALIST POW line
+		brief_line_up(m)
 		draw_extras(m)  # over the squad, so no rifle pokes through the boards
 	func brief_plate(m: Dictionary, n: int) -> void:
 		## A dark plate under the brief's text, so the small lines read even over the dusk sun.

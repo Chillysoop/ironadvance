@@ -184,6 +184,11 @@ func lz_pos() -> Vector2:
 func link_pos(id: String) -> Vector2:
 	return lz_pos() if id == "lz" else node_pos(Run.sector(id))
 
+func wing_rect(i: int) -> Rect2:
+	## T2: the SQUAD B box in a bench card's corner.
+	var r := card_rect(i)
+	return Rect2(r.end.x - 30, r.position.y + 6, 24, 18)
+
 func card_rect(i: int) -> Rect2:
 	## Roster card i on the company overlay: two rows of five over the map.
 	return Rect2(MAP.position.x + 8 + (i % 5) * 130, MAP.position.y + 36 + (i / 5) * 176, 124, 168)
@@ -192,6 +197,13 @@ func _gui_input(ev: InputEvent) -> void:
 	if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and company_open:
 		var co := Run.company()
 		for i in co.size():
+			if Run.pincer_ahead() and not Run.soldiers.has(co[i]) and wing_rect(i).has_point(ev.position):
+				accept_event()
+				msg = Run.toggle_wing(co[i])  # T2: squad B for the pincer
+				Sfx.play("deny" if msg != "" else "select")
+				note = ""
+				build()
+				return
 			if card_rect(i).has_point(ev.position):
 				accept_event()
 				var was: Array = Run.soldiers.duplicate()
@@ -201,7 +213,7 @@ func _gui_input(ev: InputEvent) -> void:
 				var out: Array = was.filter(func(x): return not Run.soldiers.has(x))
 				if msg == "" and out.size() and Run.soldiers.has(co[i]):
 					# one of each class: say who stepped aside, or a swap looks like a misclick
-					note = "%s TAKES %s'S %s SLOT." % [co[i].def.name, out[0].def.name, Run.class_def(out[0].key).cls.to_upper()]
+					note = "%s TAKES %s'S %s SLOT." % [co[i].def.name, out[0].def.name, str(out[0].def.cls).to_upper()]
 				build()
 				return
 		return
@@ -381,7 +393,8 @@ func draw_company() -> void:
 	draw_rect(MAP, Color("53d4e2"), false, 2)
 	var sc := Run.sector(sel)
 	Art.text(self, "THE COMPANY  %d OF %d" % [Run.company().size(), Data.COMPANY_MAX], Vector2(MAP.position.x + 12, MAP.position.y + 22), 8, Color("53d4e2"))
-	var tip := msg if msg != "" else note if note != "" else "Click to put a soldier in or out. One of each class per squad, up to %d." % Data.SQUAD_MAX
+	var tip := msg if msg != "" else note if note != "" else ("Click to put a soldier in or out. Tick B on the bench to pick squad B for the pincer." if Run.pincer_ahead() else "Click to put a soldier in or out. One of each class per squad, up to %d." % Data.SQUAD_MAX)
+	var wb: Array = Run.pick_wing_b().map(func(k): return Run.roster[k]) if Run.pincer_ahead() else []
 	Art.text(self, tip, Vector2(MAP.end.x - 12, MAP.position.y + 22), 16, Color("ff7a5a") if msg != "" else Color("ffd23a") if note != "" else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
 	var co := Run.company()
 	for i in co.size():
@@ -398,7 +411,15 @@ func draw_company() -> void:
 			var cy := r.position.y + 10 + k * 5
 			draw_line(Vector2(cx, cy + 3), Vector2(cx + 5, cy), Color("ffd23a"), 2)
 			draw_line(Vector2(cx + 5, cy), Vector2(cx + 10, cy + 3), Color("ffd23a"), 2)
-		Art.text(self, "IN SQUAD" if on else "BENCH", Vector2(r.end.x - 6, r.end.y - 8), 8, Color("62d26f") if on else Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)
+		var b_side := wb.has(s)
+		Art.text(self, ("SQUAD A" if wb.size() else "IN SQUAD") if on else "SQUAD B" if b_side else "BENCH", Vector2(r.end.x - 6, r.end.y - 8), 8, Color("62d26f") if on else Color("53d4e2") if b_side else Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)
+		if wb.size() and not on:
+			# T2: tick B to send them in with squad B; unticked, the best four on the bench go
+			var br := wing_rect(i)
+			var mk: bool = s.get("wing", "") == "b"
+			draw_rect(br, Color("1e4a54") if mk else Color(0.05, 0.035, 0.03))
+			draw_rect(br, Color("53d4e2"), false, 1)
+			Art.text(self, "B", br.get_center() + Vector2(0, 5), 8, Color.WHITE if mk else Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 		var y := r.position.y + 82
 		Art.text(self, "%s %s" % [Run.rank_name(s), s.def.name], Vector2(r.position.x + 8, y), 8, Color.WHITE)
 		Art.text(self, "%s  LV%d" % [s.def.cls, s.lvl], Vector2(r.position.x + 8, y + 16), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)

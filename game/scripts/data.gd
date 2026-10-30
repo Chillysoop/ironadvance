@@ -1171,8 +1171,9 @@ const ELITE_BIO := 2     # share of max HP everyone gets back just for reaching 
 # Briefing intel (W2): each mission rolls one condition.
 const INTEL := {
 	"clear": {"name": "QUIET SECTOR", "text": "No extra conditions.", "w": 3},
-	"monsoon": {"name": "MONSOON", "text": "Everything is soaked: fire does 1 damage and doesn't spread.", "w": 2},
+	"monsoon": {"name": "MONSOON", "text": "Everything is soaked: fire does 1 damage and doesn't spread.", "w": 2, "not": ["lake", "volcano", "mine", "hive"]},
 	"fog": {"name": "FOG", "text": "Jackals see 30% less far.", "w": 2},
+	"blizzard": {"name": "BLIZZARD", "text": "Driving snow: Jackals see 30% less far.", "w": 2, "only": ["lake", "mountain"]},  # T7
 	"surplus": {"name": "SURPLUS", "text": "Twice the crates on the map.", "w": 2},
 	"veterans": {"name": "VETERAN JACKALS", "text": "Far more elites, and +2 Luck for this mission.", "w": 2},
 }
@@ -1461,7 +1462,7 @@ const SEGMENTS := {
 	"range": {"w": 820, "sandbags": [], "pits": [], "structs": [{"t": "tower", "x": 440, "h": 96}],
 		"spawns": [["grunt", 200], ["barrel", 290], ["shield", 340], ["grunt", 440, {"hold": 1}], ["grunt", 580], ["mg", 700]]},
 	"camp": {"w": 560, "sandbags": [60, 500], "pits": [], "camp": true, "structs": [], "spawns": []},
-	# N6: the training drill. A target, a crate, a bunched pair for a grenade, then a short real fight
+# N6: the training drill. A target, a crate, a bunched pair for a grenade, then a short real fight
 	"drill": {"w": 1000, "sandbags": [], "pits": [], "structs": [],
 		"spawns": [["grunt", 430, {"tut": "target"}], ["crate", 510, {"tut": "crate"}], ["grunt", 600, {"tut": "group"}], ["grunt", 625, {"tut": "group"}]]},
 	"drill2": {"w": 900, "sandbags": [260], "pits": [], "structs": [{"t": "tower", "x": 520, "h": 96}],
@@ -1710,6 +1711,13 @@ const RADIO_LANDFALL := [
 	["cmd", "Take three sectors and their Boar's Den opens. Break it and the front moves on."],
 	["sq", "Nice beach, {mate}. Shame about the Jackals."],
 ]
+# T1: a Second Tour's first call: Hale greets the veteran and says the war has moved
+const RADIO_TOUR := [
+	["cmd", "Iron Company, this is Major Hale. Welcome back, {vet}. Tour {tour}, and a new war."],
+	["cmd", "The Jackals regrouped on new fronts. This one opens at {front}. Nothing out there looks like last time."],
+	["cmd", "Same drill: kit out here, then the WAR ROOM. Take three sectors and their stronghold opens."],
+	["vet", "Told you I'd be back, {mate}. Let's show the new kids how it's done."],
+]
 # N6: the training drill, one list of lines per step (move, shoot, crate, throw, push, fight)
 const TUT_LINES := [
 	["Listen up, recruits. This is a drill: nothing here counts.", "Click the ground to walk. Walk anyone to the green flag."],
@@ -1796,7 +1804,7 @@ const ACTS := [
 	 "text": "Hit the beach at the delta and push into the jungle. Plain war against the Jackals.",
 	 "lz": {"name": "BEACHHEAD", "at": [70, 380]},
 	 "sectors": [
-		{"id": "d1", "name": "MUDFLAT LANDING", "biome": "delta", "job": "push", "at": [190, 380], "links": ["lz", "d2", "d3"], "hold": {"scrip": 20}},
+		{"id": "d1", "name": "MUDFLAT LANDING", "biome": "delta", "job": "push", "opener": true, "at": [190, 380], "links": ["lz", "d2", "d3"], "hold": {"scrip": 20}},
 		{"id": "d2", "name": "RICE TERRACES", "biome": "delta", "job": "rescue", "at": [280, 270], "links": ["lz", "d1", "j1", "j2"], "perk": "aid"},
 		{"id": "d3", "name": "FERRY DOCKS", "biome": "delta", "job": "demolish", "at": [340, 410], "links": ["d1", "j2"], "hold": {"salvage": 2}},
 		{"id": "j1", "name": "SIGNAL RIDGE", "biome": "jungle", "job": "hold", "at": [230, 160], "links": ["d2", "j3"], "perk": "lookout"},
@@ -1849,6 +1857,22 @@ const ACTS := [
 # W14: on a Second Tour, Acts II to IV can run on a different front: other biomes, other sectors,
 # the same beats (the Queen's pit, the Vharr-refit Boar, Varga's garrison and his last stand).
 const ALT_ACTS := {
+	# T8: a Second Tour can land somewhere new too: the oil coast instead of the delta, with its own Boar's Den
+	0: {"id": "oilcoast", "name": "OIL COAST", "roman": "I", "tier": 0, "hp_mul": 1.0, "boss_hp": 120, "plate": 36, "need": 3, "breach": 0.0,
+	 "text": "Hit the tanker beach and push inland through the dunes. Plain war against the Jackals.",
+	 "lz": {"name": "TANKER BEACH", "at": [70, 380]},
+	 "radio": [["cmd", "Iron Company, this is Hale. The Jackals hold the oil coast. Take it back one sector at a time."],
+		["varga", "Colonel Varga, Jackal Army. A new beach, and the same little company."],
+		["sq", "{mate}, he remembers us. I'm almost flattered."]],
+	 "taunt": [["varga", "Every well on this coast is mined. Walk carefully."], ["varga", "My Boar has a new den. You will not like it."]],
+	 "sectors": [
+		{"id": "o1", "name": "DRY WADI", "biome": "desert", "job": "push", "opener": true, "at": [190, 380], "links": ["lz", "o2", "o3"], "hold": {"scrip": 20}},
+		{"id": "o2", "name": "PIPELINE CAMP", "biome": "refinery", "job": "rescue", "at": [280, 270], "links": ["lz", "o1", "q1", "q2"], "perk": "aid"},
+		{"id": "o3", "name": "LOADING JETTY", "biome": "harbor", "job": "demolish", "at": [340, 410], "links": ["o1", "q2"], "hold": {"salvage": 2}},
+		{"id": "q1", "name": "RADAR DUNE", "biome": "desert", "job": "hold", "at": [230, 160], "links": ["o2", "q3"], "perk": "lookout"},
+		{"id": "q2", "name": "FLARE STACKS", "biome": "refinery", "job": "demolish", "at": [440, 300], "links": ["o2", "o3", "boss"], "hold": {"scrip": 20}},
+		{"id": "q3", "name": "CARAVAN ROAD", "biome": "desert", "job": "hunt", "at": [400, 150], "links": ["q1", "boss"], "hold": {"bio": 1}},
+		{"id": "boss", "name": "BOAR'S DEPOT", "biome": "refinery", "at": [580, 220], "links": ["q2", "q3"], "stronghold": true}]},
 	1: {"id": "whitepass", "name": "WHITE PASS", "roman": "II", "tier": 1, "hp_mul": 1.15, "boss_hp": 160, "plate": 46, "need": 3, "breach": 0.4,
 	 "text": "The frozen lakes and the old mine under the pass. The Jackals dug too deep and something dug back.",
 	 "lz": {"name": "ICE STRIP", "at": [80, 260]},
