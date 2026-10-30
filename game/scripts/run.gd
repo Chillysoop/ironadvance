@@ -1928,8 +1928,10 @@ func roll_bonus() -> String:
 	var held: Array = act().sectors.filter(func(sc): return not sc.get("stronghold", false) and sector_held(sc.id))
 	if held.is_empty() or randf() >= Data.BONUS_CHANCE:
 		return ""
-	var kind: String = Data.BONUS_OPS.keys()[randi() % Data.BONUS_OPS.size()]
 	var sc: Dictionary = held[randi() % held.size()]
+	# W14: no truck column on ice, rails or a carrier deck, same as a patrol
+	var kinds: Array = Data.BONUS_OPS.keys().filter(func(k): return Data.BONUS_OPS[k].job != "escort" or not Data.NO_TRUCK.has(sc.get("biome", "")))
+	var kind: String = kinds[randi() % kinds.size()]
 	camp["bonus"] = {"sec": sec_key(sc.id), "kind": kind, "left": Data.BONUS_OPS_LEFT}
 	return "Bonus op at %s: %s. It's there for %d ops." % [sc.name, Data.BONUS_OPS[kind].name.to_lower(), Data.BONUS_OPS_LEFT]
 
@@ -1985,8 +1987,16 @@ func second_tour(vet: Dictionary) -> void:
 	for slot_k in v.equip.keys():
 		v.equip[slot_k] = null  # their kit stayed with the old war's stash; the cards they earned come along
 	v.deck = v.deck.filter(func(c): return not c.has("src"))
-	roster.append(v)
-	toggle_squad(v)
+	# the veteran takes the place of the fresh starter who shares their name, so there's one of each
+	var twin: Array = roster.filter(func(s): return s.def.name == v.def.name)
+	if twin.size():
+		roster[roster.find(twin[0])] = v
+		if soldiers.has(twin[0]):
+			soldiers[soldiers.find(twin[0])] = v
+	else:
+		roster.append(v)
+	if not soldiers.has(v):
+		toggle_squad(v)
 	save_campaign()
 
 func varga_stand(st: Dictionary) -> String:
@@ -2008,13 +2018,13 @@ func make_guest(id: String) -> Dictionary:
 	## S3: Colonel Varga, on loan for one op. Not part of the company, never on the Memorial.
 	var d: Dictionary = Data.SQUAD_DEFS.filter(func(x): return x.key == "rook")[0].duplicate()
 	d.name = "VARGA"
-	d.cls = "Jackal Colonel"
+	d.cls = "Colonel"  # short enough for a roster card next to his level
 	d.hp = 40
 	d.deck = Data.VARGA_DECK.duplicate()
 	var s := make_soldier(d)
 	s["guest"] = id
 	s.lvl = 5
-	s["look"] = {"head": "", "hat": 3, "shirt": 3, "pants": 3}
+	s["look"] = {"head": "beret", "hat": 4, "shirt": 1, "pants": 2}  # navy cap and tan coat, like his face on the radio
 	return s
 
 # ---------------------------------------------------------------- S2/S3 radio
@@ -2057,6 +2067,8 @@ func radio_before() -> Array:
 		raw.append_array(Data.RADIO_VARGA_STAND)
 	elif level.get("guest", "") == "varga":
 		raw.append_array(Data.RADIO_VARGA_OP)
+	if level.get("pincer", false):
+		raw.append_array(Data.RADIO_PINCER)  # W9: say in the field how the two squads work
 	return raw.map(func(r): return radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())
 
 func radio_after(st: Dictionary) -> Array:
@@ -2066,6 +2078,8 @@ func radio_after(st: Dictionary) -> Array:
 	var raw: Array = []
 	if not st.get("won", false):
 		raw.append(Data.RADIO_LOST[randi() % Data.RADIO_LOST.size()])
+	elif level.get("story", "") == "varga" and not camp.has("varga") and not level.get("patrol", false):
+		raw.append_array(Data.RADIO_VARGA_SAVED if st.get("varga_alive", false) else Data.RADIO_VARGA_FELL)  # W13
 	else:
 		raw.append(Data.RADIO_WON[randi() % Data.RADIO_WON.size()])
 		raw.append(["sq", Data.RADIO_SQ_WON[randi() % Data.RADIO_SQ_WON.size()]])
@@ -2093,6 +2107,8 @@ func rank(s: Dictionary) -> int:
 	return int(s.get("rank", 0))
 
 func rank_name(s: Dictionary) -> String:
+	if s.get("spec", "") == "colonel":
+		return "COL"  # W13: Varga keeps his rank when he joins
 	return Data.RANKS[rank(s)].short
 
 func company() -> Array:
@@ -2271,6 +2287,31 @@ func book_service(st: Dictionary) -> Dictionary:
 			if gained > 0:
 				s["train"] = int(s.get("train", 0)) + gained
 		out.bench = bx
+	# a whole squad promoted (or handed the same order) at once reads as one line of news, not four
+	out.promos = merge_news(out.promos, " is now a ", "%s are now %ss.")
+	out.orders = merge_news(out.orders, " has a personal order: ", "%s have a personal order: %s.")
+	return out
+
+func merge_news(lines: Array, mid: String, many: String) -> Array:
+	## Lines "<NAME><mid><rest>" that share their rest fold into one: many % [names, rest without its period].
+	var groups := {}
+	var order: Array = []
+	for l in lines:
+		var at: int = l.find(mid)
+		var rest: String = l.substr(at + mid.length()) if at > 0 else l
+		if not groups.has(rest):
+			groups[rest] = []
+			order.append(rest)
+		if at > 0:
+			groups[rest].append(l.substr(0, at))
+	var out: Array = []
+	for rest in order:
+		var names: Array = groups[rest]
+		if names.size() < 2:
+			out.append(lines.filter(func(l): return l.ends_with(rest))[0])
+			continue
+		var who: String = ", ".join(names.slice(0, names.size() - 1)) + " and " + str(names.back())
+		out.append(many % [who, rest.trim_suffix(".")])
 	return out
 
 func buddies(s: Dictionary) -> Array:
@@ -2292,6 +2333,10 @@ func assign_order(s: Dictionary) -> String:
 			n[ty] += 1
 	var score := {"headhunter": n.AIM * 1.0, "demo": n.ARC * 1.5, "brawler": n.MELEE * 2.0, "giantkiller": n.AIM * 0.6 + 2.0,
 		"bughunter": 6.0 if int(camp.get("act", 0)) >= 1 else 0.0, "wrecker": 3.0, "ironside": 3.0}
+	# an order a squadmate already carries scores lower, so a promoted squad doesn't all get the same one
+	var held: Array = company().filter(func(x): return x != s and x.has("order")).map(func(x): return x.order.id)
+	for id in score:
+		score[id] -= 4.0 * held.count(id)
 	var best := ""
 	for id in score:
 		if s.get("orders_done", []).has(id):

@@ -672,8 +672,9 @@ class Tag extends Control:
 		if not u.dead and b.state == "player":
 			# energy pips after the name, then a DONE stamp once they have nothing left
 			var nb := maxi(3, u.energy)
+			var px := maxf(74.0, 40.0 + Art.text_width(u.def.name, 8))  # a long recruit name pushes the pips right
 			for i in nb:
-				var bx := x0 + 74 + i * 7
+				var bx := x0 + px + i * 7
 				draw_rect(Rect2(bx, 4, 5, 7), Color(0.05, 0.035, 0.03))
 				draw_rect(Rect2(bx + 1, 5, 3, 5), Color("ffd23a") if i < u.energy else Color("3b3f45"))
 			if not b.can_act(u):
@@ -1254,7 +1255,8 @@ class Overlay extends Control:
 		# hint strip above the hand
 		var h: String = hud.hint_text()
 		if h != "" and not (b.vpop.size() and b.t - b.vpop.t0 < VehiclePop.DUR):  # P6: the vehicle toast uses this spot
-			var lines := CardView.wrap_text(h, 640, 16)
+			# a fifth tag (a guest, or the pincer joined up) stacks up past the strip's left end: wrap narrower
+			var lines := CardView.wrap_text(h, 600 if b.bar_squad().size() > 4 else 640, 16)
 			var hw := 0.0
 			for l in lines:
 				hw = maxf(hw, Art.text_width(l, 16, true))
