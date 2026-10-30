@@ -167,9 +167,12 @@ func refresh() -> void:
 		wing_btn.text = ("SQUAD %s >>" if other == "B" else "<< SQUAD %s") % other
 		wing_btn.sub = "G   %d ALIVE" % b.squad_alive().filter(func(s): return b.wing(s) != b.pincer.view).size()
 		wing_btn.disabled = not (b.state == "player" and not b.busy)
+	var compact := sq.size() > 5  # T3: the joined-up pincer's eight tags go half height, in the usual four's space
 	for i in tags.size():
 		tags[i].u = sq[i] if i < sq.size() else null
 		tags[i].visible = i < sq.size()
+		tags[i].position = Vector2(6, 434 + i * 13) if compact else Vector2(6, 434 + i * 26 if i < 4 else 408 - (i - 4) * 26)
+		tags[i].size = Vector2(150, 12 if compact else 24)
 	var u := b.sel
 	var my_turn := b.state == "player" and not b.busy
 	end_btn.disabled = not my_turn
@@ -660,6 +663,19 @@ class Tag extends Control:
 			draw_rect(Rect2(x0 - 1, -1, w + 2, h + 2), Color("ffd23a"), false, 1.0)
 		elif hover:
 			draw_rect(Rect2(x0, 0, w, h), Color(1, 1, 1, 0.5), false, 1.0)
+		if h < 20:
+			# T3: compact tag, name and HP bar only
+			Art.text(self, u.def.name, Vector2(x0 + 12, 9), 8, Color.WHITE if not u.dead else Color("8a7a7a"))
+			if u.dead:
+				Art.text(self, "DOWN" if u.downed else "KIA", Vector2(x0 + w - 4, 9), 8, Color("ffb23e") if u.downed else Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
+				return
+			var cx := x0 + 72.0
+			var cw := w - 76.0
+			draw_rect(Rect2(cx, 4, cw, 4), Color(0.05, 0.035, 0.03))
+			draw_rect(Rect2(cx, 4, roundf(cw * u.hp / float(u.max_hp)), 4), Color("62d26f") if u.hp > u.max_hp * 0.3 else Color("ff4d3d"))
+			if hud.b.state == "player" and not hud.b.can_act(u):
+				draw_rect(Rect2(x0 + 1, 1, w - 2, h - 2), Color(0.05, 0.035, 0.03, 0.55))
+			return
 		# portrait: head crop of the idle frame
 		var m: Dictionary = Art.meta[u.sheet]
 		draw_texture_rect_region(Art.tex[u.sheet], Rect2(x0 + 11, 1, 22, 22), Rect2(4, 2, 11, 11) if m.frame[0] == 24 else Rect2(6, 3, 11, 11))
@@ -679,7 +695,7 @@ class Tag extends Control:
 				draw_rect(Rect2(bx + 1, 5, 3, 5), Color("ffd23a") if i < u.energy else Color("3b3f45"))
 			if not b.can_act(u):
 				draw_rect(Rect2(x0 + 1, 1, w - 2, h - 2), Color(0.05, 0.035, 0.03, 0.55))
-				Art.text(self, "DONE", Vector2(x0 + w - 6, 20), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT, 1)
+				Art.text(self, "PINNED" if u.trapped else "DONE", Vector2(x0 + w - 6, 20), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT, 1)  # T6
 			if b.inspect:
 				# P7: ALT intel sits on the plate's top row, instead of stacked over the squad
 				var info := "%dE MV%s ADR%d%s" % [u.energy, Data.meters(maxf(0, u.move_left)), u.adr, " OW" if u.overwatch > 0 else ""]
@@ -1256,7 +1272,7 @@ class Overlay extends Control:
 		var h: String = hud.hint_text()
 		if h != "" and not (b.vpop.size() and b.t - b.vpop.t0 < VehiclePop.DUR):  # P6: the vehicle toast uses this spot
 			# a fifth tag (a guest, or the pincer joined up) stacks up past the strip's left end: wrap narrower
-			var lines := CardView.wrap_text(h, 600 if b.bar_squad().size() > 4 else 640, 16)
+			var lines := CardView.wrap_text(h, 600 if b.bar_squad().size() == 5 else 640, 16)
 			var hw := 0.0
 			for l in lines:
 				hw = maxf(hw, Art.text_width(l, 16, true))

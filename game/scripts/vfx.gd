@@ -162,7 +162,10 @@ func power_up(u: Unit, palette: Array) -> void:
 
 func start_weather() -> void:
 	weather_set = true
-	for k in WEATHER.get(b.mission.get("biome", ""), []):
+	var ks: Array = WEATHER.get(b.mission.get("biome", ""), []).duplicate()
+	if Run.intel == "blizzard" and not ks.has("snow"):
+		ks.append("snow")  # T7
+	for k in ks:
 		weather.append(SfWeather.make(k, sky_fn, b.cam_x))
 
 func sky_fn(x: float) -> float:
