@@ -274,7 +274,7 @@ const V2 := {
 	"steelrain": "v_steelrain", "gasfire": "v_gasfire", "cluster": "v_cluster", "rush": "v_rush",
 	"tesla": "v_tesla", "zantetsu": "v_zantetsu", "napalm": "v_napalm", "collapse": "v_collapse",
 	"haymaker": "v_haymaker", "tank": "v_tank", "queen": "v_queen", "shotgun": "v_shotgun",
-	"levelup": "v_levelup", "meta": "v_meta",
+	"levelup": "v_levelup", "meta": "v_meta", "played": "v_played",
 }
 
 func squad_battle(draft: Array, biome := "", tier := 0) -> Battle:
@@ -772,3 +772,65 @@ func v_meta() -> void:
 	await t.frames_wait(10)
 	mark("draft")
 	await t.frames_wait(60)
+
+# ---------------------------------------------------------------- v3: real missions, played by the bot
+# Cards the bot knows how to play, dealt one a turn so the fights show the deck's range.
+const SHOW := {
+	"moss": ["snipe", "railshot", "ricochet", "lasergun", "hmg", "bazooka"],
+	"hex": ["shotgun", "tesla", "zantetsu", "haymaker", "flameshot", "dropshot"],
+	"vee": ["cluster", "clusterfrag", "mortar", "barrage", "napalmstrike", "molotov", "rocket", "missilepod"],
+	"rook": ["minigun", "haymaker", "shotgun", "thundershot", "bazooka", "superhmg"],
+	"bolt": ["junkcannon", "rivetgun", "sentrynest", "steelrain"],
+	"track": ["wolfpack", "hounds", "skyfall"],
+	"gears": ["bigslug", "missilepod", "tankbuster"],
+	"volta": ["tesla", "blackhole", "singularity"],
+	"kage": ["zantetsu", "shotgun", "haymaker"],
+	"brass": ["barrage", "m79", "dangerclose"],
+	"finch": ["snipe", "hmg"],
+	"sable": ["broodcall", "gasnade"],
+}
+
+func arg(k: String, d: String) -> String:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--" + k + "="):
+			return a.substr(k.length() + 3)
+	return d
+
+func deal(b: Battle) -> void:
+	main.hud.visible = false  # no banners or hint lines over the fight; plates and aim lines stay
+	if b.view.tip != null:
+		b.view.tip.visible = false  # the bot's cursor rests on enemies; no hover cards over the fight
+	for u in b.squad_alive():
+		var pool: Array = SHOW.get(u.def.key, [])
+		if pool.is_empty() or randf() < 0.25:
+			continue
+		var key: String = pool[randi() % pool.size()]
+		var c: Dictionary = Data.CARDS[key]
+		if c.get("od", false):
+			u.hand.append({"id": -1, "key": key, "tier": Data.OD_TIER, "od": true})
+		else:
+			u.hand.append(Run.new_card(key))
+		u.energy = maxi(u.energy, 3)
+
+func v_played() -> void:
+	## A real mission from the start, the bot playing it at normal speed.
+	seed(int(arg("seed", "1")))
+	var draft: Array = Array(arg("draft", "moss,hex,vee,rook").split(","))
+	for k in draft:
+		if not Run.meta.unlocked.has("cls_" + k):
+			Run.meta.unlocked.append("cls_" + k)
+	Run.meta["draft"] = draft
+	Run.leave_campaign()
+	Run.new_run()
+	var biome := arg("biome", "")
+	var tier := int(arg("tier", "0"))
+	var custom := {}
+	if biome != "":
+		Run.level = Run.make_level(biome, tier)
+		custom = Run.level
+	Run.meta["tips_off"] = true
+	t.bot_speed = 1.0
+	t.bot_hold = 36
+	t.bot_hook = deal
+	mark("start")
+	await t.bot(tier, int(arg("rounds", "6")), false, custom)
