@@ -1566,7 +1566,7 @@ const BIOMES := {
 		"rules": {"lava": 10.0, "amp": 1.5, "fuel": 2, "wind": 0.6},
 		"look": {"tint": Color(1.1, 0.88, 0.8), "grass": Color("4a3a36"), "sky": Color(1.0, 0.7, 0.56), "water": [Color("8a1a08"), Color("ff7a1e")]},
 		"segments": ["caldera", "flows", "ridge", "boulder", "trenches"],
-		"text": "Lava sits low and rises one marked step every round the squad holds still. Push the screen forward or make camp and it drains. Lava burns up anyone it reaches, Jackal or soldier, and eats wood."},
+		"text": "Lava sits low. Hold one screen for 3 rounds and it starts rising one marked step a round. Move the screen forward or make camp and it drains. Lava burns up anyone it reaches, Jackal or soldier, and eats wood."},
 	"hive": {"name": "VHARR HIVE", "theme": "night", "favor": "arc", "rough": "long",
 		"rules": {"aliens": true, "regrow": 60, "sight": 0.8, "amp": 1.2},
 		"look": {"tint": Color(0.96, 0.8, 1.06), "grass": Color("8a4aa0"), "sky": Color(0.8, 0.6, 0.9), "water": [Color("1e1430"), Color("7a4a9a")]},
@@ -1601,7 +1601,7 @@ const BIOME_ALIENS := {
 
 const LEVELS := [
 	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "lake", "city", "mine"], "hp_mul": 1.0, "boss_hp": 100, "plate": 30},  # B1: a softer level 1 Boar
-	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "harbor", "palace", "lake", "city", "mine", "train", "volcano", "carrier"], "hp_mul": 1.15, "boss_hp": 160, "plate": 46},
+	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "harbor", "palace", "lake", "city", "mine", "train", "carrier"], "hp_mul": 1.15, "boss_hp": 160, "plate": 46},  # V3: no volcano until level 3
 	{"pool": ["desert", "fortress", "jungle", "delta", "refinery", "mountain", "harbor", "palace", "lake", "city", "mine", "train", "volcano", "carrier", "hive"], "hp_mul": 1.3, "boss_hp": 210, "plate": 60},
 ]
 # After the third level: one fixed fight against the Jackal flagship.

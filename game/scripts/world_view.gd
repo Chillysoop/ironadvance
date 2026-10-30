@@ -1858,12 +1858,14 @@ func draw_biome() -> void:
 				var bx := x0 + fmod(k * 97.0 + b.t * 0.4, b.W + 16)
 				draw_rect(Rect2(bx, ly + 4 + (k % 3) * 5, 6, 2), Color("ff7a1e"))
 		if b.lava_k < Battle.LAVA_MAX:
-			var ny: float = ly - float(b.rules.lava)
+			var ny: float = ly - b.lava_step()
 			var x := x0
 			while x < b.cam_x + b.W + 8:
 				draw_rect(Rect2(x, ny, 10, 2), Color("ffd23a", 0.8))
 				x += 18
-			Art.text(self, "LAVA NEXT ROUND", Vector2(b.cam_x + 10, ny - 4), 8, Color("ffd23a"))
+			# V1: the lava waits out the stall clock, so say when it will move
+			var wait_n: int = b.stall_limit() + 1 - b.rounds_since_scroll
+			Art.text(self, "LAVA NEXT ROUND" if wait_n <= 1 else "LAVA IN %d ROUNDS" % wait_n, Vector2(b.cam_x + 10, ny - 4), 8, Color("ffd23a"))
 	# M7: painted taxi lanes and the elevators' counts
 	for sw in b.sweeps:
 		var age: int = b.t - int(sw.t0)

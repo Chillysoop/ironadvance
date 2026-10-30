@@ -1631,6 +1631,7 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 		lv.plate = int(a.plate * 1.2)
 	var segs: Array = lv.segments
 	var job := op_job(sc, patrol) if bonus == "" else str(Data.BONUS_OPS[bonus].job)
+	var opener: bool = int(camp.get("act", 0)) == 0 and sc.get("opener", false) and not patrol and bonus == "" and job == "push"
 	if job != "push":
 		# O2-O6: no boss at the end, one more fighting stretch instead
 		var bm: Dictionary = Data.BIOMES[sc.biome]
@@ -1641,6 +1642,11 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 			lv["pincer"] = true
 			lv["wing_b"] = pick_wing_b()
 			lv.segments = ["start", "docks", "pier", "warehouse", "start"]
+	elif opener:
+		# M2/M3: the war's opener (Mudflat Landing or Dry Wadi) keeps the full quick-run layout, a camp before the Boar, and no river mortar crew
+		var calm: Array = Data.BIOMES[sc.biome].segments.filter(func(k): return k != "river")
+		calm.shuffle()
+		lv.segments = ["start", segs[1] if segs[1] != "river" else calm[0], "camp", "yard", segs[4] if segs[4] != "river" else calm[1], "camp", segs[6]]
 	elif not sc.get("stronghold", false):
 		lv.segments = ["start", segs[1], "camp", "yard", segs[4], segs[6]]
 	else:
@@ -1652,6 +1658,9 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 		# B4: Mudflat Landing (or T8 Dry Wadi), the first op of every war, is plain like a first quick run: no mini-boss, no event
 		lv.walker = false
 		lv.event = ""
+		# M1: and it meets the quick run's level 1 Boar, not the Act I one
+		lv.boss_hp = int(Data.LEVELS[0].boss_hp)
+		lv.plate = int(Data.LEVELS[0].plate)
 	if int(camp.get("act", 0)) == 2 and sc.get("stronghold", false) and not patrol:
 		lv["vharr_boar"] = true  # S1 Act III: the Infested Works' Boar comes back refit by the Vharr
 	var tour := int(camp.get("tour", 1))

@@ -28,6 +28,7 @@ var runs_arg := 1
 var playtest_debug := false
 var start_arg := 0
 var clip_arg := ""
+var biome_arg := ""   # --biome=X: playtest plays only level --start in biome X
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -45,6 +46,8 @@ func _ready() -> void:
 			seed_arg = int(a.substr(7))
 		elif a.begins_with("--start="):
 			start_arg = int(a.substr(8))
+		elif a.begins_with("--biome="):
+			biome_arg = a.substr(8)
 		elif a.begins_with("--clip="):
 			clip_arg = a.substr(7)
 		elif a.begins_with("--runs="):
@@ -5098,6 +5101,23 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 					away = u.x - 90.0 if away > u.x else u.x + 90.0
 				b.do_move(u, away)
 				await until(func(): return res.done or not b.busy, 20000)
+			# V4: in the volcano, climb above where the lava will be next round before anything else
+			if b.rules.get("lava", 0.0) > 0 and b.lava_k < Battle.LAVA_MAX and b.rounds_since_scroll + 1 > b.stall_limit() and u.move_left > 20 and not u.dead \
+					and u.y > b.lava_y() - b.lava_step() * 2.0 - 4.0:
+				var best := {"x": u.x, "y": u.y}
+				var dx: float = -u.move_left
+				while dx <= u.move_left:
+					var nx: float = u.x + dx
+					dx += 24.0
+					if nx < b.cam_x + 14 or nx > b.cam_x + b.W - 14:
+						continue
+					var sim := b.sim_walk(u, nx, absf(nx - u.x) + 8)
+					if not sim.pts.is_empty() and sim.y < best.y - 8:
+						best = {"x": sim.x, "y": sim.y}
+				if best.x != u.x:
+					print("[lava] %s climbs %d,%d -> %d,%d (lava %d)" % [u.def.key, int(u.x), int(u.y), int(best.x), int(best.y), int(b.lava_y())])
+					b.do_move(u, best.x)
+					await until(func(): return res.done or not b.busy, 20000)
 			var guard := 0
 			while guard < 8 and not res.done and b.state == "player":
 				guard += 1
@@ -5304,7 +5324,7 @@ func playtest() -> void:
 			Run.side = ""
 			if m < Data.LEVELS.size():
 				Run.roll_dial()
-				Run.pick_biome(Run.dial[randi() % Run.dial.size()])
+				Run.pick_biome(biome_arg if biome_arg != "" and m == start_arg else Run.dial[randi() % Run.dial.size()])
 			else:
 				Run.start_finale()
 			if m < start_arg:
@@ -5334,7 +5354,7 @@ func playtest() -> void:
 				"lv": Run.soldiers.map(func(x): return x.lvl), "max_round_hp": bot_stats.round_hp.max() if bot_stats.round_hp.size() else 0})
 			print("[pt] ", JSON.stringify(row))
 			await shot("pt_s%d_r%d_m%d_end" % [seed_arg, r, m])
-			if not ok or Run.alive_count() == 0:
+			if not ok or Run.alive_count() == 0 or (biome_arg != "" and m >= start_arg):
 				break
 			# between levels: buy the hospital when anyone is hurt and it is affordable
 			if Run.scrip >= 40 and Run.soldiers.any(func(x): return x.alive and x.hp < Run.eff_max_hp(x)):
@@ -5433,6 +5453,15 @@ func bcalls() -> void:
 		var lv := Run.make_op(Run.sector("d2"))
 		ev += 1 if lv.event != "" else 0
 	check(ev == 10, "B4: other Act I sectors still roll an event (%d of 10)" % ev)
+	# M1-M3: Mudflat Landing meets the level 1 Boar after a second camp, and never the river's mortar crew
+	for i in 12:
+		var lv := Run.make_op(Run.sector("d1"))
+		check(lv.boss_hp == Data.LEVELS[0].boss_hp and lv.plate == Data.LEVELS[0].plate, "M1: Mudflat's Boar is %d / %d" % [lv.boss_hp, lv.plate])
+		check(lv.segments.size() == 7 and lv.segments.count("camp") == 2 and lv.segments[5] == "camp", "M2: the full layout with a camp before the Boar %s" % str(lv.segments))
+		check(not lv.segments.has("river"), "M3: no river stretch %s" % str(lv.segments))
+	var lv2 := Run.make_op(Run.sector("d3"))
+	check(lv2.boss_hp == Data.ACTS[0].boss_hp and lv2.segments.size() == 6, "other Act I sectors keep their short layout and numbers")
+	check(not Data.LEVELS[1].pool.has("volcano") and Data.LEVELS[2].pool.has("volcano"), "V3: no volcano until level 3")
 	Run.leave_campaign()
 	Run.delete_campaign(6)
 	# B5: the Drill Sergeant trains a soldier who is behind, picked like a level-up
@@ -8503,8 +8532,16 @@ func biomes2_test() -> void:
 	cam_on(b, low)
 	var gy: float = lo.y
 	b.T.fill_r(low - 12, gy, 24, 8, 3)
-	var n := int(ceil((b.WATER_Y - gy + 3) / 10.0))
+	b.mission_idx = 1
+	check(is_equal_approx(b.lava_step(), 5.0), "V2: on level 2 the lava climbs half steps (%.1f)" % b.lava_step())
+	b.mission_idx = 2  # level 3: full steps
+	var n := int(ceil((b.WATER_Y - gy + 3) / b.lava_step()))
 	check(b.lava_k == 0 and n <= Battle.LAVA_MAX, "M5: the basin floor sits within the lava's reach (%d)" % int(gy))
+	for i in b.stall_limit():
+		b.rounds_since_scroll = i + 1
+		await b.biome_round()
+	check(b.lava_k == 0, "V1: the lava holds still while the squad is still within the stall clock")
+	b.rounds_since_scroll = b.stall_limit() + 1
 	for i in n:
 		await b.biome_round()
 	check(b.lava_k == n and lo.dead and not sq.moss.dead, "%d rounds: the lava reaches the basin and burns the Jackal up, the high ground is safe" % n)
@@ -8512,6 +8549,10 @@ func biomes2_test() -> void:
 	await shot("m5_lava")
 	await b.scroll_to(b.cam_x + 200, "push", sq.moss)
 	check(b.lava_k == 0, "an aggressive push drains it")
+	b.rounds_since_scroll = b.stall_limit() + 1
+	await b.biome_round()
+	await b.scroll_to(b.cam_x + 200, "go")
+	check(b.lava_k == 0, "V1: so does any step forward")
 	# M6 Vharr Hive: only Vharr, standing acid, and the walls grow back
 	b = await m_battle("hive", ["hivecore", "broodpit"])
 	var foes: Array = b.units.filter(func(o): return o.team == "enemy" and not o.gone)
