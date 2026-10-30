@@ -47,7 +47,6 @@ const META_PATH := "user://meta.json"
 # While a campaign is loaded those keys in meta hold the campaign's values and run_base holds the
 # standard run's, so every screen that reads meta works in both modes. Feats and Armory unlocks
 # stay shared (L2).
-const ACT_OPENER := "d1"   # B4: the sector every war starts next to
 const CAMP_KEYS := ["salvage", "bio", "hq", "implants", "memorial"]
 var camp := {}             # campaign state; empty during a standard run
 var roster: Array = []     # campaign: the whole company (C1); soldiers is the squad that deploys
@@ -128,9 +127,14 @@ func threat_on(n: int) -> bool:
 	return threat >= n
 
 func roll_intel() -> void:
+	## T7: the weather fits the ground: no monsoon on ice or lava, a blizzard only on ice and peaks.
+	var bio: String = current_mission().get("biome", "")
 	var pool: Array = []
 	for k in Data.INTEL:
-		for i in Data.INTEL[k].w:
+		var it: Dictionary = Data.INTEL[k]
+		if it.get("not", []).has(bio) or (it.has("only") and not it.only.has(bio)):
+			continue
+		for i in it.w:
 			pool.append(k)
 	intel = pool[randi() % pool.size()] if mission > 0 else "clear"
 	if camp_perk("airfield"):
@@ -1256,10 +1260,25 @@ func deployed() -> Array:
 	return soldiers + wing_b()
 
 func pick_wing_b() -> Array:
-	## W9: the four best on the bench by rank, then level, as roster indices.
+	## W9: the four best on the bench by rank, then level, as roster indices. T2: anyone marked B on
+	## the company screen goes first.
 	var pool: Array = company().filter(func(s): return not soldiers.has(s) and not s.has("guest"))
-	pool.sort_custom(func(a, b): return rank(a) * 100 + int(a.lvl) > rank(b) * 100 + int(b.lvl))
+	pool.sort_custom(func(a, b): return int(a.get("wing", "") == "b") * 10000 + rank(a) * 100 + int(a.lvl) > int(b.get("wing", "") == "b") * 10000 + rank(b) * 100 + int(b.lvl))
 	return pool.slice(0, Data.SQUAD_MAX).map(func(s): return roster.find(s))
+
+func pincer_ahead() -> bool:
+	## T2: the company screen offers squad B picks in the last act, once the company is big enough.
+	return int(camp.get("act", 0)) == Data.ACTS.size() - 1 and company().size() >= Data.PINCER_COMPANY
+
+func toggle_wing(s: Dictionary) -> String:
+	## T2: mark a bench soldier for squad B on the pincer, or unmark them.
+	if s.get("wing", "") == "b":
+		s.erase("wing")
+		return ""
+	if company().filter(func(x): return x.get("wing", "") == "b" and not soldiers.has(x)).size() >= Data.SQUAD_MAX:
+		return "SQUAD B IS FULL: UNMARK SOMEONE"
+	s["wing"] = "b"
+	return ""
 
 func svc_rec(st: Dictionary, s: Dictionary) -> Dictionary:
 	## An op's kills, XP and downs for one soldier: by roster slot when booked that way (two of a class
@@ -1629,8 +1648,8 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 		lv.plate = int(a.plate * 1.2)
 	if sc.get("queen", false):
 		lv.encounter = "queen"
-	if int(camp.get("act", 0)) == 0 and sc.id == ACT_OPENER and not patrol:
-		# B4: Mudflat Landing, the first op of every war, is plain like a first quick run: no mini-boss, no event
+	if int(camp.get("act", 0)) == 0 and sc.get("opener", false) and not patrol:
+		# B4: Mudflat Landing (or T8 Dry Wadi), the first op of every war, is plain like a first quick run: no mini-boss, no event
 		lv.walker = false
 		lv.event = ""
 	if int(camp.get("act", 0)) == 2 and sc.get("stronghold", false) and not patrol:
@@ -2049,6 +2068,21 @@ func radio_line(who: String, text: String, sq: Array, by := {}, mate_name := "")
 		out["col"] = C.col
 	return out
 
+func landfall_radio() -> Array:
+	## C4: Hale's first call of a war. T1: on a Second Tour he greets the veteran instead.
+	var sq: Array = soldiers.filter(func(s): return s.alive)
+	var vets: Array = roster.filter(func(s): return s.get("tour_vet", false) and s.alive)
+	if int(camp.get("tour", 1)) <= 1 or vets.is_empty():
+		return Data.RADIO_LANDFALL.map(func(r): return radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())
+	var v: Dictionary = vets[0]
+	var fill := {"vet": "%s %s" % [rank_name(v), v.def.name.capitalize()], "tour": str(int(camp.tour)), "front": str(act(0).lz.name)}
+	var out: Array = []
+	for r in Data.RADIO_TOUR:
+		var l := radio_line("sq", r[1], sq.filter(func(s): return s != v) + [v], v) if r[0] == "vet" else radio_line(r[0], r[1].format(fill), sq)
+		if not l.is_empty():
+			out.append(l)
+	return out
+
 func radio_before() -> Array:
 	## S2: the act's opening the first time, the job, maybe a taunt, and the colonel on his op.
 	var sq: Array = soldiers.filter(func(s): return s.alive)
@@ -2120,8 +2154,12 @@ func bench() -> Array:
 func company_room() -> bool:
 	return company().size() < Data.COMPANY_MAX
 
+func slot_key(s: Dictionary) -> String:
+	## The squad slot a soldier fills: their class, except Colonel Varga (T4), who is his own.
+	return "colonel" if s.get("spec", "") == "colonel" else str(s.key)
+
 func fits_squad(s: Dictionary) -> bool:
-	return soldiers.size() < Data.SQUAD_MAX and not soldiers.any(func(x): return x.key == s.key)
+	return soldiers.size() < Data.SQUAD_MAX and not soldiers.any(func(x): return slot_key(x) == slot_key(s))
 
 func toggle_squad(s: Dictionary) -> String:
 	## C1: put a soldier in or out of the squad. Picking someone whose class is already in it swaps them.
@@ -2130,7 +2168,7 @@ func toggle_squad(s: Dictionary) -> String:
 			return "SOMEBODY HAS TO GO"
 		soldiers.erase(s)
 		return ""
-	var same: Array = soldiers.filter(func(x): return x.key == s.key)
+	var same: Array = soldiers.filter(func(x): return slot_key(x) == slot_key(s))
 	if same.size():
 		soldiers[soldiers.find(same[0])] = s
 		return ""

@@ -301,11 +301,12 @@ func setup(idx: int, custom := {}) -> void:
 	setup_biome()
 	setup_events()
 	place_job()
+	trap_varga()
 	place_nemesis()
 	spawn_map_loot()
 	sel = null
 	for u in units:
-		if u.team == "squad":
+		if u.team == "squad" and not u.trapped:
 			sel = u
 			if pincer.get("on", false) and u.wing == "a":
 				break  # W9: start on squad A
@@ -3777,7 +3778,7 @@ func walk_bounds(u: Unit) -> Vector2:
 		return Vector2(cam_x + 12, cam_x + W - 16)
 	var mn := cam_x + 24
 	for s in squad_alive():
-		if s.x < u.x:
+		if s.x < u.x and not s.trapped:
 			mn = maxf(mn, s.x + 26)
 	return Vector2(mn, world_w - 20)
 
@@ -6481,6 +6482,7 @@ func _act_walk(u: Unit, pts: Array, cost: float) -> void:
 # ---------------------------------------------------------------- screen scrolling
 func check_push(u: Unit, x0 = null) -> void:
 	check_troopers(u)
+	free_varga()
 	await check_dealer(u, x0)
 	await check_camp(u)
 	if pincer.get("on", false):
@@ -6997,8 +6999,8 @@ func call_reinforcements(u: Unit) -> void:
 		var left: Array = pool.filter(func(s): return not picked.has(s))
 		if Run.campaign():
 			# a campaign squad is one of each class: the bench sends someone whose class isn't already in it
-			var taken: Array = Run.soldiers.filter(func(o): return o != takes.s).map(func(o): return o.key) + picked.map(func(o): return o.key)
-			left = left.filter(func(s): return not taken.has(s.key))
+			var taken: Array = Run.soldiers.filter(func(o): return o != takes.s).map(func(o): return Run.slot_key(o)) + picked.map(func(o): return Run.slot_key(o))
+			left = left.filter(func(s): return not taken.has(Run.slot_key(s)))
 			if left.is_empty():
 				break
 		var opts: Array = left.slice(0, 6).map(func(s): return {"kind": "service", "title": "PARADROP", "soldier": s,
@@ -7319,7 +7321,7 @@ func apply_level_option(u: Unit, o: Dictionary) -> void:
 func post_action() -> void:
 	refresh_mounts()
 	await leg_check()
-	var front: Array = squad_alive().filter(func(s): return not s.air)
+	var front: Array = squad_alive().filter(func(s): return not s.air and not s.trapped)
 	front.sort_custom(func(a, b): return a.x > b.x)
 	if front.size() and not boss_dead:
 		await check_push(front[0])
@@ -7491,6 +7493,35 @@ func job_spot(x: float) -> float:
 			if sx > 160 and sx < world_w - 60 and T.stand_y(sx, T.ground_at(sx) - 40) != null and not T.pits.any(func(p): return sx > p[0] - 24 and sx < p[1] + 24):
 				return sx
 	return x
+
+func trap_varga() -> void:
+	## T6: on his last stand the colonel starts deep in the fort, pinned down with his garrison. He
+	## can't act until someone reaches him; if he falls before that, he fell.
+	if mission.get("story", "") != "varga":
+		return
+	for u in squad():
+		if u.s.get("guest", "") != "varga":
+			continue
+		var x := job_spot(world_w * 0.7 + 40)
+		var y = T.stand_y(x, T.ground_at(x) - 40)
+		if y == null:
+			return
+		u.x = x; u.y = y; u.face = -1
+		u.trapped = true
+		log_msg("Colonel Varga is pinned down deep in the fort with his men. Fight through to him and he joins the fight.")
+
+func free_varga() -> void:
+	## T6: a squadmate close enough to the colonel breaks him out.
+	for v in squad_alive():
+		if not v.trapped:
+			continue
+		if squad_alive().any(func(o): return o != v and not o.trapped and absf(o.x - v.x) < 180 and absf(o.y - v.y) < 140):
+			v.trapped = false
+			v.face = -1
+			float_text(v, "ABOUT TIME, IRON COMPANY", Color("ff7a3d"), true)
+			log_msg("Colonel Varga is out. He fights with you from here.")
+			Sfx.play("select")
+			ui_dirty = true
 
 func place_job() -> void:
 	## Lays out the op's objective: prisoners, supply dumps, the truck or the marked officer.
@@ -7862,6 +7893,7 @@ func hand_size(s: Unit) -> int:
 
 func start_player_turn() -> void:
 	troopers_follow()
+	free_varga()
 	round_n += 1
 	stats.rounds = round_n
 	wind = int(round(ri(-6, 6) * rules.get("wind", 1.0)))
@@ -8112,7 +8144,7 @@ func jammer_rounds() -> int:
 
 func can_act(u: Unit) -> bool:
 	## True while a soldier still has something to do: movement left or a card they can pay for.
-	if u == null or u.dead or u.team != "squad":
+	if u == null or u.dead or u.team != "squad" or u.trapped:
 		return false
 	if u.move_left > 1:
 		return true
@@ -8408,7 +8440,7 @@ func unstack_squad() -> void:
 
 func best_shot(e: Unit, targets: Array, rng: float):
 	var best = null
-	if Run.intel == "fog":
+	if Run.intel == "fog" or Run.intel == "blizzard":
 		rng *= 0.7
 	rng *= rules.get("sight", 1.0)
 	for tg in targets:
@@ -10958,6 +10990,9 @@ func dial_fuse(d: int) -> void:
 
 func select_unit(u: Unit) -> void:
 	if u == null or u.dead or busy:
+		return
+	if u.trapped:
+		float_text(u, "PINNED DOWN: GET TO HIM", Color("ff7a3d"), true)  # T6
 		return
 	if pincer.get("on", false) and u.team == "squad":
 		set_view(wing(u))
