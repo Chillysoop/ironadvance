@@ -26,6 +26,7 @@ var tok := Vector2.ZERO    # W10: the company token on the map
 var tok_path: Array = []   # points still to drive through before the attack goes in
 var tok_go := Callable()
 var msg := ""
+var note := ""   # a squad swap on the company overlay, said out loud
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -108,7 +109,7 @@ func build() -> void:
 	cb.color = Color("53d4e2")
 	cb.text = "DONE" if company_open else "COMPANY"
 	cb.sub = "" if company_open else "SQUAD %d OF %d" % [Run.soldiers.size(), Run.company().size()]
-	cb.pressed.connect(func(): Sfx.play("click"); company_open = not company_open; book_open = false; msg = ""; build())
+	cb.pressed.connect(func(): Sfx.play("click"); company_open = not company_open; book_open = false; msg = ""; note = ""; build())
 	add_child(cb)
 	var wb := HudScript.PixButton.new()
 	wb.small = true
@@ -193,8 +194,14 @@ func _gui_input(ev: InputEvent) -> void:
 		for i in co.size():
 			if card_rect(i).has_point(ev.position):
 				accept_event()
+				var was: Array = Run.soldiers.duplicate()
 				msg = Run.toggle_squad(co[i])
 				Sfx.play("deny" if msg != "" else "select")
+				note = ""
+				var out: Array = was.filter(func(x): return not Run.soldiers.has(x))
+				if msg == "" and out.size() and Run.soldiers.has(co[i]):
+					# one of each class: say who stepped aside, or a swap looks like a misclick
+					note = "%s TAKES %s'S %s SLOT." % [co[i].def.name, out[0].def.name, Run.class_def(out[0].key).cls.to_upper()]
 				build()
 				return
 		return
@@ -374,7 +381,8 @@ func draw_company() -> void:
 	draw_rect(MAP, Color("53d4e2"), false, 2)
 	var sc := Run.sector(sel)
 	Art.text(self, "THE COMPANY  %d OF %d" % [Run.company().size(), Data.COMPANY_MAX], Vector2(MAP.position.x + 12, MAP.position.y + 22), 8, Color("53d4e2"))
-	Art.text(self, msg if msg != "" else "Click to put a soldier in or out. One of each class per squad, up to %d." % Data.SQUAD_MAX, Vector2(MAP.end.x - 12, MAP.position.y + 22), 16, Color("ff7a5a") if msg != "" else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
+	var tip := msg if msg != "" else note if note != "" else "Click to put a soldier in or out. One of each class per squad, up to %d." % Data.SQUAD_MAX
+	Art.text(self, tip, Vector2(MAP.end.x - 12, MAP.position.y + 22), 16, Color("ff7a5a") if msg != "" else Color("ffd23a") if note != "" else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
 	var co := Run.company()
 	for i in co.size():
 		var s: Dictionary = co[i]
@@ -504,6 +512,24 @@ func draw_side() -> void:
 		Art.text(self, r[1], Vector2(SIDE.end.x - 12, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
 		y += 18
 	y += 4
+	var story := ""
+	if sc.get("story", "") == "varga" and not Run.camp.has("varga"):
+		story = "STORY OP: VARGA'S LAST STAND|Save him and he joins for good."
+	elif sc.get("finale", false) and st != "held":
+		var wb: Array = Run.pick_wing_b().map(func(i): return Run.roster[i].def.name)
+		if Run.company().size() >= Data.PINCER_COMPANY and wb.size() >= Data.SQUAD_MAX:
+			story = "PINCER: TWO SQUADS|Squad B (%s) lands on the far side. The four best on the bench go." % ", ".join(wb)
+		else:
+			story = "PINCER AT %d|A company of %d storms it as two squads. You have %d." % [Data.PINCER_COMPANY, Data.PINCER_COMPANY, Run.company().size()]
+	if story != "":
+		# W9/W13: say what makes this op different before it's picked
+		var sp := story.split("|")
+		Art.text(self, sp[0], Vector2(x, y), 8, Color("ffd23a") if sc.has("story") else Color("53d4e2"))
+		y += 6
+		for line in CardView.wrap_text(sp[1], SIDE.size.x - 24, 16):
+			y += 16
+			Art.text(self, line, Vector2(x, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+		y += 14  # tighter than the blocks below, so the FIT list still clears the income line
 	if Run.bonus_at(sc) != "":
 		var B: Dictionary = Data.BONUS_OPS[Run.bonus_at(sc)]
 		Art.text(self, "BONUS: " + B.name, Vector2(x, y), 8, Color("c47bff"))

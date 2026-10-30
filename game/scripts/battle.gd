@@ -175,7 +175,7 @@ func setup(idx: int, custom := {}) -> void:
 		for s in Run.wing_b():
 			if not s.alive or Run.soldiers.has(s):
 				continue
-			var ub := deploy_unit(s, world_w - 50.0 - j * 55)
+			var ub := deploy_unit(s, world_w - 140.0 - j * 50)  # clear of the HUD's button column on the right
 			ub.face = -1
 			ub.wing = "b"
 			j += 1

@@ -899,6 +899,8 @@ func run() -> void:
 			await pcalls()
 		"newplayer5":
 			await newplayer5()
+		"newplayer6":
+			await newplayer6()
 		"qcalls":
 			await qcalls()
 		"polish1":
@@ -9416,3 +9418,111 @@ func polish3() -> void:
 	Run.save_meta()
 	main.show_title()
 	await frames_wait(10)
+
+func newplayer6() -> void:
+	## New-player playtest 6 (the new campaign content): the Second Tour, Varga's last stand and the pincer.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	# a veteran replaces their fresh starter twin instead of joining a second MOSS
+	var vet: Dictionary = Run.roster[0]
+	vet["rank"] = 2
+	Run.second_tour(vet)
+	var mosses: Array = Run.roster.filter(func(s): return s.def.name == vet.def.name)
+	check(mosses.size() == 1 and mosses[0].get("tour_vet", false) and Run.soldiers.has(mosses[0]), "one %s on the Second Tour, the veteran, in the squad (%d)" % [vet.def.name, mosses.size()])
+	check(Run.roster.size() == 4 and Run.soldiers.size() == 4, "the company is still four (%d %d)" % [Run.roster.size(), Run.soldiers.size()])
+	main.show_hq(false)
+	await frames_wait(10)
+	await shot("np6_hq_tour2")
+	# Varga keeps his rank and looks like his radio face; picking him says whose slot he takes
+	var g: Dictionary = Run.make_guest("varga")
+	check(int(g.look.hat) == 4 and int(g.look.shirt) == 1, "Varga wears a navy cap and a tan coat (%s)" % [g.look])
+	g.erase("guest")
+	g["spec"] = "colonel"
+	Run.roster.append(g)
+	check(Run.rank_name(g) == "COL", "a Jackal Colonel is a COL, not a PVT (%s)" % Run.rank_name(g))
+	main.show_war_room()
+	await frames_wait(5)
+	var wr = main.screen
+	wr.company_open = true
+	wr.build()
+	await frames_wait(5)
+	var vi := Run.company().find(g)
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = true
+	ev.position = wr.card_rect(vi).get_center()
+	wr._gui_input(ev)
+	await frames_wait(5)
+	check(Run.soldiers.has(g) and wr.note.contains("VARGA TAKES") and wr.note.contains("VANGUARD"), "the swap is said out loud (%s)" % wr.note)
+	await shot("np6_company_swap")
+	wr.company_open = false
+	# the last stand: its own brief, the map says it's a story op, and the payoff is spoken
+	Run.camp.act = 3
+	Run.camp.held.append(Run.sec_key("p3"))
+	Run.roster.erase(g)
+	Run.soldiers.erase(g)
+	Run.fill_squad()
+	main.show_war_room()
+	await frames_wait(5)
+	main.screen.sel = "v1"
+	await frames_wait(10)
+	await shot("np6_side_stand")
+	Run.start_op(Run.sector("v1"))
+	main.show_brief()
+	await frames_wait(10)
+	await shot("np6_brief_stand")
+	var talk: Array = Run.radio_after({"won": true, "varga_alive": true, "op": {}})
+	check(talk.size() and talk[0].text.contains("my men"), "the radio after the stand is Varga, not a stock line (%s)" % (talk[0].text if talk.size() else "-"))
+	talk = Run.radio_after({"won": true, "varga_alive": false, "op": {}})
+	check(talk.size() and talk[0].text.contains("Varga's gone"), "and Command says so if he fell")
+	# the same promotion or order for a whole squad is one line of news
+	var nw := Run.merge_news(["MOSS is now a Corporal.", "HEX is now a Corporal.", "VEE is now a Sergeant."], " is now a ", "%s are now %ss.")
+	check(nw == ["MOSS and HEX are now Corporals.", "VEE is now a Sergeant."], "promotions fold together (%s)" % [nw])
+	nw = Run.merge_news(["A has a personal order: Kill 10 Vharr.", "B has a personal order: Kill 10 Vharr.", "C finished a personal order."], " has a personal order: ", "%s have a personal order: %s.")
+	check(nw == ["A and B have a personal order: Kill 10 Vharr.", "C finished a personal order."], "orders fold together (%s)" % [nw])
+	# a squad promoted at once doesn't all get the same personal order
+	Run.camp.act = 2
+	for s in Run.company():
+		s.erase("order")
+	var ids := {}
+	for s in Run.company():
+		ids[Run.assign_order(s)] = true
+	check(ids.size() >= 3, "four orders handed out together are mostly different (%s)" % [ids.keys()])
+	# a bonus op on the ice is never a truck column
+	Run.camp.act = 1
+	Run.camp.held = [Run.sec_key("k1")]
+	var kinds := {}
+	for i in 60:
+		Run.camp.bonus = {}
+		Run.roll_bonus()
+		if not Run.camp.bonus.is_empty():
+			kinds[Run.camp.bonus.kind] = true
+	check(kinds.size() >= 2 and not kinds.has("column"), "bonus ops on the ice skip the truck column (%s)" % [kinds.keys()])
+	# the pincer: the map and the radio say how it works, and squad B lands clear of the HUD
+	Run.camp.act = 4
+	while Run.company().size() < Data.PINCER_COMPANY:
+		Run.enlist(Run.recruit_offers(1)[0])
+	main.show_war_room()
+	await frames_wait(5)
+	main.screen.sel = "boss"
+	await frames_wait(10)
+	await shot("np6_side_pincer")
+	Run.start_op(Run.sector("boss"))
+	check(Run.radio_before().any(func(l): return l.text.contains("Squad B")), "the radio explains the two squads")
+	main.show_brief()
+	await frames_wait(10)
+	await shot("np6_brief_pincer")
+	var b: Battle = main.start_battle(0, Run.current_mission())
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	b.switch_wing()
+	await frames_wait(20)
+	var wb: Array = b.squad().filter(func(u): return b.wing(u) == "b")
+	check(wb.size() == 4 and wb.all(func(u): return u.x - b.cam_x < 826), "squad B stands left of the button column (%s)" % [wb.map(func(u): return int(u.x - b.cam_x))])
+	await shot("np6_pincer_b")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
