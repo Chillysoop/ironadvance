@@ -1192,6 +1192,33 @@ func draw_fx() -> void:
 				draw_set_transform_matrix(Transform2D.IDENTITY)
 
 # ---------------------------------------------------------------- targeting overlays
+func draw_lockers(foes: Array) -> void:
+	## P4: a slow red pulse of corner brackets on each enemy holding the push zone shut, and an
+	## edge arrow for one the camera or the HUD hides (up a tower, down a dip, under the hand).
+	var a: float = 0.8 + 0.2 * sin(b.t / 14.0)
+	var col := Color(1, 0.42, 0.3).lerp(Color(1, 0.85, 0.4), 0.5 + 0.5 * sin(b.t / 14.0))
+	var view := Rect2(b.cam_x + 10, 46, Battle.W - 20, 380)
+	for e in foes:
+		# a little wider than the body, so the brackets clear the sprite and its gun
+		var r := Rect2(e.x - e.w / 2.0 - 10, e.y - e.h - 8, e.w + 20, e.h + 12)
+		var k := minf(10.0, r.size.x / 3.0)
+		for c in [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]:
+			var sx: float = 1.0 if c.x == r.position.x else -1.0
+			var sy: float = 1.0 if c.y == r.position.y else -1.0
+			for pass_ in 2:
+				var w: float = 5.0 if pass_ == 0 else 3.0
+				var cc: Color = Color(C_DARK, 0.9) if pass_ == 0 else col
+				draw_line(c - Vector2(sx, 0), c + Vector2(k * sx, 0), cc, w)
+				draw_line(c - Vector2(0, sy), c + Vector2(0, k * sy), cc, w)
+		var mid := Vector2(e.x, e.y - e.h / 2.0)
+		if not view.has_point(mid):
+			var tip := Vector2(clampf(mid.x, view.position.x + 8, view.end.x - 8), clampf(mid.y, view.position.y + 8, view.end.y - 8))
+			var d := (mid - tip).normalized()
+			var n := Vector2(-d.y, d.x)
+			var tri := PackedVector2Array([tip + d * 9, tip - d * 5 + n * 7, tip - d * 5 - n * 7])
+			draw_colored_polygon(PackedVector2Array([tri[0] + d * 2, tri[1] + n * 2 - d * 2, tri[2] - n * 2 - d * 2]), Color(C_DARK, 0.9))
+			draw_colored_polygon(tri, Color(1, 0.3, 0.24, 0.6 + a * 0.4))
+
 func draw_tut_flag(x: float) -> void:
 	## D2: training's first step. Walk anyone as far as this flag.
 	var gy: float = b.T.ground_at(x)
@@ -1240,6 +1267,12 @@ func draw_targeting() -> void:
 		else:
 			Art.text(self, "PUSH ZONE LOCKED", Vector2(pz - 6, ty), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_RIGHT)
 			Art.text(self, ("1 ENEMY IN IT" if lock == 1 else "%d ENEMIES IN IT" % lock), Vector2(pz - 6, ty + 14), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_RIGHT)
+			# P4: once the last few are what holds the zone shut (or the squad is at the line, or the
+			# label is hovered), mark where they stand. Location only: nothing about what they'll do.
+			var at_line: bool = b.squad_alive().any(func(s): return s.x >= pz - 40)
+			var hov: bool = push_rect.grow(6).has_point(m - Vector2(b.cam_x, 0))
+			if lock <= 2 or at_line or hov:
+				draw_lockers(b.push_blockers())
 	if b.jet_armed:
 		var sim := b.sim_body(u, 0.0, 0.0, m, u.fuel)
 		draw_dashed_line(Vector2(u.x, u.y - u.h / 2.0), m, Color(0.33, 0.83, 0.89, 0.6), 1.0, 4.0)

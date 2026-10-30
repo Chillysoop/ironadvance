@@ -9333,7 +9333,7 @@ func reinforce_test() -> void:
 	Run.save_meta()
 
 func pcalls() -> void:
-	## P1-P8 from the playtest-after-#94 page (all voted YES but P4, which was left open).
+	## P1-P8 from the playtest-after-#94 page (all voted YES; P4 was answered later).
 	Run.new_run()
 	Run.first_run = false
 	var b: Battle = main.start_battle(0)
@@ -9387,6 +9387,24 @@ func pcalls() -> void:
 	Run.first_run = false
 	lv = Run.make_level("city", 0)
 	check(lv.event != "" and lv.bounties.size() == 3, "P8: later runs keep them on level 1")
+	# P4: the enemy holding the push zone shut is marked, with an arrow when the HUD hides it
+	var foes: Array = b.units.filter(func(e): return e.team == "enemy" and not e.dead and not e.gone)
+	for e in foes:
+		e.active = true
+	var hold: Unit = foes[0] if foes.size() else null
+	check(hold != null, "P4: the level has an enemy to hold the zone")
+	if hold != null:
+		for e in foes:
+			if e != hold and e.x < b.cam_x + Battle.W * 0.72:
+				e.x = b.cam_x + Battle.W - 20  # past the line: only one left holding it
+		hold.x = b.cam_x + 400; hold.y = b.T.stand_y(hold.x, 0); hold.vx = 0; hold.vy = 0
+		await frames_wait(14)
+		await shot("pcalls_locker_mark")
+		hold.x = b.cam_x + 4; hold.y = b.T.stand_y(hold.x, 0); hold.vx = 0; hold.vy = 0  # squeezed against the left edge
+		await frames_wait(1)
+		check(b.push_blockers().size() == 1, "P4: one enemy left holding the zone (%d)" % b.push_blockers().size())
+		await frames_wait(20)
+		await shot("pcalls_lockers")
 
 func polish1() -> void:
 	## Overnight polish round 1: text that ran under panels or off the screen, and labels piled on each other.
