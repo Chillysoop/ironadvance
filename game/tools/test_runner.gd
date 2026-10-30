@@ -905,6 +905,8 @@ func run() -> void:
 			await newplayer6()
 		"tcalls":
 			await tcalls()
+		"xcalls":
+			await xcalls()
 		"qcalls":
 			await qcalls()
 		"polish1":
@@ -1197,6 +1199,7 @@ func picks() -> void:
 	# --- supply drop
 	var n2: int = sq[2].s.deck.size()
 	var others: Array = [0, 1, 3].map(func(k): return sq[k].s.deck.size())
+	b.flushing = true  # X3 defers drops to END TURN; this checks the picker itself
 	b.supply_drop.call("Supply drop", null)
 	await frames_wait(10)
 	await shot("picks_supply")
@@ -1211,6 +1214,7 @@ func picks() -> void:
 	await frames_wait(10)
 	check(sq[2].s.deck.size() == n2 + 1 and [0, 1, 3].map(func(k): return sq[k].s.deck.size()) == others, "the card goes to the soldier you picked and nobody else")
 	check(sq[2].s.deck[-1].get("from", "") == "drop", "it is marked as a supply drop card")
+	b.flushing = false
 	# --- camp Field Upgrade
 	var c: Dictionary = b.T.camps[0]
 	var me: Dictionary = sq[0].s
@@ -2296,6 +2300,7 @@ func synergies() -> void:
 	var m: Dictionary = Run.current_mission().duplicate(true)
 	m["bounties"] = ["nofall", "melee3", "fast"]
 	var b: Battle = main.start_battle(0, m)
+	Run.mission = 1  # X6: level 1 keeps the field quiet and hides the SYNERGIES panel
 	await until(func(): return b.state == "player" and not b.busy)
 	await frames_wait(20)
 	var rows: Array = b.synergy_board()
@@ -3263,8 +3268,10 @@ func aliens8() -> void:
 
 func camp() -> void:
 	## Every mission has two camps. Reaching one with the area clear brings the downed back and pays a camp pick.
-	for m in Data.MISSIONS + Data.BIOMES.keys().map(func(id): return Run.make_level(id, 0)):
+	for m in Data.MISSIONS:
 		check(m.segments.count("camp") == 2 and m.segments[-2] == "camp", "%s has a mid camp and a camp before the boss" % m.name)
+	for m in Data.BIOMES.keys().map(func(id): return Run.make_level(id, 0)):
+		check(m.segments.count("camp") == 1 and m.segments[2] == "camp", "X8: %s has one mid camp" % m.name)
 	Run.new_run()
 	var b: Battle = main.start_battle(0)
 	await until(func(): return b.state == "player" and not b.busy)
@@ -4902,6 +4909,7 @@ func detours() -> void:
 	for e in b.units.filter(func(e): return e.detour and e.team == "enemy"):
 		e.dead = true
 	await b.check_detour()
+	await b.flush_rewards()  # X3: the cache's card pick waits for the end of the turn
 	await frames_wait(60)
 	check(Run.scrip > sc0 and Run.soldiers.reduce(func(a, s): return a + s.deck.size(), 0) == decks + 1, "the cache pays scrip and a card pick")
 	main.clear()
@@ -4920,7 +4928,7 @@ func biomes() -> void:
 	## biome's rules are real: sway, sight, wind, hills, wet ground, fuel, mines, elites.
 	for id in Data.BIOMES:
 		var lv := Run.make_level(id, 0)
-		check(lv.segments.size() == 7 and lv.segments.count("camp") == 2 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)), "%s builds a full level" % id)
+		check(lv.segments.size() == 6 and lv.segments.count("camp") == 1 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)), "%s builds a full level" % id)
 	for i in Data.LEVELS.size():
 		check(Data.LEVELS[i].pool.size() >= 6 and Data.LEVELS[i].pool.all(func(k): return Data.BIOMES.has(k)), "level %d has a pool of 6+ biomes" % (i + 1))
 	# a whole run of dials: never a repeat, never a burned biome
@@ -6646,6 +6654,8 @@ func op_battle(job: String) -> Battle:
 
 func op_end(b: Battle) -> Variant:
 	## Runs the job check like the end of an action would and waits for the battle to finish.
+	# X3: nobody answers level-up modals here, so drop rewards the op's kills queued
+	b.lvl_queue.clear(); b.loot_queue.clear(); b.drop_queue.clear()
 	await b.job_ends()
 	await until(func(): return b.has_meta("result"), 3000)
 	return b.get_meta("result") if b.has_meta("result") else null
@@ -7477,9 +7487,9 @@ func tuning() -> void:
 	check(alerts[0] == 0 and alerts[1] == 0 and alerts[2] == 1, "alert starts climbing on the third round without a scroll %s" % [alerts])
 	main.clear()
 	await frames_wait(5)
-	# levels are seven segments: start, stretch, camp, yard, stretch, camp, boss
+	# X8: quick-run levels are six segments: start, stretch, camp, yard, stretch, boss
 	var lv := Run.make_level("desert", 1)
-	check(lv.segments.size() == 7 and lv.segments[2] == "camp" and lv.segments[3] == "yard" and lv.segments[5] == "camp", "a level is seven segments %s" % [lv.segments])
+	check(lv.segments.size() == 6 and lv.segments[2] == "camp" and lv.segments[3] == "yard" and lv.segments[5] == Data.BIOMES.desert.get("arena", "arena"), "a level is six segments %s" % [lv.segments])
 	# paradrops bring at most one Shield
 	Run.new_run()
 	Run.level = Run.make_level("fortress", 2)
@@ -8546,7 +8556,7 @@ func biomes2_test() -> void:
 	Run.leave_campaign()
 	for id in ["lake", "train", "city", "mine", "volcano", "hive", "carrier"]:
 		var lv := Run.make_level(id, 2)
-		check(lv.segments.size() == 7 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)) and Data.LEVELS[2].pool.has(id), "%s builds a full level and is in the last level's pool" % id)
+		check(lv.segments.size() == 6 and lv.segments.all(func(sg): return Data.SEGMENTS.has(sg)) and Data.LEVELS[2].pool.has(id), "%s builds a full level and is in the last level's pool" % id)
 	check(Run.make_level("hive", 2).boss == "hiveship" and not Run.make_level("hive", 2).walker, "the Hive ends at the Hive Ship and has no Jackal Walker")
 	check(range(30).all(func(_i): return Run.make_level("mine", 2).miniboss != "gunship" and Run.make_level("mine", 2).encounter != "droppods"), "no gunship and no drop pods under the mine's ceiling")
 	# M1 Frozen Lake: the crust holds soldiers, breaks under a Brute, and drops him in the lake
@@ -9078,6 +9088,8 @@ func events10_test() -> void:
 	e.hp = 30; e.max_hp = 30
 	await b.sentries_fire()
 	check(e.hp < 30, "the fire team shoots at the end of the turn (%d)" % e.hp)
+	ground_unit(b, trs[1], trs[0].x + 30, trs[0].y - 30)  # the level roll can leave the second one up on a ledge
+	await frames_wait(10)
 	var before := "%d,%d %d,%d" % [trs[0].x, trs[0].y, trs[1].x, trs[1].y]
 	ground_unit(b, mo, trs[0].x + 300, trs[0].y - 60)
 	b.troopers_follow()
@@ -9822,3 +9834,109 @@ func tcalls() -> void:
 	Run.delete_campaign(9)
 	Run.meta = keep
 	Run.save_meta()
+
+func xcalls() -> void:
+	## Expert playtest calls X1-X10.
+	Run.new_run()
+	Run.level = Run.make_level("desert", 0)
+	# X8: a quick-run level is six screens with one camp
+	check(Run.level.segments.size() == 6 and Run.level.segments.count("camp") == 1, "X8: six segments, one camp %s" % [Run.level.segments])
+	var b: Battle = main.start_battle(0, Run.level)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.autopick = 0
+	for o in b.units:
+		if o.team == "enemy":
+			o.dead = true; o.gone = true
+	var s: Unit = b.squad_alive()[0]
+	ground_unit(b, s, b.cam_x + 200)
+	await until(func(): return b.settled(), 300)
+	# X1: the readout's numbers
+	var g := b.mk_enemy("grunt", s.x + 160, b.T.stand_y(s.x + 160, 0)); g.active = true
+	b.units.append(g)
+	s.adr = 0
+	var c: Dictionary = Data.CARDS.rifle
+	var hh := {"u": g, "d": 160.0, "dx": 1.0, "head": false}
+	var tr := {"ping_d": []}
+	var e: Array = b.aim_est(s, c, hh, tr)
+	var base := int(s.g("aim_dmg"))
+	check(e[0] == c.dmg[0] + base and e[1] == c.dmg[1] + base and e[2] == 1, "X1: a rifle body shot reads %d-%d (%s)" % [c.dmg[0] + base, c.dmg[1] + base, e])
+	hh.head = true
+	var eh: Array = b.aim_est(s, c, hh, tr)
+	check(eh[0] > e[0], "X1: a head shot reads higher (%s)" % [eh])
+	hh.head = false
+	g.shield = true
+	var es: Array = b.aim_est(s, c, hh, tr)
+	check(es[1] < e[1], "X1: a shield from the front reads lower (%s)" % [es])
+	g.shield = false
+	var sg: Dictionary = Data.CARDS.shotgun
+	check(b.aim_est(s, sg, hh, tr)[2] == sg.pellets, "X1: a shotgun reads per pellet times the pellets")
+	g.hp = 3
+	b.sel = s
+	var ri := force_card(s, "rifle")
+	b.card_idx = ri
+	b.mouse = Vector2(g.x, g.y - g.h / 2.0)
+	b.ui_dirty = true
+	await frames_wait(10)
+	await shot("xc_kill_readout")
+	b.card_idx = -1
+	# X4: a held steady shot ends the walk
+	g.hp = 40; g.max_hp = 40
+	s.energy = 5
+	s.move_left = 100
+	b.aim_hold = true
+	ri = force_card(s, "rifle")
+	b.card_idx = ri
+	b.commit_aim(Vector2(g.x, g.y - g.h / 2.0))
+	b.aim_hold = false
+	await until(func(): return not b.busy and b.settled(), 400)
+	check(s.move_left == 0, "X4: steadying the shot spent the walk (move %d)" % s.move_left)
+	# X3: a level-up on the player's turn waits for END TURN
+	b.lvl_queue.clear()
+	var lv0: int = s.s.lvl
+	b.give_xp(s, Run.xp_for_next(s.s) - s.s.xp + 1)
+	await b.resolve(func(): await b.wait(2))
+	await until(func(): return not b.busy, 300)
+	check(b.lvl_queue.size() >= 1 and s.s.lvl > lv0, "X3: the level-up is queued after the action (%d waiting)" % b.lvl_queue.size())
+	check(b.pending_rewards(s) >= 1, "X3: the soldier's tag counts it")
+	b.supply_drop("Supply drop", null)
+	check(b.drop_queue.size() == 1, "X3: a supply drop on the player's turn waits too")
+	main.hud.refresh()
+	await frames_wait(5)
+	await shot("xc_rewards_waiting")
+	b.end_turn(true)
+	await until(func(): return b.state == "enemy" or b.state == "player" and b.pending_rewards() == 0, 600)
+	check(b.pending_rewards() == 0, "X3: END TURN hands them out before the enemy moves")
+	await until(func(): return b.state == "player" and not b.busy, 1200)
+	# X2 + X7: own blast downs a soldier: the cause is named, the damage split counts it, the line waits a round
+	var v: Unit = b.squad_alive()[-1]
+	v.s.tags = 2
+	b.act_card = "Frag Grenade"
+	b.act_unit = v
+	b.rounds_since_scroll = b.stall_limit()
+	b.damage(v, v.hp + 5, v, {"blast": true})
+	b.act_card = ""
+	b.act_unit = null
+	check(v.dead and str(b.stats.get("last_down", "")).contains("OWN BLAST") and str(b.stats.last_down).contains("FRAG"), "X2: the down names the cause (%s)" % b.stats.get("last_down", ""))
+	check(int(b.stats.get("hurt_own", 0)) > 0, "X2: own fire counts in the damage split")
+	check(b.regroup, "X7: the line regroups")
+	var a0: int = b.alert
+	var r0: int = b.rounds_since_scroll
+	b.end_turn(true)
+	await until(func(): return b.state == "player" and not b.busy, 1200)
+	check(b.rounds_since_scroll == r0 and not b.regroup, "X7: the stall clock held for one round (%d -> %d)" % [r0, b.rounds_since_scroll])
+	# X5: fast-forward only in the enemy phase
+	check(not b.fast_forward(), "X5: no fast-forward on the player's turn")
+	# X6: two log lines, fading; synergies quiet on level 1
+	for i in 4:
+		b.log_msg("line %d" % i)
+	await frames_wait(5)
+	await shot("xc_log_two")
+	# X10: no walking hint after the first mission
+	Run.mission = 1
+	check(main.hud.hint_text() == "" or b.card_idx >= 0, "X10: a seasoned player gets no walking hint (%s)" % main.hud.hint_text())
+	Run.mission = 0
+	var keep_hist: Array = Run.history; var keep_wins = Run.meta.get("wins", 0)
+	Run.history = []; Run.meta["wins"] = 0  # earlier scenarios in the same save may have won runs
+	check(main.hud.hint_text() != "", "X10: a first-mission player still gets it")
+	Run.history = keep_hist; Run.meta["wins"] = keep_wins
+	Run.meta.erase("ff")

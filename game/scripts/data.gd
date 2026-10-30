@@ -10,7 +10,7 @@ const WATER_Y := 500
 const GRAV := 0.22
 
 const TYPES := {
-	"AIM": {"c": Color("53d4e2"), "hint": "AIM: the red laser is the bullet path. Bullets ricochet off stone and concrete and chew into wood and dirt. Hold Shift to freeze the sway, click to fire. Head hits are crits."},
+	"AIM": {"c": Color("53d4e2"), "hint": "AIM: the red laser is the bullet path. Bullets ricochet off stone and concrete and chew into wood and dirt. Hold Shift to freeze the sway (it ends your walking), click to fire. Head hits are crits."},
 	"ARC": {"c": Color("ffb23e"), "hint": "ARC: cursor direction sets the angle, distance sets the power. Wind drifts it. Click to throw."},
 	"LINE": {"c": Color("ff7a3d"), "hint": "LINE: fires straight at the cursor. Click to fire."},
 	"MELEE": {"c": Color("ff4d3d"), "hint": "MELEE: click an enemy right next to you. Sends them flying."},

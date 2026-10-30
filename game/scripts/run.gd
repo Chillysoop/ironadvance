@@ -214,8 +214,12 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	if tier == 0 and first_run and daily == "" and not campaign():
 		event = ""  # P8: the first fight is the level, the POWs and the Boar; both start from level 2
 		bpool = []
+	var layout: Array = ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")]
+	if not campaign():
+		# X8: a quick-run level is one screen shorter: no second camp before the boss (the campaign's op layout)
+		layout = ["start", pool[0], "camp", "yard", pool[1], bm.get("arena", "arena")]
 	return {"event": event, "bounties": bpool.slice(0, 3), "name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "signal": signal_id, "breach": breach, "encounter": enc, "boss": boss, "walker": walker, "miniboss": miniboss,
-		"segments": ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")],
+		"segments": layout,
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
 
 func start_finale() -> void:

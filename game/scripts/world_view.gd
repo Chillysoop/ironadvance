@@ -964,13 +964,24 @@ func draw_plate(u: Unit) -> void:
 		draw_squad_plate(u, x)
 		return
 	# enemy: segmented red bar over the head
+	# X9: thicker, one notch per 5 HP, the number once it's hurt, and the shield on the side it faces
 	var y := roundf(u.y - u.h - 10)
-	var w := 24.0
-	draw_rect(Rect2(x - w / 2 - 1, y - 1, w + 2, 5), C_DARK)
-	draw_rect(Rect2(x - w / 2, y, w, 3), Color("3a0d0d"))
-	draw_rect(Rect2(x - w / 2, y, roundf(w * u.hp / u.max_hp), 3), Color("ff4d3d"))
-	for k in range(1, 4):
-		draw_rect(Rect2(x - w / 2 + k * w / 4, y, 1, 3), C_DARK)
+	var w := clampf(u.max_hp * 1.6, 24.0, 40.0)
+	draw_rect(Rect2(x - w / 2 - 1, y - 1, w + 2, 6), C_DARK)
+	draw_rect(Rect2(x - w / 2, y, w, 4), Color("3a0d0d"))
+	draw_rect(Rect2(x - w / 2, y, roundf(w * u.hp / u.max_hp), 4), Color("ff4d3d"))
+	var nk := 5
+	while nk < u.max_hp:
+		draw_rect(Rect2(x - w / 2 + roundf(w * nk / float(u.max_hp)), y, 1, 4), C_DARK)
+		nk += 5
+	if u.hp < u.max_hp:
+		if u.shield and u.face > 0:
+			Art.text(self, str(u.hp), Vector2(x - w / 2 - 3, y + 5), 8, Color("ff9a80"), HORIZONTAL_ALIGNMENT_RIGHT)
+		else:
+			Art.text(self, str(u.hp), Vector2(x + w / 2 + 3, y + 5), 8, Color("ff9a80"))
+	if u.shield:
+		var sx := x + u.face * (w / 2 + 6) - 4
+		draw_texture_rect(Art.tex.ic8_shield, Rect2(sx, y - 2, 8, 8), false)
 	if u.pod > 0 and u.weight == "hover":
 		var pm: int = int(round(Data.ETYPES[u.type].pod * b.mission.hp_mul))
 		draw_rect(Rect2(x - w / 2 - 1, y + 4, w + 2, 4), C_DARK)
@@ -1399,11 +1410,36 @@ func draw_targeting() -> void:
 				elif tg.type == "boss" and tg.plate > 0: lab = "ARMOR"
 				elif tg.type == "hiveship" and b.ship_plated(tg): lab = "ARMOR: HIT THE PLATES"
 				elif tg.type == "shipplate": lab = "DROP IT"
+				var est := ""
+				var ecol := col
+				if not tg.dead and not tg.is_prop() and tg.kind != "pow" and (tg.team == "enemy" or tg.team == "squad") and tg.max_hp > 0:
+					# X1: the damage this card does here, and whether it kills
+					var e: Array = b.aim_est(u, c, hh, tr)
+					var n: int = e[2]
+					var hp_left: int = tg.hp + tg.armor
+					est = ("%d-%d" % [e[0], e[1]] if e[0] != e[1] else str(e[0])) + ("x%d" % n if n > 1 else "")
+					if tg.team == "squad":
+						est = "HITS %s %s" % [tg.def.name.to_upper(), est]
+						ecol = Color("ff2020")
+					elif e[0] >= hp_left:
+						est += "  KILL"
+						ecol = Color("ffd23a")
+					elif e[1] * n >= hp_left:
+						est += "  KILL?"
+						ecol = Color("ffd23a")
+					else:
+						est += " OF %d HP" % hp_left
 				var spot := Vector2(tg.x, tg.y - tg.h - 22)
-				while tagged.any(func(q): return absf(q[1].x - spot.x) < 50 and absf(q[1].y - spot.y) < 12):
+				var rows := 2 if est != "" else 1
+				while tagged.any(func(q): return absf(q[1].x - spot.x) < 60 and absf(q[1].y - spot.y) < 12 * rows):
 					spot.y -= 12
 				tagged.append([tg, spot])
 				Art.text(self, lab, spot, 16 if hh.head else 8, col, HORIZONTAL_ALIGNMENT_CENTER)
+				if est != "":
+					var ey := spot.y + (14 if hh.head else 11)
+					var ew := Art.text_width(est, 8) + 6
+					draw_rect(Rect2(tg.x - ew / 2.0, ey - 8, ew, 11), Color(C_DARK, 0.8))
+					Art.text(self, est, Vector2(tg.x, ey), 8, ecol, HORIZONTAL_ALIGNMENT_CENTER)
 			if seen.is_empty() and not cut_short and not back:
 				var ls: Array = tr.segs[-1]
 				var em: int = tr.end.m if tr.end != null else 0
@@ -1416,6 +1452,8 @@ func draw_targeting() -> void:
 			var sight := "%s SIGHT %s" % [gun.name, ("FULL" if L > 9999.0 else Data.meters(L))]
 			var sw := b.sway_of(u, c)
 			var swt := "STEADY" if sw < 0.01 else ("WILD SWAY" if sw > 0.06 else ("SWAY  [SHIFT] HOLD" if not b.aim_hold else "HOLDING"))
+			if sw >= 0.01 and u.move_left > 0:
+				swt += ": ENDS MOVE" if b.aim_hold else " (ENDS MOVE)"  # X4
 			# a dark plate under the cursor notes, so the tags of whatever you aim at never mix in
 			var pw := maxf(Art.text_width(sight, 8), Art.text_width(swt, 8)) + 8
 			var nx := note_x(m, pw)
