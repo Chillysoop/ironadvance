@@ -4218,6 +4218,8 @@ func kill(tg: Unit, src) -> void:
 		tg.hp = 1  # R6 ZOMBIE: can't go down
 		float_text(tg, "UNDEAD!", Color("9df25c"), true)
 		return
+	if debug and tg.team == "squad":
+		print("[down r%d] %s at %d,%d hp %d sunk %s lava %d by %s" % [round_n, tg.def.key, int(tg.x), int(tg.y), tg.hp, tg.sunk, lava_k, (src.team + ":" + (src.type if src.team != "squad" else src.def.key)) if src is Unit else str(src)])
 	tg.dead = true
 	tg.hp = 0
 	tg.dead_t = 0

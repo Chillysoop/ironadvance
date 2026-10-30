@@ -28,6 +28,7 @@ var runs_arg := 1
 var playtest_debug := false
 var start_arg := 0
 var clip_arg := ""
+var biome_arg := ""   # --biome=X: playtest plays only level --start in biome X
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -45,6 +46,8 @@ func _ready() -> void:
 			seed_arg = int(a.substr(7))
 		elif a.begins_with("--start="):
 			start_arg = int(a.substr(8))
+		elif a.begins_with("--biome="):
+			biome_arg = a.substr(8)
 		elif a.begins_with("--clip="):
 			clip_arg = a.substr(7)
 		elif a.begins_with("--runs="):
@@ -5300,7 +5303,7 @@ func playtest() -> void:
 			Run.side = ""
 			if m < Data.LEVELS.size():
 				Run.roll_dial()
-				Run.pick_biome(Run.dial[randi() % Run.dial.size()])
+				Run.pick_biome(biome_arg if biome_arg != "" and m == start_arg else Run.dial[randi() % Run.dial.size()])
 			else:
 				Run.start_finale()
 			if m < start_arg:
@@ -5330,7 +5333,7 @@ func playtest() -> void:
 				"lv": Run.soldiers.map(func(x): return x.lvl), "max_round_hp": bot_stats.round_hp.max() if bot_stats.round_hp.size() else 0})
 			print("[pt] ", JSON.stringify(row))
 			await shot("pt_s%d_r%d_m%d_end" % [seed_arg, r, m])
-			if not ok or Run.alive_count() == 0:
+			if not ok or Run.alive_count() == 0 or (biome_arg != "" and m >= start_arg):
 				break
 			# between levels: buy the hospital when anyone is hurt and it is affordable
 			if Run.scrip >= 40 and Run.soldiers.any(func(x): return x.alive and x.hp < Run.eff_max_hp(x)):
