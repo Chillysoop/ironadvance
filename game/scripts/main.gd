@@ -237,6 +237,12 @@ func campaign_home(st := {}) -> void:
 		if inc[k] != "":
 			news.append(inc[k])
 	news.append_array(inc.challenges)
+	if inc.nemesis != "":
+		news.append(inc.nemesis)
+	if inc.varga != "":
+		news.append(inc.varga)
+	news.append_array(inc.orders)
+	news.append_array(inc.bonds)
 	news.append_array(inc.promos)
 	for m in inc.medals:
 		news.append("Medal for " + m + ".")
@@ -261,7 +267,7 @@ func campaign_home(st := {}) -> void:
 		if not mvp.is_empty():
 			mvp.promo = int(mvp.get("promo", 0)) + 1
 			mvp["field"] = int(mvp.get("field", 0)) + 1
-			news.append("%s was the MVP of Act %s: a field promotion pick." % [mvp.def.name, Data.ACTS[cleared].roman])
+			news.append("%s was the MVP of Act %s: a field promotion pick." % [mvp.def.name, Run.act(cleared).roman])
 	var home := func():
 		if Run.camp.get("done", false):
 			Run.save_campaign()
@@ -401,14 +407,24 @@ func _on_mission_over(won: bool) -> void:
 	var xp := {}
 	var kills := {}
 	var downs := {}
+	var by := {}
 	for u in battle.squad():
 		if u.s.has("guest"):
+			st["varga_alive"] = not (u.dead and not u.downed)  # W13: still standing (or only down) when it ends
 			continue
 		xp[u.def.key] = u.xp_gain
 		kills[u.def.key] = u.kills
 		downs[u.def.key] = u.downed or u.dead
+		if Run.campaign() and Run.roster.has(u.s):
+			by[str(Run.roster.find(u.s))] = {"xp": u.xp_gain, "k": u.kills, "down": u.downed or u.dead}  # W9: two of a class on the pincer
 	st["xp"] = xp
+	if by.size():
+		st["by"] = by
 	st["kills_by"] = kills
+	for u in battle.units:
+		# W3: a named officer still standing when the op ends gets away
+		if u.fl.has("quarry") and not u.dead and Run.campaign():
+			st["nemesis_escaped"] = {"name": u.fl.get("nemesis", u.fl.quarry), "type": u.type, "elite": u.elite}
 	st["downed_by"] = downs
 	if won:
 		st["bounties"] = Run.pay_bounties(st)  # R5; O1: campaign ops pay them into the company's scrip too
@@ -704,6 +720,18 @@ class Screen extends Control:
 		var ny := iy + 14
 		if Run.threat > 0:
 			Art.text(self, "THREAT %d: %s" % [Run.threat, ", ".join(Data.THREATS.slice(0, Run.threat).map(func(x): return x.name))], Vector2(480, ny), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
+		if m.get("nemesis", {}).size():
+			# W3: an officer who got away before is waiting
+			Art.text(self, "NEMESIS: %s IS HERE. KILL THEM FOR THEIR SIGNATURE GEAR." % Run.nemesis_name(m.nemesis), Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ff4d3d") if t % 50 < 34 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			ny += 14
+		if m.get("pincer", false):
+			# W9: the two-squad assault
+			Art.text(self, "PINCER: SQUAD B (%s) LANDS ON THE FAR SIDE. G JUMPS BETWEEN THEM." % ", ".join(Run.wing_b().map(func(s): return s.def.name)), Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			ny += 14
+		if m.get("story", "") == "varga":
+			# W13: the colonel's last stand
+			Art.text(self, "LAST STAND: BRING COLONEL VARGA OUT ALIVE AND HE JOINS THE COMPANY.", Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			ny += 14
 		if m.get("specialist", "") != "":
 			# X2: a specialist is held somewhere in this level
 			var D: Dictionary = Run.class_def(m.specialist)
@@ -885,7 +913,7 @@ class Screen extends Control:
 			title = "PATROL COMPLETE" if Run.level.get("patrol", false) else "SECTOR TAKEN!"
 			line = "HALF PAY. THE SECTOR WAS ALREADY YOURS." if Run.level.get("patrol", false) else ""
 			if op.has("act_done"):
-				title = "ACT %s CLEARED!" % Data.ACTS.filter(func(a): return a.name == op.act_done)[0].roman
+				title = "ACT %s CLEARED!" % Data.ACTS[maxi(0, Run.act_index(op.act_done))].roman
 				line = "THE WAR IS WON." if Run.camp.get("done", false) else "THE FRONT MOVES ON: ACT %s, %s." % [Run.act().roman, Run.act().name]
 			elif op.has("bonus"):
 				title = "BONUS OP DONE!"

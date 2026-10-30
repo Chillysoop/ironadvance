@@ -42,6 +42,7 @@ var round_n := 0
 var alert := 0
 var rounds_since_scroll := 0
 var push_warned := -1  # round the "clear the enemies behind first" warning was last shown
+var pincer := {}       # W9: Iron Harbor with two squads: {on, view "a"/"b", a_cam, b_cam}; squad B wears fl.wing = "b"
 const STALL_ROUNDS := 3   # rounds on one screen before alert starts climbing (one fewer on threat 1)
 var wind := 0
 var score := 0
@@ -84,6 +85,7 @@ var fuse_pick := 0       # frames of fuse the player dialed in with the wheel (0
 var feed: Array = []     # kill feed lines: {killer, how, victim, kc, stamp, t}
 var kill_how := ""       # what is dealing the damage right now when it isn't a card (FALL, CRUSHED, BURN)
 var act_card := ""       # name of the card behind the current action, for the kill feed
+var act_type := ""       # its type (AIM, ARC, MELEE...), for personal orders (W5)
 var pop_next := false    # the next kill was an overkill: the Jackal bursts instead of leaving a body
 var stats := {"kills": 0, "pows": 0, "pushes": 0, "rounds": 0, "crushes": 0, "scrip": 0, "kia": 0, "max_alert": 0, "pows_total": 0, "loot": 0, "tags": 0, "best_combo": 0, "fallen": [], "falls": 0, "downs": 0, "melee_kills": 0}
 var act_once := {}        # tag-team combos that pay out once per action
@@ -167,6 +169,18 @@ func setup(idx: int, custom := {}) -> void:
 			continue
 		deploy_unit(s, 50.0 + i * 55)  # P2: far enough apart that tags, bars and clicks don't overlap
 		i += 1
+	if mission.get("pincer", false) and Run.campaign():
+		# W9: squad B lands at the far end of the harbor and fights in from the right
+		var j := 0
+		for s in Run.wing_b():
+			if not s.alive or Run.soldiers.has(s):
+				continue
+			var ub := deploy_unit(s, world_w - 50.0 - j * 55)
+			ub.face = -1
+			ub.wing = "b"
+			j += 1
+		if j > 0:
+			pincer = {"on": true, "view": "a", "a_cam": 0.0, "b_cam": float(world_w - W)}
 	var pi := randi() % Data.POW_NAMES.size()
 	var foot := 0  # plain rifleman and bomber slots seen so far (cast_foot)
 	var walled := false
@@ -287,11 +301,14 @@ func setup(idx: int, custom := {}) -> void:
 	setup_biome()
 	setup_events()
 	place_job()
+	place_nemesis()
 	spawn_map_loot()
 	sel = null
 	for u in units:
 		if u.team == "squad":
 			sel = u
+			if pincer.get("on", false) and u.wing == "a":
+				break  # W9: start on squad A
 	for u in units:
 		if u.y == null:
 			u.y = WATER_Y - 4
@@ -4215,6 +4232,13 @@ func kill(tg: Unit, src) -> void:
 		tg.bow = false
 		drop_loot(tg.x, tg.y - 14, {"type": "bow"}, 0.4)
 	feed_kill(tg, src)
+	if tg.fl.has("nemesis"):
+		# W3: a nemesis put down for good drops a Legendary with their name on it
+		var it := Run.roll_item(Data.TIER_MAX)
+		it["named"] = str(tg.fl.nemesis).capitalize()
+		drop_loot(tg.x, tg.y - 20, {"type": "item", "item": it})
+		stats["nemesis_killed"] = tg.fl.nemesis
+		banner("NEMESIS DOWN!", Color("ffd23a"), "%s IS DEAD" % tg.fl.quarry)
 	if tg.type == "shipplate":
 		drop_plate(tg, src)
 	elif tg.type == "jwalker":
@@ -4486,6 +4510,19 @@ func feed_kill(tg: Unit, src) -> void:
 			how = "ATTACK"
 		else:
 			how = "BLAST"
+	if Run.campaign() and src is Unit and src.team == "squad" and tg.team == "enemy" and src.s.has("order"):
+		# W5: personal orders count the kills that match them
+		var fin := ""
+		match str(src.s.order.id):
+			"headhunter": fin = Run.order_tick(src.s, "headhunter") if last_hit_head else ""
+			"demo": fin = Run.order_tick(src.s, "demo") if act_type == "ARC" or how == "BLAST" else ""
+			"brawler": fin = Run.order_tick(src.s, "brawler") if act_type == "MELEE" else ""
+			"bughunter": fin = Run.order_tick(src.s, "bughunter") if faction(tg) == "vharr" else ""
+			"wrecker": fin = Run.order_tick(src.s, "wrecker") if how in ["FALL", "SLAM", "BONK", "CRUSHED"] else ""
+			"giantkiller": fin = Run.order_tick(src.s, "giantkiller") if tg.elite != "" or is_boss(tg) else ""
+		if fin != "":
+			log_msg(fin)
+			float_text(src, Data.ORDERS[src.s.orders_done.back()].title + "!", Color("ffd23a"), true)
 	var victim: String = (Data.ETYPES[tg.type].name if tg.team == "enemy" else tg.def.name).to_upper()
 	var stamp := ""
 	if pop_next:
@@ -5051,6 +5088,7 @@ func spend_card(u: Unit, idx: int, c_in = null) -> Dictionary:
 			drop_hang(u)
 	act_unit = u
 	act_card = c.get("name", "")
+	act_type = c.get("type", "")
 	act_inst = inst
 	u.played += 1
 	if ch != "":
@@ -6445,6 +6483,11 @@ func check_push(u: Unit, x0 = null) -> void:
 	check_troopers(u)
 	await check_dealer(u, x0)
 	await check_camp(u)
+	if pincer.get("on", false):
+		set_view(wing(u))
+		if wing(u) == "b":
+			await follow_b()
+			return
 	if u.dead or cam_x >= world_w - W:
 		return
 	if u.x - cam_x > W * 0.72:
@@ -6457,6 +6500,80 @@ func check_push(u: Unit, x0 = null) -> void:
 				log_msg("The push zone is locked: %d enem%s still alive behind the line." % [blk.size(), "y" if blk.size() == 1 else "ies"])
 			return
 		await scroll_to(clampf(u.x - W * 0.5, cam_x, world_w - W), "push", u)
+
+# ---------------------------------------------------------------- W9: the pincer at Iron Harbor
+func wing(u) -> String:
+	return u.wing
+
+func view_cam(w: String) -> float:
+	return cam_tx if pincer.get("view", "a") == w else float(pincer.get(w + "_cam", cam_x))
+
+func in_play(x: float, pad: float) -> bool:
+	## Inside a live window. On the pincer op both halves are live: squad A's and squad B's.
+	if not pincer.get("on", false):
+		return x < cam_x + W + pad
+	return x < view_cam("a") + W + pad or x > view_cam("b") - pad
+
+func wing_at(x: float) -> String:
+	return "b" if x > view_cam("b") - 60 else "a"
+
+func set_view(w: String) -> void:
+	## Jump the camera to one half of the pincer. Each half keeps its own camera.
+	if not pincer.get("on", false) or pincer.view == w:
+		return
+	pincer[pincer.view + "_cam"] = cam_tx
+	pincer.view = w
+	cam_x = float(pincer[w + "_cam"])
+	cam_tx = cam_x
+	activate_enemies()
+	ui_dirty = true
+
+func switch_wing() -> void:
+	## The SQUAD A / SQUAD B button: select the other half's first soldier and jump there.
+	if not pincer.get("on", false) or state != "player" or busy:
+		return
+	var w := "b" if pincer.view == "a" else "a"
+	var al: Array = squad_alive().filter(func(s): return wing(s) == w)
+	if al.size():
+		sel = al[0]
+		card_idx = -1
+	set_view(w)
+	Sfx.play("click")
+
+func bar_squad() -> Array:
+	## The soldiers the HUD's squad bar shows: on the pincer op, the half on screen.
+	if pincer.get("on", false):
+		return squad().filter(func(s): return wing(s) == pincer.view)
+	return squad()
+
+func follow_b() -> void:
+	## Squad B fights right to left: its view slides left as they advance, and the two halves
+	## join up once the windows meet.
+	var bs: Array = squad_alive().filter(func(s): return wing(s) == "b")
+	if bs.is_empty():
+		return
+	var bx: float = bs.map(func(s): return s.x).min()
+	if bx - cam_tx < W * 0.3:
+		cam_tx = clampf(bx - W * 0.5, 0, cam_tx)
+		await until(func(): return absf(cam_x - cam_tx) < 0.5)
+		cam_x = cam_tx
+		activate_enemies()
+	if cam_tx <= float(pincer.a_cam) + W * 0.6:
+		pincer_meet()
+
+func pincer_meet() -> void:
+	## The halves meet: one squad of eight, one camera, and the flagship between them.
+	var tx: float = maxf(float(pincer.a_cam), cam_tx if pincer.view == "b" else float(pincer.b_cam))
+	pincer.on = false
+	pincer["met"] = true
+	for s in squad():
+		s.wing = "a"
+	cam_x = minf(cam_x, tx)
+	cam_tx = tx
+	banner("THE PINCER CLOSES!", Color("62d26f"), "BOTH SQUADS FIGHT AS ONE")
+	Sfx.play("start")
+	log_msg("Squad A and Squad B have joined up. Finish the flagship together.")
+	ui_dirty = true
 
 func push_blockers() -> Array:
 	## Enemies still alive on this screen short of the push zone line. While any are left, a push won't scroll.
@@ -6793,6 +6910,9 @@ func stalled() -> bool:
 	return rounds_since_scroll >= stall_limit()
 
 func scroll_to(tx: float, reason: String, who = null) -> void:
+	if pincer.get("on", false) and pincer.view != "a":
+		set_view("a")  # only squad A's side of the pincer pushes the screen
+		tx = maxf(tx, cam_x)
 	tx = clampf(tx, 0, world_w - W)
 	if tx <= cam_x + 4:
 		return
@@ -6824,6 +6944,8 @@ func scroll_to(tx: float, reason: String, who = null) -> void:
 	rounds_since_scroll = 0
 	await until(func(): return absf(cam_x - cam_tx) < 0.5)
 	cam_x = cam_tx
+	if pincer.get("on", false) and cam_x + W * 0.6 >= float(pincer.b_cam):
+		pincer_meet()
 	sweep_loot(cam_x)
 	roll_flare()
 	activate_enemies()
@@ -6998,7 +7120,7 @@ func activate_enemies() -> void:
 	for e in units:
 		if e.team != "enemy" or e.dead or e.active:
 			continue
-		if e.x < cam_x + W + 40 or (e.fl.get("hunt", false) and e.x < cam_x + W + 700):
+		if in_play(e.x, 40) or (e.fl.get("hunt", false) and e.x < cam_x + W + 700):
 			e.active = true
 			meet(e)
 			if e.fl.get("lead", false):
@@ -7402,9 +7524,30 @@ func place_job() -> void:
 				make_elite(q, pick_elite(faction(q) == "vharr"))
 			q.hp *= 2
 			q.max_hp = q.hp
-			q.fl["quarry"] = Data.QUARRY_NAMES[randi() % Data.QUARRY_NAMES.size()]
+			var taken: Array = Run.camp.get("nemeses", []).map(func(n): return n.name) if Run.campaign() else []
+			var names: Array = Data.QUARRY_NAMES.filter(func(n): return not taken.has(n))
+			q.fl["quarry"] = (names if names.size() else Data.QUARRY_NAMES)[randi() % (names.size() if names.size() else Data.QUARRY_NAMES.size())]
 		"hold":
 			job_st = {"on": false, "left": Data.HOLD_PHASES}
+
+func place_nemesis() -> void:
+	## W3: an officer who got away on an earlier op is back: the farthest foe, with a new elite trick
+	## and more health for every escape. WANTED over their head like a hunt's target.
+	var nem: Dictionary = mission.get("nemesis", {})
+	if nem.is_empty():
+		return
+	var foes := units.filter(func(e): return e.team == "enemy" and not e.dead and not is_boss(e) and not e.fl.has("quarry") and e.type != "radio" and not Data.ETYPES[e.type].get("static", false))
+	if foes.is_empty():
+		return
+	foes.sort_custom(func(a, b): return a.x > b.x)
+	var q: Unit = foes[0]
+	var tricks := Data.ELITES.keys().filter(func(k): return Data.ELITES[k].get("vharr", false) == (faction(q) == "vharr") and k != str(nem.get("elite", "")))
+	make_elite(q, tricks[randi() % tricks.size()] if tricks.size() else pick_elite(faction(q) == "vharr"))
+	q.hp = int(q.hp * (2.0 + Data.NEMESIS_HP * int(nem.rank)))
+	q.max_hp = q.hp
+	q.fl["quarry"] = Run.nemesis_name(nem)
+	q.fl["nemesis"] = nem.name
+	stats["nemesis"] = Run.nemesis_name(nem)
 
 func truck():
 	for u in units:
@@ -7727,7 +7870,7 @@ func start_player_turn() -> void:
 		s.energy = 3 + s.banked
 		s.banked = 0
 		if round_n == 1:
-			s.energy += s.s.bonus.energy1 + int(s.g("energy1")) + (1 if Run.has_gear("bandolier") else 0)
+			s.energy += s.s.bonus.energy1 + int(s.g("energy1")) + (1 if Run.has_gear("bandolier") else 0) + (1 if Run.campaign() and Run.buddy_deployed(s.s) else 0)
 		elif round_n == 2 and Run.relic_tier("bandolier") >= 3:
 			s.energy += 1
 		if Run.has_gear("overclock") and (round_n % 2 == 1 or Run.relic_tier("overclock") >= 3):
@@ -8086,8 +8229,10 @@ func enemy_phase() -> void:
 	for e in es:
 		if e.dead or squad_alive().is_empty() or boss_dead:
 			break
-		if e.x > cam_x + W + 60 and not e.fl.get("hunt", false):
+		if not in_play(e.x, 60) and not e.fl.get("hunt", false):
 			continue
+		if pincer.get("on", false):
+			set_view(wing_at(e.x))  # W9: the camera jumps to whichever half of the pincer this enemy is in
 		await until(settled)
 		if e.dead:
 			continue
@@ -10114,7 +10259,12 @@ func step() -> void:
 			sel.gun_target = clampf(atan2(mouse.y - o.y, (mouse.x - o.x) * sel.face), -1.35, 1.1)
 	if cam_x < cam_tx:
 		cam_x = minf(cam_tx, cam_x + minf(9, (cam_tx - cam_x) * 0.08 + 1.2))
-		drag_stragglers()
+		if pincer.get("view", "a") == "a":
+			drag_stragglers()
+	elif cam_x > cam_tx and pincer.get("on", false):
+		cam_x = maxf(cam_tx, cam_x - minf(9, (cam_x - cam_tx) * 0.08 + 1.2))  # W9: squad B's view slides left
+	if pincer.get("on", false) and state == "player" and not busy and sel != null and not sel.dead and sel.team == "squad" and wing(sel) != pincer.view:
+		set_view(wing(sel))
 	T.update_chunks()
 	for u in units:
 		if u.gone or u.sunk:
@@ -10809,6 +10959,8 @@ func dial_fuse(d: int) -> void:
 func select_unit(u: Unit) -> void:
 	if u == null or u.dead or busy:
 		return
+	if pincer.get("on", false) and u.team == "squad":
+		set_view(wing(u))
 	if u != sel:
 		drop_hang(sel)
 	sel = u
@@ -10874,7 +11026,7 @@ func auto_advance() -> void:
 	resolve(func(): await _act_advance())
 
 func _act_advance() -> void:
-	var sq := squad_alive()
+	var sq := bar_squad().filter(func(s): return not s.dead)  # W9: on the pincer, the half on screen
 	# rallies first, so the movement they hand out is there for everyone else's walk
 	for pass_ in ["rally", "move"]:
 		for u in sq:
@@ -10888,11 +11040,12 @@ func _act_advance() -> void:
 						await wait(6)
 						played = true
 						break
-	sq.sort_custom(func(a, b2): return a.x > b2.x)
+	var west: bool = pincer.get("on", false) and pincer.view == "b"  # squad B advances west
+	sq.sort_custom(func(a, b2): return a.x < b2.x if west else a.x > b2.x)
 	for u in sq:
 		if u.dead or u.move_left <= 1:
 			continue
-		var sim := stop_before_mines(u, sim_walk(u, u.x + u.move_left, u.move_left))
+		var sim := stop_before_mines(u, sim_walk(u, u.x - u.move_left if west else u.x + u.move_left, u.move_left))
 		if sim.pts.is_empty():
 			continue
 		sel = u
@@ -10977,6 +11130,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 			undo_last_walk()
 		elif ev.keycode == KEY_J:
 			toggle_jet()
+		elif ev.keycode == KEY_G:
+			switch_wing()
 		elif ev.keycode == KEY_BRACKETRIGHT or ev.keycode == KEY_EQUAL:
 			dial_fuse(1)
 		elif ev.keycode == KEY_BRACKETLEFT or ev.keycode == KEY_MINUS:

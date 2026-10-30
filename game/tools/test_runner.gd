@@ -860,6 +860,14 @@ func run() -> void:
 			await wardeep()
 		"warplus":
 			await warplus()
+		"warpeople":
+			await warpeople()
+		"warstory":
+			await warstory()
+		"warfront":
+			await warfront()
+		"warpincer":
+			await warpincer()
 		"straggler":
 			await straggler()
 		"hoverwedge":
@@ -5858,6 +5866,319 @@ func warplus() -> void:
 	main.screen.build()
 	await frames_wait(10)
 	await shot("wp_ending_journal")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
+func warpeople() -> void:
+	## Campaign ideas W3, W5, W7: nemesis officers who get away and come back, personal orders with
+	## titles, and battle buddies.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	# W3: the hunt's target survives the op and gets away
+	Run.camp.held.append(Run.sec_key("d1"))
+	var sc: Dictionary = Run.sector("d2").duplicate()
+	sc["job"] = "hunt"
+	Run.level = Run.make_op(sc)
+	var b: Battle = main.start_battle(0, Run.level)
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var q: Array = b.units.filter(func(e): return e.fl.has("quarry"))
+	check(q.size() == 1, "a hunt has its named target (%s)" % [q.map(func(e): return e.fl.quarry)])
+	var qname: String = q[0].fl.quarry
+	b.mission_over.emit(false)
+	await frames_wait(5)
+	var st: Dictionary = Run.history.back()
+	check(st.get("nemesis_escaped", {}).get("name", "") == qname, "the target still standing gets away (%s)" % [st.get("nemesis_escaped")])
+	main.campaign_home(st)
+	await frames_wait(10)
+	var nem := Run.next_nemesis()
+	check(nem.get("name", "") == qname and int(nem.rank) == 1, "they're on the books as a nemesis (%s)" % [nem])
+	check(main.screen.get("news") != null and main.screen.news.any(func(l): return l.contains(qname)), "HQ news says they got away")
+	# they come back on the next op, tougher
+	Run.start_op(Run.sector("d1"), false)
+	check(Run.level.get("nemesis", {}).get("name", "") == qname, "the next op has the nemesis waiting")
+	Run.start_op(Run.sector("d1"), true)
+	check(not Run.level.has("nemesis"), "a patrol doesn't")
+	Run.start_op(Run.sector("d3"))
+	main.show_brief()
+	await frames_wait(10)
+	await shot("pp_brief_nemesis")
+	b = main.start_battle(0, Run.current_mission())
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var n: Array = b.units.filter(func(e): return e.fl.has("nemesis"))
+	check(n.size() == 1 and n[0].fl.quarry.contains("THE SCARRED") and n[0].elite != "", "the nemesis is back with a scar and an elite trick (%s %s hp %d)" % [n[0].fl.quarry if n.size() else "-", n[0].elite if n.size() else "", n[0].hp if n.size() else 0])
+	cam_on(b, n[0].x - 300)
+	await frames_wait(30)
+	await shot("pp_nemesis_field")
+	b.kill(n[0], b.squad()[0])
+	check(b.stats.get("nemesis_killed", "") == qname, "killing them is booked")
+	var named: Array = b.loot.filter(func(l): return l.get("type", "") == "item" and l.item.get("named", "") != "") if "loot" in b else []
+	b.mission_over.emit(true)
+	await frames_wait(5)
+	st = Run.history.back()
+	main.campaign_home(st)
+	await frames_wait(5)
+	check(Run.next_nemesis().is_empty(), "a dead nemesis stays dead")
+	# W5: an order at Corporal, progress from kills, a title and its bonus when done
+	var s0: Dictionary = Run.soldiers[0]
+	s0.erase("order")
+	Run.svc(s0).ops = 1
+	s0.rank = 0
+	var xp := {}
+	for x in Run.soldiers:
+		xp[x.key] = 5
+	var out := Run.book_service({"won": true, "xp": xp, "kills_by": {}, "downed_by": {}})
+	check(Run.rank(s0) == 1 and s0.has("order"), "a new Corporal gets a personal order (%s)" % [s0.get("order")])
+	check(out.orders.any(func(l): return l.contains(s0.def.name)), "the news names the order")
+	s0.order = {"id": "brawler", "n": 4}
+	b = main.start_battle(0, Run.make_op(Run.sector("d1")))
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var me: Unit = b.squad().filter(func(u): return u.s == s0)[0]
+	var foe: Unit = b.units.filter(func(e): return e.team == "enemy" and not e.dead and not b.is_boss(e))[0]
+	b.act_type = "MELEE"
+	b.kill(foe, me)
+	check(not s0.has("order") and s0.orders_done.has("brawler"), "a melee kill finishes BRUISER")
+	check(int(Run.gear_bonus(s0).get("hp", 0)) >= 10 and Run.title_line(s0) == "BRUISER", "the title's bonus counts like gear (%s)" % Run.title_line(s0))
+	main.show_hq(false)
+	await frames_wait(20)
+	main.screen.open_dossier(0)
+	await frames_wait(20)
+	await shot("pp_dossier")
+	main.show_hq(false)
+	await frames_wait(5)
+	# W7: five ops together make buddies
+	var bonds := []
+	for i in Data.BOND_OPS:
+		bonds.append_array(Run.book_service({"won": true, "xp": xp, "kills_by": {}, "downed_by": {}}).bonds)
+	check(Run.buddies(Run.soldiers[0]).size() == Data.BOND_MAX and bonds.size() >= 2, "squadmates become battle buddies, two each at most (%s)" % [bonds])
+	check(Run.buddy_deployed(Run.soldiers[0]), "a buddy in the squad counts")
+	var talk := Run.radio_after({"won": true})
+	check(talk.any(func(l): return Data.RADIO_BOND.any(func(r): return l.text == r.format({"mate": l.text.get_slice(",", 0)}) or l.text.contains("Same as always") or l.text.contains("owe me") or l.text.contains("covered") or l.text.contains("drinks"))), "buddies get a radio line about each other")
+	b = main.start_battle(0, Run.make_op(Run.sector("d1")))
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var e1: Unit = b.squad().filter(func(u): return u.s == Run.soldiers[0])[0]
+	check(e1.energy >= 4, "a soldier with a buddy deployed starts with +1 energy (%d)" % e1.energy)
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
+func warstory() -> void:
+	## Campaign ideas W11 and W13: held ground looks liberated, and Varga's last stand in Act IV.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	# W11: a patrol on held ground has company posts and green flags
+	Run.camp.held.append(Run.sec_key("d1"))
+	Run.start_op(Run.sector("d1"), true)
+	check(Run.level.get("liberated", false), "a patrol is on liberated ground")
+	var b: Battle = main.start_battle(0, Run.current_mission())
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var dec = b.get_node_or_null("Decor")
+	check(dec != null and dec.liberated and dec.posts.size() >= 2, "the company's sandbag posts stand on held ground (%d)" % (dec.posts.size() if dec else -1))
+	cam_on(b, dec.posts[1].x if dec and dec.posts.size() > 1 else 0)
+	await frames_wait(30)
+	await shot("st_liberated")
+	Run.start_op(Run.sector("d2"))
+	check(not Run.level.get("liberated", false), "a new sector isn't")
+	# W13: the last stand opens off the Paper Bridge in Act IV
+	Run.camp.act = 3
+	Run.camp.held.clear()
+	var v: Dictionary = Run.sector("v1")
+	check(not v.is_empty() and v.get("story", "") == "varga", "Act IV has Varga's Fort")
+	check(not Run.sector_open(v), "it's sealed until the bridge is held")
+	Run.camp.held.append(Run.sec_key("p3"))
+	check(Run.sector_open(v), "holding the Paper Bridge opens it")
+	var held0 := Run.held_count()
+	Run.start_op(v)
+	check(Run.level.get("story", "") == "varga" and Run.level.get("guest", "") == "varga", "the op is the story op with Varga fighting alongside")
+	main.show_brief()
+	await frames_wait(10)
+	await shot("st_brief")
+	b = main.start_battle(0, Run.current_mission())
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	check(b.squad().any(func(u): return u.s.has("guest")), "Varga deploys")
+	var n0 := Run.roster.size()
+	b.mission_over.emit(true)
+	await frames_wait(5)
+	var st: Dictionary = Run.history.back()
+	check(st.get("varga_alive", false), "Varga made it (%s)" % st.get("varga_alive"))
+	main.campaign_home(st)
+	await frames_wait(10)
+	check(Run.camp.get("varga", "") == "joined" and Run.roster.size() > n0, "he joins the company for good (%s, %d -> %d)" % [Run.camp.get("varga"), n0, Run.roster.size()])
+	var vs: Array = Run.roster.filter(func(s): return s.def.name == "VARGA")
+	check(vs.size() == 1 and not vs[0].has("guest") and vs[0].deck.map(func(c): return c.key) == Data.VARGA_DECK, "as a full soldier with his own deck (%d)" % vs.size())
+	check(Run.held_count() == held0, "the story sector doesn't count toward the stronghold")
+	check(main.screen.get("news") != null and main.screen.news.any(func(l): return l.contains("Varga")), "HQ news says so")
+	await shot("st_joined")
+	Run.start_op(Run.sector("p1"))
+	check(not Run.level.has("guest"), "no second Varga on later ops")
+	# and if he falls, he stays fallen
+	Run.camp.erase("varga")
+	Run.roster.erase(vs[0])
+	Run.start_op(v)
+	var st2 := {"won": true, "varga_alive": false}
+	check(Run.varga_stand(st2).contains("fell") and Run.camp.varga == "fell", "a fallen Varga is booked")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
+func warfront() -> void:
+	## Campaign idea W14: a Second Tour fights Acts II to IV on other fronts.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	check(Run.act(1).name == "THE BREACH", "the first war runs the home fronts")
+	var vet: Dictionary = Run.roster[0]
+	Run.second_tour(vet)
+	check(int(Run.camp.tour) == 2 and Run.act(0).name == "LANDFALL", "a Second Tour still lands at the delta")
+	check([1, 2, 3].all(func(i): return Run.act(i).name == Data.ALT_ACTS[i].name), "and fights Acts II to IV on their other fronts (%s)" % [[1, 2, 3].map(func(i): return Run.act(i).name)])
+	var f2: Array = Run.camp.fronts.duplicate()
+	var f3 := Run.pick_fronts(3, f2)
+	check(f3 != f2 and int(f3[0]) == 0 and int(f3[4]) == 0, "a third tour never replays the last map exactly (%s)" % [f3])
+	# every alt sector sets up a real op
+	var bad := []
+	for a in [1, 2, 3]:
+		Run.camp.act = a
+		Run.camp.held.clear()
+		check(Run.act().sectors.filter(func(sc): return Run.sector_open(sc)).size() >= 2, "Act %s %s opens through two sectors" % [Run.act().roman, Run.act().name])
+		for sc in Run.act().sectors:
+			for l in sc.links:
+				if l != "lz" and Run.sector(l).is_empty():
+					bad.append("%s->%s" % [sc.id, l])
+			Run.start_op(sc)
+			var b: Battle = main.start_battle(0, Run.current_mission())
+			b.autopick = 0
+			await until(func(): return b.state == "player" and not b.busy)
+			var lv: Dictionary = Run.level
+			var ok := true
+			match str(lv.job):
+				"rescue": ok = b.units.filter(func(u): return u.kind == "pow" and u.fl.get("job", false)).size() == 3
+				"demolish": ok = b.units.filter(func(u): return u.kind == "dump").size() == 3
+				"escort": ok = b.truck() != null
+				"hunt": ok = b.units.any(func(u): return u.fl.has("quarry"))
+			if not ok or b.squad().is_empty():
+				bad.append("%s %s %s pow%d" % [sc.id, sc.biome, lv.job, b.units.filter(func(u): return u.kind == "pow").size()])
+			if sc.id == "t1" or sc.id == "y1":
+				cam_on(b, 700)
+				await frames_wait(20)
+				await shot("wf_op_" + sc.id)
+		Run.camp.held.append(Run.sec_key(Run.act().sectors[0].id))
+		main.show_war_room()
+		await frames_wait(20)
+		await shot("wf_map_%d" % a)
+	check(bad.is_empty(), "every alt sector links up and sets up its job (%s)" % [bad])
+	check(Run.sector("c3", 2).get("varga", false) and Run.sector("v1", 3).get("story", "") == "varga", "Varga's garrison and last stand are on the new fronts too")
+	Run.camp.act = 1
+	var esc := 0
+	for i in 40:
+		if Run.op_job(Run.sector("k1"), true) == "escort":
+			esc += 1
+	check(esc == 0, "no truck escort on the ice")
+	Run.save_campaign()
+	main.show_slots()
+	await frames_wait(10)
+	await shot("wf_slots")
+	main.show_title()
+	await frames_wait(5)
+	Run.delete_campaign(9)
+	Run.meta = keep
+	Run.save_meta()
+
+func warpincer() -> void:
+	## Campaign idea W9: Iron Harbor goes in as a two-squad pincer once the company has eight.
+	var keep := Run.meta.duplicate(true)
+	Run.delete_campaign(9)
+	Run.new_campaign(9)
+	Run.camp.act = 4
+	Run.start_op(Run.sector("boss"))
+	check(not Run.level.get("pincer", false), "a small company storms the harbor as one squad")
+	while Run.company().size() < Data.PINCER_COMPANY:
+		Run.enlist(Run.recruit_offers(1)[0])
+	Run.start_op(Run.sector("boss"))
+	check(Run.level.get("pincer", false) and Run.wing_b().size() == 4, "a company of eight goes in as two squads (%d)" % Run.wing_b().size())
+	check(Run.wing_b().all(func(s): return not Run.soldiers.has(s)), "squad B comes off the bench")
+	main.show_brief()
+	await frames_wait(10)
+	await shot("pc_brief")
+	var b: Battle = main.start_battle(0, Run.current_mission())
+	b.autopick = 0
+	await until(func(): return b.state == "player" and not b.busy)
+	var wa: Array = b.squad().filter(func(u): return b.wing(u) == "a")
+	var wb: Array = b.squad().filter(func(u): return b.wing(u) == "b")
+	check(wa.size() == 4 and wb.size() == 4 and wb.all(func(u): return u.x > b.world_w - 300), "squad A lands left, squad B at the far right (%d %d)" % [wa.size(), wb.size()])
+	check(b.pincer.get("on", false) and b.pincer.view == "a", "the camera starts on squad A")
+	check(b.units.any(func(e): return e.team == "enemy" and e.active and e.x > b.world_w - Battle.W), "enemies on squad B's side are live too")
+	check(b.units.any(func(e): return e.team == "enemy" and not e.active and e.x > Battle.W + 100 and e.x < b.world_w - Battle.W - 100), "the middle stays quiet until someone gets there")
+	await shot("pc_a")
+	b.switch_wing()
+	await frames_wait(10)
+	check(b.pincer.view == "b" and b.sel == wb[0] and b.cam_x >= b.world_w - Battle.W - 1, "G jumps to squad B (cam %d)" % b.cam_x)
+	check(b.bar_squad() == wb, "the squad bar shows the half on screen")
+	await frames_wait(20)
+	await shot("pc_b")
+	# a B soldier advancing west drags B's view along
+	var u: Unit = wb[3]
+	var cam0 := b.cam_x
+	u.x = b.cam_x + 120
+	u.y = b.T.stand_y(u.x, 0)
+	await b.check_push(u)
+	check(b.cam_x < cam0 and b.pincer.view == "b", "squad B's view follows them west (%d -> %d)" % [cam0, b.cam_x])
+	# picking an A soldier jumps back, and A's camera is where it was
+	b.sel = wa[0]
+	await frames_wait(5)
+	check(b.pincer.view == "a" and b.cam_x < Battle.W, "selecting squad A jumps back to their side")
+	# an enemy phase plays both halves
+	b.end_turn(true)
+	await until(func(): return b.state != "player", 300)
+	var views := {}
+	while not (b.state == "player" and not b.busy) and b.round_n < 3:
+		views[b.pincer.get("view", "-")] = true
+		await frames_wait(1)
+		if Engine.get_frames_drawn() > 1 << 30:
+			break
+	check(views.has("b") and views.has("a"), "the camera visits both halves in the enemy phase (%s)" % [views.keys()])
+	check(b.round_n == 2 and b.squad_alive().size() > 0, "an enemy phase plays both halves and hands the turn back (r%d %s busy %s alive %d)" % [b.round_n, b.state, b.busy, b.squad_alive().size()])
+	# the halves meet: B's view reaches A's
+	u = b.squad_alive().filter(func(x): return b.wing(x) == "b")[0]
+	for x in b.squad_alive().filter(func(x): return b.wing(x) == "b"):
+		x.hp = x.max_hp
+	u.x = b.pincer.a_cam + Battle.W * 0.9
+	u.y = b.T.stand_y(u.x, 0)
+	b.sel = u
+	await frames_wait(5)
+	await b.check_push(u)
+	await frames_wait(60)
+	check(not b.pincer.get("on", false) and b.pincer.get("met", false), "when the windows meet the pincer closes (%s cam %d ux %d)" % [b.pincer, b.cam_x, u.x])
+	check(b.squad().all(func(x): return b.wing(x) == "a"), "and it's one squad of eight")
+	await shot("pc_met")
+	# service books every soldier, even two of a class
+	for x in b.squad():
+		x.kills = 1
+	b.mission_over.emit(true)
+	await frames_wait(5)
+	var st: Dictionary = Run.history.back()
+	check(st.get("by", {}).size() == 8, "the op books all eight by roster slot (%d)" % st.get("by", {}).size())
+	Run.book_service(st)
+	check(Run.wing_b().all(func(s): return int(Run.svc(s).kills) >= 1), "squad B's kills land on their own records")
+	# the autoplayer plays a few rounds of it without hanging
+	Run.start_op(Run.sector("boss"))
+	for s0 in Run.company():
+		s0.hp = Run.eff_max_hp(s0)
+	await bot(0, 5, false, Run.current_mission())
+	check(true, "the autoplayer got through %d rounds of the pincer (%s)" % [int(bot_stats.get("rounds", 5)), bot_stats.get("alive", "-")])
 	main.show_title()
 	await frames_wait(5)
 	Run.delete_campaign(9)

@@ -1744,10 +1744,13 @@ const RADIO_SQ_WON := ["Drinks are on {mate}.", "{mate}, did you see that? Tell 
 const RADIO_ACT_DONE := [
 	[["varga", "The Boar was my favorite tank. You will pay for that, Iron Company."]],
 	[["varga", "The Queen is dead? Good. Maybe now the Vharr will listen to reason."], ["prime", "THE QUEEN WAS ONE OF MANY."]],
-	[["varga", "The works are clear. Fine. My men will not fight you anymore. We fight them."]],
+	[["varga", "That nest is clear. Fine. My men will not fight you anymore. We fight them."]],
 	[["prime", "THE SHIP FALLS. THE GATE DOES NOT."]],
 	[["cmd", "The gate is shut. It's over. Iron Company, come home."]],
 ]
+# W13: Varga's last stand, the story op in Act IV
+const RADIO_VARGA_STAND := [["varga", "Iron Company. The Vharr turned on my garrison. The fort is coming down around us."], ["varga", "Get my men out and I am yours. I have nowhere else to go."], ["cmd", "Your call, Iron Company. Bring him home or leave him to it."]]
+const VARGA_DECK := ["hmg", "hmg", "burst", "rifle", "rifle", "haymaker", "frag", "sprint", "knife"]
 const RADIO_VARGA_OP := [["varga", "Iron Company. I'll go in with you this once. Don't make me regret it."], ["sq", "Colonel Varga on our side. Write that down, {mate}."]]
 
 # O1-O6: what an op on the war map asks of the squad. Strongholds are always a push to the boss.
@@ -1759,6 +1762,25 @@ const JOBS := {
 	"escort": {"name": "ESCORT", "goal": "GET THE TRUCK THROUGH", "text": "A supply truck rolls forward each enemy phase, but stops while Jackals are close ahead. Keep it alive."},
 	"hunt": {"name": "HUNT", "goal": "KILL THE TARGET", "text": "A named Jackal officer is somewhere in the sector. Kill them and take what they carry."},
 }
+# W3: a hunt's named officer who survives the op gets away and comes back on the next op, tougher
+# each time, with a new trick. Killing one who came back drops a Legendary named after them.
+const NEMESIS_TITLES := ["", "THE SCARRED", "ONE-EYE", "THE UNKILLABLE"]
+const NEMESIS_HP := 0.5   # extra HP multiplier per escape, on top of a hunt quarry's double
+# W5: personal orders. Each soldier gets one at Corporal and a new one with each rank, picked to fit
+# their deck. Finishing one earns a title and a permanent bonus. Nothing happens if you never do it.
+const ORDERS := {
+	"headhunter": {"text": "Make %d headshot kills.", "goal": 4, "title": "DEADEYE", "stats": {"aim_dmg": 2}, "up": "+2 damage on aimed shots"},
+	"demo": {"text": "Kill %d enemies with thrown or lobbed explosives.", "goal": 8, "title": "BOOMER", "stats": {"blast": 0.15}, "up": "+15% blast damage"},
+	"brawler": {"text": "Make %d kills with melee cards.", "goal": 5, "title": "BRUISER", "stats": {"hp": 10}, "up": "+10 max HP"},
+	"bughunter": {"text": "Kill %d Vharr.", "goal": 10, "title": "BUGSPLITTER", "stats": {"aim_dmg": 1, "kill_adr": 5}, "up": "+1 aimed damage, +5 adrenaline per kill"},
+	"wrecker": {"text": "Kill %d enemies with falls, slams, crushes or bonks.", "goal": 5, "title": "WRECKING BALL", "stats": {"hp": 6, "dodge": 4}, "up": "+6 max HP, +4 dodge"},
+	"giantkiller": {"text": "Kill %d elites or bosses.", "goal": 3, "title": "GIANT KILLER", "stats": {"aim_dmg": 2}, "up": "+2 damage on aimed shots"},
+	"ironside": {"text": "Finish %d ops without going down.", "goal": 4, "title": "IRONSIDE", "stats": {"armor_turn": 2}, "up": "2 armor every turn"},
+}
+# W7: two soldiers who finish this many ops in the same squad become battle buddies (up to 2 each)
+const BOND_OPS := 5
+const BOND_MAX := 2
+const RADIO_BOND := ["{mate}, you still owe me from the last op.", "Stick close, {mate}. Same as always.", "Me and {mate} have this side covered.", "{mate}, if I go down, you're buying the drinks."]
 const QUARRY_NAMES := ["MAJOR KROLL", "THE BUTCHER", "COLONEL VASK", "IRON MARTA", "THE SURGEON", "CAPTAIN RUST"]
 const HOLD_PHASES := 5
 const TARGET_HP := 40
@@ -1809,6 +1831,7 @@ const ACTS := [
 		{"id": "h1", "name": "LIGHTHOUSE", "biome": "harbor", "job": "hold", "at": [470, 140], "links": ["p2", "boss"], "perk": "airfield"},
 		{"id": "h2", "name": "FISH MARKET", "biome": "harbor", "job": "push", "at": [330, 400], "links": ["p3", "h3"], "hold": {"salvage": 3}},
 		{"id": "h3", "name": "DRY DOCK", "biome": "harbor", "job": "demolish", "at": [490, 350], "links": ["h2", "boss"], "perk": "supply"},
+		{"id": "v1", "name": "VARGA'S FORT", "biome": "fortress", "job": "rescue", "story": "varga", "varga": true, "at": [96, 410], "links": ["p3"], "hold": {"bio": 2}},
 		{"id": "boss", "name": "UNDER THE HIVE SHIP", "biome": "harbor", "at": [600, 240], "links": ["h1", "h3"], "stronghold": true}]},
 	{"id": "gate", "name": "SHUT THE GATE", "roman": "V", "tier": 2, "hp_mul": 1.6, "boss_hp": 270, "plate": 74, "need": 2, "breach": 0.3,
 	 "text": "Iron Harbor, where the Jackals keep the captured gate. Two big ops, then the flagship and the gate itself.",
@@ -1819,10 +1842,55 @@ const ACTS := [
 		{"id": "boss", "name": "IRON HARBOR", "biome": "harbor", "at": [520, 280], "links": ["g1", "g2"], "stronghold": true, "finale": true}]},
 ]
 
+# W14: on a Second Tour, Acts II to IV can run on a different front: other biomes, other sectors,
+# the same beats (the Queen's pit, the Vharr-refit Boar, Varga's garrison and his last stand).
+const ALT_ACTS := {
+	1: {"id": "whitepass", "name": "WHITE PASS", "roman": "II", "tier": 1, "hp_mul": 1.15, "boss_hp": 160, "plate": 46, "need": 3, "breach": 0.4,
+	 "text": "The frozen lakes and the old mine under the pass. The Jackals dug too deep and something dug back.",
+	 "lz": {"name": "ICE STRIP", "at": [80, 260]},
+	 "radio": [["cmd", "Bad news. The Jackals broke into something under the pass, and it came up through the mine."],
+		["prime", "THE GATE IS OPEN. YOUR KIND WILL MAKE USEFUL HOSTS."],
+		["varga", "Our new friends are... persuasive. Stay off the ice."]],
+	 "taunt": [["varga", "The ice eats armies. Ask the last one."], ["prime", "WE HAVE COUNTED YOUR SOLDIERS. THERE ARE NOT ENOUGH."]],
+	 "sectors": [
+		{"id": "k1", "name": "BLACK ICE", "biome": "lake", "job": "push", "at": [200, 160], "links": ["lz", "k2", "k3"], "hold": {"scrip": 25}},
+		{"id": "k2", "name": "FISHING HUTS", "biome": "lake", "job": "rescue", "at": [210, 360], "links": ["lz", "k1", "n1"], "perk": "aid"},
+		{"id": "k3", "name": "FROZEN FERRY", "biome": "lake", "job": "hunt", "at": [340, 130], "links": ["k1", "n2"], "hold": {"bio": 1}},
+		{"id": "n1", "name": "MINE HEAD", "biome": "mine", "job": "demolish", "at": [360, 360], "links": ["k2", "n2", "n3"], "hold": {"salvage": 3}},
+		{"id": "n2", "name": "LOWER DRIFT", "biome": "mine", "job": "hold", "at": [470, 200], "links": ["k3", "n1", "boss"], "perk": "lookout"},
+		{"id": "n3", "name": "ORE CARTS", "biome": "mine", "job": "rescue", "at": [500, 390], "links": ["n1", "boss"], "perk": "fuel"},
+		{"id": "boss", "name": "THE QUEEN'S SCREE", "biome": "mountain", "at": [600, 290], "links": ["n2", "n3"], "stronghold": true, "queen": true}]},
+	2: {"id": "ironroad", "name": "IRON ROAD", "roman": "III", "tier": 2, "hp_mul": 1.3, "boss_hp": 210, "plate": 60, "need": 3, "breach": 0.8,
+	 "text": "The rail line and the ruined city. The pact is cracking and Jackals and Vharr are shooting each other.",
+	 "lz": {"name": "SIDING", "at": [70, 220]},
+	 "sectors": [
+		{"id": "t1", "name": "COAL TRAIN", "biome": "train", "job": "push", "at": [190, 130], "links": ["lz", "t2", "c1"], "hold": {"salvage": 3}},
+		{"id": "t2", "name": "GUN CARRIAGE", "biome": "train", "job": "demolish", "at": [320, 110], "links": ["t1", "t3"], "perk": "fuel"},
+		{"id": "t3", "name": "PRISON CARS", "biome": "train", "job": "rescue", "at": [460, 150], "links": ["t2", "boss"], "hold": {"scrip": 30}},
+		{"id": "c1", "name": "TRAM DEPOT", "biome": "city", "job": "escort", "at": [200, 350], "links": ["lz", "t1", "c2"], "perk": "supply"},
+		{"id": "c2", "name": "HIGHRISE ROW", "biome": "city", "job": "hunt", "at": [350, 300], "links": ["c1", "c3"], "hold": {"bio": 2}},
+		{"id": "c3", "name": "CITY GARRISON", "biome": "city", "job": "push", "varga": true, "at": [490, 390], "links": ["c2", "boss"], "perk": "aid"},
+		{"id": "boss", "name": "THE INFESTED YARDS", "biome": "city", "at": [590, 260], "links": ["t3", "c3"], "stronghold": true}]},
+	3: {"id": "firecoast", "name": "FIRE COAST", "roman": "IV", "tier": 2, "hp_mul": 1.45, "boss_hp": 240, "plate": 66, "need": 3, "breach": 0.5,
+	 "text": "The burning coast and the captured carrier. A Hive Ship parks over the harbor and seeds nests everywhere.",
+	 "lz": {"name": "LAVA BEACH", "at": [70, 260]},
+	 "sectors": [
+		{"id": "x1", "name": "ASH FIELDS", "biome": "volcano", "job": "push", "at": [190, 150], "links": ["lz", "x2", "x3"], "perk": "lookout"},
+		{"id": "x2", "name": "OBSIDIAN STEPS", "biome": "volcano", "job": "rescue", "at": [320, 120], "links": ["x1", "y1"], "hold": {"bio": 2}},
+		{"id": "x3", "name": "MAGMA BRIDGE", "biome": "volcano", "job": "demolish", "at": [210, 340], "links": ["lz", "x1", "y2"], "hold": {"scrip": 30}},
+		{"id": "y1", "name": "FLIGHT DECK", "biome": "carrier", "job": "hunt", "at": [470, 140], "links": ["x2", "boss"], "perk": "airfield"},
+		{"id": "y2", "name": "HANGAR BAY", "biome": "carrier", "job": "hold", "at": [340, 400], "links": ["x3", "y3"], "hold": {"salvage": 3}},
+		{"id": "y3", "name": "ISLAND TOWER", "biome": "carrier", "job": "demolish", "at": [490, 350], "links": ["y2", "boss"], "perk": "supply"},
+		{"id": "v1", "name": "VARGA'S FORT", "biome": "fortress", "job": "rescue", "story": "varga", "varga": true, "at": [96, 410], "links": ["x3"], "hold": {"bio": 2}},
+		{"id": "boss", "name": "UNDER THE HIVE SHIP", "biome": "harbor", "at": [600, 250], "links": ["y1", "y3"], "stronghold": true}]},
+}
+const NO_TRUCK := ["lake", "train", "carrier"]   # W14: biomes a patrol never rolls an escort in (ice, tunnels, jets)
+
 # The company (C1-C6). The campaign keeps a roster of up to COMPANY_MAX soldiers and deploys a squad
 # of up to SQUAD_MAX, one per class. Ranks come from ops survived (C3); each promotion is a pick
 # from that rank's three options, and a Captain in the squad gives everyone CAPTAIN_DODGE.
 const COMPANY_MAX := 10
+const PINCER_COMPANY := 8  # W9: Iron Harbor goes in as a two-squad pincer once the company has this many
 const SQUAD_MAX := 4
 const RESERVE_MAX := 6    # quick run: rescued soldiers the barracks holds while the squad is full
 const FLARE_CHANCE := 0.3 # odds a new screen holds a reinforcement flare while someone is down

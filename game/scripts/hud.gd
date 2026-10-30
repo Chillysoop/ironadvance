@@ -16,6 +16,7 @@ var undo_btn: PixButton   # A2: take back the last walk
 var swap_btn: PixButton   # C1: Rummage, swap a card for 1 energy
 var deck_btn: PixButton
 var jet_btn: PixButton
+var wing_btn: PixButton   # W9: jump between the two halves of the pincer
 var modal: Control
 var cards: Array = []
 var tags: Array = []
@@ -53,6 +54,13 @@ func setup(battle: Battle) -> void:
 	vp.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(vp)
 	# NEXT is the big plunger now; END TURN and MOVE (auto-advance) are small buttons above it
+	wing_btn = PixButton.new()
+	wing_btn.color = Color("53d4e2")
+	wing_btn.position = Vector2(6, 404)
+	wing_btn.size = Vector2(150, 26)
+	wing_btn.pressed.connect(func(): b.switch_wing())
+	wing_btn.visible = false
+	root.add_child(wing_btn)
 	next_btn = PixButton.new()
 	next_btn.text = "NEXT"
 	next_btn.sub = "SPACE"
@@ -139,10 +147,11 @@ func setup(battle: Battle) -> void:
 	coach_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	coach_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(coach_box)
-	for i in 5:
+	for i in 8:
 		var tg := Tag.new()
 		tg.hud = self
-		tg.position = Vector2(6, 434 + i * 26 if i < 4 else 408)  # a fifth for a guest (S3)
+		# a fifth for a guest (S3); up to eight once the Iron Harbor pincer joins up (W9), stacked upward
+		tg.position = Vector2(6, 434 + i * 26 if i < 4 else 408 - (i - 4) * 26)
 		tg.size = Vector2(150, 24)
 		roster_box.add_child(tg)
 		tags.append(tg)
@@ -151,7 +160,13 @@ func setup(battle: Battle) -> void:
 func refresh() -> void:
 	if b == null:
 		return
-	var sq := b.squad()
+	var sq := b.bar_squad()
+	wing_btn.visible = b.pincer.get("on", false)
+	if wing_btn.visible:
+		var other := "B" if b.pincer.view == "a" else "A"
+		wing_btn.text = ("SQUAD %s >>" if other == "B" else "<< SQUAD %s") % other
+		wing_btn.sub = "G   %d ALIVE" % b.squad_alive().filter(func(s): return b.wing(s) != b.pincer.view).size()
+		wing_btn.disabled = not (b.state == "player" and not b.busy)
 	for i in tags.size():
 		tags[i].u = sq[i] if i < sq.size() else null
 		tags[i].visible = i < sq.size()

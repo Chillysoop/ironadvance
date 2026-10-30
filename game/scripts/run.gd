@@ -1178,6 +1178,10 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 		var gs: Dictionary = Data.gear(id).get("stats", {})
 		for k in gs:
 			out[k] = out.get(k, 0) + (3 if id == "nanites" and relic_tier(id) >= 3 else gs[k])
+	for id in s.get("orders_done", []):  # W5: finished personal orders
+		var os: Dictionary = Data.ORDERS[id].stats
+		for k in os:
+			out[k] = out.get(k, 0) + os[k]
 	if s.has("key"):
 		for id in implants_of(s):
 			var st: Dictionary = Data.SURGERIES[id].get("stats", {})
@@ -1236,7 +1240,34 @@ func add_loot(it: Dictionary) -> String:
 	return "stash"
 
 func alive_count() -> int:
-	return soldiers.filter(func(s): return s.alive).size()
+	return deployed().filter(func(s): return s.alive).size()
+
+func wing_b() -> Array:
+	## W9: squad B on the pincer op, from the roster indices make_op picked.
+	var out := []
+	if campaign() and level.get("pincer", false):
+		for i in level.get("wing_b", []):
+			if int(i) < roster.size() and not soldiers.has(roster[int(i)]):
+				out.append(roster[int(i)])
+	return out
+
+func deployed() -> Array:
+	## Everyone who went in: the squad, plus squad B on the pincer.
+	return soldiers + wing_b()
+
+func pick_wing_b() -> Array:
+	## W9: the four best on the bench by rank, then level, as roster indices.
+	var pool: Array = company().filter(func(s): return not soldiers.has(s) and not s.has("guest"))
+	pool.sort_custom(func(a, b): return rank(a) * 100 + int(a.lvl) > rank(b) * 100 + int(b.lvl))
+	return pool.slice(0, Data.SQUAD_MAX).map(func(s): return roster.find(s))
+
+func svc_rec(st: Dictionary, s: Dictionary) -> Dictionary:
+	## An op's kills, XP and downs for one soldier: by roster slot when booked that way (two of a class
+	## can deploy on the pincer), else by class key.
+	var r: Dictionary = st.get("by", {}).get(str(roster.find(s)), {})
+	if not r.is_empty():
+		return r
+	return {"k": int(st.get("kills_by", {}).get(s.key, 0)), "down": st.get("downed_by", {}).get(s.key, false), "xp": int(st.get("xp", {}).get(s.key, 0))}
 
 # ---------------------------------------------------------------- merging (M1-M3, M5)
 func all_items() -> Array:
@@ -1413,7 +1444,7 @@ func save_campaign() -> void:
 	for k in CAMP_KEYS:
 		base[k] = meta.get(k)
 	data["base"] = base
-	var head := {"act": int(camp.act), "ops": int(camp.ops), "secs": float(camp.get("secs", 0.0)), "done": camp.get("done", false), "tour": int(camp.get("tour", 1)),
+	var head := {"act": int(camp.act), "ops": int(camp.ops), "secs": float(camp.get("secs", 0.0)), "done": camp.get("done", false), "tour": int(camp.get("tour", 1)), "act_name": act().name,
 		"names": soldiers.filter(func(s): return s.alive).map(func(s): return s.def.name)}
 	var f := FileAccess.open(camp_path(int(camp.slot)), FileAccess.WRITE)
 	if f != null:
@@ -1437,7 +1468,38 @@ func leave_campaign() -> void:
 	new_run()
 
 func act(a := -1) -> Dictionary:
-	return Data.ACTS[clampi(int(camp.get("act", 0)) if a < 0 else a, 0, Data.ACTS.size() - 1)]
+	var i := clampi(int(camp.get("act", 0)) if a < 0 else a, 0, Data.ACTS.size() - 1)
+	var fr: Array = camp.get("fronts", [])
+	if i < fr.size() and int(fr[i]) == 1 and Data.ALT_ACTS.has(i):
+		return Data.ALT_ACTS[i]  # W14: this tour fights the act on its other front
+	return Data.ACTS[i]
+
+func act_index(act_name: String) -> int:
+	for i in Data.ACTS.size():
+		if act(i).name == act_name or Data.ACTS[i].name == act_name or Data.ALT_ACTS.get(i, {}).get("name", "") == act_name:
+			return i
+	return -1
+
+func pick_fronts(tour: int, last: Array) -> Array:
+	## W14: the first war runs the home fronts. A Second Tour runs every other front; later tours
+	## roll each act but never replay the last war's map exactly.
+	var fr := []
+	for i in Data.ACTS.size():
+		fr.append(0)
+	if tour <= 1:
+		return fr
+	var alts: Array = Data.ALT_ACTS.keys()
+	if tour == 2:
+		for i in alts:
+			fr[i] = 1
+		return fr
+	for i in alts:
+		fr[i] = randi() % 2
+	var old: Array = last if last.size() == fr.size() else pick_fronts(1, [])
+	if fr == old:
+		var k: int = alts[randi() % alts.size()]
+		fr[k] = 1 - int(fr[k])
+	return fr
 
 func sec_key(id: String, a := -1) -> String:
 	return "%d:%s" % [int(camp.get("act", 0)) if a < 0 else a, id]
@@ -1453,7 +1515,7 @@ func sector_held(id: String) -> bool:
 
 func held_count() -> int:
 	## Sectors taken this act, not counting the stronghold.
-	return act().sectors.filter(func(sc): return not sc.get("stronghold", false) and camp.held.has(sec_key(sc.id))).size()
+	return act().sectors.filter(func(sc): return not sc.get("stronghold", false) and not sc.has("story") and camp.held.has(sec_key(sc.id))).size()
 
 func sector_open(sc: Dictionary) -> bool:
 	## M1: open when it touches ground you hold. The stronghold waits for "need" sectors.
@@ -1555,7 +1617,11 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 		var bm: Dictionary = Data.BIOMES[sc.biome]
 		lv.segments = ["start", segs[1], "camp", "yard", segs[4], bm.segments[randi() % bm.segments.size()]]
 	elif sc.get("finale", false) and not patrol:
-		pass
+		if company().size() >= Data.PINCER_COMPANY and pick_wing_b().size() >= Data.SQUAD_MAX:
+			# W9: two squads of four, one in from each end of the harbor, the flagship between them
+			lv["pincer"] = true
+			lv["wing_b"] = pick_wing_b()
+			lv.segments = ["start", "docks", "pier", "warehouse", "start"]
 	elif not sc.get("stronghold", false):
 		lv.segments = ["start", segs[1], "camp", "yard", segs[4], segs[6]]
 	else:
@@ -1578,9 +1644,15 @@ func make_op(sc: Dictionary, patrol := false, bonus := "") -> Dictionary:
 	lv["op"] = sc.id
 	lv["act"] = int(camp.get("act", 0))
 	lv["job"] = job
-	if sc.get("varga", false) and not patrol:
+	var nem := next_nemesis()
+	if not patrol and not nem.is_empty() and not lv.get("finale", false):
+		lv["nemesis"] = nem.duplicate()  # W3: an officer who got away is waiting on this op
+	if sc.get("varga", false) and not patrol and camp.get("varga", "") != "joined":
 		lv["guest"] = "varga"  # S3: the colonel fights alongside the company this once
 	lv["patrol"] = patrol
+	lv["liberated"] = patrol or bonus != ""  # W11: the company already holds this ground
+	if sc.has("story") and not patrol:
+		lv["story"] = sc.story
 	lv["stronghold"] = sc.get("stronghold", false) and not patrol
 	lv["bonus"] = bonus
 	lv["banner"] = "BONUS OP" if bonus != "" else "PATROL" if patrol else ("STRONGHOLD ASSAULT" if lv.stronghold else "OP %d START!" % (int(camp.ops) + 1))
@@ -1592,6 +1664,8 @@ func op_job(sc: Dictionary, patrol := false) -> String:
 		return "push"
 	if patrol:
 		var ks: Array = Data.JOBS.keys()
+		if Data.NO_TRUCK.has(sc.get("biome", "")):
+			ks.erase("escort")
 		return ks[randi() % ks.size()]
 	return sc.get("job", "push")
 
@@ -1676,6 +1750,8 @@ func after_op(st := {}) -> Dictionary:
 	inc["engineer"] = engineer_joins()
 	inc["bonus"] = roll_bonus()
 	inc["challenges"] = check_challenges(st)
+	inc["nemesis"] = book_nemesis(st)
+	inc["varga"] = varga_stand(st)
 	write_journal(st, inc)
 	scrip += inc.scrip
 	meta.salvage = int(meta.get("salvage", 0)) + inc.salvage
@@ -1718,6 +1794,42 @@ func engineer_joins() -> String:
 	var names: Array = Data.CALLSIGNS.filter(func(c): return not used.has(c))
 	var s := enlist(spec_offer("engineer", names[randi() % names.size()] if names.size() else "SPARKS"))
 	return "%s, a Gate Engineer, joined the company with Vharr tech." % s.def.name
+
+func next_nemesis() -> Dictionary:
+	## W3: the oldest officer still at large.
+	for n in camp.get("nemeses", []):
+		if n.alive:
+			return n
+	return {}
+
+func nemesis_name(n: Dictionary) -> String:
+	var t: String = Data.NEMESIS_TITLES[clampi(int(n.rank), 0, Data.NEMESIS_TITLES.size() - 1)]
+	return n.name + ("" if t == "" else " " + t)
+
+func book_nemesis(st: Dictionary) -> String:
+	## W3: an officer who got away comes back next op, one rank tougher; one who fell is done for good.
+	var ns: Array = camp.get("nemeses", [])
+	var out := ""
+	if st.get("nemesis_killed", "") != "":
+		for n in ns:
+			if n.name == st.nemesis_killed:
+				n.alive = false
+				out = "%s is dead. Their signature gear is in the stash." % nemesis_name(n)
+	var esc: Dictionary = st.get("nemesis_escaped", {})
+	if not esc.is_empty():
+		var found := false
+		for n in ns:
+			if n.name == esc.name:
+				found = true
+				n.rank = mini(int(n.rank) + 1, Data.NEMESIS_TITLES.size() - 1)
+				n.elite = esc.get("elite", n.elite)
+				out = "%s got away again. Next time they'll be tougher." % nemesis_name(n)
+		if not found:
+			var n := {"name": esc.name, "rank": 1, "type": esc.get("type", ""), "elite": esc.get("elite", ""), "alive": true}
+			ns.append(n)
+			out = "%s got away with a scar. They'll be back on the next op." % nemesis_name(n)
+	camp["nemeses"] = ns
+	return out
 
 func write_journal(st: Dictionary, inc: Dictionary) -> void:
 	## W8: one line per op in the war journal.
@@ -1782,7 +1894,7 @@ func check_challenges(st: Dictionary) -> Array:
 		match id:
 			"clean": ok = not fell
 			"fast": ok = int(st.get("rounds", 99)) <= Data.BLITZ_ROUNDS
-			"sweep": ok = took_fort and act(a).sectors.all(func(sc): return sc.get("stronghold", false) or camp.held.has(sec_key(sc.id, a)))
+			"sweep": ok = took_fort and act(a).sectors.all(func(sc): return sc.get("stronghold", false) or sc.has("story") or camp.held.has(sec_key(sc.id, a)))
 			"threat": ok = took_fort and threat >= 2
 			"bonus": ok = level.get("bonus", "") != ""
 		if not ok:
@@ -1861,9 +1973,11 @@ func second_tour(vet: Dictionary) -> void:
 	## S5: a new war in the same slot, harder, with one veteran of the last one along for it.
 	var slot := int(camp.slot)
 	var tour := int(camp.get("tour", 1)) + 1
+	var last: Array = camp.get("fronts", [])
 	var v: Dictionary = vet.duplicate(true)
 	new_campaign(slot)
 	camp["tour"] = tour
+	camp["fronts"] = pick_fronts(tour, last)
 	v.alive = true
 	v.tags = Data.DOG_TAGS
 	v.hp = eff_max_hp(v)
@@ -1875,13 +1989,28 @@ func second_tour(vet: Dictionary) -> void:
 	toggle_squad(v)
 	save_campaign()
 
+func varga_stand(st: Dictionary) -> String:
+	## W13: win Varga's last stand with the colonel still standing and he joins the company for good.
+	if level.get("story", "") != "varga" or not st.get("won", false) or camp.has("varga"):
+		return ""
+	if not st.get("varga_alive", false):
+		camp["varga"] = "fell"
+		return "Colonel Varga fell covering his men. They join the war in his name."
+	camp["varga"] = "joined"
+	var s := make_guest("varga")
+	s.erase("guest")
+	s["spec"] = "colonel"
+	s.def["trait"] = ["JACKAL COLONEL", "Varga's own deck and a lifetime of bad habits. Joined Iron Company in Act IV."]
+	roster.append(s)
+	return "Colonel Varga joined Iron Company as a Jackal Colonel, with his own deck."
+
 func make_guest(id: String) -> Dictionary:
 	## S3: Colonel Varga, on loan for one op. Not part of the company, never on the Memorial.
 	var d: Dictionary = Data.SQUAD_DEFS.filter(func(x): return x.key == "rook")[0].duplicate()
 	d.name = "VARGA"
 	d.cls = "Jackal Colonel"
 	d.hp = 40
-	d.deck = ["hmg", "hmg", "burst", "rifle", "rifle", "haymaker", "frag", "sprint", "knife"]
+	d.deck = Data.VARGA_DECK.duplicate()
 	var s := make_soldier(d)
 	s["guest"] = id
 	s.lvl = 5
@@ -1889,15 +2018,15 @@ func make_guest(id: String) -> Dictionary:
 	return s
 
 # ---------------------------------------------------------------- S2/S3 radio
-func radio_line(who: String, text: String, sq: Array) -> Dictionary:
+func radio_line(who: String, text: String, sq: Array, by := {}, mate_name := "") -> Dictionary:
 	## One line of chatter. A squad line goes to a random soldier; {name}/{rank}/{mate} are filled in.
 	var out := {"who": who, "text": text}
 	if who == "sq":
 		if sq.is_empty():
 			return {}
-		var s: Dictionary = sq[randi() % sq.size()]
+		var s: Dictionary = by if not by.is_empty() else sq[randi() % sq.size()]
 		var mates: Array = sq.filter(func(m): return m != s)
-		var mate: String = mates[randi() % mates.size()].def.name.capitalize() if mates.size() else "Command"
+		var mate: String = mate_name.capitalize() if mate_name != "" else mates[randi() % mates.size()].def.name.capitalize() if mates.size() else "Command"
 		out["s"] = s
 		out["name"] = "%s %s" % [rank_name(s), s.def.name]
 		out["role"] = s.def.cls.to_upper()
@@ -1917,14 +2046,16 @@ func radio_before() -> Array:
 	var raw: Array = []
 	if int(camp.get("intro", -1)) < a:
 		camp["intro"] = a
-		raw.append_array(Data.RADIO_ACT[a])
+		raw.append_array(act().get("radio", Data.RADIO_ACT[a]))
 	else:
 		var jl: Array = Data.RADIO_JOB[level.get("job", "push")]
 		raw.append(jl[randi() % jl.size()])
 		if randf() < 0.5:
-			var tl: Array = Data.RADIO_TAUNT[a]
+			var tl: Array = act().get("taunt", Data.RADIO_TAUNT[a])
 			raw.append(tl[randi() % tl.size()])
-	if level.get("guest", "") == "varga":
+	if level.get("story", "") == "varga":
+		raw.append_array(Data.RADIO_VARGA_STAND)
+	elif level.get("guest", "") == "varga":
 		raw.append_array(Data.RADIO_VARGA_OP)
 	return raw.map(func(r): return radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())
 
@@ -1939,10 +2070,17 @@ func radio_after(st: Dictionary) -> Array:
 		raw.append(Data.RADIO_WON[randi() % Data.RADIO_WON.size()])
 		raw.append(["sq", Data.RADIO_SQ_WON[randi() % Data.RADIO_SQ_WON.size()]])
 	if op.has("act_done"):
-		var i: int = Data.ACTS.map(func(x): return x.name).find(op.act_done)
+		var i: int = act_index(op.act_done)
 		if i >= 0:
 			raw.append_array(Data.RADIO_ACT_DONE[i])
-	return raw.map(func(r): return radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())
+	var lines: Array = raw.map(func(r): return radio_line(r[0], r[1], sq)).filter(func(l): return not l.is_empty())
+	# W7: battle buddies in the squad get a line about each other
+	for s in sq:
+		var bud: Array = buddies(s).filter(func(n): return sq.any(func(x): return x.def.name == n))
+		if bud.size():
+			lines.append(radio_line("sq", Data.RADIO_BOND[randi() % Data.RADIO_BOND.size()], sq, s, bud[0]))
+			break
+	return lines
 
 # ---------------------------------------------------------------- the company (C1-C6)
 func svc(s: Dictionary) -> Dictionary:
@@ -2059,15 +2197,16 @@ func award(s: Dictionary, id: String) -> bool:
 
 func book_service(st: Dictionary) -> Dictionary:
 	## After an op: service records, medals, promotions and bench XP. Returns lines for the news.
-	var out := {"medals": [], "promos": [], "bench": 0}
+	var out := {"medals": [], "promos": [], "bench": 0, "orders": [], "bonds": []}
 	var won: bool = st.get("won", false)
 	var xps: Array = []
-	for s in soldiers:
+	for s in deployed():
 		if not s.alive:
 			continue
 		var sv := svc(s)
-		var k: int = int(st.get("kills_by", {}).get(s.key, 0))
-		var down: bool = st.get("downed_by", {}).get(s.key, false)
+		var rec := svc_rec(st, s)
+		var k: int = int(rec.k)
+		var down: bool = rec.down
 		sv.ops = int(sv.ops) + 1
 		sv.kills = int(sv.kills) + k
 		var ak: Dictionary = sv.get("acts", {})  # W2: kills per act, for the act's MVP
@@ -2076,7 +2215,7 @@ func book_service(st: Dictionary) -> Dictionary:
 		sv["acts"] = ak
 		if down:
 			sv.downs = int(sv.downs) + 1
-		xps.append(int(st.get("xp", {}).get(s.key, 0)))
+		xps.append(int(rec.xp))
 		var got: Array = []
 		if won and down and award(s, "heart"):
 			got.append("heart")
@@ -2088,10 +2227,37 @@ func book_service(st: Dictionary) -> Dictionary:
 			got.append("ace")
 		for m in got:
 			out.medals.append("%s: %s" % [s.def.name, Data.MEDALS[m].name])
+		if not down:
+			var fin := order_tick(s, "ironside")
+			if fin != "":
+				out.orders.append(fin)
+		var promoted := false
 		while rank(s) < Data.RANKS.size() - 1 and int(sv.ops) >= int(Data.RANKS[rank(s) + 1].ops):
 			s.rank = rank(s) + 1
 			s.promo = int(s.get("promo", 0)) + 1
+			promoted = true
 			out.promos.append("%s is now a %s." % [s.def.name, Data.RANKS[rank(s)].name.capitalize()])
+		if promoted and rank(s) >= 1 and not s.has("order"):
+			var oid := assign_order(s)
+			if oid != "":
+				out.orders.append("%s has a personal order: %s" % [s.def.name, order_text(oid)])
+	# W7: soldiers who keep finishing ops together become battle buddies
+	var team: Array = deployed().filter(func(x): return x.alive and not x.has("guest"))
+	for a in team:
+		for b in team:
+			if a == b:
+				continue
+			var m: Dictionary = svc(a).get("mates", {})
+			m[b.def.name] = int(m.get(b.def.name, 0)) + 1
+			svc(a)["mates"] = m
+	for i in team.size():
+		for k in range(i + 1, team.size()):
+			var a: Dictionary = team[i]
+			var b: Dictionary = team[k]
+			if int(svc(a).mates.get(b.def.name, 0)) >= Data.BOND_OPS and not buddies(a).has(b.def.name) and buddies(a).size() < Data.BOND_MAX and buddies(b).size() < Data.BOND_MAX:
+				a["buddies"] = buddies(a) + [b.def.name]
+				b["buddies"] = buddies(b) + [a.def.name]
+				out.bonds.append("%s and %s are battle buddies now: +1 energy on the first turn when they deploy together." % [a.def.name, b.def.name])
 	# C4: the bench trains on half the squad's average XP; any level they gain is picked at HQ
 	var avg := 0.0
 	if xps.size():
@@ -2099,11 +2265,57 @@ func book_service(st: Dictionary) -> Dictionary:
 	var bx := int(avg * Data.BENCH_XP)
 	if bx > 0:
 		for s in bench():
+			if wing_b().has(s):
+				continue  # squad B earned their own XP in the fight
 			var gained := add_xp(s, bx)
 			if gained > 0:
 				s["train"] = int(s.get("train", 0)) + gained
 		out.bench = bx
 	return out
+
+func buddies(s: Dictionary) -> Array:
+	return s.get("buddies", [])
+
+func buddy_deployed(s: Dictionary) -> bool:
+	## W7: a battle buddy is in the same squad.
+	return buddies(s).any(func(n): return soldiers.any(func(x): return x.alive and x.def.name == n))
+
+func order_text(id: String) -> String:
+	return Data.ORDERS[id].text % int(Data.ORDERS[id].goal)
+
+func assign_order(s: Dictionary) -> String:
+	## W5: pick an order that fits the soldier's deck, one they haven't finished yet.
+	var n := {"AIM": 0, "ARC": 0, "MELEE": 0}
+	for c in s.get("deck", []):
+		var ty: String = Data.CARDS.get(c.key, {}).get("type", "")
+		if n.has(ty):
+			n[ty] += 1
+	var score := {"headhunter": n.AIM * 1.0, "demo": n.ARC * 1.5, "brawler": n.MELEE * 2.0, "giantkiller": n.AIM * 0.6 + 2.0,
+		"bughunter": 6.0 if int(camp.get("act", 0)) >= 1 else 0.0, "wrecker": 3.0, "ironside": 3.0}
+	var best := ""
+	for id in score:
+		if s.get("orders_done", []).has(id):
+			continue
+		if best == "" or score[id] + randf() * 0.5 > score[best]:
+			best = id
+	if best != "":
+		s["order"] = {"id": best, "n": 0}
+	return best
+
+func order_tick(s: Dictionary, id: String, k := 1) -> String:
+	## W5: progress on a personal order. Returns a news line when it is finished, else "".
+	var o: Dictionary = s.get("order", {})
+	if o.is_empty() or o.id != id:
+		return ""
+	o.n = int(o.n) + k
+	if int(o.n) < int(Data.ORDERS[id].goal):
+		return ""
+	s.erase("order")
+	s["orders_done"] = s.get("orders_done", []) + [id]
+	return "%s finished a personal order and earned the title %s: %s." % [s.def.name, Data.ORDERS[id].title, Data.ORDERS[id].up]
+
+func title_line(s: Dictionary) -> String:
+	return ", ".join(s.get("orders_done", []).map(func(id): return Data.ORDERS[id].title))
 
 func pending_picks() -> Array:
 	## Promotions and training levels waiting for a pick, across the company.

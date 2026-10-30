@@ -106,6 +106,7 @@ var played := 0       # cards played this turn (momentum)
 var last_cost := 0    # energy paid for the last card (SKY DIVER refund)
 var seq: Array = []   # [key, type] of each card played this turn (signature chains)
 var fl: Dictionary = {}  # per-turn flags for chains and perks
+var wing := "a"          # W9: which half of the Iron Harbor pincer a soldier fights with
 var kills := 0  # C5: kills this mission, for the service record
 var payback := 0      # Juggernaut capstone: armor carried into the next hit
 var immovable := false

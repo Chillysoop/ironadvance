@@ -450,7 +450,7 @@ func draw_book() -> void:
 static func journal_line(e: Dictionary) -> Array:
 	## W8: one op as two lines: where and how it went, then who went and what it cost.
 	var what: String = "PATROL" if e.patrol else e.bonus if e.bonus != "" else "STRONGHOLD" if e.stronghold else Data.JOBS.get(e.job, {}).get("name", "PUSH")
-	var head := "OP %d  ACT %s  %s  %s  %s" % [int(e.n), Data.ACTS[int(e.act)].roman, e.sec, what, "WON" if e.won else "FAILED"]
+	var head := "OP %d  ACT %s  %s  %s  %s" % [int(e.n), Data.ACTS[clampi(int(e.act), 0, Data.ACTS.size() - 1)].roman, e.sec, what, "WON" if e.won else "FAILED"]
 	var tail := "%s.  %d kills, %d rounds" % [", ".join(e.squad).capitalize(), int(e.kills), int(e.rounds)]
 	if int(e.medals) > 0:
 		tail += ", %d medal%s" % [int(e.medals), "" if int(e.medals) == 1 else "s"]
@@ -634,7 +634,7 @@ class SlotPicker extends Control:
 				continue
 			var A: Dictionary = Data.ACTS[clampi(int(h.act), 0, Data.ACTS.size() - 1)]
 			Art.text(self, ("WAR WON" if h.get("done", false) else "ACT %s" % A.roman) + ("  TOUR %d" % int(h.get("tour", 1)) if int(h.get("tour", 1)) > 1 else ""), Vector2(cr.position.x + 16, cr.position.y + 58), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
-			Art.text(self, A.name, Vector2(cr.position.x + 16, cr.position.y + 80), 8, Color("ff7a3d"))
+			Art.text(self, str(h.get("act_name", A.name)), Vector2(cr.position.x + 16, cr.position.y + 80), 8, Color("ff7a3d"))
 			var mins := int(float(h.secs) / 60.0)
 			Art.text(self, "%d OP%s   %dH %02dM" % [int(h.ops), "" if int(h.ops) == 1 else "S", mins / 60, mins % 60], Vector2(cr.position.x + 16, cr.position.y + 104), 8, Color("e8dcc2"))
 			var names: Array = h.get("names", [])
@@ -906,7 +906,7 @@ class EndingScreen extends Control:
 			co = []
 		else:
 			Art.text(self, "SERVICE RECORDS", Vector2(24, 136), 8, Color("62d26f"))
-			Art.text(self, "Click a veteran to bring them on a Second Tour: a new war, harder sectors.", Vector2(680, 136), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
+			Art.text(self, "Pick a veteran for a Second Tour: new fronts, harder sectors.", Vector2(680, 136), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
 		for i in co.size():
 			var s: Dictionary = co[i]
 			var r := card(i)
@@ -947,7 +947,7 @@ class ActEndScreen extends Control:
 	func _ready() -> void:
 		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		var go = load("res://scripts/hud.gd").PixButton.new()
-		var nx: Dictionary = Data.ACTS[mini(act_i + 1, Data.ACTS.size() - 1)]
+		var nx: Dictionary = Run.act(act_i + 1)
 		go.text = "ON TO ACT %s" % nx.roman
 		go.color = Color("ffd23a")
 		go.size = Vector2(260, 40)
@@ -963,7 +963,7 @@ class ActEndScreen extends Control:
 		return PREV.position + Vector2((float(at[0]) - 16.0) / 664.0 * PREV.size.x, (float(at[1]) - 80.0) / 396.0 * PREV.size.y)
 	func _draw() -> void:
 		draw_rect(Rect2(0, 0, 960, 540), Color("0c1013"))
-		var A: Dictionary = Data.ACTS[act_i]
+		var A: Dictionary = Run.act(act_i)
 		var g := 0.7 + 0.3 * sin(t / 18.0)
 		Art.text(self, "ACT %s CLEARED" % A.roman, Vector2(480, 56), 32, Color(1.0, 0.82 * g + 0.1, 0.23), HORIZONTAL_ALIGNMENT_CENTER, 3)
 		Art.text(self, A.name, Vector2(480, 84), 16, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER, 2)
@@ -995,7 +995,7 @@ class ActEndScreen extends Control:
 			Art.text(self, s.def.name, Vector2(x, 456), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 			Art.text(self, str(int(Run.svc(s).get("acts", {}).get(str(act_i), 0))), Vector2(x, 472), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		# the next front, drawn in road by road
-		var N: Dictionary = Data.ACTS[mini(act_i + 1, Data.ACTS.size() - 1)]
+		var N: Dictionary = Run.act(act_i + 1)
 		Art.text(self, "NEXT FRONT  ACT %s" % N.roman, Vector2(PREV.position.x, 134), 8, Color("62d26f"))
 		Art.text(self, N.name, Vector2(PREV.end.x, 134), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_RIGHT)
 		draw_rect(PREV, Color("16232c"))
