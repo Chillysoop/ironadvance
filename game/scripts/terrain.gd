@@ -444,6 +444,18 @@ func build_struct(s: Dictionary) -> void:
 			fill_r(s.px, top, 12, s.h + 8, 4)
 			fill_r(s.x0 - 6, top - 12, s.x1 - s.x0 + 12, 12, 4)
 			fill_disc(s.x0 + (s.x1 - s.x0) * 0.3, top - 12, 9, 4)
+		"block":
+			# tutorial: a plain stone block standing on the ground (a wall to hop, a rock to drill, a cliff)
+			var g := ground_at(s.x + s.w / 2.0)
+			s["top"] = g - s.h
+			fill_r(s.x, g - s.h, s.w, s.h + 8, s.get("m", 4))
+		"plat":
+			# tutorial: a stone slab high on a thin pillar, with no ladder up (the Jet Boots lesson)
+			var g := ground_at(s.x + s.w / 2.0)
+			var top: float = g - s.dy
+			s["top"] = top
+			fill_r(s.x, top, s.w, 12, 4)
+			fill_r(s.x + s.w / 2.0 - 4, top + 12, 8, s.dy, 4)
 		"ledge":
 			var g := ground_at(s.post)
 			var top: float = g - s.dy

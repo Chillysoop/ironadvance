@@ -1242,13 +1242,13 @@ func draw_lockers(foes: Array) -> void:
 			draw_colored_polygon(PackedVector2Array([tri[0] + d * 2, tri[1] + n * 2 - d * 2, tri[2] - n * 2 - d * 2]), Color(C_DARK, 0.9))
 			draw_colored_polygon(tri, Color(1, 0.3, 0.24, 0.6 + a * 0.4))
 
-func draw_tut_flag(x: float) -> void:
-	## D2: training's first step. Walk anyone as far as this flag.
-	var gy: float = b.T.ground_at(x)
+func draw_tut_flag(x: float, at = null, label := "WALK HERE") -> void:
+	## D2: training's first step. Walk anyone as far as this flag (or stand where it is, up top).
+	var gy: float = b.T.ground_at(x) if at == null else at
 	var wave := sin(b.t / 6.0) * 2
 	draw_rect(Rect2(x - 1, gy - 34, 2, 34), Color("e8dcc2"))
 	draw_colored_polygon(PackedVector2Array([Vector2(x + 1, gy - 34), Vector2(x + 17, gy - 29 + wave), Vector2(x + 1, gy - 22)]), Color("62d26f"))
-	Art.text(self, "WALK HERE", Vector2(x, gy - 40), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
+	Art.text(self, label, Vector2(x, gy - 40), 8, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER)
 
 # ---------------------------------------------------------------- targeting overlays
 func draw_targeting() -> void:
@@ -1260,6 +1260,10 @@ func draw_targeting() -> void:
 	var m: Vector2 = b.mouse
 	if b.tutorial() and b.tut_step == b.TUT_MOVE:
 		draw_tut_flag(b.TUT_FLAG_X)
+	if b.in_lesson() and not b.lesson_over:
+		var lf = b.lesson_flag()
+		if lf != null:
+			draw_tut_flag(lf.x, lf.y, "GET UP HERE" if b.lesson().has("fy") else "WALK HERE")
 	var pz := b.cam_x + Battle.W * 0.72
 	push_rect = Rect2()
 	if b.cam_x < b.world_w - Battle.W and not cine:

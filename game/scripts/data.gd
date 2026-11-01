@@ -1480,6 +1480,19 @@ const SEGMENTS := {
 		"spawns": [["grunt", 430, {"tut": "target"}], ["crate", 510, {"tut": "crate"}], ["grunt", 600, {"tut": "group"}], ["grunt", 625, {"tut": "group"}]]},
 	"drill2": {"w": 900, "sandbags": [260], "pits": [], "structs": [{"t": "tower", "x": 520, "h": 96}],
 		"spawns": [["grunt", 380, {"tut": "fight"}], ["grunt", 520, {"tut": "fight", "hold": 1}], ["nade", 700, {"tut": "fight"}]]},
+	# the step-by-step tutorial: one screen per lesson (see LESSONS)
+	"l_walk": {"w": 960, "sandbags": [], "pits": [], "structs": [], "spawns": []},
+	"l_hop": {"w": 960, "sandbags": [], "pits": [], "structs": [{"t": "block", "x": 250, "w": 24, "h": 30}], "spawns": []},
+	"l_jump": {"w": 960, "sandbags": [], "pits": [], "gaps": [[230, 420]], "structs": [], "spawns": []},
+	"l_jet": {"w": 960, "sandbags": [], "pits": [], "structs": [{"t": "plat", "x": 330, "w": 130, "dy": 130}], "spawns": []},
+	"l_grapple": {"w": 960, "sandbags": [], "pits": [], "structs": [{"t": "block", "x": 300, "w": 220, "h": 140}], "spawns": []},
+	"l_drill": {"w": 960, "sandbags": [], "pits": [], "structs": [{"t": "block", "x": 120, "w": 72, "h": 110}], "spawns": []},
+	"l_shoot": {"w": 960, "sandbags": [], "pits": [], "structs": [{"t": "block", "x": 670, "w": 64, "h": 48}],
+		"spawns": [["grunt", 430, {"tut": "target"}], ["grunt", 702, {"tut": "target", "up": 70}]]},
+	"l_nade": {"w": 960, "sandbags": [], "pits": [], "structs": [{"t": "block", "x": 420, "w": 16, "h": 56}],
+		"spawns": [["grunt", 480, {"tut": "target"}], ["grunt", 505, {"tut": "target"}]]},
+	"l_live": {"w": 960, "sandbags": [300], "pits": [], "structs": [{"t": "tower", "x": 640, "h": 96}],
+		"spawns": [["grunt", 520, {"tut": "fight"}], ["grunt", 640, {"tut": "fight", "hold": 1}], ["nade", 800, {"tut": "fight"}]]},
 	# the open clearing after the mid-level camp, where a detour plays out (empty if you press on)
 	"yard": {"w": 760, "sandbags": [], "pits": [], "yard": true, "structs": [], "spawns": []},
 	"arena": {"w": 1200, "sandbags": [120, 360], "pits": [], "flat": true,
@@ -1744,6 +1757,54 @@ const TUT_DONE_LINES := ["That's the drill, recruits. You're ready for the gate.
 const TUT_FAIL_LINES := ["Down in the dirt already? Get up. TRAINING is on the title screen whenever you want another go."]
 const TRAINING := {"name": "BOOT CAMP", "theme": "dusk", "segments": ["drill", "drill2"], "boss_hp": 1, "plate": 0, "hp_mul": 1.0,
 	"brief": "", "rules": {"pads": 0, "wind": 0.0, "amp": 0.3}, "tutorial": true}
+# The step-by-step tutorial (TRAINING on the title screen): one short lesson per screen, each with
+# its own cards, energy, movement and fuel. Fail one and it starts again at once, exactly as it was.
+# goal: "flag" = stand at the flag (fx, and on top when fy is set), "kill" = drop every target.
+const LESSON_BASE := {"name": "BOOT CAMP", "theme": "dusk", "boss_hp": 1, "plate": 0, "hp_mul": 1.0, "brief": "",
+	"rules": {"pads": 0, "wind": 0.0, "amp": 0.0, "fuel": 0, "mines": 0}}
+const LESSONS := [
+	{"key": "walk", "legs": true, "title": "WALKING", "seg": "l_walk", "hand": [], "energy": 3, "move": 320, "goal": "flag", "fx": 330,
+	 "radio": ["Welcome to boot camp, recruit. Nothing here counts. Mess up and you go again on the spot.", "First, walking. Click the ground and your soldier walks there."],
+	 "steps": ["Click the ground to walk to the green flag.", "The MOVE bar beside your hand shows how far you can still walk this turn. Walking never costs energy."]},
+	{"key": "energy", "legs": true, "title": "ENERGY AND CARDS", "seg": "l_walk", "hand": ["sprint", "dash"], "energy": 3, "move": 150, "goal": "flag", "fx": 400,
+	 "radio": ["Every soldier gets 3 ENERGY a turn, the yellow bolts. Every card costs energy: the number in its top corner.", "That flag is too far to walk. Spend some energy on legwork."],
+	 "steps": ["Walk until your MOVE bar runs out.", "Click SPRINT (1 energy) or press 1. It adds movement.", "DASH is free (0 energy) and adds a little more. Reach the flag."]},
+	{"key": "turns", "legs": true, "title": "TURNS", "seg": "l_walk", "hand": [], "energy": 3, "move": 200, "goal": "flag", "fx": 560, "turns": 4,
+	 "radio": ["Out of movement and energy? Press END TURN. In a real fight the enemy moves next, then you get it all back.", "One unspent energy carries over to your next turn, so a quiet turn isn't wasted."],
+	 "steps": ["Walk as far as you can.", "Press END TURN (ENTER). Your MOVE bar and energy refill.", "Keep going until you reach the flag."]},
+	{"key": "hop", "title": "HOP", "seg": "l_hop", "hand": ["hop"], "energy": 1, "move": 320, "goal": "flag", "fx": 300,
+	 "radio": ["Walls in the way? Every soldier carries a HOP card, every single turn.", "A hop clears a wall about head high or a short gap. It works with no movement left, but it uses up the rest."],
+	 "steps": ["Walk right up to the wall.", "Click HOP (1 energy) or press 1.", "Aim up and over the wall and click. The flag is on the far side."]},
+	{"key": "jump", "title": "JUMP PACK", "seg": "l_jump", "hand": ["jumppack"], "energy": 1, "move": 320, "goal": "flag", "fx": 470,
+	 "radio": ["That's open water, recruit. Fall in and you drown, like the real thing.", "A JUMP PACK card launches you in a big arc and you land soft. Clear the water."],
+	 "steps": ["Walk up to the edge of the water.", "Click JUMP PACK or press 1.", "Point at where you want to land. The further the cursor, the harder the launch. Click to jump."]},
+	{"key": "jet", "title": "JET BOOTS", "seg": "l_jet", "hand": [], "energy": 3, "move": 320, "goal": "flag", "fx": 395, "fy": 1, "jet": 150,
+	 "radio": ["JET BOOTS are kit you can buy or find. You're wearing a pair now.", "They fly you toward the mouse for as long as you hold the button and the fuel lasts."],
+	 "steps": ["Press J or click the JET button.", "Hold the left mouse button: you fly toward the cursor. Let go to drop.", "Land on top of the platform. The fuel gauge refills each turn you start on the ground."]},
+	{"key": "grapple", "title": "GRAPPLE HOOK", "seg": "l_grapple", "hand": ["grapple"], "energy": 1, "move": 320, "goal": "flag", "fx": 410, "fy": 1,
+	 "radio": ["Too high to hop, no boots. Use the GRAPPLE HOOK.", "Aim at a ledge or a roof edge in reach and you zip straight up onto it."],
+	 "steps": ["Walk close to the cliff.", "Click GRAPPLE HOOK or press 1.", "Point at the top edge of the cliff and click."]},
+	{"key": "drill", "title": "DRILL", "seg": "l_drill", "hand": ["drill"], "energy": 0, "move": 260, "goal": "flag", "fx": 230,
+	 "radio": ["Every soldier also packs a DRILL. It's free, and it bores through anything: dirt, wood, stone, steel.", "It spends your movement as it goes, so save some legwork for it."],
+	 "steps": ["Walk up to the rock.", "Click DRILL or press 1. It costs no energy.", "Point through the rock and click. Click again to stop early. Come out at the flag."]},
+	{"key": "shoot", "title": "SHOOTING", "seg": "l_shoot", "hand": ["rifle", "rifle", "rifle"], "energy": 3, "move": 0, "goal": "kill",
+	 "radio": ["Now the fun part. Two Jackal dummies. They don't shoot back today.", "Drop them both. Three rifle shots, three energy."],
+	 "steps": ["Click RIFLE SHOT or press 1.", "The red laser is the bullet's path, and it sways. Hold SHIFT to steady it.", "Click to fire. A hit on the head is a critical hit. Bodies stop bullets, so mind the line."]},
+	{"key": "nade", "title": "GRENADES", "seg": "l_nade", "hand": ["frag", "frag"], "energy": 2, "move": 120, "goal": "kill",
+	 "radio": ["Those two are hiding behind a wall. Bullets won't reach them. Grenades will.", "Lob it over the top. It bounces, then it blows."],
+	 "steps": ["Click FRAG GRENADE or press 1.", "The cursor's direction sets the angle and its distance sets the power. Only the start of the throw is shown.", "The mouse wheel sets the fuse (1 to 4 seconds). Lob it over the wall and click."]},
+	{"key": "live", "title": "LIVE FIRE", "seg": "l_live", "live": true, "goal": "kill",
+	 "radio": ["Last one, and these Jackals shoot back. After your turn every enemy moves, then fires.", "You've got the whole squad and their real decks. Use cover, use everything."],
+	 "steps": ["Click a soldier, or press NEXT (SPACE) to jump to the next one who can still act.", "Use your cards, then END TURN. Every Jackal moves, then shoots.", "Drop all three. If anyone goes down, you start the fight again."]},
+]
+const LESSON_FAIL := {
+	"drowned": "YOU DROWNED. AGAIN!",
+	"down": "MAN DOWN. AGAIN!",
+	"stuck": "OUT OF MOVES. AGAIN!",
+	"ammo": "OUT OF SHOTS. AGAIN!",
+	"turn": "TURN OVER. AGAIN!",
+	"retry": "FROM THE TOP!",
+}
 const RADIO_JOB := {
 	"push": [["cmd", "Push through to the far end and knock out their armor."], ["cmd", "Straight fight. Break their line and keep moving east."]],
 	"rescue": [["cmd", "Three of ours are held in there. Bring them home."], ["cmd", "Prisoners spotted. Walk up and cut them loose, they'll do the rest."]],

@@ -29,6 +29,9 @@ var water_rail: Control
 var targeting := false    # a card is armed: the hand ghosts out so it doesn't hide what you aim at
 
 const INK := Color(0.05, 0.035, 0.03)
+const LESSON_X := 532.0   # the tutorial's lesson card, top right under the bar (the tablet takes the left)
+const LESSON_Y := 42.0
+const LESSON_W := 420.0
 const HubUI := preload("res://scripts/hub_ui.gd")
 
 func setup(battle: Battle) -> void:
@@ -145,6 +148,23 @@ func setup(battle: Battle) -> void:
 		lv.size = Vector2(122, 26)
 		lv.pressed.connect(func(): Sfx.play("click"); b.leave_practice())
 		root.add_child(lv)
+	if b.in_lesson():
+		# the tutorial: try a lesson again (T) or skip it, from the lesson card top left
+		var rt := PixButton.new()
+		rt.text = "RETRY"
+		rt.sub = "T"
+		rt.color = Color("ffb23e")
+		rt.position = Vector2(LESSON_X + LESSON_W - 126, LESSON_Y + 4)
+		rt.size = Vector2(60, 24)
+		rt.pressed.connect(func(): Sfx.play("click"); b.lesson_fail("retry"))
+		root.add_child(rt)
+		var sk := PixButton.new()
+		sk.text = "SKIP >>"
+		sk.color = Color("9aa2ae")
+		sk.position = Vector2(LESSON_X + LESSON_W - 62, LESSON_Y + 4)
+		sk.size = Vector2(56, 24)
+		sk.pressed.connect(func(): Sfx.play("click"); b.lesson_skip())
+		root.add_child(sk)
 	modal = Control.new()
 	modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -356,6 +376,8 @@ func hint_text() -> String:
 		if b.tut_step == b.TUT_PUSH and b.push_blockers().size():
 			return "The PUSH ZONE is locked while Jackals are left short of the line. Finish them, then walk someone in."
 		return Data.TUT_LINES[b.tut_step][1 if b.tut_step == b.TUT_PUSH else 0]
+	if b.in_lesson():
+		return ""  # boot camp: the lesson card says what to do
 	if seasoned():
 		return ""  # X10: after the first mission the walking hints stop covering the ground
 	if u.move_left > 1:
@@ -994,6 +1016,47 @@ class Overlay extends Control:
 			draw_rect(Rect2(r.position.x + 4, my + 4, 38, 1), Color("b48cff"))
 		Art.text(self, Data.meters(mv), Vector2(r.get_center().x, my + 21), 8, Color("62d26f") if mv > 1 else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 
+	func draw_lesson(b: Battle) -> float:
+		## The tutorial's lesson card: which lesson, what to do step by step, and how the last try went.
+		## Returns the bottom edge so the log and power-ups sit under it.
+		var L: Dictionary = b.lesson()
+		var ink := Color(0.05, 0.035, 0.03)
+		var x: float = hud.LESSON_X
+		var y: float = hud.LESSON_Y
+		var w: float = hud.LESSON_W
+		var rows: Array = []
+		var k := 1
+		for st in L.steps:
+			var wl: Array = CardView.wrap_text("%d. %s" % [k, st], w - 26, 16)
+			for j in wl.size():
+				rows.append(("    " if j > 0 else "") + wl[j])
+			k += 1
+		var why: String = b.lesson_why
+		var h := 40.0 + rows.size() * 14 + (16.0 if why != "" and why != "retry" else 0.0)
+		draw_rect(Rect2(x - 1, y - 1, w + 2, h + 2), ink)
+		draw_rect(Rect2(x, y, w, h), Color(0.1, 0.11, 0.13, 0.9))
+		draw_rect(Rect2(x, y, w, 2), Color("ffb23e"))
+		var n: int = int(b.mission.get("lesson_i", 0))
+		var head := "LESSON %d OF %d" % [n + 1, Data.LESSONS.size()]
+		Art.text(self, head, Vector2(x + 8, y + 14), 8, Color("ffb23e"))
+		Art.text(self, L.title, Vector2(x + 8, y + 28), 8, Color.WHITE)
+		# one pip per lesson: done green, this one yellow
+		var px0: float = x + 18 + Art.text_width(head, 8)
+		for i in Data.LESSONS.size():
+			var c := Color("62d26f") if i < n else (Color("ffd23a") if i == n else Color("3a3f46"))
+			draw_rect(Rect2(px0 + i * 11, y + 8, 9, 6), ink)
+			draw_rect(Rect2(px0 + 1 + i * 11, y + 9, 7, 4), c)
+		var tries: int = int(b.mission.get("tries", 0))
+		if tries > 0:
+			Art.text(self, "TRY %d" % (tries + 1), Vector2(px0, y + 28), 8, Color("ff7a3d"))
+		var ry := y + 46
+		for r in rows:
+			Art.text(self, r, Vector2(x + 10, ry), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+			ry += 14
+		if why != "" and why != "retry":
+			Art.text(self, "LAST TRY: " + Data.LESSON_FAIL.get(why, "AGAIN!").trim_suffix(" AGAIN!") + "  Press T or RETRY any time.", Vector2(x + 10, ry + 2), 8, Color("ff7a3d"))
+		return y + h
+
 	func draw_boosts(b: Battle, y: float) -> float:
 		## Top left: every power-up and status on the selected soldier (Predator, Berserker, Burning...),
 		## with turns left and what it does. Returns the height used so the log moves under it.
@@ -1273,7 +1336,7 @@ class Overlay extends Control:
 				ly += 14
 		draw_action_panel(b)
 		# U1 kill feed, top right: KILLER [HOW] VICTIM, sliding in, with a flashing stamp for the good ones
-		var fy := maxf(50.0, draw_bounties(b, draw_synergies(b, 40.0)) + 12)
+		var fy := maxf(50.0, draw_bounties(b, draw_synergies(b, draw_lesson(b) + 8 if b.in_lesson() else 40.0)) + 12)
 		for f in b.feed:
 			var al: float = clampf((480 - f.t) / 40.0, 0, 1)
 			var slide: float = maxf(0, 1 - f.t / 8.0) * 160

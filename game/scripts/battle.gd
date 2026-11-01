@@ -5,6 +5,7 @@ extends Node2D
 
 signal tick
 signal mission_over(won: bool)
+signal lesson_done(result: String)  # the step-by-step tutorial: "pass", "fail" or "skip"
 var debug := false
 
 const W := 960
@@ -63,6 +64,9 @@ var tut_step := 0             # N6 training: the drill step the recruits are on
 var tut_said := -1            # the last step the sergeant has called in
 var tut_marks := {}           # drill step -> the units it is about
 var tut_blast := false        # a squad blast went off on the grenade step
+var lesson_over := false      # tutorial lesson: passed, failed or skipped, the next one is loading
+var lesson_said := false      # tutorial lesson: the sergeant has called this lesson in
+var lesson_why := ""          # tutorial lesson: why the last try failed, for the panel
 var boss_active := false
 var boss_dead := false
 var gate = null          # the gate home to HQ, opened after the boss falls
@@ -257,7 +261,7 @@ func setup(idx: int, custom := {}) -> void:
 		var y = T.stand_y(x, 0) if (opt.has("hold") or opt.has("top")) and not opt.has("inside") else T.stand_y(x, T.ground_at(x) - 40)
 		if opt.has("up"):
 			y = T.stand_y(x, T.ground_at(x) - opt.up)
-		if type == "shield" and not walled and mission_idx >= 1 and not tutorial():
+		if type == "shield" and not walled and mission_idx >= 1 and not tutorial() and not in_lesson():
 			type = "wallshield"  # E5: one Shield Wall per level from level 2
 			walled = true
 		var u := mk_enemy(type, x, y)
@@ -273,7 +277,7 @@ func setup(idx: int, custom := {}) -> void:
 				# D1: until a player has beaten one Boar, the level 1 Boar is a softer Rookie Boar
 				u.fl["rookie"] = true
 				u.hp = int(u.hp * ROOKIE_HP); u.max_hp = u.hp; u.plate = int(u.plate * ROOKIE_HP)
-		elif not tutorial() and randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
+		elif not tutorial() and not in_lesson() and randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
 			make_elite(u, pick_elite(faction(u) == "vharr"))
 		units.append(u)
 		if opt.has("tut"):
@@ -490,7 +494,7 @@ func pick_elite(alien: bool) -> String:
 
 func spawn_map_loot() -> void:
 	## Crates on roofs and in the open, the odd strongbox, and one buried cache per mission (L1, L3, L6).
-	if tutorial():
+	if tutorial() or in_lesson():
 		return  # the drill lays out its own crate
 	var lo := 520.0
 	var hi := world_w - 900.0
@@ -1364,7 +1368,7 @@ func park_ride(x: float, type: String, hp := -1) -> Unit:
 func place_vehicles() -> void:
 	## R1: a parked Jackal vehicle in the first stretch, and E6: a Jackal Walker guarding the second
 	## half of it. Neither in a breach, a detour yard or the finale harbor.
-	if T.stretches.is_empty() or mission.get("finale", false) or mission.get("tutorial", false):
+	if T.stretches.is_empty() or mission.get("finale", false) or mission.get("tutorial", false) or in_lesson():
 		return
 	var st: Array = T.stretches[0]
 	var w: float = st[1] - st[0]
@@ -2557,14 +2561,18 @@ func begin() -> void:
 		dummies = units.filter(func(e): return e.team == "enemy").map(func(e): return [e.type, e.x])
 		banner("PRACTICE RANGE", Color("62d26f"), "FREE. NOTHING HERE CARRIES OVER")
 		log_msg("The dummies never shoot back and come back when they are all down. LEAVE RANGE when you are done.")
+	elif in_lesson():
+		lesson_prep()
+		if mission.get("retry", "") == "":
+			banner(mission.banner, Color("ffb23e"), mission.name)
 	else:
 		banner(mission.get("banner", "MISSION %d START!" % (mission_idx + 1)), Color("ffb23e"), mission.name)
 	if breach:
 		log_msg("BREACH: the Vharr and the Jackals are fighting each other. Each shoots whoever is nearest, so let them.")
-	if hud != null and Run.tips_on() and Run.history.is_empty() and not practice() and not tutorial():
+	if hud != null and Run.tips_on() and Run.history.is_empty() and not practice() and not tutorial() and not in_lesson():
 		coach_start()
 	activate_enemies()
-	await wait(60)
+	await wait(60 if mission.get("retry", "") == "" else 8)  # a retried lesson is straight back in
 	if state == "title":
 		start_player_turn()
 
@@ -2783,7 +2791,7 @@ var crumble := {}        # R3: {x0, x1, x, on} the edge of the stretch that is f
 
 func setup_events() -> void:
 	crumble = {}
-	if T.stretches.is_empty() or mission.get("finale", false) or tutorial():
+	if T.stretches.is_empty() or mission.get("finale", false) or tutorial() or in_lesson():
 		return
 	var st0: Array = T.stretches[0]
 	match mission.get("event", ""):
@@ -3059,6 +3067,130 @@ const TUT_FLAG_X := 300.0     # D2: the walk step's flag; reaching it ends the s
 
 func tutorial() -> bool:
 	return mission.get("tutorial", false)
+
+# ---------------------------------------------------------------- the step-by-step tutorial
+func in_lesson() -> bool:
+	return mission.has("lesson")
+
+func lesson() -> Dictionary:
+	return mission.get("lesson", {})
+
+func lesson_flag():
+	## Where a lesson's flag stands (on top of whatever is there), or null for a lesson with none.
+	var L := lesson()
+	if L.get("goal", "") != "flag":
+		return null
+	var fx: float = L.fx
+	var fy = T.stand_y(fx, 0)
+	return Vector2(fx, fy if fy != null else T.ground_at(fx))
+
+func lesson_prep() -> void:
+	## Kit the recruit out for the lesson: Jet Boots for the jet lesson, and the why of a failed try.
+	var L := lesson()
+	lesson_why = str(mission.get("retry", ""))
+	for u in squad_alive():
+		if L.get("jet", 0) > 0:
+			u.gb["jet"] = L.jet
+			u.fuel_max = jet_fuel(u)
+			u.fuel = u.fuel_max
+
+func lesson_hand() -> void:
+	## Every turn of a lesson deals the same cards, energy and movement, so every try is the same.
+	var L := lesson()
+	if L.get("live", false):
+		return
+	for s in squad_alive():
+		s.hand = []
+		var i := 0
+		for k in L.hand:
+			s.hand.append({"id": -20 - i, "key": k, "tier": Data.base_tier(k), "temp": true})
+			i += 1
+		s.draw = []
+		s.energy = int(L.energy) + maxi(0, s.energy - 3)  # an energy banked last turn still counts
+		s.move_left = float(L.move)
+	ui_dirty = true
+
+func lesson_playable(u: Unit) -> bool:
+	## Something left to try: a card you can pay for (and a Drill with movement), or jet fuel.
+	if u.fuel_max > 0 and u.fuel > 0:
+		return true
+	return u.hand.any(func(c): return card_cost(u, c) <= u.energy and not out_of_move(u, Data.card(c)))
+
+func lesson_met() -> bool:
+	var L := lesson()
+	if L.goal == "kill":
+		return not units.any(func(e): return e.team == "enemy" and not e.dead)
+	var f = lesson_flag()
+	return squad_alive().any(func(u):
+		if u.air or u.walk != null or u.drill != null or u.zip != null:
+			return false
+		if L.has("fy"):
+			return absf(u.y - f.y) <= 6  # anywhere up on top
+		return u.x >= f.x - 8)
+
+func lesson_update() -> void:
+	## Checks the lesson a few times a second: done, failed (drowned, down, nothing left to try), or going.
+	if lesson_over or state == "title" or state == "over":
+		return
+	var L := lesson()
+	var main = get_tree().current_scene
+	if not lesson_said and mission.get("retry", "") == "" and banners.is_empty() and main != null and main.has_method("call_in"):
+		lesson_said = true
+		main.call_in(L.radio.map(func(l): return Run.radio_line("sarge", l, [])))
+	if units.any(func(u): return u.team == "squad" and u.dead):
+		lesson_fail("drowned" if units.any(func(u): return u.team == "squad" and u.sunk) else "down")
+		return
+	if state != "player" or busy or not settled():
+		return
+	if lesson_met():
+		lesson_pass()
+		return
+	if L.get("live", false) or round_n < int(L.get("turns", 1)):
+		return
+	var u: Unit = sel
+	if u == null or u.dead or u.air or u.walk != null:
+		return
+	# walking only helps on the walking lessons: elsewhere, nothing left to play means it's over
+	if (u.move_left <= 6 or not L.get("legs", false)) and not lesson_playable(u):
+		lesson_fail("ammo" if L.goal == "kill" else "stuck")
+
+func lesson_pass() -> void:
+	if lesson_over:
+		return
+	lesson_over = true
+	busy = true
+	card_idx = -1
+	jet_armed = false
+	ui_dirty = true
+	var last: bool = int(mission.lesson_i) >= Data.LESSONS.size() - 1
+	banner("BOOT CAMP COMPLETE!" if last else "LESSON COMPLETE!", Color("62d26f"), "NICE WORK, RECRUIT")
+	Sfx.play("levelup" if last else "coin")
+	for u in squad_alive():
+		u.pose = "cheer"; u.pose_t = 60
+	await wait(90)
+	lesson_done.emit("pass")
+
+func lesson_fail(why: String) -> void:
+	## Failing a lesson just runs it again, straight away, with the same cards, energy and fuel.
+	if lesson_over:
+		return
+	lesson_over = true
+	busy = true
+	card_idx = -1
+	jet_armed = false
+	ui_dirty = true
+	if why != "retry":
+		banner(Data.LESSON_FAIL.get(why, "AGAIN!"), Color("ff7a3d"), "SAME KIT, SAME SPOT")
+		Sfx.play("deny")
+		await wait(55)
+	lesson_done.emit("fail:" + why)
+
+func lesson_skip() -> void:
+	if lesson_over:
+		return
+	lesson_over = true
+	busy = true
+	lesson_done.emit("skip")
 
 func tut_clear(key: String) -> bool:
 	return tut_marks.get(key, []).all(func(u): return u.dead)
@@ -3915,7 +4047,7 @@ func walk_along(u: Unit, pts: Array) -> void:
 
 # ---------------------------------------------------------------- damage, adrenaline, xp, death
 func give_xp(u, n: int) -> void:
-	if u == null or not (u is Unit) or u.team != "squad" or u.dead or n <= 0 or practice() or u.s.has("guest"):
+	if u == null or not (u is Unit) or u.team != "squad" or u.dead or n <= 0 or practice() or in_lesson() or u.s.has("guest"):
 		return
 	if mission.get("patrol", false):
 		n = maxi(1, n / 2)
@@ -7094,6 +7226,8 @@ func detour_round() -> void:
 		float_text(e, "SCAVENGER", Color("ff7a3d"), true)
 
 func stall_limit() -> int:
+	if in_lesson():
+		return 99  # no alert in boot camp
 	return STALL_ROUNDS - (1 if Run.threat_on(1) else 0)
 
 func stalled() -> bool:
@@ -7377,7 +7511,7 @@ const INTROS := {
 
 func meet(e: Unit) -> void:
 	## N5: the first time a faction (or the Boar) shows up, the coach introduces it once, for good.
-	if hud == null or not Run.tips_on():
+	if hud == null or not Run.tips_on() or (in_lesson() and not lesson().get("live", false)):
 		return
 	var key := "boar" if e.type == "boss" else faction(e)
 	if not INTROS.has(key):
@@ -7609,6 +7743,8 @@ func post_action() -> void:
 		await until(settled)
 		victory()
 		return
+	if in_lesson():
+		return  # lessons end through lesson_update: no wave clears, drops or scrolling
 	var active := units.filter(func(e): return e.team == "enemy" and not e.dead and e.active)
 	if active.is_empty() and (not tutorial() or tut_step >= TUT_FIGHT):
 		var rest := units.filter(func(e): return e.team == "enemy" and not e.dead)
@@ -8217,6 +8353,8 @@ func start_player_turn() -> void:
 	if rounds_since_scroll == stall_limit():
 		log_msg("The line has stalled: alert rises every round until you push.")
 	ui_dirty = true
+	if in_lesson():
+		lesson_hand()
 	var autoload := units.any(func(o): return o.kind == "sentry" and not o.dead and o.loot.by is Unit and o.loot.by.perk("autoloader"))
 	resolve(func():
 		await dogs_new_turn()
@@ -8388,6 +8526,9 @@ func end_turn(force := false) -> void:
 		ui_dirty = true
 		return
 	end_confirm_t = 0
+	if in_lesson() and not lesson().get("live", false) and round_n >= int(lesson().get("turns", 1)):
+		lesson_fail("turn")  # a lesson is one turn (or a few): out of turns, go again
+		return
 	if pending_rewards() > 0:
 		# X3: the turn's promotions and finds come out before the enemy moves
 		busy = true
@@ -8430,7 +8571,7 @@ func enemy_phase() -> void:
 	if practice():
 		await practice_round()
 		return
-	if tutorial() and tut_step < TUT_FIGHT:
+	if (tutorial() and tut_step < TUT_FIGHT) or (in_lesson() and not lesson().get("live", false)):
 		# the drill's targets never shoot back
 		state = "enemy"
 		busy = true
@@ -10362,6 +10503,9 @@ func boss_act(bo: Unit) -> void:
 
 # ---------------------------------------------------------------- end states
 func game_over() -> void:
+	if in_lesson():
+		lesson_fail("drowned" if units.any(func(u): return u.team == "squad" and u.sunk) else "down")
+		return
 	if lost:
 		return
 	lost = true
@@ -10515,6 +10659,8 @@ func step() -> void:
 		sticky_watch()
 	if t % 15 == 0 and tutorial():
 		tut_update()
+	if t % 5 == 0 and in_lesson():
+		lesson_update()
 	if end_confirm_t > 0:
 		end_confirm_t -= 1
 	if not aim_hold:
@@ -11389,6 +11535,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 				drop_hang(sel)
 			elif hud != null:
 				hud.toggle_pause()
+			return
+		if ev.keycode == KEY_T and in_lesson():
+			lesson_fail("retry")  # T: start this lesson again, any time
 			return
 		if state != "player" or busy:
 			return
