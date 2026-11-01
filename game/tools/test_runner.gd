@@ -4,7 +4,7 @@ extends Node
 ## Scenarios: fx, title, start, aim, ghost, arc, bot, shop, picker, level, topple, campaign, alive, levels, hazards, tags, gate, camp, aliens, aliens2, soldat, drill,
 ## draft (X1/X2 squad draft and specialist POWs), bolt (N2 Combat Engineer), track (N7 K9 Handler), vehicles (N3 Gears, R1 hijack, E6 Jackal Walker), branches5 (B1-B4 fifth branches),
 ## gear (click a slot to see what fits, drag and drop, deck changes, a fifth soldier at HQ),
-## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training (N6 drill),
+## warmap, company, ops, story, lab (campaign mode), clicks (screens take real mouse clicks), pause (Esc menu), uiclarity (class-card offers, power-up panel, Hop/Drill X, grenade aim, sentry callouts, card tips, right-click back), operator (tablet call-ins), training or lessons (the step-by-step boot camp, --start=N skips to lesson N),
 ## playtest (whole runs: --seed=N --runs=K --start=L skips to level L), pinball (a blast beside a bunched squad), tuning,
 ## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
 ## crumble (falling structures tip, spin, splinter and crush), detours2 (Doc's field tent, Strange Signal, the Lab's rank 3 surgeries),
@@ -922,8 +922,8 @@ func run() -> void:
 			await synergies()
 		"operator":
 			await operator_call()
-		"training":
-			await training()
+		"training", "lessons":
+			await lessons()
 		"survey":
 			await survey()
 		"clarity":
@@ -1902,53 +1902,206 @@ func operator_call() -> void:
 	check(not is_instance_valid(oc), "the X hangs up and the tablet slides away")
 	main.show_hq(false)
 
-func training() -> void:
-	## N6: the drill walks through move, shoot, crate, frag and push, then a short real fight.
+var lesson_res := ""  # how the watched lesson ended: "pass", "fail:why", "skip", or "" while it runs
+
+func lesson_battle(i: int) -> Battle:
+	## Waits for tutorial lesson i to be up and the player's turn to start, then returns its battle.
+	await until(func(): return main.battle != null and is_instance_valid(main.battle) and main.battle.in_lesson() \
+		and int(main.battle.mission.lesson_i) == i and main.battle.state == "player" and not main.battle.busy, 1200)
+	await frames_wait(4)
+	lesson_res = ""
+	main.battle.lesson_done.connect(func(r): lesson_res = r)
+	return main.battle
+
+func lesson_left(_b = null) -> String:
+	## Waits for the watched lesson to end; "" on a timeout.
+	await until(func(): return lesson_res != "", 2400)
+	return lesson_res
+
+func px(b) -> String:
+	return "%d,%d" % [b.sel.x, b.sel.y] if is_instance_valid(b) and b.sel != null else "gone"
+
+func gone(b) -> bool:
+	return not is_instance_valid(b) or b.lesson_over
+
+func walk(b: Battle, x: float) -> void:
+	var u: Unit = b.sel
+	b.world_click(Vector2(x, u.y - 10))
+	await until(func(): return gone(b) or (not b.busy and u.walk == null and not u.air), 900)
+	await frames_wait(4)
+
+func aim_card(b: Battle, i: int, p: Vector2) -> void:
+	if gone(b):
+		return
+	b.select_card(i)
+	b.mouse = p
+	await frames_wait(3)
+	b.world_click(p)
+	await frames_wait(2)
+	await until(func(): return gone(b) or (not b.busy and b.settled()), 1500)
+	await frames_wait(6)
+
+func lessons() -> void:
+	## The step-by-step tutorial: every lesson can be done with the kit it gives, a failed try starts
+	## the same lesson again at once with the same kit, and the last one marks training done.
+	## --start=N begins at lesson N (0-based).
 	var had: bool = Run.meta.get("trained", false)
 	main.start_training()
-	var b: Battle = main.battle
-	await until(func(): return b.state == "player" and not b.busy)
-	if not b.banners.is_empty():
-		check(b.tut_said < 0, "D1: the sergeant waits for the mission banner to clear")
-	await until(func(): return main.call_layer != null and main.call_layer.get_child_count() > 0, 600)
-	await frames_wait(20)
-	check(b.tutorial() and b.tut_step == b.TUT_MOVE, "training opens on the move step")
-	check(main.call_layer.get_child_count() > 0 and main.call_layer.get_child(0).line().name == "SGT. KRUGER", "the sergeant calls in on the tablet")
-	b.squad()[0].x = 320
-	await frames_wait(20)
-	check(b.tut_step == b.TUT_SHOOT, "walking forward clears the move step")
-	await frames_wait(20)
-	check(b.sel.hand.any(func(c): return c.key == "rifle"), "the selected soldier holds a rifle shot for the shoot step")
-	check(b.sel.hand[0].key == "rifle", "D3: the training rifle is card 1")
-	for u in b.tut_marks.target:
-		b.kill(u, b.sel)
-	await frames_wait(20)
-	check(b.tut_step == b.TUT_CRATE, "dropping the target clears the shoot step")
-	for u in b.tut_marks.crate:
-		u.dead = true
-	await frames_wait(20)
-	check(b.tut_step == b.TUT_THROW, "opening the crate clears the crate step")
-	await frames_wait(20)
-	check(b.sel.hand.any(func(c): return c.key == "frag"), "the selected soldier holds a frag for the grenade step")
-	b.end_turn(true)
-	await until(func(): return b.state == "player" and not b.busy)
-	check(b.squad_alive().size() == 4 and b.tut_marks.group.all(func(u): return not u.dead), "the drill's targets don't shoot back between turns")
-	b.explode(b.tut_marks.group[0].x, b.tut_marks.group[0].y, 36, 11, b.sel)
-	await until(func(): return b.settled(), 600)
-	await frames_wait(20)
-	check(b.tut_step == b.TUT_PUSH, "a grenade blast clears the throw step")
-	b.cam_x = 120; b.cam_tx = 120
-	await frames_wait(20)
-	check(b.tut_step == b.TUT_FIGHT, "scrolling on clears the push step and starts the fight")
-	for u in b.units:
-		if u.team == "enemy" and not u.dead:
-			u.dead = true; u.gone = true
-	b.lvl_queue.clear(); b.loot_queue.clear()  # level-up and loot picks would wait for a click
-	b.post_action()
-	await until(func(): return Run.meta.get("trained", false) or main.battle == null or not is_instance_valid(b), 1200)
+	if start_arg > 0:
+		main.start_lesson(start_arg)
+	var b: Battle
+	var r := ""
+	var f
+	for i in range(start_arg, Data.LESSONS.size()):
+		b = await lesson_battle(i)
+		await shot("lesson_%02d_%s" % [i + 1, Data.LESSONS[i].key])
+		match i:
+			0:
+				check(b.squad_alive().size() == 1 and b.sel.hand.is_empty() and b.sel.move_left == 320.0, "lesson 1: one recruit, no cards, a fixed walk")
+				await until(func(): return main.call_layer != null and main.call_layer.get_child_count() > 0, 300)
+				check(main.call_layer != null and main.call_layer.get_child_count() > 0 and main.call_layer.get_child(0).line().name == "SGT. KRUGER", "the sergeant calls in the lesson")
+				await walk(b, 4)
+				b.sel.move_left = 0
+				r = await lesson_left(b)
+				check(r == "fail:stuck", "lesson 1: running out of walk short of the flag fails (%s)" % r)
+				b = await lesson_battle(0)
+				check(b.sel.move_left == 320.0 and b.sel.x < 80 and int(b.mission.tries) == 1, "the retry starts over with the same walk and counts the try")
+				await shot("lesson_01_retry")
+				await walk(b, 340)
+				check(await lesson_left(b) == "pass", "lesson 1: walking to the flag passes")
+			1:
+				check(b.sel.hand.map(func(c): return c.key) == ["sprint", "dash"] and b.sel.energy == 3, "lesson 2 deals Sprint and Dash with 3 energy")
+				await walk(b, 420)
+				print("[lesson] energy walk ended at ", px(b))
+				check(not b.lesson_over, "walking alone falls short of the energy flag")
+				b.select_card(0)
+				await frames_wait(10)
+				b.select_card(0)
+				await frames_wait(10)
+				check(b.sel.energy == 2, "Sprint spends 1 energy, Dash none (%d left)" % b.sel.energy)
+				await walk(b, 420)
+				check(await lesson_left(b) == "pass", "lesson 2: Sprint and Dash reach the flag")
+			2:
+				for k in 4:
+					await walk(b, 600)
+					if gone(b):
+						break
+					b.end_turn(true)
+					await until(func(): return gone(b) or (b.state == "player" and not b.busy), 900)
+				check(await lesson_left(b) == "pass", "lesson 3: walking over several turns reaches the flag")
+			3:
+				await walk(b, 300)
+				check(b.sel.x < 252, "the wall stops a walk")
+				var top: float = b.T.ground_at(262.0) - 30
+				await aim_card(b, 0, Vector2(b.sel.x + 50, top - 60))
+				check(await lesson_left(b) == "pass", "lesson 4: a Hop clears the wall")
+			4:
+				await walk(b, 222)
+				await aim_card(b, 0, Vector2(b.sel.x + 40, b.sel.y - 30))
+				r = await lesson_left(b)
+				check(r == "fail:drowned", "lesson 5: a short jump into the water drowns and goes again (%s)" % r)
+				b = await lesson_battle(4)
+				check(b.sel.hand.size() == 1 and b.sel.hand[0].key == "jumppack" and b.sel.energy == 1 and not b.sel.dead, "the retry is back on the bank with the same Jump Pack")
+				await shot("lesson_05_retry")
+				await walk(b, 222)
+				await aim_card(b, 0, Vector2(b.sel.x + 200, b.sel.y - 160))
+				print("[lesson] jump: landed at ", px(b))
+				check(await lesson_left(b) == "pass", "lesson 5: a Jump Pack clears the water")
+			5:
+				check(b.sel.fuel_max > 0 and b.sel.fuel == b.sel.fuel_max, "lesson 6 wears Jet Boots with full fuel")
+				f = b.lesson_flag()
+				# a fail first: burn all the fuel flying into the underside of the platform
+				b.toggle_jet()
+				check(b.jet_armed, "J arms the jets")
+				b.mouse = Vector2(f.x - 20, f.y + 40)
+				b.start_jet(b.sel)
+				await until(func(): return gone(b) or b.sel.fuel <= 0, 600)
+				if is_instance_valid(b):
+					b.jet_hold = false
+				r = await lesson_left(b)
+				check(r == "fail:stuck", "lesson 6: out of fuel and off the platform goes again (%s)" % r)
+				b = await lesson_battle(5)
+				check(b.sel.fuel == b.sel.fuel_max and b.sel.x < 80, "the retry is back at the start with a full tank")
+				await walk(b, 230)
+				b.toggle_jet()
+				b.mouse = Vector2(300, f.y - 70)
+				b.start_jet(b.sel)
+				await until(func(): return gone(b) or b.sel.y < f.y - 30, 300)
+				if is_instance_valid(b):
+					b.mouse = Vector2(f.x, f.y - 10)
+				await until(func(): return gone(b) or (absf(b.sel.x - f.x) < 30 and absf(b.sel.vx) < 1.5), 400)
+				print("[lesson] jet: over the top at ", px(b), " fuel ", b.sel.fuel if is_instance_valid(b) else -1)
+				if is_instance_valid(b):
+					b.jet_hold = false
+				await until(func(): return gone(b) or (not b.busy and not b.sel.air), 600)
+				print("[lesson] jet: landed at ", px(b), " flag ", f)
+				check(await lesson_left(b) == "pass", "lesson 6: flying up onto the platform passes")
+			6:
+				f = b.lesson_flag()
+				await walk(b, 230)
+				var gs: Dictionary = b.grapple_spot(b.sel, Vector2(304, f.y + 6), 280)
+				check(gs.ok, "a grapple aimed at the cliff's top edge gets a grip")
+				await aim_card(b, 0, Vector2(304, f.y + 6))
+				print("[lesson] grapple: now at ", px(b), " flag ", f)
+				check(await lesson_left(b) == "pass", "lesson 7: the Grapple Hook zips up the cliff")
+			7:
+				await walk(b, 200)
+				print("[lesson] drill: at ", px(b))
+				b.select_card(0)
+				b.mouse = Vector2(260, b.sel.y - 8)
+				await frames_wait(3)
+				b.world_click(b.mouse)
+				await until(func(): return gone(b) or (not b.busy and b.settled()), 1500)
+				print("[lesson] drill: now at ", px(b))
+				check(await lesson_left(b) == "pass", "lesson 8: drilling through the rock passes")
+			8:
+				b.sel.energy = 0
+				b.ui_dirty = true
+				r = await lesson_left(b)
+				check(r == "fail:ammo", "lesson 9: no energy left with targets standing goes again (%s)" % r)
+				b = await lesson_battle(8)
+				check(b.sel.energy == 3 and b.sel.hand.size() == 3, "the retry has three rifle shots and 3 energy again")
+				b.aim_hold = true
+				for e in b.units.filter(func(o): return o.team == "enemy"):
+					if gone(b):
+						break
+					await aim_card(b, 0, Vector2(e.x, e.y - e.h * 0.55))
+					print("[lesson] shot at %d,%d: hp %d dead %s energy %d res %s" % [e.x, e.y, e.hp, e.dead, b.sel.energy if is_instance_valid(b) else -1, lesson_res])
+				check(await lesson_left(b) == "pass", "lesson 9: dropping both dummies passes")
+			9:
+				# search for a throw that works, retrying the lesson as needed
+				var won := false
+				for k in 12:
+					if k > 0:
+						b = await lesson_battle(9)
+					var p := Vector2(b.sel.x + 70 + k * 12, b.sel.y - 120 - (k % 3) * 20)
+					await aim_card(b, 0, p)
+					await aim_card(b, 0, p + Vector2(10, -10))
+					if is_instance_valid(b) and not b.lesson_over:
+						print("[lesson] nade stalled: busy %s state %s settled %s projs %d air %s hp %s" % [b.busy, b.state, b.settled(), b.projs.size(), b.units.filter(func(o): return o.air and not o.sunk and not o.gone).map(func(o): return o.kind), b.units.filter(func(o): return o.team == "enemy").map(func(o): return o.hp)])
+						await shot("lesson_10_stall_%d" % k)
+					r = await lesson_left(b)
+					print("[lesson] nade try %d at %s: %s" % [k, p, r])
+					if r == "pass":
+						won = true
+						break
+				check(won, "lesson 10: a frag over the wall can drop both")
+			10:
+				check(b.squad_alive().size() == Run.soldiers.size() and b.sel.hand.size() > 1, "lesson 11 is the whole squad with real hands")
+				b.end_turn(true)
+				await until(func(): return gone(b) or (b.state == "player" and not b.busy), 2400)
+				print("[lesson] live: after the enemy turn hp ", b.squad_alive().map(func(u): return u.hp) if is_instance_valid(b) else [])
+				if not gone(b):
+					check(b.round_n == 2, "the live-fire Jackals get a turn")
+					for e in b.units.filter(func(o): return o.team == "enemy" and not o.dead):
+						b.kill(e, b.sel)
+				r = await lesson_left(b)
+				check(r == "pass", "lesson 11: dropping every Jackal passes (%s)" % r)
+	await until(func(): return main.battle == null or not is_instance_valid(main.battle), 600)
 	await frames_wait(30)
-	check(Run.meta.get("trained", false), "winning the drill marks training done")
-	check(main.call_layer.get_child_count() > 0 and main.call_layer.get_child(0).lines[0].text == Data.TUT_DONE_LINES[0], "the sergeant signs off over the title")
+	if start_arg == 0:
+		check(Run.meta.get("trained", false), "finishing boot camp marks training done")
+		await shot("lesson_done_title")
 	if not had:
 		Run.meta.erase("trained")
 		Run.save_meta()
@@ -2057,17 +2210,11 @@ func newplayer4() -> void:
 	Run.meta["tips_off"] = true
 	check(Data.ITEMS.ammopouch.text != "+1 energy on round 1.", "Ammo Pouch text doesn't repeat its stat line")
 	check(Data.INTEL.clear.name != "CLEAR SKIES", "the no-event intel isn't named after the weather")
-	# training: a spent recruit hands the frag lesson to one who can still throw
+	# a boot camp lesson with targets in it (the old drill's frag hand-off went with the drill)
 	main.start_training()
+	main.start_lesson(8)
 	var b: Battle = main.battle
 	await until(func(): return b.state == "player" and not b.busy)
-	b.tut_step = b.TUT_THROW
-	b.tut_said = b.TUT_THROW
-	var spent: Unit = b.sel
-	spent.energy = 0
-	b.tut_update()
-	check(b.sel != spent and b.sel.energy >= 1, "the frag lesson moves to a recruit with energy")
-	check(b.sel.hand.any(func(c): return c.key == "frag"), "that recruit holds the frag")
 	# idle pot shots: a small plain flash and no Sprite Fusion strike
 	var u: Unit = b.squad_alive()[0]
 	var tg: Unit = null
@@ -2217,13 +2364,14 @@ func dcalls() -> void:
 	check(["hop", "sprint", "jetpack", "girder"].all(func(n): return Art.tex.has("ic_" + n) and Art.tex["ic_" + n] != null), "D6: movement cards have their own icons")
 	check(Data.COMMANDS[0].id == "doubledown" and Data.COMMANDS[0].text.begins_with("ONE USE"), "D8: Double Down says it's spent after one use")
 	check(Data.CARDS.zipline.reach >= 440, "D11: zipline reach is 30%% longer (%d)" % Data.CARDS.zipline.reach)
-	# D2: the walk step ends at the flag
+	# D2: boot camp's walking lesson has its flag (the lessons scenario walks to it)
 	main.start_training()
 	var b: Battle = main.battle
 	await until(func(): return b.state == "player" and not b.busy)
-	b.squad()[0].x = b.TUT_FLAG_X - 2
-	await until(func(): return b.tut_step == b.TUT_SHOOT, 120)
-	check(b.tut_step == b.TUT_SHOOT, "D2: reaching the flag ends the walk step")
+	check(b.lesson_flag() != null, "D2: the walking lesson puts up a flag to walk to")
+	main.start_lesson(8)
+	b = main.battle
+	await until(func(): return b.state == "player" and not b.busy)
 	# D5: a 10-card hand narrows its cards and a hovered card comes fully clear
 	var u: Unit = b.sel
 	for k in ["sprint", "hop", "frag", "rifle", "pistol", "drill", "jumppack", "girder", "medkit", "smoke"]:

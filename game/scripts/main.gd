@@ -128,7 +128,7 @@ func show_title() -> void:
 	# N4: each mode says what it is
 	s.buttons = [["CAMPAIGN", func(): show_slots(), "5 ACTS  COMPANY OF %d  SAVED" % Data.COMPANY_MAX],
 		["QUICK RUN", func(): quick_run(), "%d LEVELS AND A FINALE" % Data.LEVELS.size()],
-		["TRAINING", func(): start_training(), "OPTIONAL  LEARN THE BASICS", Color("9aa2ae") if Run.meta.get("trained", false) else Color("ffb23e")]]
+		["TRAINING", func(): start_training(), "STEP BY STEP  ABOUT 10 MINUTES", Color("9aa2ae") if Run.meta.get("trained", false) else Color("ffb23e")]]
 	s.corner = ["DAILY OP", func(): start_daily()]  # D2
 	# V6: the blood and ichor sprays can be switched off
 	s.corner2 = ["BLOOD: " + ("ON" if Run.meta.get("blood", true) else "OFF"), func():
@@ -366,18 +366,55 @@ func start_battle(idx: int, custom := {}) -> Battle:
 		pending_call = []
 	return battle
 
+var tut_snap := {}  # the run as it was when the tutorial started: every lesson try starts from it
+var tut_tries := 0  # failed tries on the current lesson
+
 func start_training() -> void:
-	## N6: the optional drill. A fresh squad, the sergeant on the tablet, and nothing carries over.
+	## The step-by-step tutorial: one short lesson per screen, the sergeant on the tablet, and
+	## nothing carries over. A failed lesson starts again on the spot with the same kit.
 	Run.new_run()
-	var b := start_battle(0, Data.TRAINING.duplicate(true))
+	# always the four original classes, whatever squad the player drafts for quick runs
+	Run.soldiers.clear()
+	for k in Data.BASE_CLASSES:
+		Run.soldiers.append(Run.make_soldier(Run.class_def(k)))
+	tut_snap = Run.snapshot()
+	start_lesson(0)
+
+func start_lesson(i: int, retry := "") -> void:
+	Run.set_state(tut_snap.duplicate(true))
+	if retry == "" and call_layer != null:
+		for c in call_layer.get_children():
+			c.queue_free()  # the last lesson's radio is over: this one calls in fresh
+	tut_tries = tut_tries + 1 if retry != "" else 0
+	var L: Dictionary = Data.LESSONS[i]
+	var m: Dictionary = Data.LESSON_BASE.duplicate(true)
+	m["segments"] = [L.seg]
+	m["lesson"] = L.duplicate(true)
+	m["lesson_i"] = i
+	m["retry"] = retry
+	m["tries"] = tut_tries
+	m["name"] = L.title
+	m["banner"] = "LESSON %d OF %d" % [i + 1, Data.LESSONS.size()]
+	if L.get("live", false):
+		m["hp_mul"] = 0.7
+	else:
+		m["only"] = Run.soldiers[0].key
+	var b := start_battle(0, m)
 	b.mission_over.disconnect(_on_mission_over)
-	b.mission_over.connect(func(won: bool):
-		if won:
+	b.lesson_done.connect(func(res: String): lesson_done(i, res))
+
+func lesson_done(i: int, res: String) -> void:
+	if res.begins_with("fail"):
+		start_lesson(i, res.substr(5))
+	elif i + 1 < Data.LESSONS.size():
+		start_lesson(i + 1)
+	else:
+		if res == "pass":
 			Run.meta["trained"] = true
 			Run.save_meta()
 		Run.new_run()
 		show_title()
-		call_in((Data.TUT_DONE_LINES if won else Data.TUT_FAIL_LINES).map(func(l): return Run.radio_line("sarge", l, []))))
+		call_in(Data.TUT_DONE_LINES.map(func(l): return Run.radio_line("sarge", l, [])))
 
 func start_practice(i: int) -> void:
 	## D5: one soldier, their deck as it stands, dummies that never shoot back. Everything the
