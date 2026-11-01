@@ -15,8 +15,30 @@ const NEAR := 0.5
 const SUN := Vector2(700, 240)
 const GRADE := {"dusk": Color(0.10, 0.04, 0.12, 0.40), "jungle": Color(0.02, 0.07, 0.05, 0.40), "night": Color(0.01, 0.02, 0.06, 0.35)}  # where the sky texture puts the sun / moon on screen
 
+var water_line: Node2D
+
+class WaterLine extends Node2D:
+	## The water stays at full color: it is drawn by a child that skips the backdrop's dimming.
+	var bd
+	func _process(_d: float) -> void:
+		queue_redraw()
+	func _draw() -> void:
+		if bd.sky != null:
+			bd.draw_water_on(self, bd.b.cam_x)
+
 func setup(th: String) -> void:
 	theme = th
+	if material == null:
+		var m := ShaderMaterial.new()
+		m.shader = preload("res://shaders/backdrop.gdshader")
+		material = m
+	# night backdrops are dark already: dim them less, so the moonlit skyline keeps its shape
+	material.set_shader_parameter("val", 1.0 if th == "night" else 0.9)
+	material.set_shader_parameter("sat", 0.8 if th == "night" else 0.7)
+	if water_line == null:
+		water_line = WaterLine.new()
+		water_line.bd = self
+		add_child(water_line)
 	modulate = b.th.get("sky", Color.WHITE)  # a biome can warm or cool the whole backdrop
 	sky = load("res://assets/bg/%s_sky.png" % th)
 	clouds = load("res://assets/bg/%s_clouds.png" % th)
@@ -65,7 +87,6 @@ func _draw() -> void:
 	draw_rect(Rect2(cx - 8, -8, Battle.W + 16, Battle.H + 16), GRADE.get(theme, GRADE.dusk))
 	if theme != "night":
 		draw_shafts(cx)
-	draw_water(cx)
 
 # ---------------------------------------------------------------- distant life
 func draw_flashes(cx: float) -> void:
@@ -191,18 +212,18 @@ func draw_flock(cx: float, par: float) -> void:
 			draw_rect(Rect2(p.x - sz * 3, p.y + sz, sz * 2, sz), col)
 			draw_rect(Rect2(p.x + sz, p.y + sz, sz * 2, sz), col)
 
-func draw_water(cx: float) -> void:
+func draw_water_on(ci: CanvasItem, cx: float) -> void:
 	var th: Dictionary = b.th
 	var wy := float(Battle.WATER_Y)
-	draw_rect(Rect2(cx - 8, wy, Battle.W + 16, Battle.H - wy + 8), th.water[0])
+	ci.draw_rect(Rect2(cx - 8, wy, Battle.W + 16, Battle.H - wy + 8), th.water[0])
 	var x2 := floorf(cx / 8) * 8 - 8
 	while x2 < cx + Battle.W + 8:
 		var yy := wy + roundf(sin(x2 / 23.0 + b.t / 18.0) * 2)
-		draw_rect(Rect2(x2, yy, 8, 3), th.water[1])
+		ci.draw_rect(Rect2(x2, yy, 8, 3), th.water[1])
 		if int(x2 / 8) % 5 == 0:
-			draw_rect(Rect2(x2 + 2, yy + 8 + roundf(sin(x2 + b.t / 30.0) * 2), 4, 1), th.water[1])
+			ci.draw_rect(Rect2(x2 + 2, yy + 8 + roundf(sin(x2 + b.t / 30.0) * 2), 4, 1), th.water[1])
 		# glints, thickest under the sun / moon
 		var near_sun := absf(x2 - cx - SUN.x) < 60
 		if Terrain.hash2(int(x2 / 8), b.t / 10) < (0.35 if near_sun else 0.04):
-			draw_rect(Rect2(x2 + 2, yy + 4 + (int(x2) % 3) * 6, 4 if near_sun else 2, 1), Color(1, 0.95, 0.8, 0.8))
+			ci.draw_rect(Rect2(x2 + 2, yy + 4 + (int(x2) % 3) * 6, 4 if near_sun else 2, 1), Color(1, 0.95, 0.8, 0.8))
 		x2 += 8

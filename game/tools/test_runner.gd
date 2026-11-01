@@ -9,6 +9,7 @@ extends Node
 ## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
 ## crumble (falling structures tip, spin, splinter and crush), detours2 (Doc's field tent, Strange Signal, the Lab's rank 3 surgeries),
 ## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), polish1 (overnight polish round 1: log wrap, label overlaps, dial rows), polish2 (round 2: card titles, shelf text, memorial, boss bar), polish3 (round 3: campaign War Room and brief), dcalls (D1-D12 from the full-build playtest page), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
+## clarity (DROWN/LAVA strip over the hand, terrain ink, dimmed backdrop), survey (a screenshot of three screens of each biome; --biome=a,b picks some),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -923,6 +924,10 @@ func run() -> void:
 			await operator_call()
 		"training":
 			await training()
+		"survey":
+			await survey()
+		"clarity":
+			await clarity()
 		"trailer":
 			await preload("res://tools/trailer.gd").new().run(self, clip_arg)
 		"campaign":
@@ -9956,3 +9961,57 @@ func xcalls() -> void:
 	check(main.hud.hint_text() != "", "X10: a first-mission player still gets it")
 	Run.history = keep_hist; Run.meta["wins"] = keep_wins
 	Run.meta.erase("ff")
+
+func survey() -> void:
+	var only: Array = Array(biome_arg.split(",")) if biome_arg != "" else Data.BIOMES.keys()
+	for id in only:
+		var bm: Dictionary = Data.BIOMES[id]
+		var segs: Array = bm.segments.slice(0, 3)
+		var b: Battle = await m_battle(id, segs)
+		for i in 3:
+			cam_on(b, 300 + i * 900)
+			await frames_wait(20)
+			await shot("survey_%s_%d" % [id, i])
+
+func clarity() -> void:
+	## 2026-11-01 playability round: open water behind the hand gets a DROWN strip on top of the
+	## cards, terrain carries an ink outline, and the backdrop is dimmed behind the playfield.
+	var b: Battle = await m_battle("desert", ["trenches"])
+	m_clear(b)
+	var rail = b.hud.water_rail
+	cam_on(b, 600)
+	await frames_wait(5)
+	check(rail.runs(b).is_empty(), "solid ground all the way across: no DROWN strip")
+	# dig a pit straight down to the water in front of the squad
+	var px := b.cam_x + 480.0
+	b.T.fill_r(px - 30, 0, 60, Battle.WATER_Y + 8, 0)
+	b.T.flush()
+	await frames_wait(5)
+	var r: Array = rail.runs(b)
+	check(r.size() == 1 and absf(r[0][0] - 450.0) <= 8 and absf(r[0][1] - 510.0) <= 8, "a pit down to the water is marked where it is on screen %s" % [r])
+	await shot("clarity_drown_pit")
+	# a lid over the pit (a plank) hides it again: nothing falls in from above
+	b.T.fill_r(px - 30, 300, 60, 8, 3)
+	b.T.flush()
+	await frames_wait(5)
+	check(rail.runs(b).is_empty(), "a plank over the pit: no strip")
+	b.T.fill_r(px - 30, 300, 60, 8, 0)
+	b.T.flush()
+	# arming a card: the hand ghosts out, the strip stays
+	b.select_card(0)
+	await frames_wait(10)
+	check(b.hud.targeting and rail.runs(b).size() == 1, "the strip stays while a card is armed")
+	await shot("clarity_drown_armed")
+	b.cancel_card()
+	check(b.get_node("Backdrop").material != null, "the backdrop is dimmed behind the playfield")
+	check(b.get_node("Backdrop").water_line != null, "the water is drawn at full color on its own layer")
+	# the volcano: the strip reads LAVA
+	b = await m_battle("volcano", ["trenches"])
+	m_clear(b)
+	cam_on(b, 600)
+	px = b.cam_x + 480.0
+	b.T.fill_r(px - 30, 0, 60, Battle.WATER_Y + 8, 0)
+	b.T.flush()
+	await frames_wait(5)
+	check(b.hud.water_rail.runs(b).size() >= 1, "an open lava pit is marked too")
+	await shot("clarity_lava_pit")

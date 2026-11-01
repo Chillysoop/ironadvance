@@ -10,6 +10,13 @@ uniform vec2 cell_offset = vec2(0.0);   // world cell of texel (0,0); keeps patt
 uniform vec3 tint = vec3(1.0);
 uniform vec3 grass_col : source_color = vec3(0.486, 0.69, 0.259);
 
+uniform vec3 ink_col = vec3(0.05, 0.035, 0.04);
+uniform float ink_a = 0.85;
+
+bool is_body(int m) {
+	return m != 0 && m != 5 && m != 6;
+}
+
 float hash(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
 	p += dot(p, p + 45.32);
@@ -40,7 +47,12 @@ void fragment() {
 			c = grass_col * (n < 0.2 ? 1.15 : 0.95);
 			COLOR = vec4(c * tint, 1.0);
 		} else {
-			COLOR = vec4(0.0);
+			// a dark ink line around every solid body, so the ground reads apart from the backdrop
+			bool ink = (sp.x == 0 && is_body(mat_at(TEXTURE, cell + ivec2(-1, 0))))
+				|| (sp.x == 1 && is_body(mat_at(TEXTURE, cell + ivec2(1, 0))))
+				|| (sp.y == 0 && is_body(mat_at(TEXTURE, cell + ivec2(0, -1))))
+				|| (sp.y == 1 && is_body(below));
+			COLOR = ink ? vec4(ink_col, ink_a) : vec4(0.0);
 		}
 	} else if (m == 5) {
 		// steel grating: a bright top rail and bottom rail, open slots between the bars
@@ -106,6 +118,7 @@ void fragment() {
 			if (seam) c = vec3(0.34, 0.22, 0.12);
 			if (mod(ap.x, 9.0) < 1.0 && !seam) c = vec3(0.4, 0.26, 0.13);
 			if (n > 0.95) c = vec3(0.7, 0.7, 0.66); // nail heads
+			if (up_e && sp.y == 0) c = vec3(0.82, 0.62, 0.38); // a worn, lit top edge to stand on
 		} else if (m == 7) {
 			// sheet ice: pale blue, a white glaze on top and diagonal glints
 			c = vec3(0.62, 0.82, 0.93);

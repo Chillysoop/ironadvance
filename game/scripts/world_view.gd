@@ -1008,11 +1008,19 @@ func draw_plate(u: Unit) -> void:
 		if u.fl.has("quarry"):
 			var wn: String = ("NEMESIS: " if u.fl.has("nemesis") else "WANTED: ") + u.fl.quarry
 			Art.text(self, wn, in_view(Vector2(x, y - 14 - lift), wn), 8, Color("ff4d3d") if b.t % 40 < 28 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
-	draw_statuses(u, x, y - lift - (24 if u.fl.has("quarry") else (14 if u.elite != "" else 4)))
+	var st_y: float = y - lift - (24 if u.fl.has("quarry") else (14 if u.elite != "" else 4))
+	var has_st := draw_statuses(u, x, st_y)
 	if u.type == "radio" and b.radio_t != null and u.active:
+		# the BACKUP count steps up over a status row instead of printing into it (MBACKUP)
+		if has_st:
+			y = st_y - 10
 		var col := Color("ff4d3d") if b.radio_t <= 1 else Color("ffd23a")
-		draw_texture_rect(Art.tex.ic_radio, Rect2(clampf(x, b.cam_x + 44, b.cam_x + 916) - 34, y - 16, 16, 16), false)
-		Art.text(self, "BACKUP %d" % b.radio_t, Vector2(clampf(x, b.cam_x + 44, b.cam_x + 916) - 14, y - 4), 8, col)
+		var rx := clampf(x, b.cam_x + 44, b.cam_x + 916)
+		var rs := "BACKUP %d" % b.radio_t
+		# a dark plate under the icon and the word, so a status letter beside it can't read as part of it (MBACKUP)
+		draw_rect(Rect2(rx - 35, y - 16, Art.text_width(rs, 8) + 26, 17), Color(C_DARK, 0.75))
+		draw_texture_rect(Art.tex.ic_radio, Rect2(rx - 34, y - 16, 16, 16), false)
+		Art.text(self, rs, Vector2(rx - 14, y - 4), 8, col)
 
 func draw_squad_plate(u: Unit, x: float) -> void:
 	# dog-tag style plate at the feet: HP blocks, adrenaline flame bar, energy bolts
@@ -1072,7 +1080,7 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 			var hw := Art.text_width(tag, 8) / 2.0 + 2
 			Art.text(self, tag, Vector2(clampf(x, b.cam_x + hw, b.cam_x + Battle.W - hw), by - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 
-func draw_statuses(u: Unit, x: float, y: float) -> void:
+func draw_statuses(u: Unit, x: float, y: float) -> bool:
 	## Short colored tags for C5 statuses, plus AIR for a body a squadmate launched (SKEET bait).
 	var tags: Array = []
 	if u.team == "enemy" and u.air and not u.para and u.last_hit_by is Unit and u.last_hit_by.team == "squad":
@@ -1086,7 +1094,7 @@ func draw_statuses(u: Unit, x: float, y: float) -> void:
 		if u.st[k] > 0:
 			tags.append([Data.STATUS[k].short, Data.STATUS[k].c])
 	if tags.is_empty():
-		return
+		return false
 	var tw := 0.0
 	for tg in tags:
 		tw += Art.text_width(tg[0], 8) + 4
@@ -1096,6 +1104,7 @@ func draw_statuses(u: Unit, x: float, y: float) -> void:
 	for tg in tags:
 		Art.text(self, tg[0], Vector2(cx, y), 8, tg[1])
 		cx += Art.text_width(tg[0], 8) + 4
+	return true
 
 # ---------------------------------------------------------------- effects
 func draw_smokes() -> void:
