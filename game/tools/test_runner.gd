@@ -2210,17 +2210,11 @@ func newplayer4() -> void:
 	Run.meta["tips_off"] = true
 	check(Data.ITEMS.ammopouch.text != "+1 energy on round 1.", "Ammo Pouch text doesn't repeat its stat line")
 	check(Data.INTEL.clear.name != "CLEAR SKIES", "the no-event intel isn't named after the weather")
-	# training: a spent recruit hands the frag lesson to one who can still throw
+	# a boot camp lesson with targets in it (the old drill's frag hand-off went with the drill)
 	main.start_training()
+	main.start_lesson(8)
 	var b: Battle = main.battle
 	await until(func(): return b.state == "player" and not b.busy)
-	b.tut_step = b.TUT_THROW
-	b.tut_said = b.TUT_THROW
-	var spent: Unit = b.sel
-	spent.energy = 0
-	b.tut_update()
-	check(b.sel != spent and b.sel.energy >= 1, "the frag lesson moves to a recruit with energy")
-	check(b.sel.hand.any(func(c): return c.key == "frag"), "that recruit holds the frag")
 	# idle pot shots: a small plain flash and no Sprite Fusion strike
 	var u: Unit = b.squad_alive()[0]
 	var tg: Unit = null
@@ -2370,13 +2364,14 @@ func dcalls() -> void:
 	check(["hop", "sprint", "jetpack", "girder"].all(func(n): return Art.tex.has("ic_" + n) and Art.tex["ic_" + n] != null), "D6: movement cards have their own icons")
 	check(Data.COMMANDS[0].id == "doubledown" and Data.COMMANDS[0].text.begins_with("ONE USE"), "D8: Double Down says it's spent after one use")
 	check(Data.CARDS.zipline.reach >= 440, "D11: zipline reach is 30%% longer (%d)" % Data.CARDS.zipline.reach)
-	# D2: the walk step ends at the flag
+	# D2: boot camp's walking lesson has its flag (the lessons scenario walks to it)
 	main.start_training()
 	var b: Battle = main.battle
 	await until(func(): return b.state == "player" and not b.busy)
-	b.squad()[0].x = b.TUT_FLAG_X - 2
-	await until(func(): return b.tut_step == b.TUT_SHOOT, 120)
-	check(b.tut_step == b.TUT_SHOOT, "D2: reaching the flag ends the walk step")
+	check(b.lesson_flag() != null, "D2: the walking lesson puts up a flag to walk to")
+	main.start_lesson(8)
+	b = main.battle
+	await until(func(): return b.state == "player" and not b.busy)
 	# D5: a 10-card hand narrows its cards and a hovered card comes fully clear
 	var u: Unit = b.sel
 	for k in ["sprint", "hop", "frag", "rifle", "pistol", "drill", "jumppack", "girder", "medkit", "smoke"]:
