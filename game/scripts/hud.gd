@@ -25,6 +25,7 @@ var deck_open := false    # the DECK viewer is up (it waits on nothing, so Esc m
 var hand_x0 := 270.0      # left edge of the hand, so the action meter can sit beside it
 var coach_queue: Array = []  # N1/N5: [who, title, text] pages waiting for a quiet player turn
 var coach_box: Control = null
+var water_rail: Control
 var targeting := false    # a card is armed: the hand ghosts out so it doesn't hide what you aim at
 
 const INK := Color(0.05, 0.035, 0.03)
@@ -48,6 +49,12 @@ func setup(battle: Battle) -> void:
 	hand_box = Control.new()
 	hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(hand_box)
+	# the water (or lava) line sits behind the hand: mark where it is open, on top of the cards
+	water_rail = WaterRail.new()
+	water_rail.hud = self
+	water_rail.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	water_rail.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(water_rail)
 	var vp := VehiclePop.new()
 	vp.hud = self
 	vp.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1335,6 +1342,100 @@ class Overlay extends Control:
 			Art.text(self, bn.text, Vector2(480 + (1 - k) * -300, 226), sz, bn.c, HORIZONTAL_ALIGNMENT_CENTER, 3, false, al)
 			if bn.sub != "":
 				Art.text(self, bn.sub, Vector2(480, 252), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, false, al)
+
+# ---------------------------------------------------------------- where you can drown
+class WaterRail extends Control:
+	## The water line (y 500) is hidden behind the hand, the roster and the buttons, so a pit that
+	## drops a soldier into it looks like any other pit. Every column where the water (or the
+	## lava) is open gets a wavy strip along the top of the HUD, with a DROWN tag on wide runs.
+	var hud
+	const Y := 466.0
+	const LO := 214.0   # the hand spans LO..HI; the roster and the buttons sit outside it
+	const HI := 828.0
+
+	func _process(_d: float) -> void:
+		queue_redraw()
+
+	var cache_key := ""
+	var cache: Array = []
+
+	func open_col(b: Battle, wx: float, sy: float) -> bool:
+		## true when nothing solid stands anywhere above the deadly surface in this column,
+		## so a soldier who drops or is knocked in here ends up in it
+		if wx < 0 or wx >= b.world_w:
+			return false
+		var y := 0.0 if not b.T.ceiling else 120.0
+		while y < sy - 1:
+			if b.T.solid(wx, y):
+				return false
+			y += Battle.CELL
+		return true
+
+	func runs(b: Battle) -> Array:
+		## [x0, x1] screen spans where the deadly surface is open to the sky
+		var lava: bool = b.rules.get("lava", 0.0) > 0
+		var sy: float = b.lava_y() if lava else float(Battle.WATER_Y)
+		var key := "%d/%d/%d" % [int(b.cam_x), b.T.rev, int(sy)]
+		if key == cache_key:
+			return cache
+		var out: Array = []
+		var start := -1.0
+		var x := -fposmod(b.cam_x, Battle.CELL)
+		while x <= Battle.W:
+			var open := open_col(b, b.cam_x + x + 2, sy)
+			if open and start < 0:
+				start = maxf(0, x)
+			elif not open and start >= 0:
+				if out.size() and start - out[-1][1] <= 8:
+					out[-1][1] = x  # one thin post between two open stretches: one run
+				else:
+					out.append([start, x])
+				start = -1.0
+			x += Battle.CELL
+		if start >= 0:
+			out.append([start, float(Battle.W)])
+		cache_key = key
+		cache = out
+		return out
+
+	func _draw() -> void:
+		var b: Battle = hud.b
+		if b == null or b.T == null or b.state == "over":
+			return
+		var lava: bool = b.rules.get("lava", 0.0) > 0
+		# only while the line really sits behind the HUD (lava can climb up into view)
+		if lava and b.lava_y() < Y - 20:
+			return
+		var al := 1.0
+		if hud.cards.any(func(cv): return cv.hover):
+			al = 0.35  # a lifted card is being read: stay out of its way
+		var c0: Color = Color("ff5a1e") if lava else Color(b.th.water[1])
+		var c1: Color = Color("ffd23a") if lava else c0.lightened(0.45)
+		var word := "LAVA" if lava else "DROWN"
+		for r in runs(b):
+			var x0: float = r[0]
+			var x1: float = r[1]
+			if x1 - x0 < 6:
+				continue
+			draw_rect(Rect2(x0 - 1, Y - 3, x1 - x0 + 2, 9), Color(0.03, 0.03, 0.05, 0.8 * al))
+			var x := x0
+			while x < x1:
+				# fainter where it crosses the roster tags and the buttons
+				var a2 := al * (0.55 if x < LO or x > HI else 1.0)
+				var yy := Y + roundf(sin((x + b.cam_x) / 9.0 + b.t / 10.0) * 1.5)
+				draw_rect(Rect2(x, yy - 1, minf(4, x1 - x), 3), Color(c0, a2))
+				if int((x + b.cam_x) / 4) % 3 == 0:
+					draw_rect(Rect2(x, yy - 1, minf(2, x1 - x), 1), Color(c1, a2))
+				x += 4
+			# the tag goes on the part of the run that's over the hand, never over a roster tag
+			var lx0 := maxf(x0, LO)
+			var lx1 := minf(x1, HI)
+			if lx1 - lx0 >= 30:
+				var mx := (lx0 + lx1) / 2.0
+				var bob := 1.0 if b.t % 40 < 20 else 0.0
+				var tw := Art.text_width(word, 8) + 8
+				draw_rect(Rect2(mx - tw / 2, Y - 15 + bob, tw, 11), Color(0.03, 0.03, 0.05, 0.85 * al))
+				Art.text(self, word, Vector2(mx, Y - 7 + bob), 8, Color(c1, al), HORIZONTAL_ALIGNMENT_CENTER)
 
 # ---------------------------------------------------------------- the boarding card
 class VehiclePop extends Control:
