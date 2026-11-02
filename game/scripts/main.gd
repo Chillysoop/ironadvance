@@ -78,6 +78,7 @@ func field_overlay() -> bool:
 func _unhandled_input(ev: InputEvent) -> void:
 	## Esc that no screen used goes back: it presses the screen's BACK / DONE / CLOSE / CANCEL
 	## (or << ...) button, the topmost one that's showing.
+	## With no way back (HQ itself, the debrief, the results) it opens the game menu instead.
 	if not (ev is InputEventKey and ev.pressed and not ev.echo and ev.keycode == KEY_ESCAPE) or battle != null:
 		return
 	var bt = back_button(ui_layer)
@@ -85,6 +86,35 @@ func _unhandled_input(ev: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		Sfx.play("click")
 		bt.pressed.emit()
+	elif menu_ok():
+		get_viewport().set_input_as_handled()
+		open_menu()
+
+var menu_layer: CanvasLayer = null
+
+func menu_ok() -> bool:
+	## The game menu opens over any screen but the title (which has its own buttons for all of it).
+	if get_tree().paused or battle != null or screen == null or not is_instance_valid(screen):
+		return false
+	return not (screen is Screen and screen.mode == "title")
+
+func open_menu() -> Control:
+	## The game menu outside battle: save, settings, controls, report a bug, quit. It pauses the
+	## screen underneath and sits over everything, the operator's tablet included.
+	if not menu_ok():
+		return null
+	Sfx.play("click")
+	if menu_layer == null:
+		menu_layer = CanvasLayer.new()
+		menu_layer.layer = 9
+		add_child(menu_layer)
+	var pm = HudScript.PauseMenu.new()
+	pm.main = self
+	menu_layer.add_child(pm)
+	get_tree().paused = true
+	pm.calls(false)
+	return pm
+
 
 func back_button(n: Node):
 	## The last (topmost) visible, enabled back button under n.
@@ -149,6 +179,8 @@ func show_title() -> void:
 		s.buttons[1][2] = "NEW RUN  REPLACES THE SAVED ONE"  # starting over overwrites the save at the first HQ
 	# R5: volumes, fullscreen, shake, tips and blood (V6) live in one settings panel
 	s.corner2 = ["SETTINGS", func(): open_settings()]
+	if not OS.has_feature("web"):
+		s.corner3 = ["QUIT GAME", func(): get_tree().quit()]
 	var tmax := mini(int(Run.meta.threat_max), Data.THREATS.size())
 	if tmax > 0:
 		# W5: every campaign win opens the next threat level
@@ -620,6 +652,7 @@ class Screen extends Control:
 	var unlock := ""
 	var corner: Array = []  # a small extra button in the top-left corner: [label, callable]
 	var corner2: Array = []  # and one in the top-right corner
+	var corner3: Array = []  # and one in the bottom-left corner (the title's QUIT GAME)
 	var cont: Array = []  # R4: the title's CONTINUE RUN [label, callable, sub], above QUICK RUN
 	var nudge := false  # H4: "NEW HERE?" over TRAINING until boot camp is done once
 	var train_rect := Rect2()
@@ -644,6 +677,17 @@ class Screen extends Control:
 			cb2.position = Vector2(770, 18)
 			cb2.pressed.connect(corner2[1])
 			add_child(cb2)
+		if corner3.size():
+			var cb3 = load("res://scripts/hud.gd").PixButton.new()
+			cb3.text = corner3[0]
+			cb3.small = true
+			cb3.color = Color("6c7480")
+			cb3.size = Vector2(110, 20)
+			cb3.position = Vector2(16, 514)
+			cb3.pressed.connect(corner3[1])
+			add_child(cb3)
+		elif mode != "title" and mode != "dial" and corner2.is_empty():
+			add_child(load("res://scripts/hud.gd").menu_button(Vector2(830, 18)))
 		var n := buttons.size()
 		var widths: Array = []
 		var total := 0.0

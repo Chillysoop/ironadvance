@@ -10,7 +10,7 @@
 cd "$(dirname "$0")/.." || exit 2
 GODOT=${GODOT:-godot}
 OUT=${OUT:-/tmp/ia-smoke}
-SMOKE="runsave settings pause draft recruits identity ending wardeep company aliens3 bcalls xcalls tcalls camp hub doc story gear events10 hq gate tags drill vehicles reinforce field biomes2 stranded bp3"
+SMOKE="runsave settings pause tour draft recruits identity ending wardeep company aliens3 bcalls xcalls tcalls camp hub doc story gear events10 hq gate tags drill vehicles reinforce field biomes2 stranded bp3"
 LONG="playtest campaignplay campsweep trailer campaign pinball survey bot bakefog"
 if [ "$1" = "--all" ]; then
   LIST=$(sed -n '/^\tmatch scenario:/,/^\t\t_:/p' tools/test_runner.gd | grep -oP '^\t\t"[a-z0-9_]+"' | tr -d '\t"')
