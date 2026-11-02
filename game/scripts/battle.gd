@@ -1471,7 +1471,7 @@ func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: boo
 				var fx_: float = sg[0] + (sg[2] - sg[0]) * k / maxf(1, L)
 				var fy_: float = sg[1] + (sg[3] - sg[1]) * k / maxf(1, L)
 				if T.solid(fx_, fy_):
-					T.carve(fx_, fy_, 4, a if a.team == "squad" else null)
+					T.carve(fx_, fy_, 4, a if a.team == "squad" else null, a)
 	for s in tr.segs:
 		tracer(s[0], s[1], s[2], s[3], (Color("ffcf70") if sc else Color("fff4c0")) if a.team == "squad" else Color("ffb0a0"))
 	for p in tr.pings:
@@ -1577,7 +1577,7 @@ func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: boo
 		booms.append({"t": 1, "x": tr.end.x, "y": tr.end.y, "r": 26.0, "dmg": 6, "owner": a})
 	if tr.end != null:
 		var ch := maxf(c.get("chip", 3), 5.5 if tr.end.m == 3 else 0.0)
-		T.carve(tr.end.x, tr.end.y, ch, a if a.team == "squad" else null)
+		T.carve(tr.end.x, tr.end.y, ch, a if a.team == "squad" else null, a)
 		dust(tr.end.x, tr.end.y, MATCOL.get(tr.end.m, Color("c9b38a")))
 
 # ---------------------------------------------------------------- damage, adrenaline, xp, death
@@ -5401,6 +5401,22 @@ func physics(u: Unit) -> void:
 	if u.y > WATER_Y + 2:
 		drown(u)
 
+func undercut(x: float, y: float, r: float, by) -> void:
+	## F3: an enemy shot just took ground out from under a soldier. Remembered for a round so a
+	## drowning that follows can name who did it.
+	if not (by is Unit) or by.team == "squad":
+		return
+	for u in units:
+		if u.team == "squad" and not u.dead and not u.gone and absf(u.x - x) < r + 6 and u.y > y - r - 6 and u.y < y + r + 30:
+			u.fl["undercut"] = [by, round_n]
+
+func undercut_by(u: Unit):
+	## F3: the enemy that cut the ground away under u this round or last, if nothing hit u since.
+	var uc = u.fl.get("undercut", null)
+	if uc == null or u.last_hit_by != null or int(uc[1]) < round_n - 1 or not (uc[0] is Unit):
+		return null
+	return uc[0]
+
 func drown(u: Unit) -> void:
 	## Worms rules: anything that ends up in the water goes under for good.
 	Sfx.play("bubble")
@@ -5410,6 +5426,14 @@ func drown(u: Unit) -> void:
 	if vfx != null:
 		vfx.add(SfBubbles.new(u.x, WATER_Y, H + 16, 1.2))
 	u.sunk = true
+	var cutter = undercut_by(u) if u.team == "squad" and not u.dead else null
+	if cutter != null:
+		# F3: say what sank them, so the player learns where not to stand
+		var nm := String(Data.ETYPES.get(cutter.type, {}).get("name", "the enemy")).to_upper()
+		float_at(u.x, WATER_Y - 30, "%s DROWNED: GROUND SHOT AWAY" % u.def.name, Color("9fe3f0"), true)
+		log_msg("%s drowned: the %s shot the ground out from under them." % [u.def.name, nm.to_lower() if nm != "THE ENEMY" else "enemy"])
+		kill(u, null)
+		return
 	if not u.dead:
 		var hw := biome_rules.hazard_word()
 		float_at(u.x, WATER_Y - 30, ((u.def.name + " DROWNED") if u.team == "squad" else "SPLASH!") if hw == "" else ((u.def.name + " ") if u.team == "squad" else "") + hw, Color("9fe3f0") if hw == "" else Color("ff7a3d"), true)

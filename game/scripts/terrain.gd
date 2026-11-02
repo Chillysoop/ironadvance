@@ -37,6 +37,7 @@ var bridges: Array = []  # standing bridge structs: posts are checked after ever
 var arena_x := 0
 var yard: Array = []     # [x0, x1] of the clearing after the mid camp, where a detour plays out
 var stretches: Array = []  # [x0, x1] of each fighting stretch, in order
+var firm_x1 := 0.0        # F2: left of this the rock under the topsoil is bedrock that blasts only dent
 var camps: Array = []    # safe camps inside the level: {x0, x1, used}
 var ice_runs: Array = []  # [x0, x1] of each sheet of ice on the ground
 var tarps: Array = []     # [x0, x1] of each rubber tarp on the ground
@@ -125,6 +126,7 @@ func build(mission: Dictionary) -> void:
 	lakes = []; cars = []; lifts = []; runways = []; props = []; orig = PackedByteArray()
 	arena_x = 1 << 20  # outposts have no arena
 	var rules: Dictionary = mission.get("rules", {})
+	firm_x1 = float(rules.get("firm_lz", 0.0))
 	stretches = []   # fighting stretches, where a biome's extra fuel and mines and encounters go
 	for sname in mission.segments:
 		var s: Dictionary = Data.SEGMENTS[sname]
@@ -257,6 +259,8 @@ func build(mission: Dictionary) -> void:
 			continue
 		var top := int(round(heights[cx] / CELL))
 		var deep := top + 16 + int(hash2(cx, 7) * 4)
+		if cxx < firm_x1:
+			deep = top + 8 + int(hash2(cx, 7) * 2)  # F2: a thinner topsoil over the landing zone's bedrock
 		# the ground stops at the waterline like Worms: dig through it and there is only water
 		for cy in range(top, WATER_ROW):
 			set_cell(cx, cy, STEEL if rules.get("deck", false) else (4 if cy > deep else 1))
@@ -571,7 +575,8 @@ func flush() -> void:
 		dirty = false
 
 # ---------------------------------------------------------------- destruction
-func carve(x: float, y: float, r: float, cause) -> void:
+func carve(x: float, y: float, r: float, cause, who = null) -> void:
+	## cause gets the credit for props it drops (null for enemies); who, when given, is the real shooter.
 	var R := r + 7
 	var r2 := r * r
 	var R2 := R * R
@@ -593,7 +598,8 @@ func carve(x: float, y: float, r: float, cause) -> void:
 			var d2 := dx * dx + dy * dy
 			if d2 > R2:
 				continue
-			if d2 <= r2 and not (m == 2 and d2 > r2 * 0.45 and r > 6) and not (m == STEEL and d2 > r2 * 0.2):
+			var bedrock := m == 4 and cx * CELL < firm_x1  # F2: the landing zone's bedrock: only a blast's core cuts it
+			if d2 <= r2 and not (m == 2 and d2 > r2 * 0.45 and r > 6) and not (bedrock and d2 > r2 * 0.25 and r > 6) and not (m == STEEL and d2 > r2 * 0.2):
 				set_cell(cx, cy, 0)
 				any = true
 				if randf() < 0.1:
@@ -603,6 +609,8 @@ func carve(x: float, y: float, r: float, cause) -> void:
 				dirty = true
 	if any:
 		check_props(cause)
+		if b != null and b.has_method("undercut"):
+			b.undercut(x, y, R, who if who != null else cause)  # F3
 		check_floating(x, y, r + 8, cause)
 		check_bridges(cause)
 

@@ -741,8 +741,10 @@ func place_job() -> void:
 	## Lays out the op's objective: prisoners, supply dumps, the truck or the marked officer.
 	match bt.job():
 		"rescue":
+			# F4: on the Flooded Delta the prisoners are held 15% nearer the landing zone
+			var near: float = 0.85 if bt.mission.get("biome", "") == "delta" else 1.0
 			for f in [0.45, 0.7, 0.9]:
-				var x := job_spot(bt.world_w * f)
+				var x := job_spot(bt.world_w * f * near)
 				var u := bt.mk_unit(); u.team = "neutral"; u.kind = "pow"; u.x = x; u.y = bt.T.stand_y(x, bt.T.ground_at(x) - 40); u.face = -1
 				u.pow_name = Data.POW_NAMES[randi() % Data.POW_NAMES.size()]
 				u.fl["job"] = true

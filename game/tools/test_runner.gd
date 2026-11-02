@@ -777,6 +777,8 @@ func run() -> void:
 			await drill()
 		"crumble":
 			await crumble()
+		"bp3":
+			await bp3_test()
 		"jumppack":
 			await jumppack()
 		"stranded":
@@ -10285,3 +10287,117 @@ func settings_menu() -> void:
 	Run.meta = keep
 	Run.save_meta()
 	SP.apply()
+
+
+func bp3_test() -> void:
+	## Balance pass 3 (F2-F5, F7): Delta bedrock, naming what sank a soldier, nearer Delta
+	## prisoners, slower level 3 lava, and the crumble pausing after it drowns someone.
+	Run.new_run()
+	Run.leave_campaign()
+	# F2: the Delta landing zone sits on bedrock that blasts only dent
+	var lvl := Run.make_level("delta", 0)
+	lvl["event"] = ""
+	lvl["encounter"] = ""
+	Run.level = lvl
+	var b: Battle = main.start_battle(0, lvl)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.speed = 2.0
+	check(b.T.firm_x1 == 1200.0, "F2: the Delta marks its landing zone as bedrock (%d)" % b.T.firm_x1)
+	var top_at := func(T: Terrain, x: float) -> float:
+		var yy := 4.0
+		while yy < Data.WATER_Y and not T.solid(x, yy):
+			yy += 4.0
+		return yy
+	var tx := 0.0
+	for x in range(600, 1100, 8):
+		if top_at.call(b.T, x) < Data.WATER_Y - 60 and not b.T.pits.any(func(p): return x > p[0] - 30 and x < p[1] + 30):
+			tx = x
+			break
+	check(tx > 0, "found dry ground in the landing zone (%d)" % tx)
+	var g0: float = top_at.call(b.T, tx)
+	for k in 4:
+		b.T.carve(tx, top_at.call(b.T, tx), 30, null)
+	b.T.flush()
+	var g1: float = top_at.call(b.T, tx)
+	check(g1 < Data.WATER_Y - 4, "four big blasts in one crater still leave ground over the river (%d -> %d, water %d)" % [g0, g1, Data.WATER_Y])
+	# the same four blasts past the landing zone dig further
+	var fx := 0.0
+	for x in range(1500, 2600, 8):
+		if absf(top_at.call(b.T, x) - g0) < 12 and not b.T.pits.any(func(p): return x > p[0] - 30 and x < p[1] + 30):
+			fx = x
+			break
+	if fx > 0:
+		var f0: float = top_at.call(b.T, fx)
+		for k in 4:
+			b.T.carve(fx, top_at.call(b.T, fx), 30, null)
+		var f1: float = top_at.call(b.T, fx)
+		check(f1 - f0 > g1 - g0 + 20, "beyond it the same blasts dig much deeper (%d vs %d px)" % [f1 - f0, g1 - g0])
+	var lv2 := Run.make_level("desert", 0)
+	check(not lv2.rules.has("firm_lz"), "only the Delta has it")
+	# F3: an enemy shot that cuts the ground away gets named when the soldier drowns
+	var sq: Array = b.squad()
+	var u: Unit = sq[0]
+	var e := j2_enemy(b, "grunt", tx + 300)
+	ground_unit(b, u, tx, 0)
+	u.last_hit_by = null
+	b.undercut(u.x, u.y + 4, 20, e)
+	check(b.undercut_by(u) == e, "F3: the soldier remembers who shot the ground out")
+	b.undercut(u.x, u.y + 4, 20, sq[1])
+	check(b.undercut_by(u) == e, "the squad's own shots don't count as an enemy cutting the ground")
+	b.T.fill_r(u.x - 24, u.y - 60, 48, Data.WATER_Y - u.y + 70, 0)
+	b.T.flush()
+	u.air = true
+	cam_on(b, tx)
+	await until(func(): return u.sunk, 600)
+	await frames_wait(4)
+	await shot("bp3_undercut")
+	check(u.sunk and b.log_lines.any(func(m): return "shot the ground out from under" in m and String(Data.ETYPES.grunt.name).to_lower() in m), "the log names the enemy (%s)" % str(b.log_lines))
+	# F4: the Delta rescue holds its prisoners nearer the landing zone
+	var spots := {}
+	for biome in ["delta", "desert"]:
+		var rl := Run.make_level(biome, 0)
+		rl["job"] = "rescue"
+		rl["event"] = ""
+		rl["encounter"] = ""
+		Run.level = rl
+		var rb: Battle = main.start_battle(0, rl)
+		await until(func(): return rb.state == "player" and not rb.busy)
+		var ps: Array = rb.units.filter(func(p): return p.fl.get("job", false) and p.kind == "pow")
+		spots[biome] = ps.map(func(p): return p.x / rb.world_w)
+	print("[bp3] prisoners ", spots)
+	check(spots.delta.size() == 3 and spots.desert.size() == 3, "both rescues hold three prisoners")
+	if spots.delta.size() == 3 and spots.desert.size() == 3:
+		check(spots.delta.max() < 0.82 and spots.desert.max() > 0.84, "F4: the last Delta prisoner is held nearer (delta %.2f, desert %.2f of the way)" % [spots.delta.max(), spots.desert.max()])
+	# F5: the lava rises in shorter steps on level 3
+	b = await e_battle("collapse")
+	b.rules = b.rules.duplicate()
+	b.rules["lava"] = 10.0
+	var keep_idx: int = b.mission_idx
+	b.mission_idx = 1
+	var s2: float = b.biome_rules.lava_step()
+	b.mission_idx = 2
+	var s3: float = b.biome_rules.lava_step()
+	b.mission_idx = keep_idx
+	check(is_equal_approx(s2, 5.0) and is_equal_approx(s3, 8.0), "F5: lava steps are 5 on level 2 and 8 (not 10) on level 3 (%.1f, %.1f)" % [s2, s3])
+	# F7: the crumble holds for a round after it drowns a soldier
+	b = await e_battle("collapse")
+	sq = b.squad()
+	var x0: float = b.crumble.x0
+	for i in sq.size():
+		ground_unit(b, sq[i], x0 + 300 + i * 30, 0)
+	cam_on(b, x0 + 200)
+	await b.mid_events.crumble_round()
+	check(b.crumble.on, "F7 setup: the ground starts giving way")
+	var cx: float = b.crumble.x
+	var v: Unit = sq[0]
+	ground_unit(b, v, cx + 40, 0)
+	await b.mid_events.crumble_round()
+	await until(func(): return v.sunk or v.dead, 600)
+	print("[bp3] v at %d,%d dead %s sunk %s air %s cx %d crumble %s" % [v.x, v.y, v.dead, v.sunk, v.air, cx, str(b.crumble)])
+	check(v.sunk and int(b.crumble.get("hold", 0)) == 1, "a soldier caught in the bite drowns and the ground holds next round (sunk %s, hold %s)" % [v.sunk, b.crumble.get("hold", 0)])
+	var cx2: float = b.crumble.x
+	await b.mid_events.crumble_round()
+	check(b.crumble.x == cx2 and int(b.crumble.get("hold", 0)) == 0, "the next round nothing falls")
+	await b.mid_events.crumble_round()
+	check(b.crumble.x == cx2 + Data.CRUMBLE_STEP, "then it carries on")
+	await shot("bp3_crumble")

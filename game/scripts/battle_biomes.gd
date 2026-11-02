@@ -91,7 +91,10 @@ func lava_y() -> float:
 
 func lava_step() -> float:
 	## V2: half steps on level 2 or earlier, so the first volcano a squad meets reaches half as high.
-	return float(bt.rules.get("lava", 10.0)) * (0.5 if bt.mission_idx <= 1 and not bt.mission.get("finale", false) and not Run.campaign() else 1.0)
+	## F5: 20% shorter steps on level 3, where the lava was downing more soldiers than anything else.
+	if bt.mission.get("finale", false) or Run.campaign():
+		return float(bt.rules.get("lava", 10.0))
+	return float(bt.rules.get("lava", 10.0)) * (0.5 if bt.mission_idx <= 1 else 0.8)
 
 func lava_eat() -> void:
 	## The lava burns away wood, ice and rubber below its line, and scorches everything else.

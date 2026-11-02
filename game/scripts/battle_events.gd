@@ -146,6 +146,12 @@ func crumble_round() -> void:
 		bt.banner("THE GROUND IS GIVING WAY!", Color("ff7a3d"), "IT FALLS 120PX BEHIND YOU EVERY ROUND")
 		await bt.wait(30)
 		return
+	if int(bt.crumble.get("hold", 0)) > 0:
+		# F7: the last bite took a soldier, so the ground holds for one round
+		bt.crumble.hold = int(bt.crumble.hold) - 1
+		bt.float_at(bt.crumble.x, 200, "THE GROUND HOLDS... FOR NOW", Color("ffd23a"), true)
+		await bt.wait(16)
+		return
 	var x0: float = bt.crumble.x
 	var x1: float = minf(bt.crumble.x1, x0 + Data.CRUMBLE_STEP)
 	bt.crumble.x = x1
@@ -159,12 +165,17 @@ func crumble_round() -> void:
 	bt.T.check_bridges(null)
 	bt.shake += 6
 	Sfx.play("collapse")
+	var caught: Array = []
 	for u in bt.units:
 		if not u.dead and not u.gone and u.x >= x0 - 8 and u.x < x1 + 4:
 			u.air = true
 			u.walk = null
+			if u.team == "squad":
+				caught.append(u)
 	await bt.wait(20)
 	await bt.until(bt.settled)
+	if caught.any(func(u): return u.sunk):
+		bt.crumble["hold"] = 1  # F7: one round's grace for the rest of the squad
 
 # --- R6 transformations
 func transform_bonus(k: String, u: Unit) -> bool:
