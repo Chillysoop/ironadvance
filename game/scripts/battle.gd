@@ -1964,7 +1964,7 @@ func kill(tg: Unit, src) -> void:
 		float_text(tg, "UNDEAD!", Color("9df25c"), true)
 		return
 	if debug and tg.team == "squad":
-		print("[down r%d] %s at %d,%d hp %d sunk %s lava %d by %s" % [round_n, tg.def.key, int(tg.x), int(tg.y), tg.hp, tg.sunk, lava_k, (src.team + ":" + (src.type if src.team != "squad" else src.def.key)) if src is Unit else str(src)])
+		print("[down r%d] %s at %d,%d hp %d sunk %s lava %d by %s last %s" % [round_n, tg.def.key, int(tg.x), int(tg.y), tg.hp, tg.sunk, lava_k, (src.team + ":" + (src.type if src.team != "squad" else src.def.key)) if src is Unit else str(src), (tg.last_hit_by.team + ":" + (tg.last_hit_by.type if tg.last_hit_by.team != "squad" else tg.last_hit_by.def.key)) if tg.last_hit_by is Unit else "-"])
 	tg.dead = true
 	tg.hp = 0
 	tg.dead_t = 0

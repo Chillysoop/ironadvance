@@ -5423,6 +5423,27 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 					print("[lava] %s climbs %d,%d -> %d,%d (lava %d)" % [u.def.key, int(u.x), int(u.y), int(best.x), int(best.y), int(b.biome_rules.lava_y())])
 					b.do_move(u, best.x)
 					await until(func(): return res.done or not b.busy, 20000)
+			# R10: when the ground is giving way behind the squad, walk out of the next round's bite first
+			# (a player sees the banner and the red zone; the bot used to stand in it and drown)
+			if not b.crumble.is_empty() and b.crumble.get("on", false) and b.crumble.x < b.crumble.x1 and not u.dead and u.move_left > 20 \
+					and u.x < b.crumble.x + Data.CRUMBLE_STEP + 24:
+				var safe: float = b.crumble.x + Data.CRUMBLE_STEP + 40
+				var best_x: float = u.x
+				var dx: float = 24.0
+				while dx <= u.move_left:
+					var nx: float = u.x + dx
+					dx += 24.0
+					if nx > b.cam_x + b.W - 14:
+						break
+					var sim := b.phys.sim_walk(u, nx, absf(nx - u.x) + 8)
+					if not sim.pts.is_empty() and sim.x > best_x:
+						best_x = sim.x
+						if best_x >= safe:
+							break
+				if best_x > u.x + 8:
+					print("[crumble] %s steps %d -> %d (edge %d)" % [u.def.key, int(u.x), int(best_x), int(b.crumble.x)])
+					b.do_move(u, best_x)
+					await until(func(): return res.done or not b.busy, 20000)
 			var guard := 0
 			while guard < 8 and not res.done and b.state == "player":
 				guard += 1
