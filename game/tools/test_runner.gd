@@ -1399,7 +1399,7 @@ func field() -> void:
 	moss.deck.append(Run.new_card("rifle", 0, "shop"))
 	b.end_turn(true)
 	await until(func(): return b.round_n == 2 and b.state == "player" and not b.busy)
-	check(b.units.filter(func(o): return o.team == "enemy" and not o.dead).size() == b.dummies.size(), "the dummies stand back up when they are all down")
+	check(b.units.filter(func(o): return o.team == "enemy" and not o.dead).size() == b.dummies.size(), "the dummies stand back up when they are all down (%d up of %d, round %d)" % [b.units.filter(func(o): return o.team == "enemy" and not o.dead).size(), b.dummies.size(), b.round_n])
 	check(me.xp_gain == 0 and b.lvl_queue.is_empty(), "no XP at the range")
 	check(b.round_n == 2 and me.hp > 0, "no enemy phase: round 2 starts with Moss untouched")
 	await shot("field_range_reset")
