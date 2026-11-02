@@ -229,12 +229,20 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	var boar_kit: String = kits[vr.randi() % kits.size()] if boss == "boar" else ""
 	if tier == 0 and first_run and daily == "" and not campaign():
 		boar_kit = "standard"
+	var rare := ""
+	if vr.randf() < Data.RARE_CHANCE:
+		var rk: Array = Data.RARES.keys()
+		rare = rk[vr.randi() % rk.size()]
+	if bm.rules.get("aliens", false) and rare == "ace":
+		rare = "wreck"  # no Jackals in the Hive
+	if tier == 0 and first_run and daily == "" and not campaign():
+		rare = ""
 	var layout: Array = ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")]
 	if not campaign():
 		# X8: a quick-run level is one screen shorter: no second camp before the boss (the campaign's op layout)
 		layout = ["start", pool[0], "camp", "yard", pool[1], bm.get("arena", "arena")]
 	return {"event": event, "bounties": bpool.slice(0, 3), "name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "signal": signal_id, "breach": breach, "encounter": enc, "boss": boss, "walker": walker, "miniboss": miniboss,
-		"garrison": garrison, "remix": remix, "boar_kit": boar_kit,
+		"garrison": garrison, "remix": remix, "boar_kit": boar_kit, "rare": rare,
 		"segments": layout,
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
 
@@ -262,6 +270,13 @@ func take_run_order(id: String) -> void:
 					top = maxi(top, int(Data.CARDS[k].get("rarity", 0)))
 				var best: Array = pool.filter(func(k): return int(Data.CARDS[k].get("rarity", 0)) == top)
 				s.deck.append(new_card(best[rng.randi() % best.size()], -1, "order"))
+
+func rare_text(id: String) -> String:
+	var tx: String = Data.RARES[id].text
+	match id:
+		"wreck": return tx % [Data.RARE_WRECK_SALVAGE, Data.RARE_WRECK_BIO]
+		"ace": return tx % Data.ACE_PAY
+	return tx
 
 func run_order_text(id: String) -> String:
 	var tx: String = Data.RUN_ORDERS[id].text

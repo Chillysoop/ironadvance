@@ -52,6 +52,52 @@ func setup_events() -> void:
 				d.loot = {"stock": [Run.roll_item(1), Run.roll_item(1), Run.roll_item(2)]}
 				bt.units.append(d)
 
+func open_spot(st: Array) -> Array:
+	## V11: a spot on open ground near the middle of a stretch, or [] if there is none.
+	var mid: float = (st[0] + st[1]) / 2.0
+	for d in range(0, int((st[1] - st[0]) / 2.0), 8):
+		for x in [mid + d, mid - d]:
+			var gy = bt.T.stand_y(x, bt.T.ground_at(x) - 40)
+			if gy != null and absf(gy - bt.T.ground_at(x)) < 9 and not bt.T.pits.any(func(p): return x > p[0] - 20 and x < p[1] + 20):
+				return [x, gy]
+	return []
+
+func setup_rare() -> void:
+	## V11: the level's rare encounter, in the second fighting stretch (or the first if there is one).
+	var id: String = bt.mission.get("rare", "")
+	if id == "" or bt.T.stretches.is_empty() or bt.mission.get("finale", false) or bt.tutorial() or bt.in_lesson():
+		return
+	var st: Array = bt.T.stretches[mini(1, bt.T.stretches.size() - 1)]
+	var sp := open_spot(st)
+	if sp.is_empty():
+		return
+	var x: float = sp[0]
+	var y: float = sp[1]
+	match id:
+		"merc":
+			var tr := bt.spec_kits.make_sentry(null, x, y, 40, [6, 8])
+			tr.loot["trooper"] = true
+			tr.loot["pinned"] = true
+			tr.loot["merc"] = true
+			tr.heavy = false
+			tr.w = 14; tr.h = 30
+			tr.face = 1
+		"wreck":
+			var w := bt.mk_unit(); w.team = "neutral"; w.kind = "wreck"; w.x = x; w.y = y; w.w = 40; w.h = 18
+			w.loot = {"rare": true}
+			bt.units.append(w)
+		"market":
+			var d := bt.mk_unit(); d.team = "neutral"; d.kind = "dealer"; d.x = x; d.y = y; d.w = 20; d.h = 30; d.face = -1
+			d.loot = {"stock": [Run.roll_item(Data.TIER_MAX), Run.roll_item(3), Run.roll_item(3)], "market": true}
+			bt.units.append(d)
+		"ace":
+			var e := bt.mk_enemy("brute" if randf() < 0.5 else "jsniper", x, y)
+			bt.make_elite(e, bt.pick_elite(false))
+			e.hp *= 2; e.max_hp = e.hp
+			e.fl["ace"] = true
+			bt.units.append(e)
+	bt.log_msg("RARE: %s. %s" % [Data.RARES[id].name, Run.rare_text(id)])
+
 func troopers() -> Array:
 	return bt.units.filter(func(o): return o.kind == "sentry" and o.loot.get("trooper", false) and not o.dead and not o.gone)
 

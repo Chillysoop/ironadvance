@@ -1643,6 +1643,18 @@ const RUN_ORDERS := {
 }
 const ORDER_CHEST := 120
 
+# V11: rare encounters. About 1 level in 5 has one; it shows on the dial card and the briefing.
+const RARES := {
+	"merc": {"name": "MERCENARY ACE", "text": "A hired gun is pinned down in the second stretch. Reach him and he fights for you for the rest of the level."},
+	"wreck": {"name": "CRASHED SCOUT SHIP", "text": "A Vharr scout ship came down in the second stretch. Walk onto the wreck to strip it: %d salvage and %d bio-parts."},
+	"market": {"name": "BLACK MARKET", "text": "A smuggler in the second stretch sells a Legendary and two Epics at the dealer's prices."},
+	"ace": {"name": "JACKAL ACE", "text": "A veteran Jackal hunts the second stretch: twice the HP and an elite trait. Kill him for %d scrip and an Epic."},
+}
+const RARE_CHANCE := 0.2
+const RARE_WRECK_SALVAGE := 15
+const RARE_WRECK_BIO := 3
+const ACE_PAY := 60
+
 const ENCOUNTERS := ["swarm", "nest", "droppods", "hunt", "outbreak", "gate"]
 const BIOME_ALIENS := {
 	"desert": ["skitter", "burrower", "squid", "warden"],
