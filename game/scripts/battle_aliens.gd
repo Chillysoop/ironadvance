@@ -1030,6 +1030,15 @@ func boss_act(bo: Unit) -> void:
 		await vboar_tricks(bo)
 		if bo.dead or bt.squad_alive().is_empty():
 			return
+	# V5: the level's Boar loadout
+	var kit: String = bt.mission.get("boar_kit", "standard") if not bo.fl.get("vharr", false) else "standard"
+	if kit == "carrier":
+		var n: int = int(bo.fl.get("turns", 0)) + 1
+		bo.fl["turns"] = n
+		if n % 3 == 1:
+			bt.float_text(bo, "CALLING IN TROOPS!", Color("ff7a3d"), true)
+			await bt.foe_ai.plane_drop(2)
+			await bt.wait(12)
 	var shells := 2 if bo.hp < bo.max_hp / 2 else 1
 	for i in shells:
 		var sq := bt.squad_alive()
@@ -1048,9 +1057,47 @@ func boss_act(bo: Unit) -> void:
 			for j in 4:
 				bt.puff(m.x, m.y, 2.0)
 			# B2: the shell keeps its base damage at any alert (alert already brings airstrikes and paratroopers)
-			bt.projs.append(bt.phys.mk_proj({"kind": "shell", "x": m.x, "y": m.y, "vx": sol.vx * k, "vy": sol.vy * k, "wind": 1.0, "r": 44.0, "dmg": 11, "owner": bo, "trail": true}))
+			if kit == "mortar":
+				# MORTAR BOAR: three smaller shells that fan out around the target
+				for f in [-1, 0, 1]:
+					var fk: float = k * (1.0 + f * 0.07)
+					bt.projs.append(bt.phys.mk_proj({"kind": "shell", "x": m.x, "y": m.y, "vx": sol.vx * fk, "vy": sol.vy * fk, "wind": 1.0, "r": 30.0, "dmg": 6, "owner": bo, "trail": true}))
+			else:
+				bt.projs.append(bt.phys.mk_proj({"kind": "shell", "x": m.x, "y": m.y, "vx": sol.vx * k, "vy": sol.vy * k, "wind": 1.0, "r": 44.0, "dmg": 11, "owner": bo, "trail": true}))
 			await bt.until(bt.settled)
 			await bt.wait(12)
+	if kit == "flame" and await boar_flame(bo):
+		return
 	var best = bt.foe_ai.best_shot(bo, bt.squad_alive(), Data.ETYPES.boss.range)
 	if best != null:
 		await bt.foe_ai.enemy_shoot(bo, best.t, Data.ETYPES.boss)
+
+func boar_flame(bo: Unit) -> bool:
+	## V5 FLAME BOAR: in place of its chain gun, a long cone of fire at anyone within reach in front.
+	## Burns and sets alight, and wood in the cone burns away. False when nobody is close enough.
+	var reach: float = Data.BOAR_FLAME_RANGE + bo.w / 2.0
+	var near: Array = bt.squad_alive().filter(func(o): return o.x < bo.x and bo.x - o.x <= reach and absf(o.y - bo.y) < 60)
+	if near.is_empty():
+		return false
+	var nx: float = bo.x - bo.w / 2.0
+	var ny: float = bo.y - 20
+	bo.pose = "recoil"; bo.pose_t = 30
+	Sfx.play("flame")
+	for f in 22:
+		for k in 4:
+			bt.part({"x": nx, "y": ny, "vx": -randf_range(5, 9), "vy": randf_range(-1.4, 1.4), "life": 22, "max": 22, "c": bt.pick([Color("ffb23e"), Color("ff7a3d"), Color("ffe36a")]), "s": 3.5, "g": -0.03, "fire": true})
+		await bt.wait(1)
+	for o in bt.units:
+		if o == bo or o.dead or o.gone or o.sunk or o.is_pickup() or o.kind == "pow" or o.team == "enemy":
+			continue
+		if o.x < bo.x and bo.x - o.x <= reach and absf(o.y - bo.y) < 60:
+			bt.damage(o, int(round(Data.BOAR_FLAME_DMG * (1 + bt.alert * 0.06))), bo, {})
+			bt.add_status(o, "burn", 2, bo)
+	var x := nx
+	while nx - x <= Data.BOAR_FLAME_RANGE:
+		for dy in [6, 20, 34, 48]:
+			if bt.T.mat(x, bo.y - dy) == 3:
+				bt.T.carve(x, bo.y - dy, 6, null)
+		x -= 10
+	await bt.wait(10)
+	return true

@@ -850,7 +850,7 @@ class Screen extends Control:
 			y += 16
 		y += 4  # room between the last line of the brief and the GOOD FOR / ROUGH ON line
 		if jb == "push":
-			Art.text(self, "IRON BOAR HP %d   ARMOR %d   JACKALS +%d%% HP" % [m.boss_hp, m.plate, roundi((m.hp_mul - 1) * 100)], Vector2(480, y + 14), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "%s HP %d   ARMOR %d   JACKALS +%d%% HP" % [Data.BOAR_KITS.get(m.get("boar_kit", ""), Data.BOAR_KITS.standard).name, m.boss_hp, m.plate, roundi((m.hp_mul - 1) * 100)], Vector2(480, y + 14), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_CENTER)
 		else:
 			Art.text(self, "%s: %s   JACKALS +%d%% HP   PAYS +%d SCRIP" % [Data.JOBS[jb].name, Data.JOBS[jb].goal, roundi((m.hp_mul - 1) * 100), Data.JOB_PAY], Vector2(480, y + 14), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		if m.has("biome"):
@@ -886,6 +886,11 @@ class Screen extends Control:
 			var gd: Dictionary = Run.garrison_of(m)
 			Art.text(self, "GARRISON: %s. %s." % [gd.name, gd.short], Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 			ny += 14
+		if m.get("boar_kit", "standard") not in ["standard", ""]:
+			# V5: the Boar's loadout
+			var bk: Dictionary = Data.BOAR_KITS[m.boar_kit]
+			Art.text(self, "BOSS: %s. %s." % [bk.name, bk.short], Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
+			ny += 14
 		if m.get("specialist", "") != "":
 			# X2: a specialist is held somewhere in this level
 			var D: Dictionary = Run.class_def(m.specialist)
@@ -909,6 +914,8 @@ class Screen extends Control:
 				last += 14  # W3/W9/W13 lines under the intel
 		if m.get("garrison", "regular") != "regular":
 			last += 14  # V2
+		if m.get("boar_kit", "standard") not in ["standard", ""]:
+			last += 14  # V5
 		draw_rect(Rect2(122, 154, 716, last - 148), Color(0.05, 0.035, 0.03, 0.55))
 	func draw_extras(m: Dictionary) -> void:
 		## R2-R5: the level's event on the left, its bounty board on the right. D2: the daily tag.

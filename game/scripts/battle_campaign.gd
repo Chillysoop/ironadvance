@@ -695,7 +695,7 @@ func activate_enemies() -> void:
 					bt.banner("WARNING!!", Color("c47bff"), "VHARR BOAR APPROACHING")
 					bt.log_msg("The flagship BOAR rolls in refit with Vharr tech: a dome over the turret and a tongue. Crushing and melee go through the dome.")
 				else:
-					bt.banner("WARNING!!", Color("ff4d3d"), "ROOKIE BOAR APPROACHING" if e.fl.get("rookie", false) else "IRON BOAR APPROACHING")
+					bt.banner("WARNING!!", Color("ff4d3d"), "ROOKIE BOAR APPROACHING" if e.fl.get("rookie", false) else "%s APPROACHING" % Data.BOAR_KITS.get(bt.mission.get("boar_kit", ""), Data.BOAR_KITS.standard).name)
 					bt.log_msg("The IRON BOAR rolls in. Something heavy is hanging over it...")
 				Sfx.play("alarm")
 
