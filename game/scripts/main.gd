@@ -137,6 +137,7 @@ func show_title() -> void:
 		# R4: a quick run saved at HQ picks up where it left off
 		var where := "FINALE NEXT" if int(rh.level) >= Data.LEVELS.size() else "LEVEL %d OF %d NEXT" % [int(rh.level) + 1, Data.LEVELS.size()]
 		s.cont = ["CONTINUE RUN", func(): continue_run(), ("DAILY OP  " if str(rh.get("daily", "")) != "" else "") + where]
+		s.buttons[1][2] = "NEW RUN  REPLACES THE SAVED ONE"  # starting over overwrites the save at the first HQ
 	# R5: volumes, fullscreen, shake, tips and blood (V6) live in one settings panel
 	s.corner2 = ["SETTINGS", func(): open_settings()]
 	var tmax := mini(int(Run.meta.threat_max), Data.THREATS.size())
