@@ -197,7 +197,21 @@ func start_run() -> void:
 	if not Run.meta.get("ran", false):
 		Run.meta["ran"] = true  # P8: only the first quick run ever gets the plainer level 1
 		Run.save_meta()
-	show_hq(false)
+	if Run.run_order_offer.size():
+		show_orders()
+	else:
+		show_hq(false)
+
+func show_orders() -> void:
+	## V9: pick 1 of 3 run orders before the squad reaches HQ.
+	clear()
+	Music.play("hq")
+	var s := Screen.new()
+	s.mode = "orders"
+	for id in Run.run_order_offer:
+		var oid: String = id
+		s.buttons.append([Data.RUN_ORDERS[oid].name, func(): Sfx.play("start"); Run.take_run_order(oid); Diary.line("RUN ORDER " + oid); show_hq(false)])
+	open(s)
 
 func start_daily() -> void:
 	## D2: today's seed, today's squad. The best score of the day is kept.
@@ -369,7 +383,7 @@ func dial_gate() -> void:
 		var id: String = b
 		s.buttons.append([Data.BIOMES[id].name, func(): Sfx.play("start"); Run.pick_biome(id); show_brief()])
 	s.buttons.append(["<< BACK TO HQ", func(): show_hq(false)])
-	if Run.hq("gate") >= 2 and not Run.dial_rerolled:
+	if (Run.hq("gate") >= 2 or Run.run_order == "widedial") and not Run.dial_rerolled:
 		s.buttons.append(["REROLL THE DIAL", func(): Sfx.play("click"); Run.reroll_dial(); dial_gate()])
 	open(s)
 
@@ -665,6 +679,11 @@ class Screen extends Control:
 				bt.color = buttons[i][3]
 			bt.size = Vector2(widths[i], 40)
 			bt.position = Vector2(x, 470)
+			if mode == "orders":  # one button under each order card
+				var oc := order_card(i)
+				bt.size = Vector2(minf(250, oc.size.x - 30), 40)
+				bt.position = Vector2(oc.position.x + (oc.size.x - bt.size.x) / 2, 470)
+				bt.color = Color("ff4d3d")
 			if mode == "dial":  # one button under each biome card, then a small way back and the reroll
 				if i < nd:
 					var cr := dial_card(i)
@@ -721,6 +740,7 @@ class Screen extends Control:
 			"brief": draw_brief()
 			"won", "final", "lost", "outpost_lost", "op_won", "op_lost": draw_result()
 			"dial": draw_dial()
+			"orders": draw_orders()
 			"hospital":
 				Art.text(self, "FIELD HOSPITAL", Vector2(480, 110), 32, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 				Art.text(self, "Everyone is patched up and gets one dog tag back. The dead stay dead.", Vector2(480, 150), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
@@ -946,6 +966,28 @@ class Screen extends Control:
 				Art.text(self, "+%d$" % bt.pay, Vector2(932, y), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
 				Art.text(self, bt.text, Vector2(686, y + 15), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 				y += 36
+	func order_card(i: int) -> Rect2:
+		var n := maxi(1, Run.run_order_offer.size())
+		var cw := 280.0
+		var gap := 24.0
+		var x0 := (960.0 - n * cw - (n - 1) * gap) / 2.0
+		return Rect2(x0 + i * (cw + gap), 170, cw, 230)
+	func draw_orders() -> void:
+		## V9: the run orders on offer.
+		Art.text(self, "ORDERS FROM HQ", Vector2(480, 58), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+		Art.text(self, "Pick one. It holds for the whole run.", Vector2(480, 96), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		for i in Run.run_order_offer.size():
+			var id: String = Run.run_order_offer[i]
+			var cr := order_card(i)
+			draw_rect(cr, Color(0.06, 0.05, 0.04, 0.9))
+			draw_rect(cr, Color("ffb23e"), false, 2)
+			var cx := cr.position.x + cr.size.x / 2
+			Art.text(self, Data.RUN_ORDERS[id].name, Vector2(cx, cr.position.y + 44), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+			draw_rect(Rect2(cr.position.x + 24, cr.position.y + 62, cr.size.x - 48, 2), Color("ffb23e"))
+			var y := cr.position.y + 100
+			for line in CardView.wrap_text(Run.run_order_text(id), cr.size.x - 40, 16):
+				Art.text(self, line, Vector2(cx, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+				y += 20
 	func dial_card(i: int) -> Rect2:
 		## Where biome card i sits: two wide cards, or three narrower ones with Gate Control.
 		var n := Run.dial.size()

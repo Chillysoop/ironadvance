@@ -535,7 +535,7 @@ func spawn_map_loot() -> void:
 		return  # the drill lays out its own crate
 	var lo := 520.0
 	var hi := world_w - 900.0
-	var n := int((hi - lo) / 360.0) * (2 if Run.intel == "surplus" else 1)
+	var n := int((hi - lo) / 360.0) * (2 if Run.intel == "surplus" or Run.run_order == "scavengers" else 1)
 	for i in n:
 		var x := lo + (i + randf_range(0.15, 0.85)) * (hi - lo) / n
 		var k := "strongbox" if randf() < 0.22 else "crate"

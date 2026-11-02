@@ -479,7 +479,7 @@ func run() -> void:
 			# title -> brief -> each mission (forced win) -> results -> shop -> next brief
 			main.show_title()
 			await frames_wait(20)
-			main.start_run()  # QUICK RUN; the first title button is CAMPAIGN now
+			start_run_hq()  # QUICK RUN; the first title button is CAMPAIGN now
 			await frames_wait(20)
 			await shot("flow_hq_start")
 			main.screen.dial.emit()
@@ -809,6 +809,8 @@ func run() -> void:
 			await variety_test()
 		"boarkits":
 			await boarkits_test()
+		"orders":
+			await orders_test()
 		"events10":
 			await events10_test()
 		"pickups":
@@ -4643,7 +4645,7 @@ func gate() -> void:
 	## Beating the boss opens the gate; the squad walks through and comes out at HQ.
 	main.show_title()
 	await frames_wait(5)
-	main.start_run()
+	start_run_hq()
 	await frames_wait(40)
 	await shot("gate_hq_start")
 	check(main.screen.get("arrived") == false, "a run starts at HQ")
@@ -5748,7 +5750,8 @@ func bcalls() -> void:
 	Run.mission = 0
 	Run.level = Run.make_level("jungle", 0)
 	check(int(Run.level.boss_hp) == 100 and int(Run.level.plate) == 30, "B1: a level 1 jungle builds the softer Boar")
-	# B2 + B3 in a real battle
+	# B2 + B3 in a real battle (with the plain Boar: V5's Mortar Boar fires smaller shells)
+	Run.level.boar_kit = "standard"
 	var b: Battle = main.start_battle(0, Run.level)
 	await frames_wait(20)
 	var sq := b.squad_alive()
@@ -10219,7 +10222,7 @@ func runsave() -> void:
 	main.show_title()
 	await frames_wait(10)
 	check(main.screen.cont.is_empty(), "no saved run: the title has no CONTINUE RUN")
-	main.start_run()
+	start_run_hq()
 	await frames_wait(10)
 	check(FileAccess.file_exists(Run.RUN_PATH), "HQ saves the new run")
 	Run.scrip = 777
@@ -10508,7 +10511,7 @@ func variety_test() -> void:
 	await frames_wait(5)
 	Run.new_run()
 	Run.first_run = false
-	main.start_run()
+	start_run_hq()
 	await frames_wait(40)
 	main.screen.dial.emit()
 	await frames_wait(10)
@@ -10570,5 +10573,63 @@ func boarkits_test() -> void:
 			main.show_brief()
 			await frames_wait(6)
 			await shot("boar_brief")
+	main.show_title()
+	await frames_wait(5)
+
+
+func start_run_hq() -> void:
+	## A fresh quick run straight to HQ: takes the first run order on offer (V9).
+	main.start_run()
+	if main.screen != null and main.screen.get("mode") == "orders":
+		Run.take_run_order(Run.run_order_offer[0])
+		main.show_hq(false)
+
+func orders_test() -> void:
+	## V9: run orders (run-variety page).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	main.show_title()
+	await frames_wait(5)
+	main.start_run()
+	await frames_wait(20)
+	check(main.screen.get("mode") == "orders" and Run.run_order_offer.size() == 3, "a fresh quick run opens on 3 run orders")
+	await shot("orders")
+	var seen := {}
+	for i in 30:
+		Run.new_run()
+		for o in Run.run_order_offer:
+			seen[o] = true
+	check(seen.size() == Data.RUN_ORDERS.size(), "30 runs offer all %d orders" % seen.size())
+	press_first()
+	await frames_wait(20)
+	check(Run.run_order != "" and Run.run_order_offer.is_empty() and main.screen.has_signal("dial"), "taking an order goes on to HQ (%s)" % Run.run_order)
+	# each order's effect
+	Run.new_run(); var s0: int = Run.scrip; Run.take_run_order("warchest")
+	check(Run.scrip == s0 + Data.ORDER_CHEST, "WAR CHEST pays out")
+	Run.new_run(); var t0: int = int(Run.soldiers[0].tags); Run.take_run_order("ironwill")
+	check(Run.soldiers.all(func(x): return int(x.tags) == t0 + 1), "IRON WILL gives every soldier a dog tag")
+	Run.new_run(); var l0: int = Run.luck; Run.take_run_order("lucky")
+	check(Run.luck == l0 + 2, "LUCKY STARS adds 2 Luck")
+	Run.new_run(); var d0: Array = Run.soldiers.map(func(x): return x.deck.size()); Run.take_run_order("heavy")
+	check(range(Run.soldiers.size()).all(func(i): return Run.soldiers[i].deck.size() == d0[i] + 1), "HEAVY WEAPONS adds a card to every deck")
+	Run.new_run(); Run.take_run_order("widedial"); Run.mission = 0; Run.roll_dial()
+	check(Run.dial.size() == 3, "WIDE DIAL shows 3 biomes")
+	main.dial_gate()
+	await frames_wait(10)
+	check(main.screen.buttons.any(func(bb): return bb[0] == "REROLL THE DIAL"), "WIDE DIAL can spin the dial again")
+	await shot("orders_widedial")
+	# a Daily Op stays the same for everyone: no orders
+	Run.daily = "2026-11-02"
+	Run.new_run()
+	check(Run.run_order_offer.is_empty(), "a Daily Op has no run orders")
+	Run.daily = ""
+	# scavengers and medics hook into the field
+	Run.new_run(); Run.take_run_order("scavengers")
+	var lv := Run.make_level("desert", 0)
+	Run.level = lv
+	var b: Battle = main.start_battle(0, lv)
+	await until(func(): return b.state == "player" and not b.busy)
+	check(Run.run_order == "scavengers", "SCAVENGERS lasts into the level")
 	main.show_title()
 	await frames_wait(5)
