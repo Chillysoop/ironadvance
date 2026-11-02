@@ -1731,10 +1731,17 @@ func press_key(k: Key) -> void:
 
 func pause_menu() -> void:
 	## N7: Esc cancels an armed card first; with nothing armed it pauses under a menu, and Esc resumes.
+	# The new-player coach box opens once the ROUND banner clears and takes every key (Esc = SKIP),
+	# so on a fresh profile it raced these presses. Tips are off here; the coach has its own tests.
+	Run.meta["tips_off"] = true
 	Run.new_run()
 	var b: Battle = main.start_battle(0)
 	await until(func(): return b.state == "player" and not b.busy)
-	b.select_card(0)
+	# the opening hand is random and a SELF card plays the moment it's picked instead of arming,
+	# so Esc would pause at once and every check below read the wrong state: arm an aimed card
+	var ai := range(b.sel.hand.size()).filter(func(i): return Data.card(b.sel.hand[i]).type != "SELF" and b.sel.energy >= b.card_cost(b.sel, b.sel.hand[i]))
+	b.select_card(ai[0] if ai.size() else 0)
+	check(b.card_idx >= 0, "a card is armed (%d)" % b.card_idx)
 	await press_key(KEY_ESCAPE)
 	check(b.card_idx < 0 and not get_tree().paused, "Esc with a card armed cancels it and doesn't pause")
 	await press_key(KEY_ESCAPE)
@@ -10298,6 +10305,12 @@ func bp3_test() -> void:
 	Run.leave_campaign()
 	# F2: the Delta landing zone sits on bedrock that blasts only dent
 	var lvl := Run.make_level("delta", 0)
+	for k in 30:
+		# a docks or gully stretch right after the start puts water over the landing zone, and the
+		# dry-ground checks below need land there: roll again
+		if not lvl.segments.slice(1, 2).any(func(sg): return sg in ["docks", "gully"]):
+			break
+		lvl = Run.make_level("delta", 0)
 	lvl["event"] = ""
 	lvl["encounter"] = ""
 	Run.level = lvl
