@@ -7,6 +7,7 @@ Options:
   --kind=sfx|ambience|music just one kind
   --force                   regenerate even if the prompt hasn't changed
   --dry-run                 list what would be made
+  --reconvert               rebuild files from saved raw downloads (tools/.elevenlabs_raw) where present
 
 The key is read from the ELEVENLABS_API_KEY environment variable only; never write it into a file.
 Every file it makes is listed in tools/elevenlabs_lock.json with a hash of its prompt, so a rerun
@@ -27,6 +28,7 @@ import hashlib, json, os, subprocess, sys, tempfile, time, urllib.request, urlli
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 LOCK = os.path.join(ROOT, 'tools', 'elevenlabs_lock.json')
+RAW = os.path.join(ROOT, 'tools', '.elevenlabs_raw')
 API = 'https://api.elevenlabs.io/v1'
 
 # Shared flavour so the set sounds like one game: punchy, arcade, 90s run-and-gun.
@@ -171,8 +173,11 @@ def to_sfx_wav(mp3, dst):
         ffmpeg(['-i', mp3, '-ac', '1', '-ar', '44100', '-af',
                 'silenceremove=start_periods=1:start_threshold=-45dB,'
                 'areverse,silenceremove=start_periods=1:start_threshold=-50dB,areverse,'
-                'afade=t=out:st=0:d=0.02:curve=tri,areverse,afade=t=out:st=0:d=0.004,areverse', trim])
-        gain = -1.0 - peak_db(trim)
+                'afade=t=in:st=0:d=0.02:curve=tri,areverse,afade=t=in:st=0:d=0.004', trim])
+        pk = peak_db(trim)
+        if pk < -60:
+            raise RuntimeError('%s came out silent after trimming (peak %.1f dB)' % (dst, pk))
+        gain = -1.0 - pk
         ffmpeg(['-i', trim, '-af', 'volume=%.2fdB' % gain, '-c:a', 'pcm_s16le', dst])
 
 
@@ -185,12 +190,13 @@ def h(*parts):
 
 
 def jobs():
+    # The API rejects durations under 0.5 s; short cues ask for 0.5 s and the silence trim shortens them.
     for n, (p, d, v) in SFX.items():
         for i in range(v):
             fn = n if i == 0 else '%s_%d' % (n, i + 1)
             yield ('sfx', n, fn, 'assets/sfx/%s.wav' % fn, h(p, d, i, STYLE),
                    lambda p=p, d=d: post('/sound-generation', {'text': '%s, %s' % (p, STYLE),
-                                                                'duration_seconds': d, 'prompt_influence': 0.5}),
+                                                                'duration_seconds': max(0.5, d), 'prompt_influence': 0.5}),
                    to_sfx_wav)
     for n, p in AMBIENCE.items():
         yield ('ambience', 'ambience/' + n, n, 'assets/ambience/%s.ogg' % n, h(p, AMB_STYLE),
@@ -227,6 +233,8 @@ def main():
     only = next((a.split('=', 1)[1].split(',') for a in args if a.startswith('--only=')), None)
     kind = next((a.split('=', 1)[1] for a in args if a.startswith('--kind=')), None)
     force, dry = '--force' in args, '--dry-run' in args
+    reconv = '--reconvert' in args
+    force = force or reconv
     lock = json.load(open(LOCK)) if os.path.exists(LOCK) else {}
     todo = [j for j in jobs() if (not kind or j[0] == kind) and (not only or j[1] in only or j[2] in only)]
     todo = [j for j in todo if force or lock.get(j[3]) != j[4] or not os.path.exists(os.path.join(ROOT, j[3]))]
@@ -237,10 +245,12 @@ def main():
             continue
         dst = os.path.join(ROOT, rel)
         os.makedirs(os.path.dirname(dst), exist_ok=True)
-        with tempfile.TemporaryDirectory() as td:
-            mp3 = os.path.join(td, 'a.mp3')
+        # Raw downloads are kept (git-ignored) so a conversion fix can rerun with --reconvert for free.
+        mp3 = os.path.join(RAW, rel + '.mp3')
+        os.makedirs(os.path.dirname(mp3), exist_ok=True)
+        if not (reconv and os.path.exists(mp3)):
             open(mp3, 'wb').write(call())
-            conv(mp3, dst)
+        conv(mp3, dst)
         lock[rel] = hh
         json.dump(lock, open(LOCK, 'w'), indent=1, sort_keys=True)
 
