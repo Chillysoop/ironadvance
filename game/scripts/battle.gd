@@ -344,6 +344,7 @@ func setup(idx: int, custom := {}) -> void:
 	biome_rules.setup_biome()
 	mid_events.setup_events()
 	mid_events.setup_rare()  # V11
+	mid_events.setup_road()  # V4
 	camp_ops.place_job()
 	camp_ops.trap_varga()
 	camp_ops.place_nemesis()

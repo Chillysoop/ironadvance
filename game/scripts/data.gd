@@ -1655,6 +1655,23 @@ const RARE_WRECK_SALVAGE := 15
 const RARE_WRECK_BIO := 3
 const ACE_PAY := 60
 
+# V4: what the fork's road cards call each fighting segment
+const SEGMENT_NAMES := {"towers": "the watchtowers", "boulder": "the hanging boulder", "bunker": "the bunker line", "overhang": "the overhang",
+	"mortar": "the mortar pit", "gauntlet": "the gauntlet", "trenches": "the trenches", "fort": "the fort", "gully": "the gully", "ridge": "the ridge",
+	"river": "the river crossing", "docks": "the docks", "warehouse": "the warehouse", "catwalks": "the catwalks", "fenceline": "the fence line",
+	"m2nest": "the machine-gun nest", "lake": "the frozen lake", "floes": "the ice floes", "traincars": "the train cars", "flatcars": "the flatcars",
+	"guncar": "the gun car", "ruins": "the ruins", "highrise": "the high-rise", "plaza": "the plaza", "shaft": "the mine shaft", "tunnels": "the tunnels",
+	"drift": "the drift", "caldera": "the caldera", "flows": "the lava flows", "hivecore": "the hive core", "broodpit": "the brood pit",
+	"flightdeck": "the flight deck", "hangar": "the hangar"}
+# V4: fork in the road. A quick-run level offers two roads for its second stretch, each a
+# different segment with its own extra.
+const ROADS := {
+	"supply": {"name": "SUPPLY ROAD", "text": "Three extra supply crates along the way."},
+	"prison": {"name": "PRISON ROAD", "text": "An extra prisoner to free."},
+	"scrap": {"name": "SCRAP ROAD", "text": "Two wrecks to strip: %d salvage each."},
+	"quiet": {"name": "BACK ROAD", "text": "A quiet way round: two fewer Jackals."},
+}
+
 const ENCOUNTERS := ["swarm", "nest", "droppods", "hunt", "outbreak", "gate"]
 const BIOME_ALIENS := {
 	"desert": ["skitter", "burrower", "squid", "warden"],
