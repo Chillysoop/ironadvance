@@ -343,6 +343,7 @@ func setup(idx: int, custom := {}) -> void:
 	vehicle_ops.place_vehicles()
 	biome_rules.setup_biome()
 	mid_events.setup_events()
+	mid_events.setup_rare()  # V11
 	camp_ops.place_job()
 	camp_ops.trap_varga()
 	camp_ops.place_nemesis()
@@ -1990,6 +1991,11 @@ func kill(tg: Unit, src) -> void:
 		tg.bow = false
 		drop_loot(tg.x, tg.y - 14, {"type": "bow"}, 0.4)
 	feed_kill(tg, src)
+	if tg.fl.get("ace", false):
+		# V11: the Jackal Ace pays out
+		Run.scrip += Data.ACE_PAY
+		drop_loot(tg.x, tg.y - 20, {"type": "item", "item": Run.roll_item(3)})
+		banner("ACE DOWN!", Color("ffd23a"), "+%d SCRIP AND AN EPIC" % Data.ACE_PAY)
 	if tg.fl.has("nemesis"):
 		# W3: a nemesis put down for good drops a Legendary with their name on it
 		var it := Run.roll_item(Data.TIER_MAX)

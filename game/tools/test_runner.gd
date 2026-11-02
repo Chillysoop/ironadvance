@@ -811,6 +811,8 @@ func run() -> void:
 			await boarkits_test()
 		"orders":
 			await orders_test()
+		"rares":
+			await rares_test()
 		"events10":
 			await events10_test()
 		"pickups":
@@ -10631,5 +10633,65 @@ func orders_test() -> void:
 	var b: Battle = main.start_battle(0, lv)
 	await until(func(): return b.state == "player" and not b.busy)
 	check(Run.run_order == "scavengers", "SCAVENGERS lasts into the level")
+	main.show_title()
+	await frames_wait(5)
+
+
+func rares_test() -> void:
+	## V11: rare encounters (run-variety page).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	var n := 0
+	var kinds := {}
+	for i in 200:
+		Run.seed_val = 7000 + i
+		var r: String = Run.make_level("fortress", 1).rare
+		if r != "":
+			n += 1
+			kinds[r] = true
+	check(n > 20 and n < 70, "about 1 level in 5 has a rare encounter (%d of 200)" % n)
+	check(kinds.size() == Data.RARES.size(), "all %d rare encounters turn up" % kinds.size())
+	for id in ["merc", "wreck", "market", "ace"]:
+		Run.new_run()
+		Run.first_run = false
+		Run.seed_val = 99
+		var lv := Run.make_level("fortress", 1)
+		lv.rare = id
+		Run.level = lv
+		var b: Battle = main.start_battle(1, lv)
+		await until(func(): return b.state == "player" and not b.busy)
+		var st: Array = b.T.stretches[1]
+		var inside := func(u): return u.x >= st[0] and u.x <= st[1]
+		match id:
+			"merc":
+				var m: Array = b.units.filter(func(u): return u.kind == "sentry" and u.loot.get("merc", false))
+				check(m.size() == 1 and inside.call(m[0]) and m[0].loot.get("pinned", false), "MERCENARY ACE waits pinned in the second stretch")
+			"wreck":
+				var w: Array = b.units.filter(func(u): return u.kind == "wreck" and u.loot.get("rare", false))
+				check(w.size() == 1 and inside.call(w[0]), "the scout ship lies in the second stretch")
+				if w.size():
+					var s0 := int(Run.meta.get("salvage", 0))
+					var b0 := int(Run.meta.get("bio", 0))
+					b.camp_ops.strip_wreck(w[0], b.squad()[0])
+					check(int(Run.meta.salvage) == s0 + Data.RARE_WRECK_SALVAGE and int(Run.meta.bio) == b0 + Data.RARE_WRECK_BIO, "stripping it pays salvage and bio-parts")
+			"market":
+				var d: Array = b.units.filter(func(u): return u.kind == "dealer" and u.loot.get("market", false))
+				check(d.size() == 1 and d[0].loot.stock.size() == 3 and int(d[0].loot.stock[0].tier) == Data.TIER_MAX, "the black market sells a Legendary")
+			"ace":
+				var a: Array = b.units.filter(func(u): return u.fl.get("ace", false))
+				check(a.size() == 1 and a[0].elite != "" and inside.call(a[0]), "the Jackal Ace is an elite in the second stretch")
+				if a.size():
+					var sc := Run.scrip
+					b.damage(a[0], 999, b.squad()[0], {})
+					await frames_wait(10)
+					check(Run.scrip >= sc + Data.ACE_PAY, "killing the Ace pays %d scrip" % Data.ACE_PAY)
+		if id == "ace":
+			cam_on(b, b.units.filter(func(u): return u.fl.get("ace", false))[0].x)
+			main.show_brief()
+			await frames_wait(6)
+			await shot("rare_brief")
 	main.show_title()
 	await frames_wait(5)

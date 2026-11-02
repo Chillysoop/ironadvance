@@ -360,6 +360,17 @@ func detour_enemy(type: String, x: float, mod: String) -> Unit:
 
 func strip_wreck(w: Unit, u: Unit) -> void:
 	w.stripped = true
+	if w.loot.get("rare", false):
+		# V11: the crashed scout ship
+		Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.RARE_WRECK_SALVAGE
+		Run.meta.bio = int(Run.meta.get("bio", 0)) + Data.RARE_WRECK_BIO
+		bt.stats["salvage"] = int(bt.stats.get("salvage", 0)) + Data.RARE_WRECK_SALVAGE
+		bt.stats["bio"] = int(bt.stats.get("bio", 0)) + Data.RARE_WRECK_BIO
+		bt.float_text(w, "+%d SALVAGE  +%d BIO" % [Data.RARE_WRECK_SALVAGE, Data.RARE_WRECK_BIO], Color("9df25c"), true)
+		bt.dust(w.x, w.y, Color("8a7a6a"), 6)
+		Sfx.play("coin")
+		bt.log_msg("%s strips the scout ship: +%d salvage and +%d bio-parts." % [u.def.name, Data.RARE_WRECK_SALVAGE, Data.RARE_WRECK_BIO])
+		return
 	Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.WRECK_SALVAGE
 	bt.stats["salvage"] = int(bt.stats.get("salvage", 0)) + Data.WRECK_SALVAGE
 	bt.float_text(w, "+%d SALVAGE" % Data.WRECK_SALVAGE, Color("53d4e2"), true)
