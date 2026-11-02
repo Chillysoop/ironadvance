@@ -198,13 +198,7 @@ func open_dossier(i: int, tb := "deck") -> void:
 	add_child(d)
 
 func back_button() -> Control:
-	var go := HudScript.PixButton.new()
-	go.text = "<< BACK TO HQ"
-	go.color = Color("ff4d3d")
-	go.size = Vector2(190, 44)
-	go.position = Vector2(746, 482)
-	go.pressed.connect(func(): Sfx.play("click"); done.emit())
-	return go
+	return HudScript.back_to_hq(func(): done.emit())
 
 func looks_step() -> float:
 	## U3 look boxes share the row left of the back button, so a fifth soldier still fits.

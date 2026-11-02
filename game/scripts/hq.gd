@@ -160,13 +160,7 @@ func open_lab() -> void:
 				Sfx.play("power")
 				open_lab())
 		add_child(bt)
-	var close := HudScript.PixButton.new()
-	close.text = "BACK TO HQ"
-	close.color = Color("9aa2ae")
-	close.size = Vector2(150, 30)
-	close.position = Vector2(405, 494)
-	close.pressed.connect(func(): lab_open = false; build())
-	add_child(close)
+	add_child(HudScript.back_to_hq(func(): lab_open = false; build()))
 
 func draw_lab_panel() -> void:
 	draw_rect(Rect2(0, 0, 960, 540), Color(0.04, 0.02, 0.06, 0.97))
@@ -253,13 +247,7 @@ func open_doc() -> void:
 			Sfx.play("power")
 		open_doc())
 	add_child(patch)
-	var close := HudScript.PixButton.new()
-	close.text = "BACK TO HQ"
-	close.color = Color("9aa2ae")
-	close.size = Vector2(150, 30)
-	close.position = Vector2(405, 500)
-	close.pressed.connect(func(): doc_open = false; build())
-	add_child(close)
+	add_child(HudScript.back_to_hq(func(): doc_open = false; build()))
 	add_nav("doc")
 
 func open_upgrades() -> void:
@@ -292,13 +280,7 @@ func open_upgrades() -> void:
 			else:
 				Sfx.play("deny"))
 		add_child(bt)
-	var close := HudScript.PixButton.new()
-	close.text = "BACK TO HQ"
-	close.color = Color("9aa2ae")
-	close.size = Vector2(150, 30)
-	close.position = Vector2(405, 494)
-	close.pressed.connect(func(): upgrades_open = false; build())
-	add_child(close)
+	add_child(HudScript.back_to_hq(func(): upgrades_open = false; build()))
 	add_nav("upgrades")
 
 func open_dossier(i: int, tb := "deck") -> void:
@@ -475,6 +457,7 @@ func open_armory() -> void:
 	Sfx.play("click")
 	var a: Control = ArmoryScript.new()
 	a.shop_mode = true
+	a.hub_room = true
 	a.done.connect(func(): build())
 	add_child(a)
 	sub = a
@@ -807,7 +790,7 @@ func upgrade_step() -> float:
 
 func draw_doc_panel() -> void:
 	draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.03, 0.02, 0.97))
-	Art.text(self, "THE DOC'S LAB", Vector2(40, 58), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_LEFT, 2)
+	Art.text(self, "THE DOC'S LAB", Vector2(40, 58), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 	Art.text(self, "\"Hold still. Or don't, it's more fun.\"", Vector2(40, 76), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	Art.text(self, "%d BIO-PARTS   %d SALVAGE" % [int(Run.meta.get("bio", 0)), int(Run.meta.get("salvage", 0))], Vector2(920, 58), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
 	var r := Run.hq("doc")

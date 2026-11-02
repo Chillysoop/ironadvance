@@ -72,7 +72,7 @@ const LOOK_COLORS := [
 const LOOK_NAMES := ["OLIVE", "TAN", "GUNMETAL", "RED", "NAVY", "WHITE", "ORANGE", "PURPLE", "BLACK", "TEAL"]
 
 func base_head(cls: String) -> String:
-	return {"moss": "boonie", "hex": "medic", "vee": "bandana", "rook": "shades", "bolt": "hardhat", "track": "beret", "gears": "helmet", "finch": "bandana", "kage": "bandana", "volta": "helmet", "brass": "beret", "sable": "shades"}.get(cls, "helmet")
+	return {"moss": "boonie", "hex": "medic", "vee": "bandana", "rook": "shades", "bolt": "hardhat", "track": "cap", "gears": "goggles", "finch": "bandana", "kage": "bandana", "volta": "helmet", "brass": "beret", "sable": "shades"}.get(cls, "helmet")
 
 func look_sheet(s: Dictionary) -> String:
 	## The sheet key for a soldier record, built (and cached) the first time a look needs it.
