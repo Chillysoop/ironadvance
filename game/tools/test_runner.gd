@@ -910,6 +910,8 @@ func run() -> void:
 			await xcalls()
 		"runsave":
 			await runsave()
+		"settings":
+			await settings_menu()
 		"qcalls":
 			await qcalls()
 		"polish1":
@@ -10202,3 +10204,47 @@ func runsave() -> void:
 	main.show_title()
 	await frames_wait(10)
 	check(main.screen.cont.is_empty(), "a finished run leaves nothing to continue")
+
+
+func settings_menu() -> void:
+	## R5: the settings panel from the title and the pause menu; every change applies and saves.
+	var SP = preload("res://scripts/settings.gd")
+	var keep: Dictionary = Run.meta.duplicate(true)
+	main.show_title()
+	await frames_wait(10)
+	check(main.screen.corner2[0] == "SETTINGS", "the title's corner button opens SETTINGS")
+	var p: Control = main.open_settings()
+	await frames_wait(10)
+	await shot("settings_title")
+	SP.set_value("master", 5)
+	check(is_equal_approx(AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Master")), linear_to_db(0.5)), "master volume drives the Master bus")
+	SP.set_value("sfx", 0)
+	check(AudioServer.is_bus_mute(AudioServer.get_bus_index("SFX")), "effects at 0 mutes the SFX bus")
+	check(Sfx.players[0].bus == "SFX", "sound effects play on the SFX bus")
+	check(AudioServer.get_bus_index("Music") >= 0, "a Music bus exists")
+	SP.set_value("shake", 50)
+	check(is_equal_approx(SP.shake_mul(), 0.5), "LOW shake halves the camera shake")
+	var blood: bool = Run.meta.get("blood", true)
+	SP.set_value("blood", not blood)
+	check(Run.meta.get("blood", true) == (not blood), "blood toggle still sets meta.blood")
+	SP.set_value("tips", false)
+	check(Run.meta.get("tips_off", false), "tips OFF sets tips_off")
+	var saved = JSON.parse_string(FileAccess.get_file_as_string(Run.META_PATH))
+	check(saved is Dictionary and int(saved.get("settings", {}).get("master", -1)) == 5, "settings are saved to meta.json")
+	p.close()
+	await frames_wait(5)
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	main.hud.toggle_pause()
+	await frames_wait(10)
+	var pm = main.hud.get_children().filter(func(c): return c is Control and c.has_method("settings"))
+	check(pm.size() == 1, "the pause menu is open")
+	if pm.size():
+		pm[0].settings()
+		await frames_wait(10)
+		await shot("settings_pause")
+		pm[0].resume()
+	Run.meta = keep
+	Run.save_meta()
+	SP.apply()
