@@ -1,0 +1,38 @@
+# R2: every pull request that touches the game runs the smoke set of test scenarios.
+# The same run by hand: game/tools/smoke.sh  (or --all for every scenario).
+name: Smoke tests
+
+on:
+  pull_request:
+    paths: ["game/**", ".github/workflows/smoke.yml"]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.3"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and a virtual display
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1 libglu1-mesa > /dev/null
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          sudo mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+
+      - name: Import assets
+        run: godot --headless --path game --import || true
+
+      - name: Run the smoke set
+        run: game/tools/smoke.sh
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs
+          path: /tmp/ia-smoke/*.log

@@ -823,7 +823,7 @@ func draw_doc_panel() -> void:
 		# with a third column of soldier buttons the name drops to the small font to stay clear of them
 		Art.text(self, S.name, Vector2(cr.position.x + 10, cr.position.y + 20), 16 if doc_targets().size() <= 4 else 8, Color("ffd23a") if r >= 1 else Color("8a8a6a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 		var locked: bool = int(S.get("rank", 1)) > r
-		Art.text(self, ("RANK %d LAB: " % int(S.rank) if locked else "+ ") + S.up, Vector2(cr.position.x + 10, cr.position.y + 38), 8, Color("6a7a6a") if locked or r < 1 else Color("62d26f"))
+		Art.text(self, ("RANK %d LAB: " % int(S.get("rank", 1)) if locked else "+ ") + S.up, Vector2(cr.position.x + 10, cr.position.y + 38), 8, Color("6a7a6a") if locked or r < 1 else Color("62d26f"))
 
 # ---------------------------------------------------------------- C3: the campaign's night camp
 func draw_searchlights() -> void:

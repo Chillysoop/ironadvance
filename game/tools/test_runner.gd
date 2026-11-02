@@ -723,7 +723,12 @@ func run() -> void:
 			await until(func(): return b.state == "player" and not b.busy)
 			var u: Unit = b.sel
 			var e := nearest_enemy(b, u)
-			e.x = b.cam_x + 480; e.y = 500.0; e.air = false; e.vy = 0
+			e.x = b.cam_x + 480
+			# dig a pit so the Jackal stands behind the hand, whatever the level's ground looks like there
+			var g := b.T.ground_at(e.x)
+			b.T.fill_r(e.x - 18, g - 8, 36, 488 - g + 8, 0)
+			b.T.paint_cells(e.x - 18, g - 8, 36, 488 - g + 8)
+			e.y = 488.0; e.air = false; e.vy = 0
 			var hp0 := e.hp
 			b.select_card(force_card(u, "rifle"))
 			var sp := Vector2(480, e.y - 6)
@@ -2771,6 +2776,8 @@ func alien_field(b: Battle, x: float) -> Unit:
 			e.dead = true; e.gone = true
 	var s: Unit = b.squad()[0]
 	s.st.clear()
+	if s.mech != null:
+		b.dismount(s, false)  # a soldier who walked into a parked vehicle would let it take the hits
 	for o in b.squad():
 		if o != s:
 			o.x = x - 200; o.y = b.T.stand_y(o.x, 0); o.air = false
@@ -2815,7 +2822,14 @@ func aliens() -> void:
 	Run.level = Run.make_level("fortress", 1)
 	b = main.start_battle(1, Run.level)
 	await until(func(): return b.state == "player" and not b.busy)
-	types = b.units.filter(func(u): return u.team == "enemy").map(func(u): return u.type)
+	# the level's Vharr encounter (queen, gate, hunt, outbreak) brings its own units into its stretch;
+	# the casting rules below are about every other slot
+	var est: Array = b.T.stretches[-1]
+	for s2 in b.T.stretches:
+		if b.T.yard.size() and s2[0] > b.T.yard[1]:
+			est = s2
+			break
+	types = b.units.filter(func(u): return u.team == "enemy" and not (u.x >= est[0] - 30 and u.x <= est[1] + 260)).map(func(u): return u.type)
 	check(not types.has("grunt") and not types.has("nade") and Data.BIOME_ALIENS.fortress.filter(func(t): return types.has(t)).size() >= 3, "level 2 gives every rifleman slot to the fortress's Vharr (%s)" % str(types))
 	check(types.count("skitter") % 3 == 0, "Skitters come in packs of 3 (%d)" % types.count("skitter"))
 	b.speed = 2.0
@@ -6543,7 +6557,8 @@ func warmap() -> void:
 	check(open == ["d1", "d2"], "only the two sectors next to the landing zone are open (%s)" % [open])
 	check(not Run.sector_open(Run.sector("boss")), "the stronghold starts sealed")
 	Run.start_op(Run.sector("d1"))
-	check(Run.level.segments.size() == 6 and Run.level.segments.count("camp") == 1, "a sector op has one camp (%s)" % [Run.level.segments])
+	# M2 (#142): the act's opener plays the full layout with a second camp before the Boar
+	check(Run.level.segments.size() == 7 and Run.level.segments.count("camp") == 2, "the opener op has the full layout, two camps (%s)" % [Run.level.segments])
 	check(Run.level.biome == "delta" and Run.level.name == "MUDFLAT LANDING", "the op is in the sector's biome")
 	# the bot plays the first op for real
 	Run.roll_intel()
@@ -6666,7 +6681,8 @@ func company() -> void:
 	check(Run.svc(hex).medals.has("heart") and hex.max_hp == mhp + 3, "going down and winning earns the Purple Heart (+3 max HP)")
 	check(Run.rank(moss) == 1 and int(moss.get("promo", 0)) == 1, "two ops make a Corporal with a promotion pick waiting")
 	check(benched.xp == bxp + 30, "the bench trains on half the squad's XP (%d -> %d)" % [bxp, benched.xp])
-	check(inc.promos.size() == 4 and inc.medals.size() == 2, "the news lists promotions and medals (%s %s)" % [inc.promos, inc.medals])
+	# #141: Run.merge_news folds the four promotions into one line
+	check(inc.promos.size() == 1 and ["MOSS", "HEX", "VEE", "ROOK"].all(func(n): return n in str(inc.promos[0])) and inc.medals.size() == 2, "the news lists promotions and medals (%s %s)" % [inc.promos, inc.medals])
 	var picks := Run.pending_picks()
 	check(picks.filter(func(p): return p.kind == "promo").size() == 4, "four promotion picks wait")
 	main.show_picks(func(): pass)
@@ -9295,7 +9311,7 @@ func events10_test() -> void:
 	check(b.dealer_price(it0) < Run.item_price(it0) or Run.item_price(it0) <= 2, "cheaper than the Quartermaster (%d vs %d)" % [b.dealer_price(it0), Run.item_price(it0)])
 	sq = b.squad()
 	mo = sq[0]
-	ground_unit(b, mo, d.x - 30, 0)
+	ground_unit(b, mo, d.x - 30, d.y - 40)  # on the dealer's own floor, not a roof above him
 	cam_on(b, d.x)
 	await frames_wait(4)
 	await shot("r4_dealer")
