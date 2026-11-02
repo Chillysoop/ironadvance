@@ -738,6 +738,7 @@ func v_levelup() -> void:
 	frame_on(b, m.x + 200)
 	main.hud.visible = true
 	mark("levelup", m)
+	m.s.lvl += 1  # the card reads LEVEL 2, like a real one
 	b.level_up(m)
 	await t.frames_wait(150)
 	b.hud.picked.emit(0)
@@ -833,4 +834,33 @@ func v_played() -> void:
 	t.bot_hold = 36
 	t.bot_hook = deal
 	mark("start")
+	watch()
 	await t.bot(tier, int(arg("rounds", "6")), false, custom)
+	watching = false
+
+var watching := false
+
+func watch() -> void:
+	## Marks the beats a cut wants in a played mission: kill combos, level ups, someone climbing into a vehicle.
+	watching = true
+	var combo := 0
+	var lvls := {}
+	var rides := {}
+	while watching:
+		await t.get_tree().process_frame
+		var b = t.cur_b
+		if b == null or not is_instance_valid(b):
+			continue
+		b_now = b
+		if b.combo > combo and b.combo >= 2:
+			mark("combo%d" % b.combo)
+		combo = b.combo
+		for u in b.squad_alive():
+			var id: int = u.get_instance_id()
+			if lvls.has(id) and u.s.lvl > lvls[id]:
+				mark("lvl", u)
+			lvls[id] = u.s.lvl
+			var on: bool = u.mech != null
+			if on and not rides.get(id, true):
+				mark("ride", u)
+			rides[id] = on
