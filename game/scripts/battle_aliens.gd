@@ -1039,7 +1039,18 @@ func boss_act(bo: Unit) -> void:
 			bt.float_text(bo, "CALLING IN TROOPS!", Color("ff7a3d"), true)
 			await bt.foe_ai.plane_drop(2)
 			await bt.wait(12)
+	if kit == "engine":
+		await engine_ram(bo)
+		if bo.dead or bt.squad_alive().is_empty():
+			return
 	var shells := 2 if bo.hp < bo.max_hp / 2 else 1
+	if kit == "drill":
+		for i in shells:
+			await drill_bolt(bo)
+		var b2 = bt.foe_ai.best_shot(bo, bt.squad_alive(), Data.ETYPES.boss.range)
+		if b2 != null:
+			await bt.foe_ai.enemy_shoot(bo, b2.t, Data.ETYPES.boss)
+		return
 	for i in shells:
 		var sq := bt.squad_alive()
 		if sq.is_empty():
@@ -1065,12 +1076,74 @@ func boss_act(bo: Unit) -> void:
 			else:
 				bt.projs.append(bt.phys.mk_proj({"kind": "shell", "x": m.x, "y": m.y, "vx": sol.vx * k, "vy": sol.vy * k, "wind": 1.0, "r": 44.0, "dmg": 11, "owner": bo, "trail": true}))
 			await bt.until(bt.settled)
+			if kit == "magma":
+				magma_burn(tg.x, tg.y)
 			await bt.wait(12)
 	if kit == "flame" and await boar_flame(bo):
 		return
 	var best = bt.foe_ai.best_shot(bo, bt.squad_alive(), Data.ETYPES.boss.range)
 	if best != null:
 		await bt.foe_ai.enemy_shoot(bo, best.t, Data.ETYPES.boss)
+
+func engine_ram(bo: Unit) -> void:
+	## V6 ARMORED ENGINE: rolls forward up to ENGINE_RAM px; anyone in its path is run down and thrown.
+	var front: float = bo.x - bo.w / 2.0
+	var stop: float = maxf(front - Data.ENGINE_RAM, bt.cam_x + 40)
+	var hit: Array = bt.units.filter(func(o): return not o.dead and not o.gone and (o.team == "squad" or o.team == "ally") and o.x < front + 4 and o.x > stop - 10 and absf(o.y - bo.y) < 70)
+	bt.float_text(bo, "FULL STEAM!", Color("ff7a3d"), true)
+	Sfx.play("bigboom")
+	var pts: Array = []
+	var x := bo.x
+	while x - bo.w / 2.0 > stop:
+		x -= 3
+		var y = bt.T.stand_y(x, bo.y - 40)
+		if y == null:
+			break
+		pts.append([x, y, false])
+	if pts.size():
+		await bt.phys.walk_along(bo, pts)
+	for o in hit:
+		if o.dead or o.gone:
+			continue
+		bt.damage(o, int(round(Data.ENGINE_RAM_DMG * (1 + bt.alert * 0.06))), bo, {"melee": true})
+		if not o.heavy and not o.dead:
+			o.vx = -4.5; o.vy = -4.0; o.air = true; o.walk = null
+			o.last_hit_by = bo
+	await bt.until(bt.settled)
+	bt.shake += 6
+
+func drill_bolt(bo: Unit) -> void:
+	## V6 DRILL RIG: a drill bit bores in a straight line through rock to the nearest soldier.
+	var tg = null
+	for o in bt.squad_alive():
+		if o.x < bo.x and (tg == null or absf(o.x - bo.x) < absf(tg.x - bo.x)):
+			tg = o
+	if tg == null:
+		return
+	var from := Vector2(bo.x - bo.w / 2.0, bo.y - 18)
+	var to := Vector2(tg.x, tg.y - tg.h / 2.0)
+	bt.float_text(bo, "DRILLING!", Color("ffb23e"), true)
+	Sfx.play("drill")
+	var steps := int(from.distance_to(to) / 8.0)
+	for k in steps + 1:
+		var p := from.lerp(to, float(k) / maxf(1, steps))
+		bt.T.carve(p.x, p.y, 10, null)
+		if k % 3 == 0:
+			bt.dust(p.x, p.y, Color("8a7a6a"), 1)
+			await bt.wait(1)
+	bt.damage(tg, int(round(Data.DRILL_DMG * (1 + bt.alert * 0.06))), bo, {"melee": true})
+	await bt.until(bt.settled)
+	await bt.wait(8)
+
+func magma_burn(x: float, y: float) -> void:
+	## V6 MAGMA CRAWLER: the shell's splash sets everyone near where it landed burning.
+	for o in bt.units:
+		if o.dead or o.gone or o.team == "enemy" or o.is_pickup() or o.kind == "pow":
+			continue
+		if Vector2(o.x, o.y).distance_to(Vector2(x, y)) <= Data.MAGMA_BURN_R:
+			bt.add_status(o, "burn", 2, null)
+	for k in 10:
+		bt.part({"x": x + randf_range(-50, 50), "y": y - 4, "vx": randf_range(-0.5, 0.5), "vy": -randf_range(1, 2.5), "life": 30, "max": 30, "c": bt.pick([Color("ff7a3d"), Color("ffb23e")]), "s": 3.0, "g": -0.02, "fire": true})
 
 func boar_flame(bo: Unit) -> bool:
 	## V5 FLAME BOAR: in place of its chain gun, a long cone of fire at anyone within reach in front.

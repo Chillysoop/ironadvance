@@ -226,8 +226,10 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	if bm.rules.get("aliens", false) or (tier == 0 and first_run and daily == "" and not campaign()):
 		garrison = "regular"  # nothing but Vharr in the Hive; the very first fight stays the plain one
 	var remix := vr.randi()
-	var kits: Array = Data.BOAR_KITS.keys()
+	var kits: Array = Data.BOAR_KITS.keys().filter(func(k): return not Data.BOAR_KITS[k].get("biome", false))
 	var boar_kit: String = kits[vr.randi() % kits.size()] if boss == "boar" else ""
+	if boss == "boar" and tier >= 1 and Data.BIOME_BOSSES.has(id):
+		boar_kit = Data.BIOME_BOSSES[id]  # V6: the biome's own boss
 	if tier == 0 and first_run and daily == "" and not campaign():
 		boar_kit = "standard"
 	var rare := ""

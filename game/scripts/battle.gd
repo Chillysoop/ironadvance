@@ -2272,6 +2272,8 @@ func feed_kill(tg: Unit, src) -> void:
 			kc = Color("ffd23a")
 		elif src.kind == "enemy":
 			killer = Data.ETYPES[src.type].name.to_upper()
+			if src.type == "boss" and mission.get("boar_kit", "standard") not in ["standard", ""]:
+				killer = Data.BOAR_KITS[mission.boar_kit].name.to_upper()  # V5/V6: the feed names the loadout
 			kc = Color("ff4d3d")
 	var how := kill_how
 	if how == "":
@@ -2295,6 +2297,8 @@ func feed_kill(tg: Unit, src) -> void:
 			log_msg(fin)
 			float_text(src, Data.ORDERS[src.s.orders_done.back()].title + "!", Color("ffd23a"), true)
 	var victim: String = (Data.ETYPES[tg.type].name if tg.team == "enemy" else tg.def.name).to_upper()
+	if tg.type == "boss" and tg.team == "enemy" and mission.get("boar_kit", "standard") not in ["standard", ""]:
+		victim = Data.BOAR_KITS[mission.boar_kit].name.to_upper()
 	var stamp := ""
 	if pop_next:
 		stamp = "OVERKILL!"
