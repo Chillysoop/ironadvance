@@ -830,6 +830,11 @@ func v_played() -> void:
 		Run.level = Run.make_level(biome, tier)
 		custom = Run.level
 	Run.meta["tips_off"] = true
+	# the trailer lays its own soundtrack over the cut; record only the fight (SFX and ambience)
+	var mb := AudioServer.get_bus_index("Music")
+	if mb >= 0:
+		AudioServer.set_bus_mute(mb, true)
+	print("[trailer] music bus muted ", mb)
 	t.bot_speed = 1.0
 	t.bot_hold = 36
 	t.bot_hook = deal
