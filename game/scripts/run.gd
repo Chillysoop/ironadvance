@@ -11,6 +11,8 @@ var history: Array = []    # per-mission result dictionaries
 var seed_val := 0
 var uid := 1
 var luck := 0              # shifts every rarity roll upward
+var run_order := ""        # V9: the run order taken at the start of a quick run
+var run_order_offer: Array = []  # V9: the three orders on offer before one is taken
 var pity_rare := 0         # rolls since the last Rare or better
 var pity_epic := 0         # rolls since the last Epic or better
 var stash: Array = []      # unequipped items, shared by the squad
@@ -150,7 +152,7 @@ func roll_dial() -> Array:
 	## Two biomes from this level's pool, never one already played or burned.
 	var pool: Array = Data.LEVELS[mini(mission, Data.LEVELS.size() - 1)].pool.filter(func(b): return not burned.has(b))
 	pool.shuffle()
-	dial = pool.slice(0, 3 if hq("gate") >= 1 else 2)
+	dial = pool.slice(0, 3 if hq("gate") >= 1 or run_order == "widedial" else 2)
 	dial_breach = {}
 	dial_levels = {}
 	for b in dial:
@@ -235,6 +237,35 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 		"garrison": garrison, "remix": remix, "boar_kit": boar_kit,
 		"segments": layout,
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
+
+func take_run_order(id: String) -> void:
+	## V9: the run order is set for the whole run. Some pay out right away.
+	run_order = id
+	run_order_offer = []
+	match id:
+		"warchest":
+			scrip += Data.ORDER_CHEST
+		"ironwill":
+			for s in soldiers:
+				s.tags = int(s.tags) + 1
+		"lucky":
+			luck += 2
+		"heavy":
+			var rng := RandomNumberGenerator.new()
+			rng.seed = hash([seed_val, "heavy"])
+			for s in soldiers:
+				var pool: Array = s.def.get("pool", []).filter(func(k): return Data.CARDS.has(k))
+				if pool.is_empty():
+					continue
+				var top := 0
+				for k in pool:
+					top = maxi(top, int(Data.CARDS[k].get("rarity", 0)))
+				var best: Array = pool.filter(func(k): return int(Data.CARDS[k].get("rarity", 0)) == top)
+				s.deck.append(new_card(best[rng.randi() % best.size()], -1, "order"))
+
+func run_order_text(id: String) -> String:
+	var tx: String = Data.RUN_ORDERS[id].text
+	return tx % Data.ORDER_CHEST if id == "warchest" else tx
 
 func roll_garrison(rng: RandomNumberGenerator) -> String:
 	## V2: which Jackal garrison holds a level, weighted by Data.GARRISONS[k].w.
@@ -415,6 +446,16 @@ func new_run() -> void:
 	seed_val = randi()
 	for k in (daily_squad(daily) if daily != "" else draft()):
 		soldiers.append(make_soldier(class_def(k)))
+	run_order = ""
+	run_order_offer = []
+	if daily == "":
+		var ks: Array = Data.RUN_ORDERS.keys()
+		var orng := RandomNumberGenerator.new()
+		orng.seed = hash([seed_val, "orders"])
+		for i in range(ks.size() - 1, 0, -1):
+			var j := orng.randi() % (i + 1)
+			var t = ks[i]; ks[i] = ks[j]; ks[j] = t
+		run_order_offer = ks.slice(0, 3)
 
 # ---------------------------------------------------------------- D2 Daily Op, D3 fun toggles
 func daily_key() -> String:

@@ -159,7 +159,7 @@ func make_camp(c: Dictionary) -> void:
 			bt.log_msg("%s rejoins the squad at camp." % s.def.name)
 			i += 1
 		elif not s.dead:
-			var add := int(ceil(s.max_hp * Data.CAMP_HEAL)) + (5 if Run.hq("mess") >= 1 else 0)
+			var add := int(ceil(s.max_hp * Data.CAMP_HEAL * (2.0 if Run.run_order == "medics" else 1.0))) + (5 if Run.hq("mess") >= 1 else 0)
 			s.hp = mini(s.max_hp, s.hp + add)
 			bt.float_text(s, "+%d" % add, Color("62d26f"))
 		if not s.dead and s.def.key == "gears":
