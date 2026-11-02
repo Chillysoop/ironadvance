@@ -861,6 +861,11 @@ class PauseMenu extends Control:
 			"quit":
 				Art.text(self, "QUIT TO TITLE?", Vector2(480, 210), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 				var line := "This op is lost. The war picks up from your last HQ save." if Run.campaign() else "This run is lost. Salvage, bio-parts, HQ upgrades and unlocks you already earned are kept."
+				var bb: Battle = hud.b
+				if is_instance_valid(bb) and bb.in_lesson():
+					line = "Boot camp stops here. TRAINING on the title starts it again, and SKIP jumps past a lesson."
+				elif not Run.campaign() and Run.run_head().size():
+					line = "Your run is saved at HQ. CONTINUE RUN on the title takes you back to HQ, just before this level."
 				Art.text(self, line, Vector2(480, 246), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 
 class Coach extends Control:
@@ -1036,7 +1041,8 @@ class Overlay extends Control:
 				rows.append(("    " if j > 0 else "") + wl[j])
 			k += 1
 		var why: String = b.lesson_why
-		var h := 40.0 + rows.size() * 14 + (16.0 if why != "" and why != "retry" else 0.0)
+		# 48: room under the last row for descenders (the "g" of "flag" was cut off)
+		var h := 48.0 + rows.size() * 14 + (16.0 if why != "" and why != "retry" else 0.0)
 		draw_rect(Rect2(x - 1, y - 1, w + 2, h + 2), ink)
 		draw_rect(Rect2(x, y, w, h), Color(0.1, 0.11, 0.13, 0.9))
 		draw_rect(Rect2(x, y, w, 2), Color("ffb23e"))
