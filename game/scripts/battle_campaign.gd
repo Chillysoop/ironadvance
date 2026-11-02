@@ -159,7 +159,7 @@ func make_camp(c: Dictionary) -> void:
 			bt.log_msg("%s rejoins the squad at camp." % s.def.name)
 			i += 1
 		elif not s.dead:
-			var add := int(ceil(s.max_hp * Data.CAMP_HEAL)) + (5 if Run.hq("mess") >= 1 else 0)
+			var add := int(ceil(s.max_hp * Data.CAMP_HEAL * (2.0 if Run.run_order == "medics" else 1.0))) + (5 if Run.hq("mess") >= 1 else 0)
 			s.hp = mini(s.max_hp, s.hp + add)
 			bt.float_text(s, "+%d" % add, Color("62d26f"))
 		if not s.dead and s.def.key == "gears":
@@ -695,7 +695,7 @@ func activate_enemies() -> void:
 					bt.banner("WARNING!!", Color("c47bff"), "VHARR BOAR APPROACHING")
 					bt.log_msg("The flagship BOAR rolls in refit with Vharr tech: a dome over the turret and a tongue. Crushing and melee go through the dome.")
 				else:
-					bt.banner("WARNING!!", Color("ff4d3d"), "ROOKIE BOAR APPROACHING" if e.fl.get("rookie", false) else "IRON BOAR APPROACHING")
+					bt.banner("WARNING!!", Color("ff4d3d"), "ROOKIE BOAR APPROACHING" if e.fl.get("rookie", false) else "%s APPROACHING" % Data.BOAR_KITS.get(bt.mission.get("boar_kit", ""), Data.BOAR_KITS.standard).name)
 					bt.log_msg("The IRON BOAR rolls in. Something heavy is hanging over it...")
 				Sfx.play("alarm")
 

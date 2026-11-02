@@ -1621,6 +1621,28 @@ const GARRISONS := {
 }
 const GARRISON_SLOTS := ["grunt", "nade", "shield", "brute", "sapper", "jetter"]
 
+# V5: Iron Boar loadouts. Each quick-run level's Boar rolls one; the briefing says which.
+const BOAR_KITS := {
+	"standard": {"name": "IRON BOAR", "short": "SHELLS AND A CHAIN GUN"},
+	"flame": {"name": "FLAME BOAR", "short": "HOSES FIRE AT ANYONE CLOSE AND BURNS WOODEN COVER"},
+	"mortar": {"name": "MORTAR BOAR", "short": "EACH SHELL SPLITS INTO THREE SMALLER ONES"},
+	"carrier": {"name": "CARRIER BOAR", "short": "CALLS PARATROOPERS EVERY THIRD TURN"},
+}
+const BOAR_FLAME_RANGE := 200.0
+const BOAR_FLAME_DMG := 8
+
+# V9: run orders. A fresh quick run offers 3 of these; the one you take lasts the whole run.
+const RUN_ORDERS := {
+	"warchest": {"name": "WAR CHEST", "text": "Start the run with %d extra scrip."},
+	"scavengers": {"name": "SCAVENGERS", "text": "Every level has twice the supply crates."},
+	"ironwill": {"name": "IRON WILL", "text": "Every soldier in the starting squad gets one extra dog tag."},
+	"lucky": {"name": "LUCKY STARS", "text": "+2 Luck for the whole run: better rarity on every loot and card roll."},
+	"medics": {"name": "FIELD MEDICS", "text": "Camps heal twice as much."},
+	"widedial": {"name": "WIDE DIAL", "text": "The gate always shows 3 biomes, and you can spin it again once a level."},
+	"heavy": {"name": "HEAVY WEAPONS", "text": "Each soldier starts with one of their class's rarest cards in the deck."},
+}
+const ORDER_CHEST := 120
+
 const ENCOUNTERS := ["swarm", "nest", "droppods", "hunt", "outbreak", "gate"]
 const BIOME_ALIENS := {
 	"desert": ["skitter", "burrower", "squid", "warden"],

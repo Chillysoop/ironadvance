@@ -1504,7 +1504,7 @@ class Overlay extends Control:
 		elif boss != null and b.boss_active and not boss.dead:
 			var bw := 360.0
 			var bx := 480 - bw / 2
-			var bname := "VHARR BOAR" if boss.fl.get("vharr", false) else ("ROOKIE BOAR" if boss.fl.get("rookie", false) else "IRON BOAR")
+			var bname: String = "VHARR BOAR" if boss.fl.get("vharr", false) else ("ROOKIE BOAR" if boss.fl.get("rookie", false) else Data.BOAR_KITS.get(b.mission.get("boar_kit", ""), Data.BOAR_KITS.standard).name)
 			if boss.dome > 0:
 				Art.text(self, bname + "  DOMED: CRUSH OR MELEE IT", Vector2(bx, 52), 8, Color("9df25c"))
 			else:
