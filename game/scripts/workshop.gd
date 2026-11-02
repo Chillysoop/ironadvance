@@ -133,13 +133,7 @@ func build() -> void:
 		cancel.position = Vector2(16, 488)
 		cancel.pressed.connect(func(): picking = ""; build())
 		add_child(cancel)
-	var back := HudScript.PixButton.new()
-	back.text = "<< BACK TO HQ"
-	back.color = Color("ff4d3d")
-	back.size = Vector2(190, 44)
-	back.position = Vector2(746, 482)
-	back.pressed.connect(func(): Sfx.play("click"); done.emit())
-	add_child(back)
+	add_child(HudScript.back_to_hq(func(): done.emit()))
 
 func shortcut(label: String, s: Dictionary, c: Dictionary, id: String, x: float, y: float) -> float:
 	var bt := HudScript.PixButton.new()

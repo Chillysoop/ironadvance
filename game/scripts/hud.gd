@@ -586,6 +586,16 @@ func open_dossier(i: int) -> Control:
 	return HubUI.field_dossier(self, i)
 
 # ================================================================ widgets
+static func back_to_hq(cb: Callable, text := "<< BACK TO HQ") -> PixButton:
+	## R11: every HQ room leaves through the same red button in the same corner.
+	var bt := PixButton.new()
+	bt.text = text
+	bt.color = Color("ff4d3d")
+	bt.size = Vector2(190, 44)
+	bt.position = Vector2(746, 482)
+	bt.pressed.connect(func(): Sfx.play("click"); cb.call())
+	return bt
+
 class PixButton extends Control:
 	signal pressed
 	var text := ""

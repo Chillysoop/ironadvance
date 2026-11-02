@@ -9,6 +9,7 @@ const HudScript := preload("res://scripts/hud.gd")
 const SLOTS := ["weapon", "armor", "kit1", "kit2"]
 
 var shop_mode := false
+var hub_room := false   # R11: opened as an HQ room, so it leaves through the shared BACK TO HQ button
 var shelf: Array = []        # [{item, price, sold, mystery, black}] from the shop
 var pick := {}               # current selection: {where, i, s, slot}
 var msg := ""
@@ -100,6 +101,9 @@ func build() -> void:
 	detail.visible = false
 	add_child(detail)
 	build_actions(it)
+	if hub_room:
+		add_child(HudScript.back_to_hq(func(): done.emit()))
+		return
 	var back := HudScript.PixButton.new()
 	back.text = "BACK" if shop_mode else "DONE"
 	back.color = Color("ffb23e")
