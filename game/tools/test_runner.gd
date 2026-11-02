@@ -250,7 +250,7 @@ func run() -> void:
 			await until(func(): return not b.busy)
 			print("[loot] hand ", u.hand.map(func(c): return c.key), " stash ", Run.stash.map(func(i): return i.id), " equip ", u.s.equip)
 			await shot("loot_after")
-			b.sweep_loot(INF)
+			b.camp_ops.sweep_loot(INF)
 		"combos":
 			Run.new_run()
 			var b: Battle = main.start_battle(0)
@@ -560,7 +560,7 @@ func run() -> void:
 				await until(func(): return not b.busy)
 				print("[p5] ownet: overwatch ", sq.map(func(u): return u.overwatch), " hex od left ", by.hex.hand.any(func(c): return c.get("od", false) and not c.has("duo")))
 			# slug
-			b.call_slug(sq[0])
+			b.vtech.call_slug(sq[0])
 			await frames_wait(60)
 			await shot("p5_slug")
 			var sl = b.units.filter(func(x): return x.kind == "slug")[0]
@@ -568,7 +568,7 @@ func run() -> void:
 			for e in e0.slice(0, 3):
 				e.x = sl.x + 150 + randf() * 80; e.y = b.T.stand_y(e.x, 0); e.active = true
 			var hp0: int = e0.slice(0, 3).reduce(func(acc, e): return acc + e.hp, 0)
-			await b.slug_act(sl)
+			await b.vtech.slug_act(sl)
 			print("[p5] slug dmg ", hp0 - e0.slice(0, 3).reduce(func(acc, e): return acc + maxi(0, e.hp), 0), " slug x ", sl.x)
 			# relay capture
 			var r = b.units.filter(func(x): return x.kind == "relay")[0]
@@ -695,7 +695,7 @@ func run() -> void:
 				while u.x < b.world_w - 80 and guard < 400:
 					guard += 1
 					b.cam_x = clampf(u.x - 200, 0, b.world_w - Battle.W); b.cam_tx = b.cam_x
-					var sim := b.sim_walk(u, u.x + 300, 300)
+					var sim := b.phys.sim_walk(u, u.x + 300, 300)
 					if sim.used >= 1:
 						u.x = sim.x; u.y = sim.y
 						continue
@@ -955,7 +955,7 @@ func run() -> void:
 
 func cam_on(b: Battle, x: float) -> void:
 	b.cam_x = clampf(x - Battle.W / 2.0, 0, b.world_w - Battle.W); b.cam_tx = b.cam_x
-	b.activate_enemies()
+	b.camp_ops.activate_enemies()
 
 func find_struct(b: Battle, t: String) -> Dictionary:
 	for s in b.T.structs:
@@ -1236,7 +1236,7 @@ func picks() -> void:
 	var target: Dictionary = cands[1]
 	var t0 := Data.tier_of(target)
 	var snap: Array = sq.map(func(u): return u.s.deck.map(func(cd): return Data.tier_of(cd)))
-	b.camp_pick.call(c)
+	b.camp_ops.camp_pick.call(c)
 	await frames_wait(10)
 	b.hud.picked.emit(1)  # FIELD UPGRADE
 	await frames_wait(10)
@@ -1398,12 +1398,12 @@ func field() -> void:
 	Run.scrip += 100
 	moss.deck.append(Run.new_card("rifle", 0, "shop"))
 	b.end_turn(true)
-	await until(func(): return b.state == "player" and not b.busy)
+	await until(func(): return b.round_n == 2 and b.state == "player" and not b.busy)
 	check(b.units.filter(func(o): return o.team == "enemy" and not o.dead).size() == b.dummies.size(), "the dummies stand back up when they are all down")
 	check(me.xp_gain == 0 and b.lvl_queue.is_empty(), "no XP at the range")
 	check(b.round_n == 2 and me.hp > 0, "no enemy phase: round 2 starts with Moss untouched")
 	await shot("field_range_reset")
-	b.leave_practice()
+	b.boot_camp.leave_practice()
 	await frames_wait(20)
 	check(main.screen != null and main.screen.has_method("open_dossier") and main.screen.sub != null and main.screen.sub.idx == 0, "leaving the range comes back to Moss's Dossier at HQ")
 	check(Run.scrip == scrip0 and Run.soldiers[0].hp == 9 and Run.soldiers[0].deck.size() == deck0 and Run.history.size() == hist0, "everything the range touched is put back (scrip %d, HP %d, deck %d)" % [Run.scrip, Run.soldiers[0].hp, Run.soldiers[0].deck.size()])
@@ -1822,9 +1822,9 @@ func ui_clarity() -> void:
 	e.active = true
 	e.hp = 60; e.max_hp = 60
 	b.units.append(e)
-	var st := b.make_sentry(u, x + 40, b.T.stand_y(x + 40, 0), 20, [4, 5])
+	var st := b.spec_kits.make_sentry(u, x + 40, b.T.stand_y(x + 40, 0), 20, [4, 5])
 	await frames_wait(4)
-	var tg = b.sentry_target(st)
+	var tg = b.spec_kits.sentry_target(st)
 	check(tg != null, "the sentry has a target")
 	var hp0 := e.hp
 	var seen := {"call": false, "tr": false}
@@ -2173,7 +2173,7 @@ func newplayer3() -> void:
 				b.autopick = 0
 				u.x = d.x + 120
 				u.y = d.y
-				await b.check_dealer(u, d.x - 120)
+				await b.mid_events.check_dealer(u, d.x - 120)
 				check(d.loot.get("seen", -1) == b.round_n, "a walk that passes the dealer opens his stall")
 				b.autopick = -1
 	check(on_ice == 0 and parked > 0, "no parked vehicle on lake ice (%d of %d)" % [on_ice, parked])
@@ -2273,7 +2273,7 @@ func newplayer5() -> void:
 	# a player who walks first never gets the MOVING page after their first card
 	b.coach_left = b.COACH.duplicate()
 	var u: Unit = b.sel
-	var sim: Dictionary = b.sim_walk(u, u.x + 60, u.move_left)
+	var sim: Dictionary = b.phys.sim_walk(u, u.x + 60, u.move_left)
 	b.resolve(func(): await b._act_walk(u, sim.pts, sim.used))
 	await until(func(): return not b.busy)
 	check(not b.coach_left.has("card") and not b.coach_left.has("walk"), "walking first drops the MOVING page and queues NEXT AND END TURN")
@@ -2537,7 +2537,7 @@ func fieldfix() -> void:
 	hud.cards[3].hover = false
 	# leaving a vehicle strips every vehicle card: hijacked guns in hand, the deck's own in every pile
 	u.hand = u.hand.slice(0, 4)
-	b.mount(u, "walker", -1, false)
+	b.vehicle_ops.mount(u, "walker", -1, false)
 	var own1: Dictionary = Run.new_card("vulcan")
 	var own2: Dictionary = Run.new_card("stomp")
 	var own3: Dictionary = Run.new_card("mcannon")
@@ -2545,15 +2545,15 @@ func fieldfix() -> void:
 	u.draw.append(own2)
 	u.disc.append(own3)
 	check(u.hand.any(func(h): return h.get("mechtemp", false)), "a hijacker holds the vehicle's cards")
-	b.dismount(u, false)
+	b.vehicle_ops.dismount(u, false)
 	var veh := func(h): return h.get("mechtemp", false) or Data.card(h).get("mech", false)
 	check(not u.hand.any(veh) and not u.draw.any(veh) and not u.disc.any(veh), "on foot, no vehicle card is left in hand, draw or discard")
 	check(u.mech_stash.size() == 3, "the deck's own vehicle cards are set aside (%d)" % u.mech_stash.size())
 	await frames_wait(10)
 	await shot("fieldfix_dismount")
-	b.mount(u, "walker", -1, true)
+	b.vehicle_ops.mount(u, "walker", -1, true)
 	check(u.mech_stash.is_empty() and u.draw.has(own1) and u.draw.has(own2) and u.draw.has(own3), "back in a vehicle, they return to the draw pile")
-	b.dismount(u, false)
+	b.vehicle_ops.dismount(u, false)
 	b.vpop = {}
 	# the push zone stays locked while an enemy lives behind the line
 	b.busy = false
@@ -2573,7 +2573,7 @@ func fieldfix() -> void:
 	u.x = line + 40
 	u.y = b.T.stand_y(u.x, 0)
 	await b.check_push(u)
-	check(b.cam_x == cam0 and b.push_blockers().size() == 1, "an enemy behind the line keeps the map from moving")
+	check(b.cam_x == cam0 and b.camp_ops.push_blockers().size() == 1, "an enemy behind the line keeps the map from moving")
 	await frames_wait(4)
 	await shot("fieldfix_locked")
 	foe.dead = true
@@ -2593,7 +2593,7 @@ func fieldfix() -> void:
 	await shot("fieldfix_fallin")
 	# the SV-001 Slug drives itself: it says so over it and on hover
 	b.vpop = {}
-	b.call_slug(u)
+	b.vtech.call_slug(u)
 	var sl: Unit = b.units.back()
 	await until(func(): return not sl.air, 600)
 	for o in b.squad_alive():
@@ -2697,8 +2697,8 @@ func hazards() -> void:
 	var s0: Unit = b.squad()[0]
 	s0.x = m0.x - 30; s0.y = b.T.stand_y(s0.x, m0.y - 40)
 	var hp0 := s0.hp
-	var sim := b.sim_walk(s0, m0.x + 10, 80)
-	b.walk_along(s0, sim.pts)
+	var sim := b.phys.sim_walk(s0, m0.x + 10, 80)
+	b.phys.walk_along(s0, sim.pts)
 	await frames_wait(6)
 	await shot("hz_mine_click")
 	await until(func(): return m0.gone, 400)
@@ -2718,8 +2718,8 @@ func hazards() -> void:
 	var m2: Unit = mines.filter(func(m): return not m.primed and not m.gone and m != m0 and m != m1)[0]
 	var walker := b.mk_enemy("grunt", m2.x - 30, b.T.stand_y(m2.x - 30, m2.y - 40))
 	b.units.append(walker)
-	var ws := b.sim_walk(walker, m2.x + 30, 80)
-	await b.walk_along(walker, ws.pts)
+	var ws := b.phys.sim_walk(walker, m2.x + 30, 80)
+	await b.phys.walk_along(walker, ws.pts)
 	await frames_wait(30)
 	check(not m2.primed, "a Jackal walking over its own mine leaves it alone")
 	# the MOVE button and the after-wave drag never walk a soldier onto a mine
@@ -2743,7 +2743,7 @@ func hazards() -> void:
 	lane_mine.x = lane; lane_mine.y = b.T.stand_y(lane, b.T.ground_at(lane) - 40)
 	b.units.append(lane_mine)
 	dragged.x = lane - 200; dragged.y = lane_mine.y; dragged.air = false
-	b.drag_stragglers()
+	b.camp_ops.drag_stragglers()
 	await frames_wait(30)
 	check(not lane_mine.primed and absf(dragged.x - lane_mine.x) > dragged.w / 2.0 + 5, "dragging a straggler forward skips past a mine (soldier %d, mine %d)" % [dragged.x, lane_mine.x])
 	# crane: shoot the cable, the container drops on the Boar
@@ -2777,7 +2777,7 @@ func alien_field(b: Battle, x: float) -> Unit:
 	var s: Unit = b.squad()[0]
 	s.st.clear()
 	if s.mech != null:
-		b.dismount(s, false)  # a soldier who walked into a parked vehicle would let it take the hits
+		b.vehicle_ops.dismount(s, false)  # a soldier who walked into a parked vehicle would let it take the hits
 	for o in b.squad():
 		if o != s:
 			o.x = x - 200; o.y = b.T.stand_y(o.x, 0); o.air = false
@@ -2841,7 +2841,7 @@ func aliens() -> void:
 	var s := alien_field(b, x0)
 	var sk := spawn_alien(b, "skitter", x0 + 200)
 	var hp0 := s.hp
-	await b.enemy_act(sk)
+	await b.foe_ai.enemy_act(sk)
 	await until(func(): return b.settled(), 600)
 	await shot("alien_skitter")
 	check(s.hp < hp0 and absf(sk.x - s.x) < 30, "a Skitter pounces and bites in the same phase (hp %d -> %d)" % [hp0, s.hp])
@@ -2859,7 +2859,7 @@ func aliens() -> void:
 	check(sq.y < gy - 80, "a Squid Trooper hovers (%d above the floor)" % (gy - sq.y))
 	sq.hold = true
 	hp0 = s.hp
-	await b.enemy_act(sq)
+	await b.foe_ai.enemy_act(sq)
 	await until(func(): return b.settled(), 600)
 	await shot("alien_squid")
 	check(s.hp < hp0, "the Squid fires its ray the same phase (hp %d -> %d)" % [hp0, s.hp])
@@ -2872,13 +2872,13 @@ func aliens() -> void:
 	s = alien_field(b, x0 + 60)
 	var bl := spawn_alien(b, "blinker", x0 + 240)
 	hp0 = s.hp
-	await b.enemy_act(bl)
+	await b.foe_ai.enemy_act(bl)
 	await shot("alien_blinker")
 	await until(func(): return b.settled(), 600)
 	check(s.hp < hp0, "a Blinker teleports in and claws the same phase (hp %d -> %d)" % [hp0, s.hp])
 	s = alien_field(b, x0 + 60)
 	var far := spawn_alien(b, "blinker", x0 + 500)
-	await b.enemy_act(far)
+	await b.foe_ai.enemy_act(far)
 	check(far.x > x0 + 300 and far.x < x0 + 500, "a Blinker farther than 360px walks closer instead (x %d)" % far.x)
 
 func aliens2() -> void:
@@ -2910,15 +2910,15 @@ func aliens2() -> void:
 	var s := alien_field(b, x0)
 	var hv := spawn_alien(b, "hive", x0 + 200)
 	var count := func(): return b.units.filter(func(u): return u.type == "skitter" and not u.dead).size()
-	await b.enemy_act(hv)
+	await b.foe_ai.enemy_act(hv)
 	check(count.call() == 0 and hv.fl.hatch == 1, "a Hive Pod counts down first")
-	await b.enemy_act(hv)
+	await b.foe_ai.enemy_act(hv)
 	check(count.call() == 2, "then hatches two Skitters (%d)" % count.call())
 	s.x = hv.x + 10; s.y = b.T.stand_y(s.x, 0)
 	b.damage(hv, 99, s)
 	check(b.acids.size() == 1, "a dead Hive Pod leaves acid")
 	var hp0 := s.hp
-	b.tick_acids()
+	b.vharr_ai.tick_acids()
 	check(s.hp == hp0 - 3, "a soldier standing in acid takes 3 (hp %d -> %d)" % [hp0, s.hp])
 	# the swarm tunnel: waves 3, 4, 3, then it caves in
 	s = alien_field(b, x0)
@@ -2926,9 +2926,9 @@ func aliens2() -> void:
 	var waves: Array = []
 	for i in 3:
 		var c0: int = count.call()
-		await b.enemy_act(bu)
+		await b.foe_ai.enemy_act(bu)
 		waves.append(count.call() - c0)
-	await b.enemy_act(bu)
+	await b.foe_ai.enemy_act(bu)
 	check(waves == [3, 4, 3] and bu.dead, "a tunnel sends waves %s and then caves in" % str(waves))
 	await until(func(): return b.settled(), 600)
 	await shot("alien2_swarm")
@@ -2948,13 +2948,13 @@ func aliens2() -> void:
 	b.kill(body, s)
 	b.make_elite(an, "hungry")
 	an.max_hp = 99; an.hp = 50
-	await b.enemy_act(an)
+	await b.foe_ai.enemy_act(an)
 	check(an.hp >= 58 and body.gone, "a HUNGRY alien eats a body to heal (hp %d)" % an.hp)
 	s = alien_field(b, x0)
 	var al := spawn_alien(b, "squid", x0 + 200)
 	var mate := spawn_alien(b, "squid", x0 + 300)
 	b.make_elite(al, "alpha")
-	check(b.alpha_near(mate) and not b.alpha_near(al), "an ALPHA makes others of its kind nearby act twice")
+	check(b.vharr_ai.alpha_near(mate) and not b.vharr_ai.alpha_near(al), "an ALPHA makes others of its kind nearby act twice")
 	check(Data.ELITES[b.pick_elite(true)].get("vharr", false) and not Data.ELITES[b.pick_elite(false)].get("vharr", false), "aliens and Jackals roll their own elites")
 	# breach: a Jackal goes for the nearest alien instead of a far soldier
 	s = alien_field(b, x0 - 100)
@@ -2968,7 +2968,7 @@ func aliens2() -> void:
 	var bk := spawn_alien(b, "blinker", x0 + 200)
 	bk.hp = 99; bk.max_hp = 99
 	for i in 3:
-		await b.enemy_act(j)
+		await b.foe_ai.enemy_act(j)
 		await until(func(): return b.settled(), 600)
 	check(bk.hp < 99, "the Jackal shoots the alien instead (hp 99 -> %d)" % bk.hp)
 	# Worms style: a Jackal with a shot already still moves before it fires
@@ -2977,7 +2977,7 @@ func aliens2() -> void:
 	var mover := spawn_alien(b, "grunt", x0 + 200)
 	var mx := mover.x
 	hp0 = s.hp
-	await b.enemy_act(mover)
+	await b.foe_ai.enemy_act(mover)
 	await until(func(): return b.settled(), 600)
 	check(absf(mover.x - mx) >= 30, "a Jackal with a clear shot still moves first (moved %d px)" % absf(mover.x - mx))
 
@@ -3001,7 +3001,7 @@ func aliens3() -> void:
 	var hit := b.trace_bullet(x0 + 100, bw.y - 10, 0.0, 400, 0, s, false)
 	check(not hit.hits.any(func(h): return h.u == bw), "bullets pass over a buried Burrower")
 	var hp0 := s.hp
-	await b.enemy_act(bw)
+	await b.foe_ai.enemy_act(bw)
 	await until(func(): return b.settled(), 900)
 	await shot("alien3_burrower")
 	check(bw.weight == "" and absf(bw.x - x0) < 80 and s.hp < hp0, "it tunnels over and bursts out under the soldier (hp %d -> %d, x %d, %s)" % [hp0, s.hp, bw.x - x0, bw.weight])
@@ -3009,7 +3009,7 @@ func aliens3() -> void:
 	s = alien_field(b, x0)
 	var gp := spawn_alien(b, "grappler", x0 + 300)
 	var sx := s.x
-	await b.enemy_act(gp)
+	await b.foe_ai.enemy_act(gp)
 	await until(func(): return b.settled(), 900)
 	await shot("alien3_grappler")
 	check(s.x > sx + 100, "a Grappler yanks the soldier toward it (x %d -> %d)" % [sx, s.x])
@@ -3020,7 +3020,7 @@ func aliens3() -> void:
 	for i in 3:
 		if bl.dead:
 			break
-		await b.enemy_act(bl)
+		await b.foe_ai.enemy_act(bl)
 		await until(func(): return b.settled(), 900)
 	check(bl.dead and s.hp < hp0, "a Bloater walks up and pops on the soldier (hp %d -> %d)" % [hp0, s.hp])
 	s = alien_field(b, x0)
@@ -3036,7 +3036,7 @@ func aliens3() -> void:
 	var ally := spawn_alien(b, "grunt", x0 + 200)
 	ally.hold = true
 	ally.hp = 50; ally.max_hp = 50
-	await b.enemy_act(wv)
+	await b.foe_ai.enemy_act(wv)
 	await until(func(): return b.settled(), 900)
 	await shot("alien3_weaver")
 	check(ally.dome > 0, "the Weaver domes the ally nearest the squad")
@@ -3068,7 +3068,7 @@ func aliens4() -> void:
 	tr = b.trace_bullet(x0 + 10, gy, 0.0, 600, 0, s, false)
 	check(tr.hits.any(func(h): return h.u == pr), "from behind the mirror, it gets hit")
 	var hp0 := s.hp
-	await b.enemy_act(pr)
+	await b.foe_ai.enemy_act(pr)
 	await until(func(): return b.settled(), 900)
 	await shot("alien4_prism")
 	check(pr.face == -1 and s.hp < hp0, "the Prism turns its mirror on the squad and zaps (hp %d -> %d)" % [hp0, s.hp])
@@ -3078,16 +3078,16 @@ func aliens4() -> void:
 	s2.x = x0 + 110; s2.y = b.T.stand_y(s2.x, 0); s2.air = false
 	var wd := spawn_alien(b, "warden", x0 + 420)
 	var gap0 := s2.x - s.x
-	await b.enemy_act(wd)
+	await b.foe_ai.enemy_act(wd)
 	await until(func(): return b.settled(), 900)
 	await shot("alien4_warden")
 	check(b.wells.size() == 1, "the Warden drops a gravity well")
 	check(absf(s2.x - s.x) < gap0 - 20, "the well pulls the soldiers together (%d -> %d apart)" % [gap0, absf(s2.x - s.x)])
 	var wl: Dictionary = b.wells[0] if b.wells.size() else {"x": x0, "y": gy}
-	var bent := b.sim_arc(wl.x - 180, wl.y - 120, 3.0, -2.0, 0.0, 30)
+	var bent := b.phys.sim_arc(wl.x - 180, wl.y - 120, 3.0, -2.0, 0.0, 30)
 	var keep: Array = b.wells
 	b.wells = []
-	var plain := b.sim_arc(wl.x - 180, wl.y - 120, 3.0, -2.0, 0.0, 30)
+	var plain := b.phys.sim_arc(wl.x - 180, wl.y - 120, 3.0, -2.0, 0.0, 30)
 	b.wells = keep
 	var n: int = mini(bent.pts.size(), plain.pts.size()) - 1
 	check(plain.pts[n].distance_to(bent.pts[n]) > 4, "thrown things bend toward the well (%.1f px)" % plain.pts[n].distance_to(bent.pts[n]))
@@ -3100,7 +3100,7 @@ func aliens4() -> void:
 	b.T.fill_r(x0 + 90, b.T.stand_y(x0, 0) - 70, 24, 70, 1)
 	b.T.flush()
 	hp0 = s.hp
-	await b.enemy_act(st)
+	await b.foe_ai.enemy_act(st)
 	await until(func(): return b.settled(), 900)
 	await shot("alien4_stalker")
 	check(st.fl.get("phased", false), "the Stalker phases on its first turn")
@@ -3109,7 +3109,7 @@ func aliens4() -> void:
 	check(not tr.hits.any(func(h): return h.u == st), "bullets pass through a phased Stalker")
 	b.T.fill_r(st.x - 16, st.y - st.h - 4, 32, st.h + 4, 1)
 	b.T.flush()
-	await b.enemy_act(st)
+	await b.foe_ai.enemy_act(st)
 	await until(func(): return b.settled(), 600)
 	check(st.dead, "turning solid inside rock kills it")
 	# --- Overseer: two Thralls, shrug off one knock, Skitter bursts out, links break on death
@@ -3119,7 +3119,7 @@ func aliens4() -> void:
 	var j2 := spawn_alien(b, "grunt", x0 + 240)
 	j1.hold = true; j2.hold = true
 	var ov := spawn_alien(b, "overseer", x0 + 360)
-	await b.enemy_act(ov)
+	await b.foe_ai.enemy_act(ov)
 	await until(func(): return b.settled(), 900)
 	await shot("alien4_overseer")
 	check(b.is_thrall(j1) and b.is_thrall(j2), "the Overseer turns two Jackals into Thralls")
@@ -3153,7 +3153,7 @@ func aliens5() -> void:
 	check(not tr.hits.any(func(h): return h.u == q), "bullets pass over her while she's underground")
 	var hp0 := s.hp
 	var g0 = b.T.stand_y(x0 + 160, 0)
-	await b.enemy_act(q)
+	await b.foe_ai.enemy_act(q)
 	await until(func(): return b.settled(), 900)
 	await shot("alien5_queen_burst")
 	check(q.weight == "" and absf(q.x - x0) < 80 and s.hp < hp0, "she tunnels over and bursts out under the soldier (hp %d -> %d)" % [hp0, s.hp])
@@ -3165,7 +3165,7 @@ func aliens5() -> void:
 	check(qh - q.hp == 15, "rubble on her head does triple damage (%d)" % (qh - q.hp))
 	var tot := func(): return b.squad_alive().reduce(func(a, u): return a + u.hp, 0)
 	hp0 = tot.call()
-	await b.enemy_act(q)
+	await b.foe_ai.enemy_act(q)
 	await until(func(): return b.settled(), 900)
 	await shot("alien5_queen_spit")
 	check(q.weight == "buried" and tot.call() < hp0, "next turn she bites or spits, then dives (squad hp %d -> %d)" % [hp0, tot.call()])
@@ -3193,9 +3193,9 @@ func aliens6() -> void:
 	var s := alien_field(b, x0)
 	var sh := spawn_alien(b, "hiveship", x0 + 260)
 	sh.hp = 200; sh.max_hp = 200
-	b.hang_plates(sh)
+	b.vharr_ai.hang_plates(sh)
 	sh.active = false
-	b.activate_enemies()
+	b.camp_ops.activate_enemies()
 	await frames_wait(30)
 	check(b.boss_active, "the ship counts as the level boss")
 	var gy = b.T.stand_y(sh.x, 0)
@@ -3236,7 +3236,7 @@ func aliens6() -> void:
 	sh.dead = false; sh.gone = false; sh.active = true
 	var tot := func(): return b.squad_alive().reduce(func(a, u): return a + u.hp, 0)
 	var sq0: int = tot.call()
-	await b.enemy_act(sh)
+	await b.foe_ai.enemy_act(sh)
 	await until(func(): return b.settled(), 1200)
 	await shot("alien6_ship_turn")
 	check(tot.call() < sq0, "the ray and the pod hurt the squad (hp %d -> %d)" % [sq0, tot.call()])
@@ -3246,7 +3246,7 @@ func aliens6() -> void:
 	if pods.size():
 		var n0 := b.units.size()
 		var cargo: Array = pods[0].fl.cargo
-		await b.enemy_act(pods[0])
+		await b.foe_ai.enemy_act(pods[0])
 		await until(func(): return b.settled(), 1200)
 		var out: Array = b.units.slice(n0).map(func(u): return u.type)
 		check(pods[0].gone and out.slice(0, cargo.size()) == cargo, "next phase it opens and the Vharr come out (%s)" % str(out))
@@ -3268,7 +3268,7 @@ func aliens6() -> void:
 	b2.units.append(bo)
 	bo.dead = false; bo.gone = false; bo.active = true; bo.y = b2.T.stand_y(bo.x, 0)
 	var sx := s2.x
-	await b2.enemy_act(bo)
+	await b2.foe_ai.enemy_act(bo)
 	await until(func(): return b2.settled(), 1200)
 	await shot("alien6_vboar")
 	check(bo.dome == 1, "it raises its dome")
@@ -3283,7 +3283,7 @@ func aliens6() -> void:
 	await until(func(): return b2.state == "player" and not b2.busy, 600)
 	b2.state = "enemy"
 	bo.dome = 0
-	await b2.vboar_tricks(bo)
+	await b2.vharr_ai.vboar_tricks(bo)
 	check(bo.dome == 0, "the dome needs time to come back")
 
 func enc_battle(id: String) -> Battle:
@@ -3309,7 +3309,7 @@ func aliens7() -> void:
 	var x0: float = b.ambush.x
 	flat_strip(b, x0 - 200, 500)
 	var s := alien_field(b, x0)
-	await b.pod_ambush()
+	await b.foe_ai.pod_ambush()
 	await until(func(): return b.settled(), 900)
 	await shot("alien7_pods")
 	var pods := b.units.filter(func(u): return u.type == "droppod" and not u.dead)
@@ -3344,11 +3344,11 @@ func aliens7() -> void:
 		for u in b.squad():
 			u.x = ov.x - 420; u.y = b.T.stand_y(u.x, 0); u.air = false
 		cam_on(b, ov.x - 200)
-		await b.enemy_act(ov)
+		await b.foe_ai.enemy_act(ov)
 		await until(func(): return b.settled(), 900)
 		var thr := func(): return camp.filter(func(u): return u.fl.get("thrall", false)).size()
 		check(thr.call() == 1, "it takes one Jackal a turn (%d)" % thr.call())
-		await b.enemy_act(ov)
+		await b.foe_ai.enemy_act(ov)
 		await until(func(): return b.settled(), 900)
 		check(thr.call() == 2, "then another (%d)" % thr.call())
 		b.kill(ov, b.squad()[0])
@@ -3368,7 +3368,7 @@ func aliens7() -> void:
 		b.units.append(g)
 		g.dead = false; g.gone = false; g.active = true; g.y = b.T.stand_y(g.x, 0); g.air = false
 		for i in 6:
-			await b.enemy_act(g)
+			await b.foe_ai.enemy_act(g)
 			await until(func(): return b.settled(), 600)
 		var from := b.units.filter(func(u): return u.fl.get("from") == g and not u.dead)
 		check(from.size() == 4, "one alien a turn, four at a time (%d)" % from.size())
@@ -3392,7 +3392,7 @@ func aliens8() -> void:
 	var gt := spawn_alien(b, "gatetrooper", x0 + 340)
 	check(gt.sheet == "en_gatetrooper", "it wears its own Sprite Fusion body, not the rifleman's")
 	var hp0 := s.hp
-	await b.enemy_act(gt)
+	await b.foe_ai.enemy_act(gt)
 	await until(func(): return b.settled(), 900)
 	await shot("alien8_trooper")
 	check(s.hp < hp0, "it walks in and fires the stolen ray (hp %d -> %d)" % [hp0, s.hp])
@@ -3411,11 +3411,11 @@ func aliens8() -> void:
 	b.breach = true
 	var d := spawn_alien(b, "grunt", x0 + 120)
 	d.hp = 3
-	await b.enemy_act(d)
+	await b.foe_ai.enemy_act(d)
 	check(d.kind == "pow" and d.fl.get("defector", false) and d.team == "neutral", "a cornered Jackal surrenders in a breach")
 	var d2 := spawn_alien(b, "grunt", x0 + 140)
 	d2.hp = 3
-	await b.enemy_act(d2)
+	await b.foe_ai.enemy_act(d2)
 	check(d2.kind == "enemy", "only one per level")
 	d2.dead = true; d2.gone = true
 	b.state = "player"; b.busy = false
@@ -3423,7 +3423,7 @@ func aliens8() -> void:
 	await frames_wait(20)
 	check(d.freed and b.pow_queue.size() == 1, "walk over him to bring him in")
 	if b.pow_queue.size():
-		b.sign_defector(b.pow_queue.pop_front().pow)
+		b.vharr_ai.sign_defector(b.pow_queue.pop_front().pow)
 	check(Run.defectors.size() == 1 and Run.defectors[0] == d.pow_name, "walked out, he joins the recruit pool (%s)" % str(Run.defectors))
 	Run.soldiers[3].alive = false
 	var off: Dictionary = Run.recruit_offers()[0]
@@ -3434,7 +3434,7 @@ func aliens8() -> void:
 	var d3 := spawn_alien(b, "grunt", x0 + 160)
 	d3.hp = 3
 	b.stats.erase("defectors")
-	await b.enemy_act(d3)
+	await b.foe_ai.enemy_act(d3)
 	check(d3.kind == "enemy", "outside a breach nobody surrenders")
 
 func camp() -> void:
@@ -3463,14 +3463,14 @@ func camp() -> void:
 	for e in near:
 		e.active = true
 	if near.size():
-		await b.check_camp(u)
+		await b.camp_ops.check_camp(u)
 		check(not c.used, "no camp while Jackals are still close")
 	for e in near:
 		e.dead = true
 		e.gone = true
 	var before: Array = u.s.deck.map(func(cd): return Data.tier_of(cd))
 	b.autopick = 1
-	await b.check_camp(u)
+	await b.camp_ops.check_camp(u)
 	await frames_wait(30)
 	await shot("camp_made")
 	check(c.used, "the camp is made once the area is clear")
@@ -3478,7 +3478,7 @@ func camp() -> void:
 	check(sq[2].hp > 5, "everyone patches up a little at camp")
 	var after: Array = u.s.deck.map(func(cd): return Data.tier_of(cd))
 	check(after != before, "FIELD UPGRADE raises a card's tier")
-	await b.check_camp(u)
+	await b.camp_ops.check_camp(u)
 	check(int(b.stats.get("camps", 0)) == 1, "a camp only pays out once")
 	var c2: Dictionary = b.T.camps[1]
 	cam_on(b, c2.fire)
@@ -3710,7 +3710,7 @@ func drill() -> void:
 	b.T.fill_r(x + 70, gy - 70, 30, 72, 4)
 	b.T.fill_r(x + 100, gy - 70, 12, 72, 2)
 	await frames_wait(10)
-	check(b.sim_walk(s, x + 200, 200).used < 30, "the wall blocks walking")
+	check(b.phys.sim_walk(s, x + 200, 200).used < 30, "the wall blocks walking")
 	s.move_left = 220; s.energy = 3
 	var di := force_card(s, "drill")
 	b.select_unit(s)
@@ -3843,10 +3843,10 @@ func soldat2() -> void:
 	await frames_wait(4)
 	await shot("soldat2_fuse")
 	var v := b.aim_vel(s, aimp)
-	var gs := b.sim_grenade(v.hx, v.hy, v.vx, v.vy, 1.0, 180)
-	var pr: Dictionary = b.mk_proj({"kind": "frag", "x": v.hx, "y": v.hy, "vx": v.vx, "vy": v.vy, "wind": 1.0, "bounce": true, "fuse": 99999, "owner": s})
+	var gs := b.phys.sim_grenade(v.hx, v.hy, v.vx, v.vy, 1.0, 180)
+	var pr: Dictionary = b.phys.mk_proj({"kind": "frag", "x": v.hx, "y": v.hy, "vx": v.vx, "vy": v.vy, "wind": 1.0, "bounce": true, "fuse": 99999, "owner": s})
 	for i in 180:
-		b.update_proj(pr)
+		b.phys.update_proj(pr)
 	check(Vector2(pr.x, pr.y).distance_to(Vector2(gs.x, gs.y)) < 3, "the fuse preview ends where the grenade really is when it blows (%d,%d vs %d,%d)" % [pr.x, pr.y, gs.x, gs.y])
 	var ci := b.card_idx
 	b.projs.clear()
@@ -3875,7 +3875,7 @@ func soldat2() -> void:
 	b.grant_bonus(pad, j)
 	check(j.st.has("nades"), "a Jackal that grabs a Grenade Kit holds a grenade")
 	b.projs.clear()
-	var threw: bool = await b.jackal_nade(j)
+	var threw: bool = await b.foe_ai.jackal_nade(j)
 	check(threw and b.projs.any(func(p): return p.kind == "egren") and not j.st.has("nades"), "and lobs it at the nearest soldier on its next move")
 	await until(func(): return b.settled(), 600)
 	check(Data.BONUSES.has("cluster") and Data.BONUSES.has("nadekit"), "Cluster and Grenade Kit are in the pad rotation")
@@ -3886,9 +3886,9 @@ func soldat2() -> void:
 	b.grav = Battle.GRAV * Data.BIOMES.mountain.rules.grav
 	var high := b.sim_body(s, 3.0, -5.0)
 	check(high.x > low.x + 20, "thin air: the same jump carries further on the mountain (%d vs %d)" % [high.x - s.x, low.x - s.x])
-	var a1 := b.sim_arc(s.x, s.y - 30, 4.0, -4.0, 0, 300)
+	var a1 := b.phys.sim_arc(s.x, s.y - 30, 4.0, -4.0, 0, 300)
 	b.grav = Battle.GRAV
-	var a0 := b.sim_arc(s.x, s.y - 30, 4.0, -4.0, 0, 300)
+	var a0 := b.phys.sim_arc(s.x, s.y - 30, 4.0, -4.0, 0, 300)
 	check(a1.x > a0.x, "and so does a throw (%d vs %d)" % [a1.x - s.x, a0.x - s.x])
 	await soldat2_moves(b, s)
 
@@ -3908,7 +3908,7 @@ func soldat2_moves(b: Battle, s: Unit) -> void:
 	b.T.fill_r(280, gy, 300, 40, 1)
 	b.T.fill_r(380, gy - 30, 40, 12, 2)
 	b.T.flush()
-	var walk := b.sim_walk(s, s.x + 150, 150)
+	var walk := b.phys.sim_walk(s, s.x + 150, 150)
 	check(walk.x < 380, "walking can't get under the low slab (stopped at %d)" % walk.x)
 	s.energy = 5
 	var ri := force_card(s, "roll")
@@ -3923,7 +3923,7 @@ func soldat2_moves(b: Battle, s: Unit) -> void:
 	var j := b.mk_enemy("grunt", s.x + 180, b.T.stand_y(s.x + 180, 0)); j.active = true
 	b.units.append(j)
 	var hp0 := s.hp
-	await b.enemy_shoot(j, s, {"dmg": [4, 4], "shots": 1, "range": 460})
+	await b.foe_ai.enemy_shoot(j, s, {"dmg": [4, 4], "shots": 1, "range": 460})
 	await until(func(): return b.settled(), 300)
 	check(s.hp == hp0 and not s.has_st("roll"), "the next Jackal shot goes over the roller's head (hp %d -> %d)" % [hp0, s.hp])
 	j.dead = true; j.gone = true
@@ -3961,18 +3961,18 @@ func soldat2_moves(b: Battle, s: Unit) -> void:
 	var g0: float = b.T.ground_at(tw.x - 120)
 	var jt := b.mk_enemy("jetter", tw.x - 120, b.T.stand_y(tw.x - 120, 0)); jt.active = true
 	b.units.append(jt)
-	var r = b.jet_roost(jt)
+	var r = b.foe_ai.jet_roost(jt)
 	check(r != null and r.y < g0 - 40, "a Jet Jackal picks a roof above the ground (%s, ground %d)" % [str(r), g0])
 	s.overwatch = 0
-	await b.jetter_act(jt)
+	await b.foe_ai.jetter_act(jt)
 	await until(func(): return b.settled(), 600)
 	check(not jt.dead and jt.y < g0 - 40, "it jets up onto it (y %d, ground %d)" % [jt.y, g0])
 	await shot("soldat2_jetter")
 	var jt2 := b.mk_enemy("jetter", tw.x - 120, b.T.stand_y(tw.x - 120, 0)); jt2.active = true; jt2.hp = 30; jt2.max_hp = 30
 	b.units.append(jt2)
-	var roost = b.jet_roost(jt2)
+	var roost = b.foe_ai.jet_roost(jt2)
 	jt.dead = true; jt.gone = true
-	b.jet_fly(jt2, roost)
+	b.foe_ai.jet_fly(jt2, roost)
 	await until(func(): return jt2.y < roost.y - 20 or not jt2.jetting, 300)
 	var hp1 := jt2.hp
 	b.damage(jt2, 1, s)
@@ -4061,7 +4061,7 @@ func soldat3() -> void:
 	ground_unit(b, s, g2.x - 200)
 	cam_on(b, g2.x - 100)
 	b.state = "enemy"
-	await b.enemy_act(jk)
+	await b.foe_ai.enemy_act(jk)
 	b.state = "player"
 	await until(func(): return b.settled(), 300)
 	check(g2.loot.en == b.round_n, "a Jackal at the other M2 fires it")
@@ -4133,7 +4133,7 @@ func soldat4() -> void:
 	check(absf(e.x - iced.x) < 6 and not e.air, "the Jackal skids to where the preview said (%d vs %d)" % [e.x, iced.x])
 	check(e.x > 600, "and right off the end of the ice (%d)" % e.x)
 	ground_unit(b, s, 330)
-	var walk := b.sim_walk(s, 500, 300)
+	var walk := b.phys.sim_walk(s, 500, 300)
 	check(absf(walk.x - 500) < 6, "walking onto ice is careful: no skid (%d)" % walk.x)
 	e.dead = true; e.gone = true
 	# --- rubber: bounce, no fall damage; grenades bounce higher
@@ -4149,28 +4149,28 @@ func soldat4() -> void:
 	check(top_y < gy - 60, "a soldier dropped on the tarp bounces back up (%d px)" % (gy - top_y))
 	await until(func(): return b.settled(), 600)
 	check(s.hp == hp0 and absf(s.y - gy) < 2, "and takes no fall damage (hp %d -> %d)" % [hp0, s.hp])
-	var g_rub := b.sim_grenade(720, gy - 60, 0, 0, 0, 90)
-	var g_dirt := b.sim_grenade(800, gy - 60, 0, 0, 0, 90)
+	var g_rub := b.phys.sim_grenade(720, gy - 60, 0, 0, 0, 90)
+	var g_dirt := b.phys.sim_grenade(800, gy - 60, 0, 0, 0, 90)
 	check(peak_after_bounce(g_rub.pts, gy) < peak_after_bounce(g_dirt.pts, gy) - 20, "a grenade bounces far higher off rubber (peak %d vs %d)" % [gy - peak_after_bounce(g_rub.pts, gy), gy - peak_after_bounce(g_dirt.pts, gy)])
 	# --- live wire
-	var j = b.make_jbox(800)
+	var j = b.biome_rules.make_jbox(800)
 	check(j != null and j.loot.ys.size() > 20, "a junction box lays its cable")
 	var z := b.mk_enemy("grunt", 860, gy); z.active = true; z.hp = 20; z.max_hp = 20
 	b.units.append(z)
-	b.update_wires()
+	b.biome_rules.update_wires()
 	check(z.hp == 16 and z.has_st("stun"), "a Jackal on the live cable takes 4 and is stunned (hp %d)" % z.hp)
-	b.update_wires()
+	b.biome_rules.update_wires()
 	check(z.hp == 16, "once a round")
 	b.round_n += 1
-	b.update_wires()
+	b.biome_rules.update_wires()
 	check(z.hp == 12, "and again next round")
 	z.dead = true; z.gone = true
 	ground_unit(b, s, 760)
-	var sw := b.stop_before_mines(s, b.sim_walk(s, 900, 300))
+	var sw := b.biome_rules.stop_before_mines(s, b.phys.sim_walk(s, 900, 300))
 	check(sw.x < 810, "an automatic walk stops short of a live cable (%d)" % sw.x)
 	ground_unit(b, s, 870)
 	hp0 = s.hp
-	b.update_wires()
+	b.biome_rules.update_wires()
 	check(s.hp == hp0 - 4, "a soldier on the cable takes 4 too (%d -> %d)" % [hp0, s.hp])
 	await frames_wait(8)
 	await shot("soldat4_wire")
@@ -4178,7 +4178,7 @@ func soldat4() -> void:
 	check(not j.loot.on and not j.gone, "shooting the box cuts the power")
 	b.round_n += 1
 	hp0 = s.hp
-	b.update_wires()
+	b.biome_rules.update_wires()
 	check(s.hp == hp0, "a dead cable is safe")
 	check(Data.BIOMES.mountain.rules.get("ice", 0) > 0 and Data.BIOMES.delta.rules.get("tarps", 0) > 0 and Data.BIOMES.harbor.rules.get("tarps", 0) > 0 and Data.BIOMES.refinery.rules.get("wires", 0) > 0 and Data.BIOMES.fortress.rules.get("wires", 0) > 0, "ice in the Mountain Pass, tarps in the Delta and Harbor, wires in the Refinery and Fortress")
 	cam_on(b, 520)
@@ -4228,14 +4228,14 @@ func soldat5() -> void:
 	ground_unit(b, s2, 480)
 	ground_unit(b, s, 420)
 	b.sel = s
-	var wk := b.sim_walk(s, 560, 300)
+	var wk := b.phys.sim_walk(s, 560, 300)
 	s.walk = wk.pts; s.walk_i = 0
 	await until(func(): return s.walk == null, 300)
 	check(s.carry == "" and s2.carry == "yellow", "walking past a teammate hands the flag over")
 	await frames_wait(6)
 	await shot("soldat5_marked")
 	# --- O1 steal the colors
-	b.start_detour("colors")
+	b.camp_ops.start_detour("colors")
 	var colors: Array = b.units.filter(func(o): return o.kind == "loot" and o.loot.type == "colors")
 	check(colors.size() == 1 and b.units.filter(func(o): return o.detour and o.team == "enemy").size() == 3, "the colors detour plants their flag with three guards")
 	for o in b.units:
@@ -4252,8 +4252,8 @@ func soldat5() -> void:
 	await frames_wait(6)
 	await shot("soldat5_colors")
 	var sal0 := int(Run.meta.get("salvage", 0))
-	ground_unit(b, s, b.colors_post())
-	await b.check_detour()
+	ground_unit(b, s, b.camp_ops.colors_post())
+	await b.camp_ops.check_detour()
 	check(b.detour.done and int(Run.meta.get("salvage", 0)) == sal0 + Data.COLORS_SALVAGE and s.carry == "", "carrying it to the green post pays %d salvage" % Data.COLORS_SALVAGE)
 	# a carrier who goes down drops the flag
 	var s3: Unit = sq[2]
@@ -4263,7 +4263,7 @@ func soldat5() -> void:
 	check(b.units.any(func(o): return o.kind == "loot" and not o.gone and o.loot.type == "colors") or b.squad_alive().any(func(o): return o.carry == "colors"), "a carrier who goes down drops the colors (a teammate next to them may scoop it up)")
 	# --- O2 the Rambo Bow
 	b.detour = {}
-	b.start_detour("elite")
+	b.camp_ops.start_detour("elite")
 	var bowman = null
 	for o in b.units:
 		if o.detour and o.team == "enemy" and not o.dead and o.carry == "bow":
@@ -4298,7 +4298,7 @@ func soldat5() -> void:
 		for dx in range(40, 260, 10):
 			var ap := Vector2(s.x + dx, s.y + dy)
 			var v := b.aim_vel(s, ap)
-			var r := b.sim_arc(v.hx, v.hy, v.vx, v.vy, 0.4, 320)
+			var r := b.phys.sim_arc(v.hx, v.hy, v.vx, v.vy, 0.4, 320)
 			if r.end:
 				var e := absf(r.x - tg.x)
 				if best == null or e < best:
@@ -4437,7 +4437,7 @@ func soldat() -> void:
 			var ly: float = (L.top + L.bot) / 2.0
 			var lt := b.trace_bullet(lx, ly, 0.0, 160, 0, null, false)
 			check(lt.end == null or lt.end.x > L.x + 24, "a bullet passes through the catwalk ladder (stopped at dx %s)" % ("none" if lt.end == null else str(int(lt.end.x - L.x))))
-			check(b.sim_arc(L.x - 60, L.top - 30, 3.0, 0.0, 0, 30).x > L.x + 20, "a grenade flies through the catwalk ladder")
+			check(b.phys.sim_arc(L.x - 60, L.top - 30, 3.0, 0.0, 0, 30).x > L.x + 20, "a grenade flies through the catwalk ladder")
 	var up := b.mk_enemy("grunt", cw.x0 + 150, top)
 	b.units.append(up)
 	ground_unit(b, s, cw.x0 + 120, top + 8)
@@ -4447,7 +4447,7 @@ func soldat() -> void:
 	var aim := atan2(up.y - up.h / 2.0 - eye.y, up.x - eye.x)
 	var tr := b.trace_bullet(eye.x, eye.y, aim, 2400, 0, s, false)
 	check(tr.hits.any(func(hh): return hh.u == up), "a bullet from below goes up through the grating into the Jackal")
-	var arc := b.sim_arc(up.x, top - 20, 0.0, 1.0, 0, 200)
+	var arc := b.phys.sim_arc(up.x, top - 20, 0.0, 1.0, 0, 200)
 	check(arc.end and arc.y <= top + 4, "the throw preview lands a grenade on the grating (y %d, deck %d)" % [arc.y, top])
 	check(not b.ray_clear(eye.x, eye.y, eye.x, b.T.ground_at(eye.x) + 20) or true, "sight lines run")
 	await shot("soldat_catwalk")
@@ -4458,7 +4458,7 @@ func soldat() -> void:
 		if o.team == "enemy" and absf(o.x - fs.x) < 200:
 			o.dead = true; o.gone = true
 	ground_unit(b, s, fs.x - 40)
-	var walk := b.sim_walk(s, fs.x + 80, 200)
+	var walk := b.phys.sim_walk(s, fs.x + 80, 200)
 	check(walk.x < fs.x, "walking into the fence stops at it (got to %d, fence %d)" % [walk.x, fs.x])
 	var far := b.mk_enemy("grunt", fs.x + 70, b.T.stand_y(fs.x + 70, 0))
 	far.active = true
@@ -4467,15 +4467,15 @@ func soldat() -> void:
 	tr = b.trace_bullet(eye.x, eye.y, atan2(far.y - 20 - eye.y, far.x - eye.x), 2400, 0, s, false)
 	check(tr.hits.any(func(hh): return hh.u == far), "a bullet goes through the chain-link")
 	check(b.visibility(far, s) > 0, "Jackals can see and shoot through the chain-link")
-	var nade: Dictionary = b.mk_proj({"kind": "grenade", "x": fs.x - 30, "y": b.T.ground_at(fs.x) - 40, "vx": 6.0, "vy": -1.0, "bounce": true, "fuse": 9999})
+	var nade: Dictionary = b.phys.mk_proj({"kind": "grenade", "x": fs.x - 30, "y": b.T.ground_at(fs.x) - 40, "vx": 6.0, "vy": -1.0, "bounce": true, "fuse": 9999})
 	for i in 80:
-		b.update_proj(nade)
+		b.phys.update_proj(nade)
 	check(nade.x < fs.x, "a grenade bounces off the chain-link (ended at %d, fence %d)" % [nade.x, fs.x])
-	var drop: Dictionary = b.mk_proj({"kind": "grenade", "x": mid + 20, "y": top - 60, "vx": 0.0, "vy": 0.0, "bounce": true, "fuse": 9999})
+	var drop: Dictionary = b.phys.mk_proj({"kind": "grenade", "x": mid + 20, "y": top - 60, "vx": 0.0, "vy": 0.0, "bounce": true, "fuse": 9999})
 	for i in 120:
-		b.update_proj(drop)
+		b.phys.update_proj(drop)
 	check(drop.y <= top + 2 and not drop.dead, "a grenade lands on the grating instead of falling through (y %d, deck %d)" % [drop.y, top])
-	await b.enemy_advance(far, fs.x - 80, 150)
+	await b.foe_ai.enemy_advance(far, fs.x - 80, 150)
 	check(far.x > fs.x, "a Jackal can't vault the fence (stopped at %d, fence %d)" % [far.x, fs.x])
 	await shot("soldat_fence")
 	far.dead = true; far.gone = true
@@ -4554,7 +4554,7 @@ func soldat() -> void:
 	ground_unit(b, s, pd.x - 50, pd.y - 30)
 	s.hp = s.max_hp - 20
 	var hp_s := s.hp
-	await b.walk_along(s, b.sim_walk(s, pd.x, 100).pts)
+	await b.phys.walk_along(s, b.phys.sim_walk(s, pd.x, 100).pts)
 	await frames_wait(4)
 	check(not pd.loot.ready and (s.has_st(k) or (k == "medkit" and s.hp > hp_s) or (k == "nadekit" and s.hand.any(func(c): return c.key == "frag" and c.get("temp", false))) or (k == "monkey" and s.hand.any(func(c): return c.key == "monkeyclimb"))), "a soldier who steps on it takes %s" % k)
 	await frames_wait(10)
@@ -4567,7 +4567,7 @@ func soldat() -> void:
 	racer.hp = racer.max_hp - 5
 	var i0: int = pd.loot.i
 	b.state = "enemy"
-	await b.enemy_act(racer)
+	await b.foe_ai.enemy_act(racer)
 	await until(func(): return b.settled(), 600)
 	check(pd.loot.i == i0 + 1 and absf(racer.x - pd.x) < 15, "a Jackal races to a ready pad and takes %s (at %d, pad %d)" % [k2, racer.x, pd.x])
 	s = sq[1]
@@ -4717,7 +4717,7 @@ func detour_battle(id: String) -> Battle:
 	u.x = c.fire + 20
 	u.y = b.T.stand_y(u.x, 0)
 	b.autopick = 0
-	await b.check_camp(u)
+	await b.camp_ops.check_camp(u)
 	cam_on(b, b.T.yard[0] + 200)
 	await frames_wait(30)
 	await shot("detour_" + id)
@@ -4760,7 +4760,7 @@ func detours2() -> void:
 	check(sk.size() == 3 and sk.all(func(e): return e.type == "skitter"), "the misfiring gate spits out three Skitters")
 	for e in sk:
 		e.dead = true
-	await b.check_detour()
+	await b.camp_ops.check_detour()
 	check(b.detour.done and int(Run.meta.bio) == Data.SIGNAL_BIO and int(Run.meta.salvage) == Data.SIGNAL_SALVAGE, "putting them down pays Bio-parts and salvage")
 	main.clear()
 	# Strange Signal: the buried tank
@@ -4772,7 +4772,7 @@ func detours2() -> void:
 		d.x = r[0].x
 		d.y = b.T.stand_y(d.x, 0)
 		await frames_wait(10)
-		await b.check_detour()
+		await b.camp_ops.check_detour()
 		check(d.mech != null and b.detour.done, "walking onto the buried tank boards it and ends the detour")
 	main.clear()
 	# Strange Signal: the deserter
@@ -4780,7 +4780,7 @@ func detours2() -> void:
 	var p: Array = b.units.filter(func(q): return q.detour and q.kind == "pow")
 	check(p.size() == 1 and p[0].pow_name == "THE DESERTER", "the deserter waits at the far end")
 	p[0].freed = true
-	await b.check_detour()
+	await b.camp_ops.check_detour()
 	check(b.detour.done and b.units.any(func(l): return l.kind == "loot" and l.loot.get("item", {}).get("tier", 0) >= Data.TIER_MAX), "reaching him drops a Legendary item")
 	main.clear()
 	# the Lab's rank 3: the strangest surgeries open only then
@@ -4827,7 +4827,7 @@ func signal_battle(ev: String) -> Battle:
 	u.x = c.fire + 20
 	u.y = b.T.stand_y(u.x, 0)
 	b.autopick = 0
-	await b.check_camp(u)
+	await b.camp_ops.check_camp(u)
 	cam_on(b, b.T.yard[0] + 200)
 	await frames_wait(30)
 	await shot("detours2_signal_" + ev)
@@ -4969,7 +4969,7 @@ func hq_upgrades() -> void:
 	await until(func(): return b.state == "player" and not b.busy)
 	var calls: int = b.squad().filter(func(u): return u.hand.any(func(h): return h.key == "slugcall")).size()
 	check(calls == 2, "Motor Pool 3: the Slug is on call twice (%d cards)" % calls)
-	b.call_slug(b.squad()[0])
+	b.vtech.call_slug(b.squad()[0])
 	check(b.units.any(func(u): return u.kind == "slug" and u.loot.turns == 2), "Motor Pool 2: the Slug stays 2 rounds")
 	# a beaten Boar pays Salvage
 	var sv: int = int(Run.meta.salvage)
@@ -5001,7 +5001,7 @@ func detours() -> void:
 	u0.x = c.fire + 20
 	u0.y = b.T.stand_y(u0.x, 0)
 	cam_on(b, c.fire)
-	b.check_camp(u0)
+	b.camp_ops.check_camp(u0)
 	await frames_wait(90)
 	await shot("detour_pick")
 	b.hud.picked.emit(0)
@@ -5014,7 +5014,7 @@ func detours() -> void:
 	check(el.size() == 4 and el.all(func(e): return e.elite == b.detour.mod), "four elites share one modifier (%s)" % b.detour.mod)
 	for e in el:
 		e.dead = true
-	await b.check_detour()
+	await b.camp_ops.check_detour()
 	check(b.detour.done and int(Run.meta.bio) == Data.ELITE_BIO and b.units.any(func(l): return l.kind == "loot" and l.loot.get("item", {}).get("tier", 0) >= 3), "clearing the outpost pays Bio-parts and an Epic item")
 	await frames_wait(20)
 	await shot("detour_elite_done")
@@ -5026,7 +5026,7 @@ func detours() -> void:
 	check(pows.size() == 3, "three prisoners in the yard")
 	for p in pows:
 		p.freed = true
-	await b.check_detour()
+	await b.camp_ops.check_detour()
 	check(Run.reserve.size() == 1 and Run.soldiers.size() == 4, "freeing them all with a full squad sends a recruit to the barracks")
 	main.clear()
 	# POW rescue: a dog tag back when nobody has fallen and the barracks is full
@@ -5036,7 +5036,7 @@ func detours() -> void:
 	b = await detour_battle("pow")
 	for p in b.units.filter(func(p): return p.detour and p.kind == "pow"):
 		p.freed = true
-	await b.check_detour()
+	await b.camp_ops.check_detour()
 	check(Run.soldiers[1].tags == 1, "...or, with the barracks full, a dog tag back to whoever has fewest")
 	Run.reserve = []
 	main.clear()
@@ -5045,13 +5045,13 @@ func detours() -> void:
 	b = await detour_battle("pow")
 	for p in b.units.filter(func(p): return p.detour and p.kind == "pow"):
 		p.freed = true
-	await b.check_detour()
+	await b.camp_ops.check_detour()
 	check(Run.soldiers[3].alive and Run.soldiers[3].def.name != "ROOK", "...or a free recruit into the fallen slot (%s)" % Run.soldiers[3].def.name)
 	main.clear()
 	# POW rescue: too slow and they are gone
 	b = await detour_battle("pow")
 	for i in Data.POW_RESCUE_ROUNDS:
-		await b.detour_round()
+		await b.camp_ops.detour_round()
 	check(b.detour.done and b.units.filter(func(p): return p.detour and p.kind == "pow").all(func(p): return p.gone), "after %d rounds the prisoners are moved out" % Data.POW_RESCUE_ROUNDS)
 	main.clear()
 	# salvage yard
@@ -5064,13 +5064,13 @@ func detours() -> void:
 	await frames_wait(10)
 	check(wrecks[0].stripped and int(Run.meta.salvage) == Data.WRECK_SALVAGE, "walking over a wreck strips it for salvage")
 	var n0: int = b.units.filter(func(e): return e.team == "enemy" and e.detour).size()
-	await b.detour_round()
+	await b.camp_ops.detour_round()
 	check(b.units.filter(func(e): return e.team == "enemy" and e.detour).size() == n0 + 1, "a scavenger drifts in each round")
 	await frames_wait(20)
 	await shot("detour_salvage_scav")
 	for w in wrecks:
 		w.stripped = true
-	await b.check_detour()
+	await b.camp_ops.check_detour()
 	check(b.detour.done, "stripping every wreck ends the yard")
 	main.clear()
 	# supply cache
@@ -5079,7 +5079,7 @@ func detours() -> void:
 	var decks: int = Run.soldiers.reduce(func(a, s): return a + s.deck.size(), 0)
 	for e in b.units.filter(func(e): return e.detour and e.team == "enemy"):
 		e.dead = true
-	await b.check_detour()
+	await b.camp_ops.check_detour()
 	await b.flush_rewards()  # X3: the cache's card pick waits for the end of the turn
 	await frames_wait(60)
 	check(Run.scrip > sc0 and Run.soldiers.reduce(func(a, s): return a + s.deck.size(), 0) == decks + 1, "the cache pays scrip and a card pick")
@@ -5408,7 +5408,7 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 				await until(func(): return res.done or not b.busy, 20000)
 			# V4: in the volcano, climb above where the lava will be next round before anything else
 			if b.rules.get("lava", 0.0) > 0 and b.lava_k < Battle.LAVA_MAX and b.rounds_since_scroll + 1 > b.stall_limit() and u.move_left > 20 and not u.dead \
-					and u.y > b.lava_y() - b.lava_step() * 2.0 - 4.0:
+					and u.y > b.biome_rules.lava_y() - b.biome_rules.lava_step() * 2.0 - 4.0:
 				var best := {"x": u.x, "y": u.y}
 				var dx: float = -u.move_left
 				while dx <= u.move_left:
@@ -5416,11 +5416,11 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 					dx += 24.0
 					if nx < b.cam_x + 14 or nx > b.cam_x + b.W - 14:
 						continue
-					var sim := b.sim_walk(u, nx, absf(nx - u.x) + 8)
+					var sim := b.phys.sim_walk(u, nx, absf(nx - u.x) + 8)
 					if not sim.pts.is_empty() and sim.y < best.y - 8:
 						best = {"x": sim.x, "y": sim.y}
 				if best.x != u.x:
-					print("[lava] %s climbs %d,%d -> %d,%d (lava %d)" % [u.def.key, int(u.x), int(u.y), int(best.x), int(best.y), int(b.lava_y())])
+					print("[lava] %s climbs %d,%d -> %d,%d (lava %d)" % [u.def.key, int(u.x), int(u.y), int(best.x), int(best.y), int(b.biome_rules.lava_y())])
 					b.do_move(u, best.x)
 					await until(func(): return res.done or not b.busy, 20000)
 			var guard := 0
@@ -5469,10 +5469,10 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 						elif c.type == "ARC" and absf(e.x - u.x) < 260 and absf(e.x - u.x) > 70 and not c.get("smoke", false):
 							var hx: float = u.x + (6 if e.x > u.x else -6)
 							var hy: float = u.y - u.h + 10
-							var sol = b.solve_arc(hx, hy, e.x, e.y - 4, c.get("wind", 1.0), 13)
+							var sol = b.phys.solve_arc(hx, hy, e.x, e.y - 4, c.get("wind", 1.0), 13)
 							if sol == null:
 								continue
-							var land := b.sim_arc(hx, hy, sol.vx, sol.vy, c.get("wind", 1.0), 320)
+							var land := b.phys.sim_arc(hx, hy, sol.vx, sol.vy, c.get("wind", 1.0), 320)
 							var rr: float = c.get("radius", 30) + (60.0 if c.get("bounce", false) else 0.0) + (60.0 if c.has("cluster") else 0.0)
 							if land.end and not squad_near(b, Vector2(land.x, land.y), rr + 50) and not squad_near(b, Vector2(e.x, e.y - e.h / 2.0), rr + 50) and foe_near(b, Vector2(land.x, land.y), rr + 10):
 								bot_last = c.get("name", "?")
@@ -5541,7 +5541,7 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 						break
 				# a wall right ahead and a Drill in hand: bore straight through it
 				var di: int = u.hand.map(func(h): return h.key).find("drill")
-				if not climbed and di >= 0 and not u.dead and u.move_left > 20 and b.state == "player" and b.sim_walk(u, u.x + 40, 40).used < 4 and b.drill_face(u, u.x, u.y, Vector2(1, 0)):
+				if not climbed and di >= 0 and not u.dead and u.move_left > 20 and b.state == "player" and b.phys.sim_walk(u, u.x + 40, 40).used < 4 and b.drill_face(u, u.x, u.y, Vector2(1, 0)):
 					var x0d: float = u.x
 					b.select_card(di)
 					await bot_commit(b, Vector2(u.x + 200, u.y - u.h / 2.0))
@@ -5553,7 +5553,7 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 					climbed = true
 				# otherwise hop the wall, gap or mine, aiming for the farthest dry spot it can reach
 				var mine_ahead: bool = b.units.any(func(o): return o.kind == "mine" and not o.primed and not o.gone and o.x > u.x and o.x - u.x < 30 and absf(o.y - u.y) < 12)
-				if not climbed and not u.dead and u.move_left > 20 and u.energy >= 1 and b.state == "player" and (mine_ahead or b.sim_walk(u, u.x + 40, 40).used < 4):
+				if not climbed and not u.dead and u.move_left > 20 and u.energy >= 1 and b.state == "player" and (mine_ahead or b.phys.sim_walk(u, u.x + 40, 40).used < 4):
 					var hopped := false
 					for attempt in 2:
 						if attempt == 1:
@@ -5742,7 +5742,7 @@ func bcalls() -> void:
 	sq[0].x = b.cam_x + 300
 	sq[0].y = b.T.stand_y(sq[0].x, 0)
 	b.alert = 10
-	b.boss_act(bo)
+	b.vharr_ai.boss_act(bo)
 	await until(func(): return b.projs.any(func(pr): return pr.kind == "shell" and pr.owner == bo), 400)
 	var sh_p: Array = b.projs.filter(func(pr): return pr.kind == "shell" and pr.owner == bo)
 	check(sh_p.size() > 0 and int(sh_p[0].dmg) == 11, "B2: the Boar's shell stays at 11 at alert 10 (%s)" % [sh_p.map(func(pr): return pr.dmg)])
@@ -5964,11 +5964,11 @@ func campfix() -> void:
 	for o in b.units:
 		if o.team == "enemy":
 			o.dead = true; o.gone = true
-	b.call_slug(b.squad()[0])
+	b.vtech.call_slug(b.squad()[0])
 	var sl: Unit = b.units.back()
 	await until(func(): return not sl.air, 600)
 	var done := {"v": false}
-	(func(): await b.slug_act(sl); done.v = true).call()
+	(func(): await b.vtech.slug_act(sl); done.v = true).call()
 	await frames_wait(2)
 	sl.y = Battle.WATER_Y + 3  # off the lip and into the water mid-rush
 	var ok := await until(func(): return done.v, 600)
@@ -5989,13 +5989,13 @@ func campfix() -> void:
 	var other: Unit = sq.filter(func(u): return u.s.key != twin.key)[0]
 	b.kill(other, null)
 	await until(func(): return other.dead, 120)
-	await b.call_reinforcements(b.squad_alive()[0])
+	await b.camp_ops.call_reinforcements(b.squad_alive()[0])
 	var keys: Array = Run.soldiers.map(func(x): return x.key)
 	check(not Run.soldiers.has(twin), "no bench soldier of a class already in the squad jumps in (%s)" % [keys])
 	var same: Unit = b.squad().filter(func(u): return u.s.key == twin.key and not u.gone)[0]
 	b.kill(same, null)
 	await until(func(): return same.dead, 120)
-	await b.call_reinforcements(b.squad_alive()[0])
+	await b.camp_ops.call_reinforcements(b.squad_alive()[0])
 	keys = Run.soldiers.map(func(x): return x.key)
 	check(Run.soldiers.has(twin), "the bench soldier jumps in for a downed soldier of their own class")
 	var uniq := {}
@@ -6007,10 +6007,10 @@ func campfix() -> void:
 	for o in b.units:
 		if o.team == "enemy":
 			o.dead = true; o.gone = true
-	var tr = b.truck()
+	var tr = b.camp_ops.truck()
 	b.rounds_since_scroll = 5
 	var tx0: float = tr.x
-	await b.job_round()
+	await b.camp_ops.job_round()
 	check(tr.x > tx0 and b.rounds_since_scroll == 0, "the truck rolling resets the stall clock (x %d -> %d, stall %d)" % [int(tx0), int(tr.x), b.rounds_since_scroll])
 	b = await op_battle("hold")
 	for o in b.units:
@@ -6019,7 +6019,7 @@ func campfix() -> void:
 	b.job_st["on"] = true
 	b.job_st["left"] = 4
 	b.rounds_since_scroll = 1
-	await b.enemy_phase()
+	await b.foe_ai.enemy_phase()
 	check(b.rounds_since_scroll == 1, "holding the far end doesn't stall the line (%d)" % b.rounds_since_scroll)
 	# a radio call still going when the War Room opens moves off the sector panel
 	main.show_hq(false)
@@ -6090,13 +6090,13 @@ func wardeep() -> void:
 	b.mission_over.disconnect(main._on_mission_over)
 	await until(func(): return b.state == "player" and not b.busy)
 	var sal := int(Run.meta.salvage)
-	b.job_reward()
+	b.camp_ops.job_reward()
 	check(int(Run.meta.salvage) == sal + Data.BONUS_SALVAGE, "a salvage yard pays %d salvage" % Data.BONUS_SALVAGE)
 	Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": "column", "left": 2}
 	Run.start_op(Run.sector("d1"))
 	b.mission = Run.level
 	var n0 := Run.company().size()
-	b.job_reward()
+	b.camp_ops.job_reward()
 	check(Run.company().size() == n0 + 1 and Run.company().back().get("spec", "") == "defector", "a defector column brings a Jackal Defector into the company")
 	main.show_title()
 	await frames_wait(5)
@@ -6407,7 +6407,7 @@ func warfront() -> void:
 			match str(lv.job):
 				"rescue": ok = b.units.filter(func(u): return u.kind == "pow" and u.fl.get("job", false)).size() == 3
 				"demolish": ok = b.units.filter(func(u): return u.kind == "dump").size() == 3
-				"escort": ok = b.truck() != null
+				"escort": ok = b.camp_ops.truck() != null
 				"hunt": ok = b.units.any(func(u): return u.fl.has("quarry"))
 			if not ok or b.squad().is_empty():
 				bad.append("%s %s %s pow%d" % [sc.id, sc.biome, lv.job, b.units.filter(func(u): return u.kind == "pow").size()])
@@ -6463,10 +6463,10 @@ func warpincer() -> void:
 	check(b.units.any(func(e): return e.team == "enemy" and e.active and e.x > b.world_w - Battle.W), "enemies on squad B's side are live too")
 	check(b.units.any(func(e): return e.team == "enemy" and not e.active and e.x > Battle.W + 100 and e.x < b.world_w - Battle.W - 100), "the middle stays quiet until someone gets there")
 	await shot("pc_a")
-	b.switch_wing()
+	b.camp_ops.switch_wing()
 	await frames_wait(10)
 	check(b.pincer.view == "b" and b.sel == wb[0] and b.cam_x >= b.world_w - Battle.W - 1, "G jumps to squad B (cam %d)" % b.cam_x)
-	check(b.bar_squad() == wb, "the squad bar shows the half on screen")
+	check(b.camp_ops.bar_squad() == wb, "the squad bar shows the half on screen")
 	await frames_wait(20)
 	await shot("pc_b")
 	# a B soldier advancing west drags B's view along
@@ -6769,7 +6769,7 @@ func drowncamp() -> void:
 	print("[drowncamp] %s sunk %s dead %s downed %s" % [s.def.key, s.sunk, s.dead, s.downed])
 	var c: Dictionary = b.T.camps[0]
 	c.used = true
-	await b.make_camp(c)
+	await b.camp_ops.make_camp(c)
 	b.state = "player"; b.busy = false
 	b.select_unit(s)
 	b.do_move(s, s.x + 40)
@@ -6845,7 +6845,7 @@ func op_end(b: Battle) -> Variant:
 	## Runs the job check like the end of an action would and waits for the battle to finish.
 	# X3: nobody answers level-up modals here, so drop rewards the op's kills queued
 	b.lvl_queue.clear(); b.loot_queue.clear(); b.drop_queue.clear()
-	await b.job_ends()
+	await b.camp_ops.job_ends()
 	await until(func(): return b.has_meta("result"), 3000)
 	return b.get_meta("result") if b.has_meta("result") else null
 
@@ -6883,14 +6883,14 @@ func ops() -> void:
 	var pows: Array = b.units.filter(func(p): return p.kind == "pow" and p.fl.get("job", false))
 	check(pows.size() == 3, "a rescue op holds three prisoners (%d)" % pows.size())
 	check(pows.all(func(p): return p.y != null and p.y < b.WATER_Y), "every prisoner stands on dry ground")
-	check(b.job_left().begins_with("RESCUE: 0 OF 3"), "the HUD tracks the prisoners (%s)" % b.job_left())
+	check(b.camp_ops.job_left().begins_with("RESCUE: 0 OF 3"), "the HUD tracks the prisoners (%s)" % b.camp_ops.job_left())
 	b.cam_x = clampf(pows[0].x - 300, 0, b.world_w - b.W)
 	b.cam_tx = b.cam_x
 	await frames_wait(20)
 	await shot("ops_rescue")
 	pows[0].freed = true
 	pows[1].freed = true
-	check(not b.job_done(), "two of three freed is not done")
+	check(not b.camp_ops.job_done(), "two of three freed is not done")
 	var room := Run.roster.size()
 	pows[2].freed = true
 	var res = await op_end(b)
@@ -6914,7 +6914,7 @@ func ops() -> void:
 	await shot("ops_demolish")
 	for d in dumps:
 		b.damage(d, 999, s0)
-	check(b.job_left() == "DEMOLISH: 3 OF 3 DUMPS DOWN", "the HUD counts dumps down (%s)" % b.job_left())
+	check(b.camp_ops.job_left() == "DEMOLISH: 3 OF 3 DUMPS DOWN", "the HUD counts dumps down (%s)" % b.camp_ops.job_left())
 	await until(func(): return b.booms.is_empty(), 300)
 	res = await op_end(b)
 	check(res == true, "destroying every dump wins the op")
@@ -6922,7 +6922,7 @@ func ops() -> void:
 
 	# O4 hold
 	b = await op_battle("hold")
-	b.start_hold()
+	b.camp_ops.start_hold()
 	check(not b.job_st.on, "the hold waits until the squad reaches the far end")
 	for e in b.units:
 		if e.team == "enemy":
@@ -6930,27 +6930,27 @@ func ops() -> void:
 	b.cam_x = b.world_w - b.W
 	b.cam_tx = b.cam_x
 	for s in b.squad_alive():
-		s.x = b.job_spot(b.world_w - 300.0); s.y = b.T.stand_y(s.x, b.T.ground_at(s.x) - 40)
-	b.start_hold()
+		s.x = b.camp_ops.job_spot(b.world_w - 300.0); s.y = b.T.stand_y(s.x, b.T.ground_at(s.x) - 40)
+	b.camp_ops.start_hold()
 	check(b.job_st.on and int(b.job_st.left) == Data.HOLD_PHASES, "reaching the far end starts the hold")
 	await frames_wait(30)
 	var before := b.units.size()
-	b.hold_waves()
+	b.camp_ops.hold_waves()
 	var wave: Array = b.units.slice(before)
 	check(wave.size() == 3 and wave.any(func(e): return e.x < b.cam_x + 100) and wave.any(func(e): return e.x > b.cam_x + b.W - 100), "each wave comes from both edges (%d)" % wave.size())
 	await frames_wait(20)
 	await shot("ops_hold")
 	for i in Data.HOLD_PHASES - 1:
-		await b.job_round()
-	check(not b.job_done() and int(b.job_st.left) == 1, "the hold counts down one per enemy phase")
-	await b.job_round()
+		await b.camp_ops.job_round()
+	check(not b.camp_ops.job_done() and int(b.job_st.left) == 1, "the hold counts down one per enemy phase")
+	await b.camp_ops.job_round()
 	res = await op_end(b)
 	check(res == true, "surviving the hold wins the op")
 	main.clear()
 
 	# O5 escort: blocked, then rolling, then home
 	b = await op_battle("escort")
-	var tr = b.truck()
+	var tr = b.camp_ops.truck()
 	check(tr != null and tr.hp == Data.TRUCK_HP, "an escort op has the truck")
 	var s1: Unit = b.squad_alive()[0]
 	check(b.unit_at_point(tr.x, tr.y - 10, s1, 200, {}) != tr, "the squad's rounds pass the truck")
@@ -6961,10 +6961,10 @@ func ops() -> void:
 	var foe := b.mk_enemy("grunt", tr.x + 120, b.T.stand_y(tr.x + 120, b.T.ground_at(tr.x + 120) - 40))
 	foe.active = true
 	b.units.append(foe)
-	await b.job_round()
+	await b.camp_ops.job_round()
 	check(tr.x == x0, "a Jackal close ahead stops the truck")
 	foe.dead = true; foe.gone = true
-	await b.job_round()
+	await b.camp_ops.job_round()
 	check(tr.x > x0, "a clear road and it rolls on (%d -> %d)" % [int(x0), int(tr.x)])
 	await frames_wait(10)
 	await shot("ops_escort")
@@ -6972,14 +6972,14 @@ func ops() -> void:
 	while tr.x < b.world_w - 150 and n < 120:
 		b.cam_x = clampf(tr.x - 200, 0, b.world_w - b.W)
 		b.cam_tx = b.cam_x
-		await b.job_round()
+		await b.camp_ops.job_round()
 		n += 1
 	check(tr.x >= b.world_w - 150, "the truck reaches the far end (%d of %d)" % [int(tr.x), b.world_w])
 	res = await op_end(b)
 	check(res == true, "getting the truck through wins the op")
 	main.clear()
 	b = await op_battle("escort")
-	tr = b.truck()
+	tr = b.camp_ops.truck()
 	var hit := b.mk_enemy("grunt", tr.x + 40, tr.y)
 	b.damage(tr, 999, hit)
 	res = await op_end(b)
@@ -6990,7 +6990,7 @@ func ops() -> void:
 	b = await op_battle("hunt")
 	var q: Array = b.units.filter(func(e): return e.fl.has("quarry"))
 	check(q.size() == 1 and q[0].elite != "" and q[0].x > b.world_w * 0.5, "a hunt op marks one elite deep in the sector")
-	check(b.job_left().begins_with("HUNT: "), "the HUD names the target (%s)" % b.job_left())
+	check(b.camp_ops.job_left().begins_with("HUNT: "), "the HUD names the target (%s)" % b.camp_ops.job_left())
 	b.cam_x = clampf(q[0].x - 500, 0, b.world_w - b.W)
 	b.cam_tx = b.cam_x
 	q[0].active = true
@@ -7224,7 +7224,7 @@ func lab() -> void:
 	b.damage(u, 5, foe)
 	check(u.hp == hp0 - 5, "only the first shot each turn")
 	foe.hp = 99; foe.max_hp = 99
-	await b.vharr_blink(u, 360)
+	await b.vtech.vharr_blink(u, 360)
 	check(absf(u.x - foe.x) < 60 and u.face == (1 if foe.x > u.x else -1), "Blink lands right behind the enemy, facing it (%d vs %d)" % [int(u.x), int(foe.x)])
 	await frames_wait(10)
 	await shot("lab_blink")
@@ -7238,7 +7238,7 @@ func lab() -> void:
 		grp.append(g)
 	var spread0: float = grp[2].x - grp[0].x
 	var ux := u.x
-	await b.vharr_well(u, 140)
+	await b.vtech.vharr_well(u, 140)
 	await until(func(): return b.settled(), 600)
 	check(absf(grp[2].x - grp[0].x) < spread0, "the Gravity Grenade pulls a group together (%d -> %d)" % [int(spread0), int(grp[2].x - grp[0].x)])
 	check(absf(u.x - ux) < 1, "and leaves the thrower where they are")
@@ -7812,7 +7812,7 @@ func bolt_test() -> void:
 	var gy: float = bo.y
 	# sandbags: a wall where the pack lands, 50% bigger for Bolt
 	var n0 := count_cells(b, x + 80, gy - 60, 60, 60)
-	b.build_at(b.mk_proj({"x": x + 110, "y": gy - 2, "owner": bo, "card": Data.card(Run.new_card("sandbags"))}))
+	b.spec_kits.build_at(b.phys.mk_proj({"x": x + 110, "y": gy - 2, "owner": bo, "card": Data.card(Run.new_card("sandbags"))}))
 	var n1 := count_cells(b, x + 80, gy - 60, 60, 60)
 	check(n1 - n0 >= 40, "Sandbags builds a wall (%d cells)" % (n1 - n0))
 	check(b.walls.size() == 1, "the wall is remembered for Hunker Down")
@@ -7833,14 +7833,14 @@ func bolt_test() -> void:
 	var e := b.mk_enemy("grunt", x + 380, b.T.stand_y(x + 380, 0))
 	e.active = true
 	b.units.append(e)
-	b.build_at(b.mk_proj({"x": x + 160, "y": gy - 2, "owner": bo, "card": Data.card(Run.new_card("sentry"))}))
+	b.spec_kits.build_at(b.phys.mk_proj({"x": x + 160, "y": gy - 2, "owner": bo, "card": Data.card(Run.new_card("sentry"))}))
 	var sts: Array = b.units.filter(func(o): return o.kind == "sentry")
 	check(sts.size() == 1 and sts[0].max_hp == 21, "Sentry Gun deploys a turret with Toolbelt HP (%s)" % [sts.map(func(o): return o.max_hp)])
 	await frames_wait(10)
 	await shot("bolt_sentry")
 	var hp0 := e.hp
 	b.state = "player"; b.busy = false
-	b.resolve(func(): await b.sentries_fire())
+	b.resolve(func(): await b.spec_kits.sentries_fire())
 	await until(func(): return not b.busy, 1200)
 	check(e.hp < hp0 or e.dead, "the sentry shoots the nearest Jackal (%d -> %d)" % [hp0, e.hp])
 	# a girder in mid-air over a Jackal, then shoot its bolt
@@ -7868,7 +7868,7 @@ func bolt_test() -> void:
 		check(e2.hp < hp1 or e2.dead, "shooting the bolt drops the girder on the Jackal below (%d -> %d)" % [hp1, e2.hp])
 		check(bo.energy >= 3, "CUT LOOSE: dropping it the same turn refunds the energy (%d)" % bo.energy)
 	# jump pad
-	b.build_at(b.mk_proj({"x": x - 60, "y": gy - 2, "owner": bo, "card": Data.card(Run.new_card("jumppad"))}))
+	b.spec_kits.build_at(b.phys.mk_proj({"x": x - 60, "y": gy - 2, "owner": bo, "card": Data.card(Run.new_card("jumppad"))}))
 	check(b.T.mat(x - 60, gy + 1) == Terrain.RUBBER, "Jump Pad lays rubber on the ground")
 	# Fortify Overdrive
 	var arm0: int = b.squad_alive().map(func(u): return u.armor).max()
@@ -7896,7 +7896,7 @@ func track_test() -> void:
 	await until(func(): return b.state == "player" and not b.busy)
 	b.speed = 2.0
 	var tr: Unit = b.squad().filter(func(u): return u.def.key == "track")[0]
-	var rx: Unit = b.rex_of(tr)
+	var rx: Unit = b.spec_kits.rex_of(tr)
 	check(rx != null and rx.team == "ally" and rx.kind == "dog", "Rex deploys with Track")
 	var x := 700.0
 	while not flat_open(b, x, 300) and x < b.world_w - 600:
@@ -7971,7 +7971,7 @@ func track_test() -> void:
 	e2.active = true
 	b.units.append(e2)
 	var hhp := hx.hp
-	b.resolve(func(): await b.enemy_shoot(e2, hx, {"dmg": [5, 5]}))
+	b.resolve(func(): await b.foe_ai.enemy_shoot(e2, hx, {"dmg": [5, 5]}))
 	await until(func(): return not b.busy, 1200)
 	check(e2.has_st("stun") or e2.dead, "the Jackal that went for Hex is tackled and Stunned")
 	check(hx.hp == hhp, "and its shot never comes (%d -> %d)" % [hhp, hx.hp])
@@ -7979,7 +7979,7 @@ func track_test() -> void:
 	b.damage(rx, 99, e2)
 	check(rx.loot.ko and rx.gone, "Rex can be knocked out")
 	b.state = "player"; b.busy = false
-	b.resolve(func(): await b.dogs_new_turn())
+	b.resolve(func(): await b.spec_kits.dogs_new_turn())
 	await until(func(): return not b.busy, 1200)
 	check(not rx.loot.ko and not rx.gone and rx.hp == rx.max_hp and absf(rx.x - tr.x) < 40, "Best Friend: Rex is back beside Track")
 	# squad bullets go past Rex
@@ -8061,7 +8061,7 @@ func vehicles_test() -> void:
 	# on foot the walker cards won't play, and Patch Job puts him back in
 	ge.energy = 3
 	var vi2 := force_card(ge, "vulcan")
-	check(b.mech_ok(ge, Data.card(ge.hand[vi2])) != "", "walker cards need a vehicle")
+	check(b.vehicle_ops.mech_ok(ge, Data.card(ge.hand[vi2])) != "", "walker cards need a vehicle")
 	var pi := force_card(ge, "patchjob")
 	b.sel = ge; b.state = "player"; b.busy = false
 	b.play_self(pi)
@@ -8075,12 +8075,12 @@ func vehicles_test() -> void:
 	# R1: Rook hijacks a parked tank
 	var rk: Unit = b.squad().filter(func(u): return u.def.key == "rook")[0]
 	ground_unit(b, rk, x - 60, 0)
-	var r: Unit = b.park_ride(x - 30, "tank")
+	var r: Unit = b.vehicle_ops.park_ride(x - 30, "tank")
 	b.mouse = Vector2(r.x, r.y - 12)
 	await frames_wait(4)
 	await shot("vehicles_parked")
 	b.select_unit(rk)
-	b.hijack(rk, r)
+	b.vehicle_ops.hijack(rk, r)
 	check(rk.mech != null and rk.mech.type == "tank" and r.gone, "R1: Rook hijacks the parked tank")
 	check(rk.hand.any(func(h): return h.key == "tankshell") and rk.hand.any(func(h): return h.key == "eject"), "and its guns are in his hand")
 	check(b.full_move(rk) < rk.def.spd + 1, "a tank is slower than on foot")
@@ -8113,7 +8113,7 @@ func vehicles_test() -> void:
 	await shot("vehicles_jwalker")
 	b.T.carve(wx + 14, jw.y + 6, 9, null)
 	b.state = "player"; b.busy = false
-	b.resolve(func(): await b.leg_check())
+	b.resolve(func(): await b.vehicle_ops.leg_check())
 	await until(func(): return not b.busy, 1800)
 	await shot("vehicles_toppled")
 	check(jw.dead, "E6: the Jackal Walker topples when the ground under a leg is gone")
@@ -8148,7 +8148,7 @@ func branches5_test() -> void:
 	ground_unit(b, mo, x, 0)
 	var gy: float = mo.y
 	# B1: a dirt wall between Moss and a Jackal
-	b.build_cells(x + 100, gy - 60, 16, 60, 1)
+	b.spec_kits.build_cells(x + 100, gy - 60, 16, 60, 1)
 	var e := b.mk_enemy("grunt", x + 200, b.T.stand_y(x + 200, 0))
 	e.active = true
 	e.hp = 60; e.max_hp = 60
@@ -8193,7 +8193,7 @@ func branches5_test() -> void:
 	e2.active = true
 	e2.hp = 60; e2.max_hp = 60
 	b.units.append(e2)
-	var sk: Unit = b.plant_sticky(x + 290, b.T.stand_y(x + 290, 0), ve, 13, 34)
+	var sk: Unit = b.spec_kits.plant_sticky(x + 290, b.T.stand_y(x + 290, 0), ve, 13, 34)
 	check(b.stickies.size() == 1 and sk.kind == "sticky", "B3: a Sticky Charge sits where it lands")
 	ve.energy = 3
 	var ci := force_card(ve, "clacker")
@@ -8203,7 +8203,7 @@ func branches5_test() -> void:
 	check(sk.gone and e2.hp < 60, "Clacker sets it off (%d)" % e2.hp)
 	# and one under a Jackal's feet blows in their phase
 	var hp2 := e2.hp
-	var sk2: Unit = b.plant_sticky(e2.x + 60, b.T.stand_y(e2.x + 60, 0), ve, 13, 34)
+	var sk2: Unit = b.spec_kits.plant_sticky(e2.x + 60, b.T.stand_y(e2.x + 60, 0), ve, 13, 34)
 	await shot("b5_sticky")
 	e2.x = sk2.x
 	b.state = "enemy"
@@ -8254,9 +8254,9 @@ func branches5_test() -> void:
 	var br := b.mk_enemy("brute", rk.x - 24, b.T.stand_y(rk.x - 24, 0))
 	br.active = true
 	b.units.append(br)
-	check(not b.can_grab(rk, br), "a Brute is too heavy to grab")
+	check(not b.spec_kits.can_grab(rk, br), "a Brute is too heavy to grab")
 	rk.s.perks.append("titan")
-	check(b.can_grab(rk, br), "Titan: now he can")
+	check(b.spec_kits.can_grab(rk, br), "Titan: now he can")
 	check(Data.BRANCHES.moss.size() == 5 and Data.BRANCHES.rook.size() == 5, "each original has a fifth branch")
 
 func identity_test() -> void:
@@ -8377,16 +8377,16 @@ func jackals2_test() -> void:
 	# E1: the laser goes on first, the shot comes down it next turn
 	var sn := j2_enemy(b, "jsniper", x + 400)
 	sn.hp = 60; sn.max_hp = 60
-	await b.sniper_act(sn)
+	await b.foe_ai.sniper_act(sn)
 	check(sn.fl.has("laser"), "E1: the sniper lays his laser on a soldier")
 	await shot("j2_laser")
 	var hp0 := mo.hp
-	await b.sniper_act(sn)
+	await b.foe_ai.sniper_act(sn)
 	await frames_wait(4)
 	check(mo.hp < hp0, "and fires down it next turn (%d -> %d)" % [hp0, mo.hp])
-	b.build_cells(x + 60, mo.y - 70, 16, 70, 2)
+	b.spec_kits.build_cells(x + 60, mo.y - 70, 16, 70, 2)
 	hp0 = mo.hp
-	await b.sniper_act(sn)
+	await b.foe_ai.sniper_act(sn)
 	await frames_wait(4)
 	check(mo.hp == hp0, "a wall in the laser's way stops the shot")
 	sn.gone = true
@@ -8396,7 +8396,7 @@ func jackals2_test() -> void:
 	var fl := j2_enemy(b, "flamer", x + 70)
 	fl.hp = 60; fl.max_hp = 60
 	fl.face = -1
-	await b.flamer_act(fl)
+	await b.foe_ai.flamer_act(fl)
 	check(mo.hp < mo.max_hp and mo.has_st("burn"), "E2: the cone of fire sets Moss Burning (%d)" % mo.hp)
 	var vx: Unit = sq.vee
 	ground_unit(b, vx, fl.x + 140, 0)
@@ -8407,7 +8407,7 @@ func jackals2_test() -> void:
 	check(fl.fl.get("tank_gone", false) and fl.hp < 50, "a shot in the back blows his fuel tank (%d)" % fl.hp)
 	fl.gone = true
 	# E3: troopers hang under chutes through your turn; shoot the chute and they drop
-	await b.plane_drop(2)
+	await b.foe_ai.plane_drop(2)
 	var paras: Array = b.units.filter(func(o): return o.fl.get("chute", false))
 	check(paras.size() == 2, "E3: a plane drops two troopers on chutes")
 	var py: float = paras[0].y
@@ -8425,7 +8425,7 @@ func jackals2_test() -> void:
 		o.gone = true
 	# E4: a hound pins whoever it bites
 	var hd := j2_enemy(b, "jdog", sq.hex.x + 120)
-	await b.skitter_act(hd)
+	await b.vharr_ai.skitter_act(hd)
 	var pinned := b.squad().filter(func(s): return s.has_st("pinned"))
 	check(pinned.size() >= 1, "E4: a Jackal Hound bites and PINS a soldier")
 	hd.gone = true
@@ -8439,25 +8439,25 @@ func jackals2_test() -> void:
 		ws.append(m)
 	for m in ws:
 		m.hp = 60; m.max_hp = 60; m.face = -1
-	check(b.wall_locked(w0), "E5: three Riot Jackals lock into a Shield Wall")
+	check(b.foe_ai.wall_locked(w0), "E5: three Riot Jackals lock into a Shield Wall")
 	ground_unit(b, mo, x, 0)
 	b.fire_bullet(mo, mo.x + 10, mo.y - 20, atan2(w0.y - 20 - (mo.y - 20), w0.x - mo.x - 10), {"dmg": [20, 20], "range": 600, "bounce": 0}, false)
 	check(w0.hp >= 57, "the wall stops 90%% from the front (%d)" % w0.hp)
 	ws[2].x += 200
 	ws[1].x += 120
-	check(not b.wall_locked(w0), "blow them out of line and the wall breaks")
+	check(not b.foe_ai.wall_locked(w0), "blow them out of line and the wall breaks")
 	await shot("j2_wall")
 	for m in ws:
 		m.gone = true
 	# E7: the gunship marks a strip, rakes it next turn, and a body in the rotor hurts it
 	var g := j2_enemy(b, "gunship", x + 200)
 	b.place_alien(g)
-	await b.gunship_act(g)
+	await b.foe_ai.gunship_act(g)
 	check(g.fl.has("strafe"), "E7: the gunship marks a strafing strip by the nearest soldier")
 	await shot("j2_gunship")
 	var tgt: Unit = b.squad().filter(func(s): return s.x >= g.fl.strafe.x0 and s.x <= g.fl.strafe.x1)[0]
 	var th := tgt.hp
-	await b.gunship_act(g)
+	await b.foe_ai.gunship_act(g)
 	check(tgt.hp < th, "and rakes it next turn (%d -> %d)" % [th, tgt.hp])
 	var gh := g.hp
 	var body := j2_enemy(b, "grunt", g.x)
@@ -8546,7 +8546,7 @@ func newclasses_test() -> void:
 	check(kg.x > x + 100, "Kage rode the line too (%d)" % (kg.x - x))
 	# Flare + FLARED damage
 	var e := nc_enemy(b, fi.x + 160)
-	b.flare_at(e.x, e.y - 10, 90, fi)
+	b.spec_kits.flare_at(e.x, e.y - 10, 90, fi)
 	check(e.has_st("flared"), "Flare: the Jackal is FLARED")
 	b.damage(e, 5, fi)
 	check(e.hp == 52, "FLARED takes +3 (%d)" % e.hp)
@@ -8556,7 +8556,7 @@ func newclasses_test() -> void:
 	b.play_self(force_card(fi, "drone"))
 	await until(func(): return not b.busy, 1200)
 	check(e.hp < hp0 or e.dead, "Recon Drone: grenade on the nearest Jackal (%d -> %d)" % [hp0, e.hp])
-	check(b.mine_under(fi, fi.x, fi.y) == null and fi.def.spd >= 260, "Light Feet: fast, and no mine goes off under her")
+	check(b.biome_rules.mine_under(fi, fi.x, fi.y) == null and fi.def.spd >= 260, "Light Feet: fast, and no mine goes off under her")
 	# N4 Deflect: a Jackal bullet goes back at the shooter
 	ground_unit(b, kg, fi.x - 40, 0)
 	var e2 := nc_enemy(b, kg.x - 200)
@@ -8622,9 +8622,9 @@ func newclasses_test() -> void:
 	check(ts.all(func(t): return t.hp < 60), "Tesla Arc hits all three (%s)" % str(ts.map(func(t): return t.hp)))
 	await shot("nc_tesla")
 	b.wind = 5
-	check(b.wind_of(vo, Data.card("frag")) == 0.0 and b.wind_of(fi, Data.card("frag")) > 0.0, "Physics Major: wind never moves Volta's throws")
+	check(b.spec_kits.wind_of(vo, Data.card("frag")) == 0.0 and b.spec_kits.wind_of(fi, Data.card("frag")) > 0.0, "Physics Major: wind never moves Volta's throws")
 	b.wind = 0
-	await b.singularity_at(ts[1].x, ts[1].y - 14, 140, 10, vo)
+	await b.spec_kits.singularity_at(ts[1].x, ts[1].y - 14, 140, 10, vo)
 	check(ts.all(func(t): return t.hp < 52 or t.dead), "Black Hole crushes them together")
 	for t in ts:
 		t.gone = true
@@ -8642,7 +8642,7 @@ func newclasses_test() -> void:
 	await until(func(): return not b.busy, 1200)
 	check(fi.energy == 1 and fi.hand.size() == fh + 1, "Orders: +1 energy and a card")
 	fi.energy = 0
-	b.classes_new_turn()
+	b.spec_kits.classes_new_turn()
 	check(fi.energy == 1, "Chain of Command: the nearest squadmate gets +1 energy")
 	nc_ready(b, br)
 	var st0 := b.strikes.size()
@@ -8688,12 +8688,12 @@ func newclasses_test() -> void:
 	check(m1.fl.has("mind"), "Mindlink: Sable takes over the Jackal")
 	check(b.nearest_squad(m1) == m2 and not b.foes_of(m1).any(func(o): return o.team == "squad"), "a linked Jackal fights its own side")
 	check(b.foes_of(m2).has(m1), "and its side fights it")
-	b.minds_tick()
+	b.spec_kits.minds_tick()
 	check(not m1.fl.has("mind"), "the link breaks after the Jackal phase")
-	b.acid_puddle(m2.x, m2.y, 40, sb)
+	b.spec_kits.acid_puddle(m2.x, m2.y, 40, sb)
 	sb.x = m2.x - 10
 	var shp := sb.hp
-	b.tick_acids()
+	b.vharr_ai.tick_acids()
 	check(m2.hp < 60 and sb.hp == shp, "Acid: burns the Jackal, never Sable (%d)" % m2.hp)
 	m1.gone = true
 	ground_unit(b, sb, x, 0)
@@ -8712,7 +8712,7 @@ func newclasses_test() -> void:
 	var brood := b.units.filter(func(o): return o.fl.get("brood", false) and not o.dead)
 	check(brood.size() == 3, "Brood Call: three friendly Skitters (%d)" % brood.size())
 	await shot("nc_brood")
-	b.minds_tick()
+	b.spec_kits.minds_tick()
 	check(brood.all(func(o): return o.gone), "the brood melts away after the Jackal phase")
 
 func count_cells(b: Battle, x: float, y: float, w: float, h: float) -> int:
@@ -8758,12 +8758,12 @@ func biomes2_test() -> void:
 	check(b.T.lakes.size() == 1 and b.T.mat(880, b.T.ground_at(880) + 2) == Terrain.ICE and not b.T.solid(880, b.T.ground_at(880) + 14), "M1: a crust of ice over open water")
 	ground_unit(b, mo, 820, 0)
 	cam_on(b, 880)
-	b.ice_crack(mo)
+	b.biome_rules.ice_crack(mo)
 	check(b.T.solid(820, mo.y + 2), "a soldier standing on it doesn't break it")
 	var br := j2_enemy(b, "brute", 940)
 	await frames_wait(4)
 	await shot("m1_lake")
-	b.ice_crack(br)
+	b.biome_rules.ice_crack(br)
 	await until(func(): return br.dead or br.sunk, 400)
 	check(br.dead or br.sunk, "a Brute breaks through and goes under")
 	await shot("m1_crack")
@@ -8782,15 +8782,15 @@ func biomes2_test() -> void:
 	var gx: float = car.x + car.w + 20
 	check(b.T.solid(gx, b.T.ground_at(car.x) + 1) and not b.T.solid(gx, b.T.ground_at(car.x) + 20), "a coupler to walk across the open gap")
 	cam_on(b, car.x + 150)
-	var hits: Array = b.sweep_hits(b.sweeps[0])
+	var hits: Array = b.biome_rules.sweep_hits(b.sweeps[0])
 	check(hits.has(mo) and not hits.has(sq.hex), "the tunnel would hit Moss on the roof, not Hex inside")
 	var hp0 := mo.hp
 	var hh0: int = sq.hex.hp
-	await b.biome_round()
-	await b.biome_round()
+	await b.biome_rules.biome_round()
+	await b.biome_rules.biome_round()
 	check(mo.hp == hp0 and b.sweeps[0].left == 1, "two rounds: the count is down to 1")
 	await shot("m2_count")
-	await b.biome_round()
+	await b.biome_rules.biome_round()
 	check(mo.hp < hp0 and sq.hex.hp == hh0 and b.sweeps[0].left == 3, "third round: the tunnel hits the roof only (%d -> %d) and resets" % [hp0, mo.hp])
 	# M3 Ruined City: four- and five-storey forts
 	b = await m_battle("city", ["ruins", "highrise"])
@@ -8844,24 +8844,24 @@ func biomes2_test() -> void:
 	var gy: float = lo.y
 	b.T.fill_r(low - 12, gy, 24, 8, 3)
 	b.mission_idx = 1
-	check(is_equal_approx(b.lava_step(), 5.0), "V2: on level 2 the lava climbs half steps (%.1f)" % b.lava_step())
+	check(is_equal_approx(b.biome_rules.lava_step(), 5.0), "V2: on level 2 the lava climbs half steps (%.1f)" % b.biome_rules.lava_step())
 	b.mission_idx = 2  # level 3: full steps
-	var n := int(ceil((b.WATER_Y - gy + 3) / b.lava_step()))
+	var n := int(ceil((b.WATER_Y - gy + 3) / b.biome_rules.lava_step()))
 	check(b.lava_k == 0 and n <= Battle.LAVA_MAX, "M5: the basin floor sits within the lava's reach (%d)" % int(gy))
 	for i in b.stall_limit():
 		b.rounds_since_scroll = i + 1
-		await b.biome_round()
+		await b.biome_rules.biome_round()
 	check(b.lava_k == 0, "V1: the lava holds still while the squad is still within the stall clock")
 	b.rounds_since_scroll = b.stall_limit() + 1
 	for i in n:
-		await b.biome_round()
+		await b.biome_rules.biome_round()
 	check(b.lava_k == n and lo.dead and not sq.moss.dead, "%d rounds: the lava reaches the basin and burns the Jackal up, the high ground is safe" % n)
 	check(not b.T.solid(low, gy + 4), "and it ate the planks in the basin")
 	await shot("m5_lava")
 	await b.scroll_to(b.cam_x + 200, "push", sq.moss)
 	check(b.lava_k == 0, "an aggressive push drains it")
 	b.rounds_since_scroll = b.stall_limit() + 1
-	await b.biome_round()
+	await b.biome_rules.biome_round()
 	await b.scroll_to(b.cam_x + 200, "go")
 	check(b.lava_k == 0, "V1: so does any step forward")
 	# M6 Vharr Hive: only Vharr, standing acid, and the walls grow back
@@ -8878,7 +8878,7 @@ func biomes2_test() -> void:
 		for cx in range(int((hx - 30) / 4), int((hx + 30) / 4)):
 			if b.T.grid[cy * b.T.cols + cx] == 0 and b.T.orig[cy * b.T.cols + cx] != 0:
 				holes += 1
-	var grew: int = b.regrow(60)
+	var grew: int = b.biome_rules.regrow(60)
 	check(holes > 40 and grew >= 40 and grew <= 60, "the Hive regrows %d blocks of a %d-block crater in one round (60 at most)" % [grew, holes])
 	await frames_wait(4)
 	await shot("m6_hive")
@@ -8893,12 +8893,12 @@ func biomes2_test() -> void:
 	var l: Dictionary = b.T.lifts[0]
 	ground_unit(b, mo, (l.x0 + l.x1) / 2.0, 0)
 	var y0 := mo.y
-	b.move_lift(l)
+	b.biome_rules.move_lift(l)
 	check(not l.up and absf(mo.y - y0 - 64) < 1, "the lift drops a storey with Moss on it")
 	cam_on(b, 900)
 	await frames_wait(4)
 	await shot("m7_lift")
-	b.move_lift(l)
+	b.biome_rules.move_lift(l)
 	check(l.up and absf(mo.y - y0) < 1, "and brings her back up")
 	var lane: Dictionary = b.sweeps.filter(func(s): return s.k == "plane")[0]
 	var jg := j2_enemy(b, "grunt", lane.x0 + 60)
@@ -8907,7 +8907,7 @@ func biomes2_test() -> void:
 	var hx0: int = sq.hex.hp
 	cam_on(b, lane.x0 + 300)
 	lane.left = 1
-	await b.biome_round()
+	await b.biome_rules.biome_round()
 	check(jg.hp < 40 and sq.hex.hp == hx0, "the jet hits the Jackal in its lane, not Hex up the tower (%d)" % jg.hp)
 	await shot("m7_jet")
 
@@ -9079,7 +9079,7 @@ func sfvfx3() -> void:
 	var to := Vector2(bu.x + 150, b.T.stand_y(bu.x + 150, bu.y - 40))
 	var bl := {"done": false}
 	var go := func():
-		await b.teleport(bu, to, -1)
+		await b.vharr_ai.teleport(bu, to, -1)
 		bl.done = true
 	go.call()
 	for f in [8, 16, 26, 36]:
@@ -9090,7 +9090,7 @@ func sfvfx3() -> void:
 	# V11 black hole over the first foes
 	var hx: float = foes[0].x if foes.size() else u.x + 200
 	var hy: float = (foes[0].y if foes.size() else u.y) - 30
-	var hole = b.black_hole(hx, hy, 160, 0.35)
+	var hole = b.spec_kits.black_hole(hx, hy, 160, 0.35)
 	for f in [6, 18, 32, 44]:
 		await frames_wait(f - [0, 6, 18, 32][[6, 18, 32, 44].find(f)])
 		print("[sfvfx3] hole +%d paint %.2f ms" % [f, vfx_cost(b)])
@@ -9144,7 +9144,7 @@ func sfvfx4() -> void:
 	check(has.call(SfBlood) == n0, "no blood with the BLOOD option off")
 	Run.meta["blood"] = true
 	# V7 slash
-	b.slash_fx(tg.x, tg.y - tg.h / 2.0, 1.6, -1)
+	b.spec_kits.slash_fx(tg.x, tg.y - tg.h / 2.0, 1.6, -1)
 	for f in [3, 7, 14]:
 		await frames_wait(f - [0, 3, 7][[3, 7, 14].find(f)])
 		await shot("sf4_slash_%02d" % f)
@@ -9152,7 +9152,7 @@ func sfvfx4() -> void:
 	# V10 an acid pool, a gas cloud and a TOXIC unit
 	var px: float = sq[0].x + 140
 	var py = b.T.stand_y(px, sq[0].y - 60)
-	b.acid_puddle(px, py if py != null else sq[0].y, 40, null)
+	b.spec_kits.acid_puddle(px, py if py != null else sq[0].y, 40, null)
 	b.gases.append({"x": px + 150, "y": (py if py != null else sq[0].y) - 30, "r": 70.0, "turns": 2, "seed": 0.0, "owner": null})
 	b.add_status(sq[1], "toxic", 2, null)
 	for f in [10, 40, 90]:
@@ -9195,7 +9195,7 @@ func sfvfx4() -> void:
 		await shot("sf4_ice_%02d" % f)
 	await frames_wait(40)
 	# V17 the Steel Rain beacon, through the real card effect
-	b.steel_rain(sq[0].x + 220, 2, sq[0])
+	b.spec_kits.steel_rain(sq[0].x + 220, 2, sq[0])
 	check(has.call(SfPillar) == 1, "Steel Rain lights the red beacon")
 	for f in [8, 20, 50, 90]:
 		await frames_wait(f - [0, 8, 20, 50][[8, 20, 50, 90].find(f)])
@@ -9260,7 +9260,7 @@ func events10_test() -> void:
 	# R2 fire team
 	Run.new_run()
 	var b: Battle = await e_battle("fireteam")
-	var trs: Array = b.troopers()
+	var trs: Array = b.mid_events.troopers()
 	check(trs.size() == 2 and trs.all(func(o): return o.loot.get("pinned", false) and o.team == "ally"), "R2: two pinned friendly riflemen in the first stretch")
 	var sq: Array = b.squad()
 	var mo: Unit = sq[0]
@@ -9268,25 +9268,25 @@ func events10_test() -> void:
 	cam_on(b, trs[0].x)
 	await frames_wait(4)
 	await shot("r2_pinned")
-	b.check_troopers(mo)
+	b.mid_events.check_troopers(mo)
 	check(trs.all(func(o): return not o.loot.has("pinned")), "reach them and they join")
 	for o in b.units:
 		if o.team == "enemy":
 			o.gone = true
 	var e := j2_enemy(b, "grunt", trs[1].x + 70)
 	e.hp = 30; e.max_hp = 30
-	await b.sentries_fire()
+	await b.spec_kits.sentries_fire()
 	check(e.hp < 30, "the fire team shoots at the end of the turn (%d)" % e.hp)
 	ground_unit(b, trs[1], trs[0].x + 30, trs[0].y - 30)  # the level roll can leave the second one up on a ledge
 	await frames_wait(10)
 	var before := "%d,%d %d,%d" % [trs[0].x, trs[0].y, trs[1].x, trs[1].y]
 	ground_unit(b, mo, trs[0].x + 300, trs[0].y - 60)
-	b.troopers_follow()
+	b.mid_events.troopers_follow()
 	await until(func(): return trs.all(func(o): return o.walk == null), 600)
 	check(trs.all(func(o): return o.x > float(before.split(",")[0]) + 80 and o.x < mo.x), "they keep up behind the lead soldier (%d %d / %d, from %s)" % [trs[0].x, trs[1].x, mo.x, before])
 	await shot("r2_joined")
-	b.troopers_leave()
-	check(b.troopers().is_empty(), "they head back to the lines at camp")
+	b.mid_events.troopers_leave()
+	check(b.mid_events.troopers().is_empty(), "they head back to the lines at camp")
 	# R3 collapse
 	b = await e_battle("collapse")
 	check(not b.crumble.is_empty() and not b.crumble.on, "R3: the second stretch is set to crumble")
@@ -9295,10 +9295,10 @@ func events10_test() -> void:
 	for i in sq.size():
 		ground_unit(b, sq[i], x0 + 140 + i * 30, 0)
 	cam_on(b, x0 + 200)
-	await b.crumble_round()
+	await b.mid_events.crumble_round()
 	check(b.crumble.on, "it starts once the squad is in")
 	var cx: float = b.crumble.x
-	await b.crumble_round()
+	await b.mid_events.crumble_round()
 	check(b.crumble.x == cx + Data.CRUMBLE_STEP and not b.T.solid(cx + 40, b.T.ground_at(cx + 40) if b.T.ground_at(cx + 40) < 600 else 600), "a round later 120px of ground is gone")
 	await frames_wait(4)
 	await shot("r3_collapse")
@@ -9308,16 +9308,16 @@ func events10_test() -> void:
 	check(ds.size() == 1 and ds[0].loot.stock.size() == 3, "R4: an arms dealer with three items")
 	var d: Unit = ds[0]
 	var it0: Dictionary = d.loot.stock[0]
-	check(b.dealer_price(it0) < Run.item_price(it0) or Run.item_price(it0) <= 2, "cheaper than the Quartermaster (%d vs %d)" % [b.dealer_price(it0), Run.item_price(it0)])
+	check(b.mid_events.dealer_price(it0) < Run.item_price(it0) or Run.item_price(it0) <= 2, "cheaper than the Quartermaster (%d vs %d)" % [b.mid_events.dealer_price(it0), Run.item_price(it0)])
 	sq = b.squad()
 	mo = sq[0]
 	ground_unit(b, mo, d.x - 30, d.y - 40)  # on the dealer's own floor, not a roof above him
 	cam_on(b, d.x)
 	await frames_wait(4)
 	await shot("r4_dealer")
-	Run.scrip = b.dealer_price(it0) + 1
+	Run.scrip = b.mid_events.dealer_price(it0) + 1
 	b.autopick = 0
-	await b.check_dealer(mo)
+	await b.mid_events.check_dealer(mo)
 	b.autopick = -1
 	check(d.loot.stock.size() == 2 and Run.scrip == 1, "buy one: paid his price, two left (%d scrip)" % Run.scrip)
 	# R5 bounties
@@ -9334,19 +9334,19 @@ func events10_test() -> void:
 	sq = b.squad()
 	mo = sq[0]
 	var hp0 := mo.max_hp
-	b.transform_bonus("fat", mo)
+	b.mid_events.transform_bonus("fat", mo)
 	check(mo.max_hp == hp0 + 10 and mo.has_st("fat"), "R6 FAT: +10 HP")
 	var n0 := mo.hand.size()
-	b.transform_bonus("zombie", sq[1])
+	b.mid_events.transform_bonus("zombie", sq[1])
 	check(sq[1].hand.filter(func(c): return c.key == "vomit").size() == 2 and sq[1].has_st("zombie"), "ZOMBIE: two Vomit cards and undying")
-	b.transform_bonus("monkey", sq[2])
+	b.mid_events.transform_bonus("monkey", sq[2])
 	check(sq[2].hand.filter(func(c): return c.key == "monkeyclimb").size() == 2, "MONKEY: two Monkey Climbs")
 	sq[1].hp = 1
 	b.damage(sq[1], 40, null)
 	await until(func(): return b.settled(), 300)
 	check(not sq[1].dead and not sq[1].downed, "a zombie shrugs off a killing blow")
 	mo.st.erase("fat")
-	b.fat_end(mo)
+	b.mid_events.fat_end(mo)
 	check(mo.max_hp == hp0, "FAT wears off cleanly")
 	# D2 Daily Op
 	check(Run.daily_squad("2026-10-28") == Run.daily_squad("2026-10-28") and Run.daily_squad("2026-10-28").size() == 4, "D2: the same squad all day (%s)" % str(Run.daily_squad("2026-10-28")))
@@ -9546,24 +9546,24 @@ func reinforce_test() -> void:
 	await until(func(): return b.state == "player" and not b.busy)
 	b.speed = 2.0
 	check(b.squad().size() == 4, "four soldiers deploy (%d)" % b.squad().size())
-	check(b.roll_flare(true) == null, "no flare while nobody is down")
+	check(b.camp_ops.roll_flare(true) == null, "no flare while nobody is down")
 	var sq: Array = b.squad_alive()
 	var hex: Unit = sq[1]
 	hex.hp = 0; hex.dead = true; hex.downed = true; hex.s.tags = 1
 	# odds: about 30% of new screens hold a flare while someone is down
 	var hits := 0
 	for i in 2000:
-		var f = b.roll_flare()
+		var f = b.camp_ops.roll_flare()
 		if f != null:
 			hits += 1
 			f.gone = true
 	check(hits > 520 and hits < 680, "a flare turns up on about 30%% of screens (%d of 2000)" % hits)
 	Run.reserve.clear()
-	check(b.roll_flare(true) == null, "no flare when nobody waits in the barracks")
+	check(b.camp_ops.roll_flare(true) == null, "no flare when nobody waits in the barracks")
 	Run.reserve = [bolt, track]
-	var fl: Unit = b.roll_flare(true)
+	var fl: Unit = b.camp_ops.roll_flare(true)
 	check(fl != null, "a downed soldier and a full barracks: the flare drops")
-	check(b.roll_flare(true) == null, "only one flare on the field at a time")
+	check(b.camp_ops.roll_flare(true) == null, "only one flare on the field at a time")
 	await b.until(func(): return not fl.air)
 	await frames_wait(20)
 	cam_on(b, fl.x)
@@ -9612,7 +9612,7 @@ func reinforce_test() -> void:
 	gears.hp = 0; gears.dead = true; gears.downed = true
 	b.autopick = 0
 	b.state = "player"; b.busy = false
-	b.resolve(func(): await b.call_reinforcements(b.squad_alive()[0]))
+	b.resolve(func(): await b.camp_ops.call_reinforcements(b.squad_alive()[0]))
 	await until(func(): return not b.busy)
 	check(b.squad_alive().size() == 4 and b.squad().size() == 4, "two downed, two jump in: still four (%d)" % b.squad_alive().size())
 	check(not rook_s.alive and Run.meta.memorial.size() == mem0 + 1 and not Run.reserve.has(rook_s), "the killed soldier goes to the Memorial, not the barracks")
@@ -9679,7 +9679,7 @@ func pcalls() -> void:
 	b.inspect = false
 	# P6: the hijack toast sits above the hand, clear of the top of the field
 	var u: Unit = b.squad_alive()[0]
-	b.vehicle_pop(u, "in", "tank", ["tankshell", "vulcan", "eject"], [])
+	b.vehicle_ops.vehicle_pop(u, "in", "tank", ["tankshell", "vulcan", "eject"], [])
 	await frames_wait(12)
 	var vp = null
 	for c in main.hud.find_children("*", "", true, false):
@@ -9715,7 +9715,7 @@ func pcalls() -> void:
 		await shot("pcalls_locker_mark")
 		hold.x = b.cam_x + 4; hold.y = b.T.stand_y(hold.x, 0); hold.vx = 0; hold.vy = 0  # squeezed against the left edge
 		await frames_wait(1)
-		check(b.push_blockers().size() == 1, "P4: one enemy left holding the zone (%d)" % b.push_blockers().size())
+		check(b.camp_ops.push_blockers().size() == 1, "P4: one enemy left holding the zone (%d)" % b.camp_ops.push_blockers().size())
 		await frames_wait(20)
 		await shot("pcalls_lockers")
 
@@ -9891,7 +9891,7 @@ func newplayer6() -> void:
 	var b: Battle = main.start_battle(0, Run.current_mission())
 	b.autopick = 0
 	await until(func(): return b.state == "player" and not b.busy)
-	b.switch_wing()
+	b.camp_ops.switch_wing()
 	await frames_wait(20)
 	var wb: Array = b.squad().filter(func(u): return b.wing(u) == "b")
 	check(wb.size() == 4 and wb.all(func(u): return u.x - b.cam_x < 826), "squad B stands left of the button column (%s)" % [wb.map(func(u): return int(u.x - b.cam_x))])
@@ -9967,7 +9967,7 @@ func tcalls() -> void:
 	var mate: Unit = b.squad_alive().filter(func(u): return u != vu[0])[0]
 	mate.x = vu[0].x - 100
 	mate.y = vu[0].y
-	b.free_varga()
+	b.camp_ops.free_varga()
 	check(not vu[0].trapped, "a squadmate who reaches him breaks him out")
 	b.state = "over"
 	await frames_wait(5)

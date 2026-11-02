@@ -183,7 +183,7 @@ func boss() -> void:
 	mark("boss", bo)
 	mark("target", s)
 	bo.active = true
-	await b.enemy_act(bo)
+	await b.foe_ai.enemy_act(bo)
 	await t.until(func(): return b.settled(), 900)
 	await t.frames_wait(20)
 	var v: Unit = b.squad_alive()[0]
@@ -211,14 +211,14 @@ func aliens() -> void:
 	await t.frames_wait(40)
 	mark("skitter", pack[0])
 	mark("target", s)
-	await b.enemy_act(pack[0])
+	await b.foe_ai.enemy_act(pack[0])
 	await t.until(func(): return b.settled(), 600)
 	mark("squid", sq)
-	await b.enemy_act(sq)
+	await b.foe_ai.enemy_act(sq)
 	await t.until(func(): return b.settled(), 600)
 	mark("blinker", bl)
 	s.hp = s.max_hp
-	await b.enemy_act(bl)
+	await b.foe_ai.enemy_act(bl)
 	await t.until(func(): return b.settled(), 600)
 	await t.frames_wait(30)
 
@@ -365,7 +365,7 @@ func play(b: Battle, u: Unit, key: String, at = null, hold := 30) -> void:
 			var ty: float = at.y - 4 if at is Unit else p.y
 			var hx: float = u.x + (6 if tx > u.x else -6)
 			var hy: float = u.y - u.h + 10
-			var sol = b.solve_arc(hx, hy, tx, ty, c.get("wind", 1.0), 13)
+			var sol = b.phys.solve_arc(hx, hy, tx, ty, c.get("wind", 1.0), 13)
 			if sol != null:
 				var pw := Vector2(sol.vx, sol.vy).length()
 				p = Vector2(hx, hy) + Vector2(sol.vx, sol.vy).normalized() * (pw / 13.0 * 220)
@@ -389,7 +389,7 @@ func settle(b: Battle, n := 1500) -> void:
 func foes_act(b: Battle, list: Array) -> void:
 	for e in list:
 		if not e.dead and not e.gone:
-			await b.enemy_act(e)
+			await b.foe_ai.enemy_act(e)
 			await t.until(func(): return b.settled(), 400)
 
 func v_jumppack() -> void:
@@ -533,13 +533,13 @@ func v_slug() -> void:
 	frame_on(b, x + 300)
 	await t.frames_wait(30)
 	mark("slug", g)
-	b.call_slug(g)
+	b.vtech.call_slug(g)
 	await t.frames_wait(30)
 	await settle(b)
 	for o in b.units:
 		if o.kind == "slug" and not o.gone:
 			mark("roll", o)
-			await b.slug_act(o)
+			await b.vtech.slug_act(o)
 			await t.until(func(): return b.settled(), 600)
 	await t.frames_wait(150)
 
