@@ -1229,6 +1229,18 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 				out[k] = out.get(k, 0) + st[k]
 	return out
 
+func traits_of(s: Dictionary) -> Array:
+	## S7: every trait a soldier has, in one list: the class trait, a recruit's trait and a prestige
+	## second trait. Each is {kind, name, prog, done, text}, ready for Tip.chips.
+	var out: Array = [{"kind": "set", "name": String(s.def.trait[0]).to_upper(), "prog": "", "done": true, "text": "Class trait. " + s.def.trait[1]}]
+	for tr in Data.RECRUIT_TRAITS:
+		if tr.id == str(s.get("trait", "")):
+			out.append({"kind": "evo", "name": String(tr.name).to_upper(), "prog": "", "done": true, "text": "Recruit trait. " + tr.text})
+	if s.has("prestige"):
+		var pt: Dictionary = Data.PRESTIGE_TRAITS[int(s.get("ptrait", 0))]
+		out.append({"kind": "duo", "name": String(pt.name).to_upper(), "prog": "", "done": true, "text": "Prestige trait (%s). %s" % [title_of(s), pt.text]})
+	return out
+
 func eff_max_hp(s: Dictionary) -> int:
 	return s.max_hp + int(gear_bonus(s).get("hp", 0)) + (6 if implanted(s, "spine") else 0)
 

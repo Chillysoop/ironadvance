@@ -771,7 +771,8 @@ class Tag extends Control:
 class PauseMenu extends Control:
 	## N7: RESUME, CONTROLS, QUIT TO TITLE. Runs while the tree is paused.
 	var hud
-	var page := "menu"     # "menu", "controls", "bug" (H1) or "quit"
+	var page := "menu"     # "menu", "controls", "manual" (S8), "bug" (H1) or "quit"
+	var man_page := 0
 	var n_menu := 5
 	const CONTROLS := [
 		["CLICK A CARD / 1-9", "Arm a card, then click to fire"],
@@ -800,7 +801,7 @@ class PauseMenu extends Control:
 		var opts: Array = []
 		match page:
 			"menu":
-				opts = [["RESUME", Color("62d26f"), resume], ["CONTROLS", Color("53d4e2"), func(): go("controls")], ["SETTINGS", Color("53d4e2"), settings],
+				opts = [["RESUME", Color("62d26f"), resume], ["CONTROLS", Color("53d4e2"), func(): go("controls")], ["FIELD MANUAL", Color("b48cff"), func(): man_page = 0; go("manual")], ["SETTINGS", Color("53d4e2"), settings],
 					["REPORT A BUG", Color("ffb23e"), func(): go("bug")], ["QUIT TO TITLE", Color("ff4d3d"), func(): go("quit")]]
 				if is_instance_valid(hud.b) and hud.b.in_lesson() and int(hud.b.mission.get("lesson_i", 0)) > 0:
 					opts.insert(4, ["BACK TO LESSON 1", Color("9aa2ae"), restart_camp])  # H2
@@ -809,6 +810,10 @@ class PauseMenu extends Control:
 				opts = [["OPEN THE FOLDER", Color("ffb23e"), func(): Sfx.play("click"); Diary.open_folder()], ["SCREENSHOT NOW", Color("53d4e2"), shot_now], ["BACK", Color("9aa2ae"), func(): go("menu")]]
 			"controls":
 				opts = [["BACK", Color("9aa2ae"), func(): go("menu")]]
+			"manual":
+				opts = [["BACK", Color("9aa2ae"), func(): go("menu")]]
+				if manual(hud.b).size() > MAN_ROWS:
+					opts.append(["MORE", Color("b48cff"), func(): man_page = (man_page + 1) % ceili(manual(hud.b).size() / float(MAN_ROWS)); go("manual")])
 			"quit":
 				opts = [["QUIT", Color("ff4d3d"), quit], ["STAY", Color("62d26f"), func(): go("menu")]]
 		var y := 300.0 if page != "controls" else 446.0
@@ -824,6 +829,9 @@ class PauseMenu extends Control:
 			bt.size = Vector2(240, 36)
 			if page == "quit":
 				bt.position = Vector2(480 - 250 + i * 260, y)
+			elif page == "manual":
+				bt.size = Vector2(180, 32)
+				bt.position = Vector2(480 - 95 * opts.size() + 5 + i * 190, 456)
 			elif page == "bug":
 				bt.size = Vector2(200, 36)
 				bt.position = Vector2(480 - 315 + i * 215, y)
@@ -835,6 +843,45 @@ class PauseMenu extends Control:
 		Sfx.play("click")
 		page = p
 		build()
+	const MAN_ROWS := 12
+	static func manual(b) -> Array:
+		## S8: one line on every system the player has met so far. Systems not met stay hidden, so the
+		## manual grows with the player. [name, what it does]
+		var out: Array = [
+			["CARDS AND ENERGY", "3 energy a turn; a card's cost is in its corner. R swaps a card for a new draw once a turn."],
+			["MOVING", "Click ground to walk. BACKSPACE takes back a walk that changed nothing else."],
+			["ADRENALINE AND OVERDRIVE", "Hits and kills fill adrenaline. At 100 a soldier is pumped and their Overdrive card turns up."],
+			["ALERT", "Sit on one screen too long and alert climbs each enemy phase: more enemies, tougher ones."],
+			["PUSH ZONE", "End a turn in it to scroll ahead early and cut the alert. It locks while enemies stand in it."],
+			["BOUNTY BOARD", "Three optional goals each level, paid in scrip."],
+			["WATER", "Anything that falls in drowns. Blasts can take the ground out from under you."],
+			["DOG TAGS", "A downed soldier spends a dog tag and is back at the next camp. Out of tags, they're gone."],
+			["DUOS", "Two pumped squadmates close together can play a shared duo card."],
+		]
+		if Run.soldiers.any(func(s): return int(s.lvl) >= 2):
+			out.append(["LEVEL-UPS", "Pick a card, a stat or a perk. REROLL deals new options; BANISH drops one for the run."])
+			out.append(["REROLL TOKENS", "One pool: spend them on a level-up or at the gunsmith."])
+		if Run.mission >= 1 or Run.campaign():
+			out.append(["HQ", "Between levels: buy at the Quartermaster, change cards at the Workshop, equip at the Armory."])
+			out.append(["CARD BENCH", "Click a card in a Dossier deck for every upgrade: polish, mods, fuse, evolve, burn."])
+			out.append(["DETOURS", "Side areas after the camp. Pick one for extra pay."])
+		if Run.stash.size() or Run.soldiers.any(func(s): return s.has("equip") and s.equip.values().any(func(it): return it != null)):
+			out.append(["GEAR", "Weapon, armor and two kits. Rarer gear rolls more affixes. Hover a stat on the Dossier for its sources."])
+		if Run.gear.size() or Run.cmd.size():
+			out.append(["SQUAD KIT", "Squad gear and standing orders help everyone. Listed under the squad bar at HQ."])
+		if int(Run.meta.get("salvage", 0)) > 0 or not Run.meta.get("hq", {}).is_empty():
+			out.append(["SALVAGE", "Kept between runs. Pays for HQ upgrades, surgeries and Vharr tech."])
+		if Run.hq("doc") >= 1:
+			out.append(["DOC'S LAB", "Surgeries go on a class (a person in the campaign) and stay."])
+		if Run.campaign():
+			out.append(["THE WAR", "Hold sectors for income after every op. Ranks, bonds and personal orders grow your company."])
+		if is_instance_valid(b) and b.mission.has("biome") and Data.BIOMES.has(b.mission.biome):
+			var bm: Dictionary = Data.BIOMES[b.mission.biome]
+			out.append([String(bm.name), String(bm.text)])
+		if is_instance_valid(b) and Data.EVENTS.has(b.mission.get("event", "")):
+			var ev: Dictionary = Data.EVENTS[b.mission.event]
+			out.append([String(ev.name), String(ev.text)])
+		return out
 	func settings() -> void:
 		## R5: the settings panel sits over the pause menu until BACK
 		var sp: Control = preload("res://scripts/settings.gd").new()
@@ -884,6 +931,8 @@ class PauseMenu extends Control:
 	func _draw() -> void:
 		draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.8))
 		var r := Rect2(150, 90, 660, 410) if page == "controls" else Rect2(280, 130, 400, 240)
+		if page == "manual":
+			r = Rect2(70, 40, 820, 460)
 		if page == "menu":
 			r = Rect2(280, 96, 400, 94 + n_menu * 46)
 		elif page == "bug":
@@ -910,6 +959,20 @@ class PauseMenu extends Control:
 					Art.text(self, rows[i], Vector2(180, 202 + i * 22), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 				var fsz := 16 if Art.text_width(Diary.folder(), 16, true) < 630 else 8
 				Art.text(self, Diary.folder(), Vector2(480, 352), fsz, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER, 2, fsz == 16)
+			"manual":
+				# S8: every system met so far, one line each
+				var es := manual(hud.b)
+				var pages := ceili(es.size() / float(MAN_ROWS))
+				Art.text(self, "FIELD MANUAL" + ("  %d/%d" % [man_page + 1, pages] if pages > 1 else ""), Vector2(480, 70), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+				Art.text(self, "Everything you've run into so far. More shows up as you meet it.", Vector2(480, 88), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
+				var shown: Array = es.slice(man_page * MAN_ROWS, (man_page + 1) * MAN_ROWS)
+				var ry := 118.0
+				for e in shown:
+					Art.text(self, e[0], Vector2(90, ry), 8, Color("b48cff"))
+					var lines: Array = CardView.wrap_text(e[1], 575, 16)
+					for k in mini(2, lines.size()):
+						Art.text(self, lines[k], Vector2(300, ry + k * 13), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+					ry += 9 + 13 * mini(2, lines.size())
 			"controls":
 				Art.text(self, "CONTROLS", Vector2(480, 120), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 				# every row clear of the BACK button and inside the panel, the longest (R) included

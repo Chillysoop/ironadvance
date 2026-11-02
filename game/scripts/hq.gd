@@ -51,6 +51,9 @@ func build() -> void:
 	bar.picked.connect(open_dossier)
 	bar.all_decks.connect(func(): open_dossier(0, "squad"))
 	add_child(bar)
+	var kit := HubUI.KitRow.new()  # S5: squad gear and standing orders, one row
+	kit.position = Vector2(16, 120)
+	add_child(kit)
 	var spots := [
 		["QUARTERMASTER", "BUY CARDS  GEAR", 40, "qm", Color("ffb23e")],
 		["BARRACKS", "RECRUITS  DOG TAGS", 230, "barracks", Color("62d26f")],

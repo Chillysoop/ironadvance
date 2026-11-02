@@ -547,6 +547,54 @@ func stats() -> Array:
 	+ ([["TITLES", Run.title_line(me)]] if Run.campaign() and me.get("orders_done", []).size() else []) \
 	+ ([["BUDDIES", ", ".join(Run.buddies(me))]] if Run.campaign() and Run.buddies(me).size() else [])
 
+func stat_sources(me: Dictionary, row: String) -> String:
+	## S6: where a number on the sheet comes from, one source per line. Read-only.
+	var key: String = {"HP": "hp", "MOVE": "move", "DODGE": "dodge", "HAND": "hand", "ENERGY": "energy1"}.get(row, "")
+	if key == "":
+		return ""
+	var fmt := func(v) -> String:
+		return Data.meters(v) if key == "move" else ("%d%%" % v if key == "dodge" else str(v))
+	var plus := func(v) -> String:
+		return ("+" if v >= 0 else "") + fmt.call(v)
+	var out: Array = []
+	match key:
+		"hp":
+			out.append("Class %s: %s" % [me.def.cls, fmt.call(int(me.def.hp))])
+			if int(me.max_hp) != int(me.def.hp):
+				out.append("Levels, perks and traits: %s" % plus.call(int(me.max_hp) - int(me.def.hp)))
+		"move":
+			out.append("Class %s: %s" % [me.def.cls, fmt.call(int(me.def.spd))])
+		"dodge":
+			out.append("Class %s: %s" % [me.def.cls, fmt.call(int(me.def.dodge))])
+		"hand":
+			out.append("Every soldier: 4")
+		"energy1":
+			out.append("Every soldier: 3 a turn")
+	if key in ["move", "dodge", "hand", "energy1"] and int(me.bonus.get(key, 0)) != 0:
+		out.append("Levels, perks, traits and prestige: %s" % plus.call(int(me.bonus[key])))
+	for sl in me.get("equip", {}):
+		var it = me.equip[sl]
+		if it != null:
+			var v := int(Data.item_stats(it).get(key, 0))
+			if v != 0:
+				out.append("%s (%s): %s" % [Data.item_name(it), Data.tier_name(int(it.tier)).capitalize(), plus.call(v)])
+	for id in Run.gear:
+		var v := int(Data.gear(id).get("stats", {}).get(key, 0))
+		if v != 0:
+			out.append("%s (squad gear): %s" % [Data.gear(id).name, plus.call(v)])
+	for id in me.get("orders_done", []):
+		var v := int(Data.ORDERS[id].stats.get(key, 0))
+		if v != 0:
+			out.append("Order %s: %s" % [Data.ORDERS[id].title, plus.call(v)])
+	if key == "hp" and Run.implanted(me, "spine"):
+		out.append("Implant %s: +6" % Data.SURGERIES.spine.name.capitalize())
+	if key == "hand":
+		if me.perks.has("fieldkit"):
+			out.append("Perk Field Kit: +1")
+		if Run.implanted(me, "thirdarm"):
+			out.append("Implant %s: +1" % Data.SURGERIES.thirdarm.name.capitalize())
+	return ". ".join(out) + "."
+
 func trait_line() -> Array:
 	return s().def.trait
 
@@ -647,6 +695,7 @@ func draw_left(me: Dictionary) -> void:
 		draw_rect(Rect2(x + 1, y + 1, (LEFT.size.x - 22) * clampf(float(me.hp) / mx, 0, 1), 6), Color("62d26f") if me.hp > mx * 0.3 else Color("ff4d3d"))
 		y += 22
 		Art.text(self, "HP %d / %d" % [me.hp, mx], Vector2(x, y), 8, Color("e8dcc2"))
+		Tip.zone(self, Rect2(x - 2, y - 10, LEFT.size.x - 16, 13), "MAX HP %d" % mx, stat_sources(me, "HP"), Color("62d26f"))
 	else:
 		y += 22
 		Art.text(self, "KILLED IN ACTION", Vector2(x, y), 8, Color("ff4d3d"))
@@ -654,11 +703,16 @@ func draw_left(me: Dictionary) -> void:
 	for row in stats():
 		Art.text(self, row[0], Vector2(x, y), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 		Art.text(self, row[1], Vector2(LEFT.end.x - 10, y), 16, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, 0, true)
+		var src := stat_sources(me, row[0])
+		if src != "":  # S6: hover a stat for where it comes from
+			Tip.zone(self, Rect2(x - 2, y - 10, LEFT.size.x - 16, 13), "%s %s" % [row[0], row[1]], src, Color("53d4e2"))
 		y += 13
 	y += 8
+	# S7: class, recruit and prestige traits as one line of chips (hover one), then the class trait spelled out
 	var tr := trait_line()
-	head(tr[0].to_upper(), Vector2(x, y), Color("62d26f"))
-	y = para(tr[1], Vector2(x, y + 14), LEFT.size.x - 20, Color("e8dcc2"), 3)
+	head("TRAITS", Vector2(x, y), Color("62d26f"))
+	y = Tip.chips(self, Run.traits_of(me), Vector2(x, y + 14), LEFT.size.x - 20)
+	y = para(tr[1], Vector2(x, y), LEFT.size.x - 20, Color("e8dcc2"), 3)
 	y += 6
 	head("IMPLANTS", Vector2(x, y))
 	y += 14
@@ -804,16 +858,6 @@ func draw_sheet(me: Dictionary) -> void:
 	if duos.is_empty():
 		para("None for this class.", Vector2(x + 90, y), MID.size.x - 90, Color("9aa2ae"), 1)
 	y = maxf(y + 30, Tip.chips(self, duos, Vector2(x + 90, y + 1), MID.size.x - 90) + 6)
-	var rt := recruit_trait()
-	if not rt.is_empty():
-		head("RECRUIT", Vector2(x, y))
-		Art.text(self, "%s: %s" % [rt.name, rt.text], Vector2(x + 90, y + 1), 16, Color("62d26f"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
-		y += 16
-	if me.has("prestige"):
-		var pt: Dictionary = Data.PRESTIGE_TRAITS[int(me.get("ptrait", 0))]
-		head("PRESTIGE", Vector2(x, y))
-		Art.text(self, "%s. %s: %s" % [Run.title_of(me), pt.name, pt.text], Vector2(x + 90, y + 1), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
-		y += 16
 	if me.get("xtrain", []).size():
 		head("CROSS", Vector2(x, y))
 		Art.text(self, "Cross-trained in %s." % ", ".join(me.xtrain.map(func(k): return Data.CARDS[k].name)), Vector2(x + 90, y + 1), 16, Color("53d4e2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)

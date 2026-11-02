@@ -6122,7 +6122,8 @@ func wardeep() -> void:
 	await until(func(): return b.state == "player" and not b.busy)
 	var sal := int(Run.meta.salvage)
 	b.camp_ops.job_reward()
-	check(int(Run.meta.salvage) == sal + Data.BONUS_SALVAGE, "a salvage yard pays %d salvage" % Data.BONUS_SALVAGE)
+	var job_pay: int = Data.ELITE_SALVAGE if b.job() in ["demolish", "hold"] else 0  # S1: the job's old Bio-parts are salvage now
+	check(int(Run.meta.salvage) == sal + Data.BONUS_SALVAGE + job_pay, "a salvage yard pays %d salvage (+%d for the job)" % [Data.BONUS_SALVAGE, job_pay])
 	Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": "column", "left": 2}
 	Run.start_op(Run.sector("d1"))
 	b.mission = Run.level
@@ -10312,8 +10313,8 @@ func bp3_test() -> void:
 			yy += 4.0
 		return yy
 	var tx := 0.0
-	for x in range(600, 1100, 8):
-		if top_at.call(b.T, x) < Data.WATER_Y - 60 and not b.T.pits.any(func(p): return x > p[0] - 30 and x < p[1] + 30):
+	for x in range(300, 1150, 8):
+		if top_at.call(b.T, x) < Data.WATER_Y - 50 and not b.T.pits.any(func(p): return x > p[0] - 30 and x < p[1] + 30):
 			tx = x
 			break
 	check(tx > 0, "found dry ground in the landing zone (%d)" % tx)
@@ -10442,6 +10443,69 @@ func audit_test() -> void:
 	var price: int = arm.gunsmith_price()
 	arm.reroll_sel()
 	check(Run.scrip == 500 - price, "then charges scrip when the pool is empty (%d)" % price)
+	main.clear()
+	# S5: squad gear and standing orders share one SQUAD KIT row under the HQ squad bar
+	Run.gear = ["boots"]
+	Run.cmd = ["supply"]
+	main.show_hq(false)
+	await frames_wait(20)
+	var kits: Array = main.screen.get_children().filter(func(c): return c is HubUI.KitRow)
+	check(kits.size() == 1 and HubUI.KitRow.entries().map(func(e): return e.name) == ["STEEL-TOE BOOTS", "SUPPLY LINES"], "S5: the HQ shows one SQUAD KIT row with the gear and the order")
+	if kits.size():
+		await hover_at(kits[0].global_position + Vector2(Art.text_width("SQUAD KIT", 8) + 30, 8))
+		check(Tip.cur.get("title", "") == "STEEL-TOE BOOTS", "hovering a kit chip says what it does (%s)" % Tip.cur.get("title", ""))
+	await shot("audit_kit")
+	# S6: hover a stat on the Dossier for its sources
+	var moss: Dictionary = Run.soldiers[0]
+	Run.equip(moss, Run.new_item("ghillie", 2))
+	main.screen.open_dossier(0, "sheet")
+	await frames_wait(20)
+	var d: Control = main.screen.sub
+	var src: String = d.stat_sources(moss, "DODGE")
+	check(src.contains("Class Marksman: %d%%" % int(moss.def.dodge)) and src.contains("Ghillie Suit"), "S6: DODGE lists the class and the Ghillie Suit (%s)" % src)
+	var zs: Array = Tip.zones.get(d.get_instance_id(), []).filter(func(z): return z.title.begins_with("DODGE"))
+	check(zs.size() == 1, "the DODGE row is hoverable")
+	if zs.size():
+		await hover_at(d.global_position + zs[0].r.get_center())
+		check(Tip.cur.get("title", "").begins_with("DODGE") and Tip.cur.text.contains("Ghillie"), "hovering it shows where the dodge comes from (%s)" % Tip.cur.get("text", ""))
+		await shot("audit_sources")
+	# S7: class, recruit and prestige traits on one line
+	var rs: Dictionary = Run.soldiers[1]
+	rs["trait"] = Data.RECRUIT_TRAITS[0].id
+	rs["prestige"] = 1
+	rs["ptrait"] = 0
+	var tl: Array = Run.traits_of(rs)
+	check(tl.size() == 3 and tl[0].text.begins_with("Class trait") and tl[1].text.begins_with("Recruit trait") and tl[2].text.begins_with("Prestige trait"), "S7: one list holds the class, recruit and prestige traits (%s)" % str(tl.map(func(t): return t.name)))
+	d.switch_to(1)
+	d.set_tab("sheet")
+	await frames_wait(10)
+	var tz: Array = Tip.zones.get(d.get_instance_id(), []).filter(func(z): return z.title == tl[1].name)
+	check(tz.size() == 1, "the Dossier sheet shows them as one TRAITS line of chips")
+	await shot("audit_traits")
+	var bars: Array = d.get_children().filter(func(c): return c is HubUI.SquadBar)
+	check(bars.size() == 1 and Tip.zones.get(bars[0].get_instance_id(), []).any(func(z): return z.title == "%s TRAITS" % rs.def.name and z.text.contains(tl[2].name)), "the squad bar lists them on hover")
+	main.clear()
+	# S8: the pause menu's FIELD MANUAL lists what the player has met, and grows
+	Run.new_run()
+	Run.meta.hq = {}
+	var fresh: Array = HudScript.PauseMenu.manual(null)
+	check(not fresh.any(func(e): return e[0] in ["LEVEL-UPS", "DOC'S LAB", "SQUAD KIT"]), "S8: a fresh run's manual leaves out what hasn't come up (%d lines)" % fresh.size())
+	var b: Battle = await e_battle("collapse")
+	await press_key(KEY_ESCAPE)
+	var menu = main.hud.get_children().filter(func(c): return c is HudScript.PauseMenu)
+	check(menu.size() == 1, "pause menu open")
+	if menu.size():
+		menu[0].man_page = 0
+		menu[0].go("manual")
+		await frames_wait(6)
+		var es: Array = HudScript.PauseMenu.manual(b)
+		check(es.any(func(e): return e[0] == Data.EVENTS.collapse.name) and es.any(func(e): return e[0] == String(Data.BIOMES[b.mission.biome].name)), "the manual explains this level's biome and event")
+		await shot("audit_manual")
+		Run.soldiers[0].lvl = 3
+		Run.gear = ["boots"]
+		check(HudScript.PauseMenu.manual(b).size() >= es.size() + 3, "and grows as systems come up")
+		menu[0].resume()
+	await frames_wait(4)
 	main.clear()
 	Run.meta = keep
 	Run.save_meta()
