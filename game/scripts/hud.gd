@@ -33,6 +33,7 @@ const LESSON_X := 532.0   # the tutorial's lesson card, top right under the bar 
 const LESSON_Y := 42.0
 const LESSON_W := 420.0
 const HubUI := preload("res://scripts/hub_ui.gd")
+const Diary := preload("res://scripts/diary.gd")
 
 func setup(battle: Battle) -> void:
 	b = battle
@@ -760,7 +761,8 @@ class Tag extends Control:
 class PauseMenu extends Control:
 	## N7: RESUME, CONTROLS, QUIT TO TITLE. Runs while the tree is paused.
 	var hud
-	var page := "menu"     # "menu", "controls" or "quit"
+	var page := "menu"     # "menu", "controls", "bug" (H1) or "quit"
+	var n_menu := 5
 	const CONTROLS := [
 		["CLICK A CARD / 1-9", "Arm a card, then click to fire"],
 		["RIGHT-CLICK / ESC", "Cancel the armed card"],
@@ -788,14 +790,22 @@ class PauseMenu extends Control:
 		var opts: Array = []
 		match page:
 			"menu":
-				opts = [["RESUME", Color("62d26f"), resume], ["CONTROLS", Color("53d4e2"), func(): go("controls")], ["SETTINGS", Color("53d4e2"), settings], ["QUIT TO TITLE", Color("ff4d3d"), func(): go("quit")]]
+				opts = [["RESUME", Color("62d26f"), resume], ["CONTROLS", Color("53d4e2"), func(): go("controls")], ["SETTINGS", Color("53d4e2"), settings],
+					["REPORT A BUG", Color("ffb23e"), func(): go("bug")], ["QUIT TO TITLE", Color("ff4d3d"), func(): go("quit")]]
+				if is_instance_valid(hud.b) and hud.b.in_lesson() and int(hud.b.mission.get("lesson_i", 0)) > 0:
+					opts.insert(4, ["BACK TO LESSON 1", Color("9aa2ae"), restart_camp])  # H2
+				n_menu = opts.size()
+			"bug":
+				opts = [["OPEN THE FOLDER", Color("ffb23e"), func(): Sfx.play("click"); Diary.open_folder()], ["SCREENSHOT NOW", Color("53d4e2"), shot_now], ["BACK", Color("9aa2ae"), func(): go("menu")]]
 			"controls":
 				opts = [["BACK", Color("9aa2ae"), func(): go("menu")]]
 			"quit":
 				opts = [["QUIT", Color("ff4d3d"), quit], ["STAY", Color("62d26f"), func(): go("menu")]]
 		var y := 300.0 if page != "controls" else 446.0
 		if page == "menu":
-			y = 210.0
+			y = 170.0
+		elif page == "bug":
+			y = 400.0
 		for i in opts.size():
 			var bt := PixButton.new()
 			bt.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -804,6 +814,9 @@ class PauseMenu extends Control:
 			bt.size = Vector2(240, 36)
 			if page == "quit":
 				bt.position = Vector2(480 - 250 + i * 260, y)
+			elif page == "bug":
+				bt.size = Vector2(200, 36)
+				bt.position = Vector2(480 - 315 + i * 215, y)
 			else:
 				bt.position = Vector2(360, y + i * 46)
 			bt.pressed.connect(opts[i][2])
@@ -821,10 +834,27 @@ class PauseMenu extends Control:
 		get_tree().paused = false
 		hud.set_call_shown(true)
 		queue_free()
+	func restart_camp() -> void:
+		Sfx.play("click")
+		get_tree().paused = false
+		hud.set_call_shown(true)
+		hud.get_parent().start_training.call_deferred(0)
+	func shot_now() -> void:
+		## The screenshot shows the battle, not this panel: hide it for the frame, then come back.
+		visible = false
+		await get_tree().process_frame
+		var sk = hud.get_parent().get("shot_key")
+		if sk != null:
+			await sk.snap()
+		visible = true
 	func quit() -> void:
 		get_tree().paused = false
 		hud.set_call_shown(true)
 		var main = hud.get_parent()
+		var qb: Battle = hud.b
+		if is_instance_valid(qb):
+			# H3: where the tester stopped
+			Diary.line(("QUIT boot camp at lesson %d" % (int(qb.mission.get("lesson_i", 0)) + 1)) if qb.in_lesson() else ("QUIT mid-mission: %s, round %d" % [Diary.where(qb), qb.round_n]))
 		if Run.campaign():
 			# like closing the window mid-op: the war rolls back to the last HQ save
 			Run.load_campaign(int(Run.camp.slot))
@@ -843,7 +873,11 @@ class PauseMenu extends Control:
 		queue_redraw()
 	func _draw() -> void:
 		draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.8))
-		var r := Rect2(150, 90, 660, 410) if page == "controls" else Rect2(280, 130, 400, 266 if page == "menu" else 240)
+		var r := Rect2(150, 90, 660, 410) if page == "controls" else Rect2(280, 130, 400, 240)
+		if page == "menu":
+			r = Rect2(280, 96, 400, 94 + n_menu * 46)
+		elif page == "bug":
+			r = Rect2(150, 110, 660, 340)
 		if page == "quit":
 			r = Rect2(200, 170, 560, 190)
 		draw_rect(r.grow(2), Color(0.05, 0.035, 0.03))
@@ -851,7 +885,21 @@ class PauseMenu extends Control:
 		draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 2), Color("6c7480"))
 		match page:
 			"menu":
-				Art.text(self, "PAUSED", Vector2(480, 172), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+				Art.text(self, "PAUSED", Vector2(480, 138), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+			"bug":
+				# H1: what to send and where it is
+				Art.text(self, "REPORT A BUG", Vector2(480, 148), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+				Art.text(self, "BUILD " + Diary.build().to_upper(), Vector2(480, 170), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+				var rows := ["Press F12 any time to save a screenshot (SCREENSHOT NOW takes one of the battle).",
+					"Send us, from the folder below:",
+					"    screenshots/  the pictures you took",
+					"    logs/godot.log  what the game was doing (send it before you restart)",
+					"    playtest_diary.txt  your missions, times and who went down",
+					"Tell us the build, what you were doing, and what you expected to happen."]
+				for i in rows.size():
+					Art.text(self, rows[i], Vector2(180, 202 + i * 22), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+				var fsz := 16 if Art.text_width(Diary.folder(), 16, true) < 630 else 8
+				Art.text(self, Diary.folder(), Vector2(480, 352), fsz, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER, 2, fsz == 16)
 			"controls":
 				Art.text(self, "CONTROLS", Vector2(480, 120), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 				# every row clear of the BACK button and inside the panel, the longest (R) included
