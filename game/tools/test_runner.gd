@@ -11007,6 +11007,15 @@ func seeds_test() -> void:
 	main.show_brief()
 	await frames_wait(5)
 	await shot("seeds_weekly_brief")
+	# the busiest brief a level can have still clears the squad: garrison, rare, kit, specialist
+	Run.level = Run.make_level("mine", 0)
+	Run.level["garrison"] = "shields"
+	Run.level["rare"] = "merc"
+	Run.level["boar_kit"] = "flame"
+	Run.level["specialist"] = Data.SQUAD_DEFS[-1].key
+	main.show_brief()
+	await frames_wait(5)
+	await shot("seeds_busy_brief")
 	Run.daily = ""
 	main.show_title()
 	await frames_wait(5)
