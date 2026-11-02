@@ -216,7 +216,7 @@ func build_barracks() -> void:
 	var trainee: Array = Run.soldiers.filter(func(s): return s.alive and s.get("train", false))
 	var tiles := [
 		["RECRUIT", rp, "Hire a replacement for a soldier killed in action. Pick from %d recruits." % (3 if Run.hq("barracks") >= 1 else 2), recruit,
-			"Nobody has fallen. The squad is at full strength." if fallen.is_empty() else Services.short(rp), not fallen.is_empty() and Run.scrip >= rp],
+			"Nobody has fallen, so there is nobody to replace." if fallen.is_empty() else Services.short(rp), not fallen.is_empty() and Run.scrip >= rp],
 		["DOG TAG", tp, "Give a soldier back one spent dog tag. %s." % tags_line, restore_tag,
 			"Everyone still has both dog tags." if short_tags.is_empty() else Services.short(tp), short_tags.size() > 0 and Run.scrip >= tp],
 	]

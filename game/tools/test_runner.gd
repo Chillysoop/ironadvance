@@ -907,6 +907,8 @@ func run() -> void:
 			await clicks()
 		"pause":
 			await pause_menu()
+		"tour":
+			await tour()
 		"uiclarity":
 			await ui_clarity()
 		"newplayer3":
@@ -1739,10 +1741,17 @@ func press_key(k: Key) -> void:
 
 func pause_menu() -> void:
 	## N7: Esc cancels an armed card first; with nothing armed it pauses under a menu, and Esc resumes.
+	# The new-player coach box opens once the ROUND banner clears and takes every key (Esc = SKIP),
+	# so on a fresh profile it raced these presses. Tips are off here; the coach has its own tests.
+	Run.meta["tips_off"] = true
 	Run.new_run()
 	var b: Battle = main.start_battle(0)
 	await until(func(): return b.state == "player" and not b.busy)
-	b.select_card(0)
+	# the opening hand is random and a SELF card plays the moment it's picked instead of arming,
+	# so Esc would pause at once and every check below read the wrong state: arm an aimed card
+	var ai := range(b.sel.hand.size()).filter(func(i): return Data.card(b.sel.hand[i]).type != "SELF" and b.sel.energy >= b.card_cost(b.sel, b.sel.hand[i]))
+	b.select_card(ai[0] if ai.size() else 0)
+	check(b.card_idx >= 0, "a card is armed (%d)" % b.card_idx)
 	await press_key(KEY_ESCAPE)
 	check(b.card_idx < 0 and not get_tree().paused, "Esc with a card armed cancels it and doesn't pause")
 	await press_key(KEY_ESCAPE)
@@ -10313,6 +10322,12 @@ func bp3_test() -> void:
 	Run.leave_campaign()
 	# F2: the Delta landing zone sits on bedrock that blasts only dent
 	var lvl := Run.make_level("delta", 0)
+	for k in 30:
+		# a docks or gully stretch right after the start puts water over the landing zone, and the
+		# dry-ground checks below need land there: roll again
+		if not lvl.segments.slice(1, 2).any(func(sg): return sg in ["docks", "gully"]):
+			break
+		lvl = Run.make_level("delta", 0)
 	lvl["event"] = ""
 	lvl["encounter"] = ""
 	Run.level = lvl
@@ -10418,6 +10433,169 @@ func bp3_test() -> void:
 	await b.mid_events.crumble_round()
 	check(b.crumble.x == cx2 + Data.CRUMBLE_STEP, "then it carries on")
 	await shot("bp3_crumble")
+
+func tour() -> void:
+	## UI pass: a screenshot of every screen, quick run and campaign.
+	Run.meta["tips_off"] = false
+	main.show_title()
+	await frames_wait(30)
+	await shot("t01_title")
+	var sp = main.open_settings()
+	await frames_wait(10)
+	await shot("t02_settings")
+	sp.queue_free()
+	main.show_draft()
+	await frames_wait(20)
+	await shot("t03_draft")
+	Run.new_run()
+	Run.scrip = 300
+	main.show_hq(false)
+	await frames_wait(40)
+	await shot("t04_hq")
+	var hq: Control = main.screen
+	for id in ["qm", "barracks", "workshop", "armory", "doc", "memorial", "upgrades"]:
+		hq.go(id)
+		await frames_wait(20)
+		await shot("t05_hq_" + id)
+	hq.go("hq")
+	await frames_wait(10)
+	Run.clear_run()
+	await press_key(KEY_ESCAPE)
+	await frames_wait(5)
+	await shot("t05_menu_hq")
+	check(get_tree().paused and main.menu_layer != null and main.menu_layer.get_child_count() > 0, "Esc at HQ opens the game menu")
+	check(Run.run_head().size() > 0, "opening the menu at HQ saves the run")
+	var gm = main.menu_layer.get_child(main.menu_layer.get_child_count() - 1)
+	check(str(gm.note).begins_with("SAVED"), "the menu says it saved (%s)" % gm.note)
+	gm.go("controls")
+	await frames_wait(3)
+	await shot("t05_menu_controls")
+	gm.go("quit")
+	await frames_wait(3)
+	await shot("t05_menu_quit")
+	gm.resume()
+	await frames_wait(5)
+	check(not get_tree().paused, "RESUME closes the menu")
+	hq.go("memorial")
+	await frames_wait(5)
+	check(main.back_button(main.ui_layer) != null and main.back_button(main.ui_layer).text == "<< BACK TO HQ", "the Memorial leaves through BACK TO HQ")
+	var nav = hq.get_node_or_null("Nav")
+	check(nav != null and nav.STOPS[-1][1] == "menu", "every HQ room's top strip ends in MENU")
+	hq.go("menu")
+	await frames_wait(3)
+	check(get_tree().paused, "MENU on the strip opens the game menu")
+	main.menu_layer.get_child(main.menu_layer.get_child_count() - 1).resume()
+	await frames_wait(3)
+	hq.go("hq")
+	await frames_wait(5)
+	hq.open_dossier(0)
+	await frames_wait(20)
+	await shot("t06_dossier")
+	main.dial_gate()
+	await frames_wait(20)
+	await shot("t07_dial")
+	Run.pick_biome(Run.dial[0])
+	main.show_brief()
+	await frames_wait(20)
+	await shot("t08_brief")
+	var b: Battle = main.start_battle(Run.mission, Run.current_mission())
+	await until(func(): return b.state == "player" and not b.busy)
+	await frames_wait(20)
+	await shot("t09_battle")
+	check(main.hud.get_children().any(func(c): return _has_text(c, "MENU")), "the battle has a MENU button")
+	main.hud.toggle_pause()
+	await frames_wait(10)
+	await shot("t10_pause")
+	var pm = main.hud.get_children().filter(func(c): return c is HudScript.PauseMenu)[0]
+	pm.go("controls")
+	await frames_wait(5)
+	await shot("t11_controls")
+	pm.go("quit")
+	await frames_wait(5)
+	await shot("t12_quit")
+	pm.resume()
+	main.clear()
+	main.show_debrief({"won": true, "kills": 5})
+	await frames_wait(60)
+	await shot("t13_debrief")
+	main.screen.open_all()
+	await frames_wait(100)
+	await shot("t13_debrief_open")
+	await press_key(KEY_ESCAPE)
+	check(get_tree().paused, "Esc on the debrief opens the game menu")
+	var dm = main.menu_layer.get_child(main.menu_layer.get_child_count() - 1)
+	dm.quit()
+	await frames_wait(5)
+	check(not get_tree().paused and main.screen.mode == "title", "SAVE AND QUIT lands on the title")
+	check(Run.run_head().size() > 0 and int(Run.run_head().level) == Run.history.size(), "and the run is saved past the level just played (%s)" % [Run.run_head()])
+	check(_has_text(main.screen, "QUIT GAME"), "the title has QUIT GAME")
+	main.show_shop()
+	await frames_wait(20)
+	await shot("t14_shop")
+	# campaign
+	Run.delete_campaign(4)
+	Run.new_campaign(4)
+	main.show_slots()
+	await frames_wait(20)
+	await shot("t15_slots")
+	main.show_hq(false)
+	await frames_wait(40)
+	await shot("t16_camp_hq")
+	main.show_war_room()
+	await frames_wait(30)
+	await shot("t17_war_room")
+	var wr: Control = main.screen
+	wr.company_open = true
+	wr.build()
+	await frames_wait(10)
+	await shot("t17_company")
+	wr.company_open = false
+	wr.book_open = true
+	wr.build()
+	await frames_wait(10)
+	await shot("t17_book")
+	main.show_radio(Run.landfall_radio(), func(): pass)
+	await frames_wait(30)
+	await shot("t18_radio")
+	main.show_act_end(0, Run.soldiers[0], func(): pass)
+	await frames_wait(60)
+	await shot("t19_act_end")
+	var MainS = load("res://scripts/main.gd")
+	for md in ["op_won", "op_lost"]:
+		main.clear()
+		var rs = MainS.Screen.new()
+		rs.mode = md
+		rs.stats = {"won": md == "op_won", "kills": 7, "score": 1234, "xp": {}, "op": {}}
+		rs.buttons = [["BACK TO HQ", func(): pass]]
+		main.open(rs)
+		await frames_wait(20)
+		await shot("t20_" + md)
+	Run.leave_campaign()
+	Run.new_run()
+	for md in ["won", "lost"]:
+		main.clear()
+		var rs = MainS.Screen.new()
+		rs.mode = md
+		rs.stats = {"won": md == "won", "kills": 7, "score": 1234, "xp": {}}
+		rs.buttons = [["OPEN SUPPLY CRATES", func(): pass]]
+		main.open(rs)
+		await frames_wait(20)
+		await shot("t21_" + md)
+		await press_key(KEY_ESCAPE)
+		await frames_wait(3)
+		await shot("t21_%s_menu" % md)
+		main.menu_layer.get_child(main.menu_layer.get_child_count() - 1).resume()
+		await frames_wait(3)
+	main.clear()
+	Run.delete_campaign(4)
+	Run.leave_campaign()
+	main.show_title()
+	await frames_wait(10)
+
+func _has_text(n: Node, t: String) -> bool:
+	if n.get("text") is String and n.text == t:
+		return true
+	return n.get_children().any(func(c): return _has_text(c, t))
 
 func variety_test() -> void:
 	## V1 segment remix and V2 Jackal garrisons (run-variety page).
