@@ -170,7 +170,7 @@ func show_title() -> void:
 		# H2: boot camp picks up at the lesson you reached (Esc > BACK TO LESSON 1 starts over)
 		s.buttons[2][2] = "RESUME AT LESSON %d OF %d" % [int(Run.meta.lesson_at) + 1, Data.LESSONS.size()]
 	s.nudge = not Run.meta.get("trained", false)  # H4
-	s.corner = ["DAILY OP", func(): start_daily()]  # D2
+	s.corner = ["SPECIAL OPS", func(): show_ops()]  # D2 daily, V13 weekly and seeded runs
 	var rh := Run.run_head()
 	if rh.size():
 		# R4: a quick run saved at HQ picks up where it left off
@@ -221,10 +221,9 @@ func show_draft() -> void:
 	d.back.connect(show_title)
 	open(d)
 
-func start_run() -> void:
+func start_run(code := "") -> void:
 	Run.leave_campaign()
-	Run.daily = ""
-	Run.new_run()
+	Run.start_seeded(code)  # V13: every quick run has a seed code; a typed one replays its start
 	Diary.line("NEW QUICK RUN  squad %s" % ", ".join(Run.soldiers.map(func(x): return x.def.name)))
 	if not Run.meta.get("ran", false):
 		Run.meta["ran"] = true  # P8: only the first quick run ever gets the plainer level 1
@@ -244,6 +243,39 @@ func show_orders() -> void:
 		var oid: String = id
 		s.buttons.append([Data.RUN_ORDERS[oid].name, func(): Sfx.play("start"); Run.take_run_order(oid); Diary.line("RUN ORDER " + oid); show_hq(false)])
 	open(s)
+
+func show_ops() -> void:
+	## V13: Daily Op, Weekly Op and a seeded quick run.
+	clear()
+	Music.play("title")
+	var s := Screen.new()
+	s.mode = "ops"
+	s.buttons = [["DAILY OP", func(): start_daily(), "ONE SEED A DAY"],
+		["WEEKLY OP", func(): start_weekly(), "ORDERS SET  A RARE ON EVERY LEVEL"],
+		["SEEDED RUN", func(): start_run(seed_box.text if seed_box != null else ""), "TYPE A CODE ABOVE"],
+		["<< BACK", func(): show_title()]]
+	open(s)
+	seed_box = LineEdit.new()
+	seed_box.placeholder_text = "SEED CODE"
+	seed_box.max_length = 6
+	seed_box.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	seed_box.position = Vector2(380, 384)
+	seed_box.size = Vector2(200, 36)
+	seed_box.add_theme_font_size_override("font_size", 22)
+	seed_box.text_changed.connect(func(tx: String):
+		var c := Run.clean_seed(tx)
+		if c != tx:
+			seed_box.text = c
+			seed_box.caret_column = c.length())
+	s.add_child(seed_box)
+
+var seed_box: LineEdit = null
+
+func start_weekly() -> void:
+	Run.leave_campaign()
+	Run.start_weekly()
+	Diary.line("NEW WEEKLY OP " + str(Run.daily))
+	show_hq(false)
 
 func start_daily() -> void:
 	## D2: today's seed, today's squad. The best score of the day is kept.
@@ -806,6 +838,7 @@ class Screen extends Control:
 			"won", "final", "lost", "outpost_lost", "op_won", "op_lost": draw_result()
 			"dial": draw_dial()
 			"orders": draw_orders()
+			"ops": draw_ops()
 			"route": draw_route()
 			"hospital":
 				Art.text(self, "FIELD HOSPITAL", Vector2(480, 110), 32, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 3)
@@ -907,7 +940,7 @@ class Screen extends Control:
 		Art.text(self, "TURN-BASED RUN AND GUN", Vector2(480, 140), 16, Color("ffb070"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 		if corner.size():
 			var best := Run.daily_best()
-			Art.text(self, ("TODAY'S BEST %d" % best) if best > 0 else "ONE SEED A DAY", Vector2(105, 60), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, ("TODAY'S BEST %d" % best) if best > 0 else "DAILY  WEEKLY  SEEDS", Vector2(105, 60), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 		if nudge and train_rect.size.x > 0:
 			# H4: point a first-timer at boot camp
 			var cx := train_rect.position.x + train_rect.size.x / 2
@@ -1011,7 +1044,9 @@ class Screen extends Control:
 	func draw_extras(m: Dictionary) -> void:
 		## R2-R5: the level's event on the left, its bounty board on the right. D2: the daily tag.
 		if Run.daily != "":
-			Art.text(self, "DAILY OP  %s" % Run.daily, Vector2(480, 62), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, ("WEEKLY OP  %s" if Run.is_weekly() else "DAILY OP  %s") % Run.daily, Vector2(480, 62), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+		elif Run.seed_code != "" and not Run.campaign():
+			Art.text(self, "SEED %s" % Run.seed_code, Vector2(480, 62), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 		if Data.EVENTS.has(m.get("event", "")):
 			var ev: Dictionary = Data.EVENTS[m.event]
 			var evl: Array = CardView.wrap_text(ev.text, 246, 16)
@@ -1037,6 +1072,22 @@ class Screen extends Control:
 				Art.text(self, "+%d$" % bt.pay, Vector2(932, y), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
 				Art.text(self, bt.text, Vector2(686, y + 15), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 				y += 36
+	func draw_ops() -> void:
+		## V13: the special ops screen.
+		Art.text(self, "SPECIAL OPS", Vector2(480, 70), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+		draw_rect(Rect2(150, 100, 660, 300), Color(0.05, 0.035, 0.03, 0.7))
+		var lines := [
+			["DAILY OP", "Today's seed and squad, the same for everyone. Best today: %d" % Run.daily_best()],
+			["WEEKLY OP", "%s: a set run order and a rare encounter on every level. Best this week: %d" % [Run.weekly_key(), Run.weekly_best()]],
+			["SEEDED RUN", "Every quick run shows its seed code on the briefing. Type one below to play the same start as a friend."]]
+		var y := 130.0
+		for l in lines:
+			Art.text(self, l[0], Vector2(480, y), 16, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+			y += 24
+			for line in CardView.wrap_text(l[1], 640, 16):
+				Art.text(self, line, Vector2(480, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+				y += 18
+			y += 14
 	func route_card(i: int) -> Rect2:
 		return Rect2(110 + i * 390, 150, 350, 260)
 	func draw_route() -> void:

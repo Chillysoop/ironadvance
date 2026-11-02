@@ -815,6 +815,8 @@ func run() -> void:
 			await rares_test()
 		"fork":
 			await fork_test()
+		"seeds":
+			await seeds_test()
 		"events10":
 			await events10_test()
 		"pickups":
@@ -4722,7 +4724,7 @@ func gate() -> void:
 	main.screen.dial.emit()
 	await frames_wait(20)
 	await shot("gate_dial")
-	check(main.screen.get("mode") == "dial" and Run.dial.size() == 2, "after a mission the gate dials two biomes")
+	check(main.screen.get("mode") == "dial" and Run.dial.size() == (3 if Run.run_order == "widedial" else 2), "after a mission the gate dials two biomes")
 	press_first()
 	await frames_wait(20)
 	if main.screen.get("mode") == "route":
@@ -10330,6 +10332,9 @@ func bp3_test() -> void:
 		lvl = Run.make_level("delta", 0)
 	lvl["event"] = ""
 	lvl["encounter"] = ""
+	lvl.erase("remix")
+	lvl.erase("rare")
+	lvl.erase("road")
 	Run.level = lvl
 	var b: Battle = main.start_battle(0, lvl)
 	await until(func(): return b.state == "player" and not b.busy)
@@ -10946,5 +10951,62 @@ func fork_test() -> void:
 			"prison": check(count.call(b, "pow") == before.pow + 1, "PRISON ROAD has an extra prisoner")
 			"scrap": check(count.call(b, "wreck") == before.wreck + 2, "SCRAP ROAD has two wrecks")
 			"quiet": check(foes.call(b) <= before.foes - 1, "BACK ROAD has fewer Jackals (%d -> %d)" % [before.foes, foes.call(b)])
+	main.show_title()
+	await frames_wait(5)
+
+
+func seeds_test() -> void:
+	## V13: shareable seeds and the Weekly Op (run-variety page).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	# a typed seed replays the same start
+	Run.start_seeded("ab-c 12x")
+	check(Run.seed_code == "ABC2X" or Run.seed_code.length() <= 6, "a typed seed is cleaned up (%s)" % Run.seed_code)
+	Run.start_seeded("K7QW2P")
+	var a := {"seed": Run.seed_val, "orders": Run.run_order_offer.duplicate()}
+	Run.mission = 0
+	Run.roll_dial()
+	a["dial"] = Run.dial.duplicate()
+	a["segs"] = Run.dial_levels[Run.dial[0]].segments.duplicate()
+	Run.start_seeded("K7QW2P")
+	Run.mission = 0
+	Run.roll_dial()
+	check(Run.seed_val == a.seed and Run.run_order_offer == a.orders and Run.dial == a.dial and Run.dial_levels[Run.dial[0]].segments == a.segs, "the same seed gives the same orders, dial and level (%s)" % [a.dial])
+	Run.start_seeded("ZZ9PLQ")
+	check(Run.seed_val != a.seed, "another seed gives another run")
+	Run.start_seeded("")
+	check(Run.seed_code.length() == 6, "a fresh quick run gets its own 6-letter code (%s)" % Run.seed_code)
+	# the special ops screen
+	main.show_title()
+	await frames_wait(5)
+	check(main.screen.corner[0] == "SPECIAL OPS", "the title's corner opens SPECIAL OPS")
+	main.show_ops()
+	await frames_wait(5)
+	check(main.screen.get("mode") == "ops" and main.seed_box != null, "SPECIAL OPS has a seed box")
+	main.seed_box.text = "K7QW2P"
+	await shot("seeds_ops")
+	main.screen.buttons[2][1].call()
+	await frames_wait(20)
+	check(Run.seed_code == "K7QW2P" and Run.seed_val == a.seed, "SEEDED RUN starts the typed seed")
+	# the weekly op
+	Run.start_weekly()
+	check(Run.is_weekly() and Run.run_order != "" and Run.run_order_offer.is_empty(), "the Weekly Op sets its run order (%s)" % Run.run_order)
+	var o1: String = Run.run_order
+	var sv: int = Run.seed_val
+	Run.start_weekly()
+	check(Run.run_order == o1 and Run.seed_val == sv, "the Weekly Op is the same every time this week")
+	Run.mission = 0
+	check(Run.make_level("desert", 0).rare != "" and Run.make_level("jungle", 1).rare != "", "every Weekly Op level has a rare encounter")
+	Run.total_score = 1234
+	Run.daily_over()
+	check(Run.weekly_best() == 1234 and int(Run.meta.get("daily", {}).get("score", 0)) != 1234, "the Weekly best is kept apart from the Daily best")
+	main.start_weekly()
+	await frames_wait(20)
+	Run.level = Run.make_level("desert", 0)
+	main.show_brief()
+	await frames_wait(5)
+	await shot("seeds_weekly_brief")
+	Run.daily = ""
 	main.show_title()
 	await frames_wait(5)

@@ -43,6 +43,7 @@ var dial_rerolled := false # Gate Control 2: one reroll per HQ visit
 var sway_mul := 1.0        # the current biome's sway rule, read by Data.card during a battle
 var first_run := false     # P8: the player's first-ever quick run (level 1 skips bounties and the event)
 var daily := ""            # D2: the date of today's Daily Op while one is running, else ""
+var seed_code := ""        # V13: the quick run's shareable seed code (type it in to replay the same start)
 var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "bio": 0, "hq": {}, "implants": {}}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
 const META_PATH := "user://meta.json"
 # Campaign mode (B1): the campaign keeps its own HQ, Salvage, Bio-parts, implants and Memorial.
@@ -230,7 +231,7 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	if tier == 0 and first_run and daily == "" and not campaign():
 		boar_kit = "standard"
 	var rare := ""
-	if vr.randf() < Data.RARE_CHANCE:
+	if vr.randf() < (1.0 if is_weekly() else Data.RARE_CHANCE):
 		var rk: Array = Data.RARES.keys()
 		rare = rk[vr.randi() % rk.size()]
 	if bm.rules.get("aliens", false) and rare == "ace":
@@ -567,9 +568,56 @@ func clear_run() -> void:
 	if FileAccess.file_exists(RUN_PATH):
 		DirAccess.remove_absolute(RUN_PATH)
 
+const SEED_CHARS := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+func new_seed_code() -> String:
+	var c := ""
+	for i in 6:
+		c += SEED_CHARS[randi() % SEED_CHARS.length()]
+	return c
+
+func clean_seed(code: String) -> String:
+	## V13: a typed seed, upper-cased with anything that isn't a seed letter dropped.
+	var out := ""
+	for ch in code.to_upper():
+		if SEED_CHARS.contains(ch):
+			out += ch
+	return out.substr(0, 6)
+
+func start_seeded(code: String) -> void:
+	## V13: a quick run from a seed code: the same squad draws, orders, dials and maps for anyone who types it.
+	seed_code = clean_seed(code) if code != "" else new_seed_code()
+	daily = ""
+	seed(hash("ironadvance-seed-" + seed_code))
+	new_run()
+
+func weekly_key() -> String:
+	## V13: this week's Weekly Op, Monday to Sunday.
+	var t := Time.get_unix_time_from_system()
+	var d := Time.get_datetime_dict_from_unix_time(int(t))
+	var monday := int(t) - ((int(d.weekday) + 6) % 7) * 86400
+	return "WEEK OF " + Time.get_date_string_from_unix_time(monday)
+
+func is_weekly() -> bool:
+	return daily.begins_with("WEEK")
+
+func start_weekly() -> void:
+	## V13: one seed a week: today's squad rule, a fixed run order, and a rare encounter on every level.
+	daily = weekly_key()
+	seed_code = ""
+	seed(hash("ironadvance-" + daily))
+	new_run()
+	var ks: Array = Data.RUN_ORDERS.keys()
+	take_run_order(ks[hash(daily) % ks.size()])
+
+func weekly_best() -> int:
+	var d: Dictionary = meta.get("weekly", {})
+	return int(d.get("score", 0)) if d.get("day", "") == weekly_key() else 0
+
 func start_daily() -> void:
 	## A fresh run on today's seed: same squad, same dials and maps for everyone today.
 	daily = daily_key()
+	seed_code = ""
 	seed(hash("ironadvance-" + daily))
 	new_run()
 
@@ -580,6 +628,11 @@ func daily_best() -> int:
 func daily_over() -> void:
 	## Keep today's best score. Yesterday's is dropped: the op comes back fresh each day.
 	if daily == "":
+		return
+	if is_weekly():
+		if weekly_best() < total_score:
+			meta["weekly"] = {"day": daily, "score": total_score}
+			save_meta()
 		return
 	if daily_best() < total_score or meta.get("daily", {}).get("day", "") != daily:
 		meta["daily"] = {"day": daily, "score": maxi(total_score, daily_best())}
