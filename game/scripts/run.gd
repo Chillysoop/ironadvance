@@ -215,13 +215,37 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	if tier == 0 and first_run and daily == "" and not campaign():
 		event = ""  # P8: the first fight is the level, the POWs and the Boar; both start from level 2
 		bpool = []
+	# V1, V2: the segment remix and the Jackal garrison have their own dice too, so every other
+	# roll above stays where it was (and a Daily Op still gives everyone the same level)
+	var vr := RandomNumberGenerator.new()
+	vr.seed = hash([id, tier, seed_val, mission, "variety"])
+	var garrison := roll_garrison(vr)
+	if bm.rules.get("aliens", false) or (tier == 0 and first_run and daily == "" and not campaign()):
+		garrison = "regular"  # nothing but Vharr in the Hive; the very first fight stays the plain one
+	var remix := vr.randi()
 	var layout: Array = ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")]
 	if not campaign():
 		# X8: a quick-run level is one screen shorter: no second camp before the boss (the campaign's op layout)
 		layout = ["start", pool[0], "camp", "yard", pool[1], bm.get("arena", "arena")]
 	return {"event": event, "bounties": bpool.slice(0, 3), "name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "signal": signal_id, "breach": breach, "encounter": enc, "boss": boss, "walker": walker, "miniboss": miniboss,
+		"garrison": garrison, "remix": remix,
 		"segments": layout,
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
+
+func roll_garrison(rng: RandomNumberGenerator) -> String:
+	## V2: which Jackal garrison holds a level, weighted by Data.GARRISONS[k].w.
+	var total := 0
+	for k in Data.GARRISONS:
+		total += int(Data.GARRISONS[k].w)
+	var r := rng.randi() % total
+	for k in Data.GARRISONS:
+		r -= int(Data.GARRISONS[k].w)
+		if r < 0:
+			return k
+	return "regular"
+
+func garrison_of(lv: Dictionary) -> Dictionary:
+	return Data.GARRISONS.get(lv.get("garrison", "regular"), Data.GARRISONS.regular)
 
 func start_finale() -> void:
 	level = Data.FINALE.duplicate(true)

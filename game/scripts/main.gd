@@ -926,6 +926,11 @@ class Screen extends Control:
 			# W13: the colonel's last stand
 			Art.text(self, "LAST STAND: BRING COLONEL VARGA OUT ALIVE AND HE JOINS THE COMPANY.", Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 			ny += 14
+		if m.get("garrison", "regular") != "regular":
+			# V2: the level's Jackal garrison
+			var gd: Dictionary = Run.garrison_of(m)
+			Art.text(self, "GARRISON: %s. %s." % [gd.name, gd.short], Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			ny += 14
 		if m.get("specialist", "") != "":
 			# X2: a specialist is held somewhere in this level
 			var D: Dictionary = Run.class_def(m.specialist)
@@ -947,6 +952,8 @@ class Screen extends Control:
 		for k in ["nemesis", "pincer", "story"]:
 			if m.get(k, false):
 				last += 14  # W3/W9/W13 lines under the intel
+		if m.get("garrison", "regular") != "regular":
+			last += 14  # V2
 		draw_rect(Rect2(122, 154, 716, last - 148), Color(0.05, 0.035, 0.03, 0.55))
 	func draw_extras(m: Dictionary) -> void:
 		## R2-R5: the level's event on the left, its bounty board on the right. D2: the daily tag.
@@ -1022,6 +1029,12 @@ class Screen extends Control:
 					Art.text(self, "HIVE SHIP HP %d   2 HULL PLATES" % lv.boss_hp, Vector2(cx, 452), 8, Color("c47bff"), HORIZONTAL_ALIGNMENT_CENTER)
 				else:
 					Art.text(self, "BOSS HP %d   ARMOR %d" % [lv.boss_hp, lv.plate], Vector2(cx, 452), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			# V2: who holds it
+			var gk: String = Run.dial_levels[id].get("garrison", "") if Run.dial_levels.has(id) else ""
+			if gk != "" and gk != "regular":
+				var gd: Dictionary = Data.GARRISONS[gk]
+				Art.text(self, "GARRISON: %s" % gd.name, Vector2(cx, y + 28), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+				y += 14
 			# how each soldier's deck fits this biome
 			y += 38
 			# five soldiers still fit inside the card; the bottom is free unless Gate Control 3 prints there

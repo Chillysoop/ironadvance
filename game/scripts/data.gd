@@ -1606,6 +1606,21 @@ const BIOMES := {
 }
 # Each level of a run has its own pool. Played and burned biomes never come back.
 # Which Vharr fill the rifleman slots in each biome (Z on the alien page).
+# V2: Jackal garrisons. Each quick-run level rolls one; it shows on the dial card and the briefing.
+# "swap" Jackal slots (riflemen, bombers, riot, brutes, sappers, jets) are refilled from "pool" at
+# "rate". Slots up on a tower or ledge ("hold"/"top") only take the "high" types.
+const GARRISONS := {
+	"regular": {"name": "REGULAR GARRISON", "short": "THE USUAL MIX", "pool": [], "rate": 0.0, "w": 3},
+	"snipers": {"name": "SNIPER NEST", "short": "SNIPERS ON THE HIGH GROUND", "pool": ["jsniper", "jsniper", "grunt"], "high": ["jsniper"], "rate": 0.45, "w": 2},
+	"flame": {"name": "FLAME BRIGADE", "short": "FLAMETROOPERS UP CLOSE", "pool": ["flamer", "flamer", "nade"], "high": ["nade"], "rate": 0.4, "w": 2},
+	"kennel": {"name": "K9 KENNEL", "short": "HOUND PACKS RUN YOU DOWN", "pool": ["jdog"], "high": [], "rate": 0.3, "w": 2},
+	"shields": {"name": "SHIELD LINE", "short": "RIOT SHIELDS AND BRUTES", "pool": ["shield", "shield", "brute"], "high": ["shield"], "rate": 0.45, "w": 2},
+	"bombs": {"name": "BOMB SQUAD", "short": "BOMBERS AND SAPPERS", "pool": ["nade", "nade", "sapper"], "high": ["nade"], "rate": 0.45, "w": 2},
+	"heavy": {"name": "ARMOR COLUMN", "short": "BRUTES AND GATE TROOPERS", "pool": ["brute", "gatetrooper"], "high": ["gatetrooper"], "rate": 0.35, "w": 2},
+	"air": {"name": "AIRBORNE", "short": "JET JACKALS FROM ABOVE", "pool": ["jetter", "jetter", "grunt"], "high": ["jetter"], "rate": 0.4, "w": 2},
+}
+const GARRISON_SLOTS := ["grunt", "nade", "shield", "brute", "sapper", "jetter"]
+
 const ENCOUNTERS := ["swarm", "nest", "droppods", "hunt", "outbreak", "gate"]
 const BIOME_ALIENS := {
 	"desert": ["skitter", "burrower", "squid", "warden"],
