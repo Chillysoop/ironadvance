@@ -223,7 +223,7 @@ func detour_pays(id: String) -> String:
 	var p: String = Data.DETOURS[id].pays
 	if id == "signal":
 		var sp: String = Data.SIGNALS[signal_kind()].pays
-		return sp % [Data.SIGNAL_BIO, Data.SIGNAL_SALVAGE] if signal_kind() == "gate" else sp
+		return sp % Data.SIGNAL_SALVAGE if signal_kind() == "gate" else sp
 	return p % Data.COLORS_SALVAGE if id == "colors" else p
 
 func signal_kind() -> String:
@@ -406,11 +406,11 @@ func check_detour() -> void:
 	var cx: float = (bt.detour.x0 + bt.detour.x1) / 2.0
 	match bt.detour.id:
 		"elite":
-			bt.banner("OUTPOST TAKEN!", Color("62d26f"), "EPIC GEAR + %d BIO-PARTS" % Data.ELITE_BIO)
+			bt.banner("OUTPOST TAKEN!", Color("62d26f"), "EPIC GEAR + %d SALVAGE" % Data.ELITE_SALVAGE)
 			bt.drop_loot(cx, bt.T.ground_at(cx) - 40, {"type": "item", "item": Run.roll_item(Data.TIER_MAX if Run.hq("armory") >= 3 else 3)})
-			Run.meta.bio = int(Run.meta.get("bio", 0)) + Data.ELITE_BIO
-			bt.stats["bio"] = int(bt.stats.get("bio", 0)) + Data.ELITE_BIO
-			bt.log_msg("The outpost is ours: an Epic crate and %d Bio-parts for the Doc." % Data.ELITE_BIO)
+			Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.ELITE_SALVAGE
+			bt.stats["salvage"] = int(bt.stats.get("salvage", 0)) + Data.ELITE_SALVAGE
+			bt.log_msg("The outpost is ours: an Epic crate and %d salvage for HQ." % Data.ELITE_SALVAGE)
 		"pow":
 			var slots := Run.fallen_slots()
 			if Run.campaign():
@@ -455,12 +455,10 @@ func check_detour() -> void:
 					bt.drop_loot(p.x, bt.T.ground_at(p.x) - 40, {"type": "item", "item": Run.roll_item(Data.TIER_MAX)})
 					bt.log_msg("The deserter hands over his best kit%s and slips away." % (" to %s" % lu.def.name if lu != null else ""))
 				_:
-					Run.meta.bio = int(Run.meta.get("bio", 0)) + Data.SIGNAL_BIO
 					Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.SIGNAL_SALVAGE
-					bt.stats["bio"] = int(bt.stats.get("bio", 0)) + Data.SIGNAL_BIO
 					bt.stats["salvage"] = int(bt.stats.get("salvage", 0)) + Data.SIGNAL_SALVAGE
-					bt.banner("THE GATE GOES QUIET", Color("62d26f"), "%d BIO-PARTS + %d SALVAGE" % [Data.SIGNAL_BIO, Data.SIGNAL_SALVAGE])
-					bt.log_msg("Picking through what came out of the gate: %d Bio-parts and %d salvage for HQ." % [Data.SIGNAL_BIO, Data.SIGNAL_SALVAGE])
+					bt.banner("THE GATE GOES QUIET", Color("62d26f"), "%d SALVAGE" % Data.SIGNAL_SALVAGE)
+					bt.log_msg("Picking through what came out of the gate: %d salvage for HQ." % Data.SIGNAL_SALVAGE)
 		"cache":
 			bt.banner("CACHE SECURED!", Color("62d26f"), "+80 SCRIP AND A CARD")
 			bt.give_scrip(80, cx, bt.T.ground_at(cx) - 40, "L6748")
@@ -980,7 +978,7 @@ func job_reward() -> void:
 			bt.stats["salvage"] = int(bt.stats.get("salvage", 0)) + 2
 			bt.stats["job_note"] = "The truck brought 2 salvage home."
 		"demolish", "hold":
-			var tk := Data.ELITE_BIO
-			Run.meta.bio = int(Run.meta.get("bio", 0)) + tk
-			bt.stats["bio"] = int(bt.stats.get("bio", 0)) + tk
-			bt.stats["job_note"] = "%d Bio-parts from the field." % tk
+			var tk := Data.ELITE_SALVAGE
+			Run.meta.salvage = int(Run.meta.get("salvage", 0)) + tk
+			bt.stats["salvage"] = int(bt.stats.get("salvage", 0)) + tk
+			bt.stats["job_note"] = "%d salvage from the field." % tk

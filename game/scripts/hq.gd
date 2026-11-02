@@ -135,7 +135,7 @@ func lab_row(i: int) -> Rect2:
 	return Rect2(32, 110 + i * 82, 896, 74)
 
 func open_lab() -> void:
-	## B5: the Alien Lab turns kills into Vharr tech, paid in Bio-parts and Salvage.
+	## B5: the Alien Lab turns kills into Vharr tech, paid in Salvage.
 	Sfx.play("click")
 	lab_open = true
 	for c in get_children():
@@ -166,7 +166,7 @@ func draw_lab_panel() -> void:
 	draw_rect(Rect2(0, 0, 960, 540), Color(0.04, 0.02, 0.06, 0.97))
 	Art.text(self, "ALIEN LAB", Vector2(40, 58), 16, Color("c47bff"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 	Art.text(self, "Kill %d of an alien and the Lab can copy its tech. Built gear goes to the stash, and runs can find it from then on." % Run.tech_need(), Vector2(40, 80), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
-	Art.text(self, "%d BIO-PARTS   %d SALVAGE" % [int(Run.meta.get("bio", 0)), int(Run.meta.get("salvage", 0))], Vector2(920, 58), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
+	Art.text(self, "%d SALVAGE" % int(Run.meta.get("salvage", 0)), Vector2(920, 58), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
 	for i in Data.VHARR_TECH.size():
 		var T: Dictionary = Data.VHARR_TECH[i]
 		var I: Dictionary = Data.ITEMS[T.id]
@@ -184,7 +184,7 @@ func draw_lab_panel() -> void:
 		var bw := 300.0
 		draw_rect(Rect2(bx, r.position.y + 54, bw, 8), Color(0.05, 0.035, 0.03))
 		draw_rect(Rect2(bx + 1, r.position.y + 55, (bw - 2) * minf(1.0, float(n) / need), 6), Color("c47bff"))
-		Art.text(self, "%s KILLS %d / %d   COST %d BIO + %d SALVAGE" % [Data.ETYPES[T.alien].name.to_upper(), mini(n, need), need, Data.TECH_BIO, Data.TECH_SALVAGE], Vector2(bx + bw + 12, r.position.y + 63), 8, Color("9aa2ae"))
+		Art.text(self, "%s KILLS %d / %d   COST %d SALVAGE" % [Data.ETYPES[T.alien].name.to_upper(), mini(n, need), need, Data.TECH_SALVAGE], Vector2(bx + bw + 12, r.position.y + 63), 8, Color("9aa2ae"))
 
 func doc_cell(i: int) -> Rect2:
 	## Surgery i on the lab board: two columns of cards, packed tighter once the rows pass 7.
@@ -200,7 +200,7 @@ func doc_targets() -> Array:
 	return keys if keys.size() else Data.SQUAD_DEFS.map(func(d): return d.key).filter(func(k): return Data.BASE_CLASSES.has(k))
 
 func open_doc() -> void:
-	## The Doc's Lab: surgeries installed on a class, paid in Bio-parts and Salvage.
+	## The Doc's Lab: surgeries installed on a class, paid in Salvage.
 	Sfx.play("click")
 	doc_open = true
 	for c in get_children():
@@ -615,7 +615,7 @@ func draw_header() -> void:
 	elif Run.history.size():
 		line = "Back through the gate. Resupply, then dial the gate for " + ("the finale." if next_mission_n() > Data.LEVELS.size() else "level %d." % next_mission_n())
 	Art.text(self, line, Vector2(24, 56), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
-	var cur := "%d SALVAGE   %d BIO-PARTS" % [int(Run.meta.get("salvage", 0)), int(Run.meta.get("bio", 0))]
+	var cur := "%d SALVAGE" % int(Run.meta.get("salvage", 0))
 	Art.text(self, cur, Vector2(936, 56), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_RIGHT)
 	var sc := "%d SCRIP" % Run.scrip
 	draw_texture_rect(Art.tex.ic_coin, Rect2(936 - Art.text_width(sc, 16) - 22, 20, 16, 16), false)
@@ -792,9 +792,9 @@ func draw_doc_panel() -> void:
 	draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.03, 0.02, 0.97))
 	Art.text(self, "THE DOC'S LAB", Vector2(40, 58), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 	Art.text(self, "\"Hold still. Or don't, it's more fun.\"", Vector2(40, 76), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
-	Art.text(self, "%d BIO-PARTS   %d SALVAGE" % [int(Run.meta.get("bio", 0)), int(Run.meta.get("salvage", 0))], Vector2(920, 58), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
+	Art.text(self, "%d SALVAGE" % int(Run.meta.get("salvage", 0)), Vector2(920, 58), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
 	var r := Run.hq("doc")
-	var line := "%d BIO + %d SALVAGE EACH. %d SLOT%s PER %s, OLDEST COMES OUT WHEN FULL." % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE, r, "" if r == 1 else "S", "SOLDIER" if Run.campaign() else "CLASS"] if r >= 1 else "BUILD THE DOC'S LAB ON THE UPGRADE BOARD FIRST."
+	var line := "%d SALVAGE EACH. %d SLOT%s PER %s, OLDEST COMES OUT WHEN FULL." % [Data.SURGERY_SALVAGE, r, "" if r == 1 else "S", "SOLDIER" if Run.campaign() else "CLASS"] if r >= 1 else "BUILD THE DOC'S LAB ON THE UPGRADE BOARD FIRST."
 	Art.text(self, line, Vector2(920, 76), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT)
 	var ids: Array = Data.SURGERIES.keys()
 	for i in ids.size():

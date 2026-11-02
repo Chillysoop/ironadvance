@@ -2117,10 +2117,10 @@ func kill(tg: Unit, src) -> void:
 				float_at(w.x, w.y - 20, "WELL COLLAPSES!", Color("c47bff"), true)
 			wells = wells.filter(func(q): return q.by != tg)
 		if tg.fl.get("lead", false):
-			banner("THE HUNT IS OVER", Color("62d26f"), "EPIC GEAR + %d BIO-PARTS" % Data.ELITE_BIO)
+			banner("THE HUNT IS OVER", Color("62d26f"), "EPIC GEAR + %d SALVAGE" % Data.ELITE_SALVAGE)
 			drop_loot(tg.x, tg.y - 30, {"type": "item", "item": Run.roll_item(3)})
-			Run.meta.bio = int(Run.meta.get("bio", 0)) + Data.ELITE_BIO
-			stats["bio"] = int(stats.get("bio", 0)) + Data.ELITE_BIO
+			Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.ELITE_SALVAGE
+			stats["salvage"] = int(stats.get("salvage", 0)) + Data.ELITE_SALVAGE
 		if tg.type == "vgate":
 			banner("GATE DESTROYED!", Color("62d26f"))
 			for i in 4:
@@ -4195,8 +4195,8 @@ func level_up(u: Unit) -> void:
 	while picks > 0 and opts.size():
 		var more := "  %d more level-up%s after this one." % [left, "s" if left > 1 else ""] if left > 0 else ""
 		var ch := await ask("level", "%s  LEVEL %d" % [u.def.name, shown], "Pick %s: a new card, a stat boost or an ability.%s" % ["two" if picks > 1 else "one", more], opts, u)
-		if ch == -2 and Run.lvl_rerolls > 0:
-			Run.lvl_rerolls -= 1
+		if ch == -2 and Run.rerolls > 0:
+			Run.rerolls -= 1
 			opts = Run.level_options(u.s)
 			continue
 		if ch <= -100 and Run.banishes > 0:
@@ -4301,14 +4301,14 @@ func post_action() -> void:
 			"quartermaster":
 				Run.discount = 0.2
 			"gunsmith":
-				Run.reroll_tokens += 1
+				Run.rerolls += 1  # S2: one REROLL pool for level-ups and the gunsmith
 			"medic":
 				for s in squad_alive():
 					s.hp = mini(s.max_hp, s.hp + 6)
 					float_text(s, "+6 HP", Color("62d26f"))
 			_:
 				Run.luck += 1
-		Run.lvl_rerolls += 1
+		Run.rerolls += 1
 		log_msg("%s: %s" % [q.pow.pow_name, sp.get("text", "LUCK +1. Your loot just got better.")])
 		await wait(40)
 		if not q.pow.detour:
@@ -4869,8 +4869,6 @@ func victory() -> void:
 		# the Boar's wreck is worth stripping for HQ
 		Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.BOSS_SALVAGE
 		stats["salvage"] = int(stats.get("salvage", 0)) + Data.BOSS_SALVAGE
-		Run.meta.bio = int(Run.meta.get("bio", 0)) + Data.BOSS_BIO
-		stats["bio"] = int(stats.get("bio", 0)) + Data.BOSS_BIO
 		Run.save_meta()
 	Sfx.play("levelup")
 	for s in squad_alive():

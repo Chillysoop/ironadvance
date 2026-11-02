@@ -278,7 +278,7 @@ func _draw() -> void:
 	Art.text(self, A.text, Vector2(24, 60), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	var sc_txt := "%d SCRIP" % Run.scrip
 	Art.text(self, sc_txt, Vector2(944, 34), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
-	Art.text(self, "%d SALVAGE  %d BIO" % [int(Run.meta.get("salvage", 0)), int(Run.meta.get("bio", 0))], Vector2(944, 52), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_RIGHT)
+	Art.text(self, "%d SALVAGE" % int(Run.meta.get("salvage", 0)), Vector2(944, 52), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_RIGHT)
 	# the map: dark water, a patch of ground under every sector in its biome's colour
 	draw_rect(MAP, Color("16232c"))
 	for sc in A.sectors:
@@ -460,7 +460,7 @@ func draw_book() -> void:
 		draw_journal()
 		return
 	var a := int(Run.camp.get("act", 0))
-	Art.text(self, "Act %s. Optional, each pays %d salvage, %d bio and a Legendary item once." % [Run.act().roman, Data.CHALLENGE_PAY.salvage, Data.CHALLENGE_PAY.bio], Vector2(MAP.end.x - 12, MAP.position.y + 25), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
+	Art.text(self, "Act %s. Optional, each pays %d salvage and a Legendary item once." % [Run.act().roman, Data.CHALLENGE_PAY.salvage], Vector2(MAP.end.x - 12, MAP.position.y + 25), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
 	var ids: Array = Data.ACT_CHALLENGES[a]
 	for i in ids.size():
 		var id: String = ids[i]
@@ -603,7 +603,7 @@ func draw_side() -> void:
 	# M2: the war's income, paid after every op
 	var inc := Run.income()
 	var parts: Array = []
-	for k in ["scrip", "salvage", "bio"]:
+	for k in ["scrip", "salvage"]:
 		if int(inc[k]) > 0:
 			parts.append("+%d %s" % [inc[k], k.to_upper()])
 	Art.text(self, "WAR INCOME AFTER EVERY OP", Vector2(x, SIDE.end.y - 30), 8, Color("62d26f"))

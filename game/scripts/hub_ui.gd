@@ -133,6 +133,7 @@ class ActionTile extends Control:
 	var line := ""             # what happens
 	var why := ""              # why it can't happen right now
 	var ok := true
+	var ready_tag := false     # S3: the card bench marks what can be done right now
 	var color := Color("53d4e2")
 	var hover := false
 	func _ready() -> void:
@@ -173,6 +174,10 @@ class ActionTile extends Control:
 				break
 			Art.text(self, ln, Vector2(6, y), 16, (Color("62d26f") if desc != "" else Color("e8dcc2")) if ok else Color("8a9099"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 			y += 12
+		if ready_tag and ok:
+			var rw := Art.text_width("READY", 8) + 8
+			draw_rect(Rect2(w - rw - 3, h - 15, rw, 12), Color("62d26f"))
+			Art.text(self, "READY", Vector2(w - 7, h - 5), 8, INK, HORIZONTAL_ALIGNMENT_RIGHT)
 
 class NavStrip extends Control:
 	## B2: every building one click (or one key) away, along the top of each HQ screen.

@@ -430,11 +430,11 @@ func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> 
 	if kind == "level":
 		# P4: reroll the three options, or banish one from this soldier's pool for the run
 		var rr := PixButton.new()
-		rr.text = "REROLL (%d)" % Run.lvl_rerolls
+		rr.text = "REROLL (%d)" % Run.rerolls
 		rr.color = Color("53d4e2")
 		rr.size = Vector2(120, 26)
 		rr.position = Vector2(480 - 60 - 130, 392)
-		rr.disabled = Run.lvl_rerolls <= 0
+		rr.disabled = Run.rerolls <= 0
 		rr.pressed.connect(func(): picked.emit(-2))
 		modal.add_child(rr)
 		var bn := PixButton.new()
@@ -918,7 +918,7 @@ class PauseMenu extends Control:
 					Art.text(self, CONTROLS[i][1], Vector2(440, 150 + i * 21), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 			"quit":
 				Art.text(self, "QUIT TO TITLE?", Vector2(480, 210), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
-				var line := "This op is lost. The war picks up from your last HQ save." if Run.campaign() else "This run is lost. Salvage, bio-parts, HQ upgrades and unlocks you already earned are kept."
+				var line := "This op is lost. The war picks up from your last HQ save." if Run.campaign() else "This run is lost. Salvage, HQ upgrades and unlocks you already earned are kept."
 				var bb: Battle = hud.b
 				if is_instance_valid(bb) and bb.in_lesson():
 					line = "Boot camp stops here. TRAINING on the title starts it again, and SKIP jumps past a lesson."
@@ -1028,7 +1028,7 @@ class ModalBG extends Control:
 			Art.text(self, "LV %d" % (lv if lv > 0 else who.s.lvl), Vector2(170, 384), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		if kind == "level":
 			Art.text(self, "Abilities follow the soldier's two specialist paths (gold label): MINOR, then MAJOR, then CAPSTONE.", Vector2(480, 448), 16, Color("c9bfa8"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
-			Art.text(self, "REROLL deals three new options.  BANISH removes one option from this soldier's pool for the run.", Vector2(480, 463), 16, Color("c9bfa8"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+			Art.text(self, "REROLL (one token, also good at the gunsmith) deals three new options.  BANISH removes one option from this soldier's pool for the run.", Vector2(480, 463), 16, Color("c9bfa8"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 		elif who != null and kind == "deck":
 			Art.draw_char(self, who.sheet, "idle", (Time.get_ticks_msec() / 200) % 4, Vector2(100, 200), 1, false, 0, 1.0, 0, true, 2.0)
 

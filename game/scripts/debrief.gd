@@ -22,7 +22,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var n := clampi(medals.size(), 1, 3) + (1 if Run.has_cmd("decorated") else 0)
 	if medals.size() >= 2:
-		Run.lvl_rerolls += 1
+		Run.rerolls += 1
 	if medals.size() >= 4:
 		unlock = Run.feat("medals")
 	if fixed_tiers.size():

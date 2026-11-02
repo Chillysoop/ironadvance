@@ -234,6 +234,7 @@ func build_deck() -> void:
 			tile.line = a.line
 			tile.why = a.why
 			tile.ok = a.ok
+			tile.ready_tag = true
 			tile.color = cols[a.id]
 			tile.size = Vector2(tw, 86)
 			tile.position = Vector2(MID.position.x + i * (tw + 5), MID.end.y - 86)
@@ -715,10 +716,13 @@ func draw_right(me: Dictionary) -> void:
 		lx += Art.text_width(lab, 16, true) + 8
 	y += 18
 	if tab == "deck" and sel != null:
-		head("THIS CARD", Vector2(x, y))
+		head("CARD BENCH", Vector2(x, y))
 		y += 14
 		var c: Dictionary = sel
 		var bits: Array = []
+		if not readonly:
+			var nr: int = Services.card_actions(me, c).filter(func(a): return a.ok and a.id != "burn").size()
+			bits.append("Every upgrade for this card is below. %s" % ("%d ready now." % nr if nr > 0 else "None ready yet."))
 		if c.has("nick"):
 			bits.append("\"%s\"" % c.nick)
 		var src := Services.source(me, c)
