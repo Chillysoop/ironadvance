@@ -130,6 +130,11 @@ func show_title() -> void:
 		["QUICK RUN", func(): quick_run(), "%d LEVELS AND A FINALE" % Data.LEVELS.size()],
 		["TRAINING", func(): start_training(), "STEP BY STEP  ABOUT 10 MINUTES", Color("9aa2ae") if Run.meta.get("trained", false) else Color("ffb23e")]]
 	s.corner = ["DAILY OP", func(): start_daily()]  # D2
+	var rh := Run.run_head()
+	if rh.size():
+		# R4: a quick run saved at HQ picks up where it left off
+		var where := "FINALE NEXT" if int(rh.level) >= Data.LEVELS.size() else "LEVEL %d OF %d NEXT" % [int(rh.level) + 1, Data.LEVELS.size()]
+		s.cont = ["CONTINUE RUN", func(): continue_run(), ("DAILY OP  " if str(rh.get("daily", "")) != "" else "") + where]
 	# V6: the blood and ichor sprays can be switched off
 	s.corner2 = ["BLOOD: " + ("ON" if Run.meta.get("blood", true) else "OFF"), func():
 		Run.meta["blood"] = not Run.meta.get("blood", true)
@@ -151,6 +156,13 @@ func quick_run() -> void:
 		show_draft()
 	else:
 		start_run()
+
+func continue_run() -> void:
+	if not Run.load_run():
+		show_title()
+		return
+	Sfx.play("start")
+	show_hq(false)
 
 func show_draft() -> void:
 	## X1: more than four classes unlocked, so the run starts with picking the squad.
@@ -305,6 +317,7 @@ func show_hq(arrived: bool) -> void:
 	clear()
 	if not Run.campaign():
 		Run.mission = Run.history.size()  # the next level, so the Quartermaster restocks for it
+		Run.save_run()  # R4
 	var h: Control = HqScript.new()
 	h.arrived = arrived
 	h.dial.connect(show_war_room if Run.campaign() else dial_gate)
@@ -487,6 +500,7 @@ func _on_mission_over(won: bool) -> void:
 		return
 	if not won or Run.alive_count() == 0 or Run.is_final_mission():
 		Run.daily_over()
+		Run.clear_run()  # R4: a finished run can't be continued
 	if not won or Run.alive_count() == 0:
 		s.mode = "lost"
 		s.buttons = [["NEW RUN", func(): quick_run()], ["TITLE", func(): show_title()]]
@@ -548,6 +562,7 @@ class Screen extends Control:
 	var unlock := ""
 	var corner: Array = []  # a small extra button in the top-left corner: [label, callable]
 	var corner2: Array = []  # and one in the top-right corner
+	var cont: Array = []  # R4: the title's CONTINUE RUN [label, callable, sub], above QUICK RUN
 	var t := 0
 	func _ready() -> void:
 		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -599,6 +614,15 @@ class Screen extends Control:
 					bt.small = true
 					bt.size = Vector2(170, 28)
 					bt.position = Vector2(20, 18) if i == nd else Vector2(770, 18)
+			if mode == "title" and i == 1 and cont.size():
+				var cb = load("res://scripts/hud.gd").PixButton.new()
+				cb.text = cont[0]
+				cb.sub = cont[2]
+				cb.color = Color("62d26f")
+				cb.size = Vector2(widths[i], 40)
+				cb.position = Vector2(x, 422)
+				cb.pressed.connect(cont[1])
+				add_child(cb)
 			x += widths[i] + 10
 			bt.pressed.connect(buttons[i][1])
 			add_child(bt)

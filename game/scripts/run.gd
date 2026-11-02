@@ -403,6 +403,46 @@ func daily_squad(key: String) -> Array:
 			out.append(k)
 	return out
 
+const RUN_PATH := "user://run.save"
+
+func save_run() -> void:
+	## R4: the quick run (or today's Daily Op) as it stands at HQ, so CONTINUE RUN on the title
+	## can pick it up after the game is closed. Quitting mid-level comes back to HQ before that level.
+	if campaign() or soldiers.is_empty():
+		return
+	var data := snapshot()
+	for k in ["meta", "run_base", "camp", "roster"]:
+		data.erase(k)
+	var head := {"level": mini(history.size(), Data.LEVELS.size()), "daily": daily,
+		"names": soldiers.filter(func(s): return s.alive).map(func(s): return s.def.name)}
+	var f := FileAccess.open(RUN_PATH, FileAccess.WRITE)
+	if f != null:
+		f.store_var({"head": head, "data": data})
+
+func run_head() -> Dictionary:
+	## What CONTINUE RUN shows. {} when no run is saved.
+	if not FileAccess.file_exists(RUN_PATH):
+		return {}
+	var f := FileAccess.open(RUN_PATH, FileAccess.READ)
+	var d = f.get_var() if f != null else null
+	return d.get("head", {}) if d is Dictionary and d.has("data") else {}
+
+func load_run() -> bool:
+	if not FileAccess.file_exists(RUN_PATH):
+		return false
+	var f := FileAccess.open(RUN_PATH, FileAccess.READ)
+	var d = f.get_var() if f != null else null
+	if not (d is Dictionary and d.has("data")):
+		return false
+	leave_campaign()
+	set_state(d.data)
+	return true
+
+func clear_run() -> void:
+	## The run is over (won, lost or replaced by a new one): nothing left to continue.
+	if FileAccess.file_exists(RUN_PATH):
+		DirAccess.remove_absolute(RUN_PATH)
+
 func start_daily() -> void:
 	## A fresh run on today's seed: same squad, same dials and maps for everyone today.
 	daily = daily_key()
