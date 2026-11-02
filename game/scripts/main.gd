@@ -135,12 +135,8 @@ func show_title() -> void:
 		# R4: a quick run saved at HQ picks up where it left off
 		var where := "FINALE NEXT" if int(rh.level) >= Data.LEVELS.size() else "LEVEL %d OF %d NEXT" % [int(rh.level) + 1, Data.LEVELS.size()]
 		s.cont = ["CONTINUE RUN", func(): continue_run(), ("DAILY OP  " if str(rh.get("daily", "")) != "" else "") + where]
-	# V6: the blood and ichor sprays can be switched off
-	s.corner2 = ["BLOOD: " + ("ON" if Run.meta.get("blood", true) else "OFF"), func():
-		Run.meta["blood"] = not Run.meta.get("blood", true)
-		Run.save_meta()
-		Sfx.play("click")
-		show_title()]
+	# R5: volumes, fullscreen, shake, tips and blood (V6) live in one settings panel
+	s.corner2 = ["SETTINGS", func(): open_settings()]
 	var tmax := mini(int(Run.meta.threat_max), Data.THREATS.size())
 	if tmax > 0:
 		# W5: every campaign win opens the next threat level
@@ -156,6 +152,12 @@ func quick_run() -> void:
 		show_draft()
 	else:
 		start_run()
+
+func open_settings() -> Control:
+	Sfx.play("click")
+	var p: Control = preload("res://scripts/settings.gd").new()
+	ui_layer.add_child(p)
+	return p
 
 func continue_run() -> void:
 	if not Run.load_run():

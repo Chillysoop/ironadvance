@@ -15,7 +15,7 @@ func _ready() -> void:
 			streams[n] = load(path)
 	for i in 14:
 		var p := AudioStreamPlayer.new()
-		p.bus = "Master"
+		p.bus = "SFX"  # R5: the settings menu sets this bus's volume
 		add_child(p)
 		players.append(p)
 

@@ -55,6 +55,7 @@ var run_base := {}         # the standard run's CAMP_KEYS while a campaign is lo
 
 func _ready() -> void:
 	load_meta()
+	preload("res://scripts/settings.gd").apply()  # R5: volumes, fullscreen
 
 func load_meta() -> void:
 	if not FileAccess.file_exists(META_PATH):

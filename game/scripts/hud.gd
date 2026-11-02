@@ -788,7 +788,7 @@ class PauseMenu extends Control:
 		var opts: Array = []
 		match page:
 			"menu":
-				opts = [["RESUME", Color("62d26f"), resume], ["CONTROLS", Color("53d4e2"), func(): go("controls")], ["QUIT TO TITLE", Color("ff4d3d"), func(): go("quit")]]
+				opts = [["RESUME", Color("62d26f"), resume], ["CONTROLS", Color("53d4e2"), func(): go("controls")], ["SETTINGS", Color("53d4e2"), settings], ["QUIT TO TITLE", Color("ff4d3d"), func(): go("quit")]]
 			"controls":
 				opts = [["BACK", Color("9aa2ae"), func(): go("menu")]]
 			"quit":
@@ -812,6 +812,10 @@ class PauseMenu extends Control:
 		Sfx.play("click")
 		page = p
 		build()
+	func settings() -> void:
+		## R5: the settings panel sits over the pause menu until BACK
+		var sp: Control = preload("res://scripts/settings.gd").new()
+		add_child(sp)
 	func resume() -> void:
 		Sfx.play("click")
 		get_tree().paused = false
@@ -839,7 +843,7 @@ class PauseMenu extends Control:
 		queue_redraw()
 	func _draw() -> void:
 		draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.8))
-		var r := Rect2(150, 90, 660, 410) if page == "controls" else Rect2(280, 130, 400, 220 if page == "menu" else 240)
+		var r := Rect2(150, 90, 660, 410) if page == "controls" else Rect2(280, 130, 400, 266 if page == "menu" else 240)
 		if page == "quit":
 			r = Rect2(200, 170, 560, 190)
 		draw_rect(r.grow(2), Color(0.05, 0.035, 0.03))

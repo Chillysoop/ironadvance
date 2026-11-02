@@ -34,6 +34,7 @@ var booms: Array = []
 var banners: Array = []
 var barks: Array = []
 var ropes: Array = []
+const SettingsScript := preload("res://scripts/settings.gd")
 var shake := 0.0
 var cam_x := 0.0
 var cam_tx := 0.0
@@ -10644,7 +10645,7 @@ func _process(delta: float) -> void:
 		n += 1
 	T.flush()
 	sync_chunks()
-	var s := shake if shake > 0.6 else 0.0
+	var s := shake * SettingsScript.shake_mul() if shake > 0.6 else 0.0  # R5
 	cam.position = Vector2(cam_x + W / 2.0 + round((randf() - .5) * s), H / 2.0 + round((randf() - .5) * s))
 	view.queue_redraw()
 	if ui_dirty and hud != null:
