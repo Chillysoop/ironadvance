@@ -118,6 +118,8 @@ func call_in(lines: Array) -> void:
 
 func show_title() -> void:
 	clear()
+	Music.play("title")
+	Music.ambience("")
 	if call_layer != null:
 		for c in call_layer.get_children():
 			c.queue_free()
@@ -169,6 +171,8 @@ func continue_run() -> void:
 func show_draft() -> void:
 	## X1: more than four classes unlocked, so the run starts with picking the squad.
 	clear()
+	Music.play("title")
+	Music.ambience("")
 	var d: Control = DraftScript.new()
 	d.go.connect(start_run)
 	d.back.connect(show_title)
@@ -192,6 +196,8 @@ func start_daily() -> void:
 # ---------------------------------------------------------------- campaign mode
 func show_slots() -> void:
 	clear()
+	Music.play("title")
+	Music.ambience("")
 	var p: Control = WarRoomScript.SlotPicker.new()
 	p.picked.connect(func(slot: int, fresh: bool):
 		Sfx.play("start")
@@ -209,6 +215,8 @@ func show_slots() -> void:
 
 func show_war_room() -> void:
 	clear()
+	Music.play("hq")
+	Music.ambience("camp")
 	Run.save_campaign()
 	var w: Control = WarRoomScript.new()
 	w.attack.connect(func(sc: Dictionary, patrol: bool):
@@ -225,6 +233,8 @@ func show_war_room() -> void:
 func show_ending() -> void:
 	## S5: the war is over. Service records, the Memorial, and a Second Tour.
 	clear()
+	Music.play("ending")
+	Music.ambience("")
 	var e: Control = WarRoomScript.EndingScreen.new()
 	e.tour.connect(func(vet: Dictionary):
 		Run.second_tour(vet)
@@ -317,6 +327,8 @@ func show_hq(arrived: bool) -> void:
 	## Home base between missions. The gate dials straight into mission 1 at the start of a run,
 	## and onto the road east after that.
 	clear()
+	Music.play("hq")
+	Music.ambience("camp")
 	if not Run.campaign():
 		Run.mission = Run.history.size()  # the next level, so the Quartermaster restocks for it
 		Run.save_run()  # R4
@@ -350,6 +362,8 @@ func dial_gate() -> void:
 
 func show_brief() -> void:
 	clear()
+	Music.play("hq")
+	Music.ambience("camp")
 	Run.side = ""
 	Run.roll_intel()
 	var s := Screen.new()
@@ -370,6 +384,7 @@ func start_battle(idx: int, custom := {}) -> Battle:
 	add_child(battle)
 	battle.speed = speed
 	battle.setup(idx, custom)
+	Music.for_battle(battle)
 	battle.get_node("Backdrop").setup(battle.theme)
 	hud = HudScript.new()
 	add_child(hud)
@@ -448,6 +463,7 @@ func end_practice(snap: Dictionary, i: int) -> void:
 	screen.open_dossier(i)
 
 func _on_mission_over(won: bool) -> void:
+	Music.sting("victory" if won else "defeat")
 	# a field call nobody closed is stale once the fight ends; it shouldn't sit over the results
 	if call_layer != null:
 		for c in call_layer.get_children():
@@ -520,6 +536,8 @@ func _on_mission_over(won: bool) -> void:
 
 func show_debrief(st: Dictionary) -> void:
 	clear()
+	Music.play("hq")
+	Music.ambience("camp")
 	var d: Control = DebriefScript.new()
 	d.medals = Run.medals(st)
 	d.done.connect(func(): campaign_home(st) if Run.campaign() else show_hq(true))
@@ -546,6 +564,8 @@ func next_mission() -> void:
 
 func show_shop() -> void:
 	clear()
+	Music.play("hq")
+	Music.ambience("camp")
 	var s: Control = ShopScript.new()
 	s.done.connect(next_mission)
 	screen = s
