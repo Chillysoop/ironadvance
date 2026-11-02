@@ -817,6 +817,10 @@ func run() -> void:
 			await fork_test()
 		"seeds":
 			await seeds_test()
+		"biomebosses":
+			await biomebosses_test()
+		"segments3":
+			await segments3_test()
 		"events10":
 			await events10_test()
 		"pickups":
@@ -10722,7 +10726,8 @@ func boarkits_test() -> void:
 	for i in 40:
 		Run.seed_val = 500 + i
 		ks[Run.make_level("jungle", 1).boar_kit] = true
-	check(ks.size() == Data.BOAR_KITS.size(), "40 runs see all %d Boar loadouts" % ks.size())
+	var plain: int = Data.BOAR_KITS.keys().filter(func(k): return not Data.BOAR_KITS[k].get("biome", false)).size()
+	check(ks.size() == plain, "40 runs see all %d Boar loadouts" % ks.size())
 	check(range(10).all(func(i): Run.seed_val = 600 + i; return Run.make_level("hive", 2).boar_kit == ""), "a Hive Ship level has no Boar loadout")
 	for kit in ["flame", "mortar", "carrier", "standard"]:
 		Run.new_run()
@@ -11017,5 +11022,113 @@ func seeds_test() -> void:
 	await frames_wait(5)
 	await shot("seeds_busy_brief")
 	Run.daily = ""
+	main.show_title()
+	await frames_wait(5)
+
+
+func biomebosses_test() -> void:
+	## V6: biome bosses (run-variety page): Armored Engine, Drill Rig, Magma Crawler.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	check(Run.make_level("train", 1).boar_kit == "engine" and Run.make_level("mine", 2).boar_kit == "drill" and Run.make_level("volcano", 2).boar_kit == "magma", "the Train, Mine and Volcano have their own bosses from level 2")
+	check(range(20).all(func(i): Run.seed_val = 50 + i; return not Data.BOAR_KITS[Run.make_level("mine", 0).boar_kit].get("biome", false)), "a level 1 Mine keeps an ordinary Boar")
+	check(range(20).all(func(i): Run.seed_val = 90 + i; return not Data.BOAR_KITS[Run.make_level("desert", 2).boar_kit].get("biome", false)), "other biomes never roll a biome boss")
+	for kit in ["engine", "drill", "magma"]:
+		Run.new_run()
+		Run.first_run = false
+		Run.seed_val = 31
+		var lv := Run.make_level("desert", 1)
+		lv.boar_kit = kit
+		Run.level = lv
+		var b: Battle = main.start_battle(1, lv)
+		await until(func(): return b.state == "player" and not b.busy)
+		var bo: Unit = null
+		for u in b.units:
+			if u.type == "boss":
+				bo = u
+		for o in b.units:
+			if o.team == "enemy" and o != bo:
+				o.gone = true
+		var sq: Array = b.squad()
+		var gap := 60.0 if kit == "engine" else 160.0
+		ground_unit(b, sq[0], bo.x - bo.w / 2.0 - gap, bo.y - 60)
+		for k in range(1, sq.size()):
+			ground_unit(b, sq[k], bo.x - 460 - k * 30, bo.y - 60)
+		cam_on(b, bo.x - 200)
+		var hp0: int = sq[0].hp
+		var bx0: float = bo.x
+		var fin := [false]
+		var go := func():
+			await b.vharr_ai.boss_act(bo)
+			fin[0] = true
+		go.call()
+		await until(func(): return fin[0], 3000)
+		await until(func(): return b.settled(), 600)
+		await shot("biomeboss_" + kit)
+		match kit:
+			"engine":
+				check(bo.x < bx0 - 20 and sq[0].hp < hp0, "the ARMORED ENGINE rams forward (%d px) and runs the soldier down (%d -> %d)" % [int(bx0 - bo.x), hp0, sq[0].hp])
+			"drill":
+				check(sq[0].hp < hp0, "the DRILL RIG bores into the nearest soldier (%d -> %d)" % [hp0, sq[0].hp])
+			"magma":
+				check(b.squad().any(func(x): return x.has_st("burn")) or sq[0].hp < hp0, "the MAGMA CRAWLER's shell sets the ground burning")
+		if kit == "engine":
+			main.show_brief()
+			await frames_wait(6)
+			await shot("biomeboss_brief")
+	main.show_title()
+	await frames_wait(5)
+
+
+const V3_SEGS := ["dunes", "oasis", "sphinx", "gatehouse", "barracks", "swamp", "temple", "canopy", "stilts", "mangrove", "tankfarm", "pipeline",
+	"switchback", "pass", "seawall", "drydock", "courtyard", "pagoda", "icefall", "lodge", "overpass", "rubble", "cavern", "crossing", "boxcars",
+	"caboose", "vents", "obsidian", "nest", "spires", "bridgedeck", "elevator"]
+
+func segments3_test() -> void:
+	## V3: the new segments (run-variety page). Each one, in every biome that uses it: it builds,
+	## its enemies stand on something, and the ground never asks for a climb or a gap the squad can't make.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	check(V3_SEGS.all(func(k): return Data.SEGMENTS.has(k) and Data.SEGMENT_NAMES.has(k)), "all %d new segments exist and have names" % V3_SEGS.size())
+	check(Data.BIOMES.keys().all(func(b): return Data.BIOMES[b].segments.size() >= 5), "every biome has at least 5 segments")
+	var used := {}
+	for b in Data.BIOMES:
+		for k in Data.BIOMES[b].segments:
+			if k in V3_SEGS:
+				used[k] = used.get(k, []) + [b]
+	check(used.size() == V3_SEGS.size(), "every new segment is in some biome (%d of %d)" % [used.size(), V3_SEGS.size()])
+	var bad: Array = []
+	for k in V3_SEGS:
+		for bid in used.get(k, []):
+			var b: Battle = await m_battle(bid, [k])
+			var x0: float = 460.0
+			var w: float = Data.SEGMENTS[k].w
+			# enemies placed somewhere real
+			for u in b.units:
+				if u.team == "enemy" and u.x >= x0 and u.x <= x0 + w and (u.y == null or u.y >= Battle.WATER_Y - 6) and u.weight != "hover":
+					bad.append("%s/%s: %s in the water at %d,%s" % [bid, k, u.type, int(u.x - x0), str(u.y)])
+			# no wall taller than a hop with no ladder, no gap wider than a hop
+			var x := x0
+			var gap := 0.0
+			while x < x0 + w:
+				var g1: float = b.T.ground_at(x)
+				var g2: float = b.T.ground_at(x + 8)
+				var open1: bool = b.T.stand_y(x, 0) == null
+				gap = gap + 8.0 if open1 else 0.0
+				if gap > 180:
+					bad.append("%s/%s: gap at %d" % [bid, k, int(x - x0)])
+					gap = -9999
+				if g1 - g2 > 100 and not b.T.ladders.any(func(l): return absf(l.x - x) < 40):
+					bad.append("%s/%s: wall at %d (%d px)" % [bid, k, int(x - x0), int(g1 - g2)])
+				x += 8
+			if k in ["dunes", "gatehouse", "canopy", "tankfarm", "boxcars", "spires", "elevator"] and bid == used[k][0]:
+				cam_on(b, x0 + w / 2.0)
+				await frames_wait(4)
+				await shot("seg_" + k)
+	check(bad.is_empty(), "every new segment is walkable and its enemies stand on ground %s" % str(bad))
 	main.show_title()
 	await frames_wait(5)

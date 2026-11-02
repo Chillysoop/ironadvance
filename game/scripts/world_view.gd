@@ -748,6 +748,12 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
 	if u.fl.get("vharr", false) and not u.dead:
 		mod = Color(0.86, 0.78, 1.08, u.alpha)  # Q3: refit in Vharr violet
+	var kit: String = b.mission.get("boar_kit", "") if not u.fl.get("vharr", false) else ""
+	if not u.dead:
+		match kit:
+			"engine": mod = Color(0.62, 0.66, 0.78, u.alpha)  # V6: gunmetal
+			"drill": mod = Color(1.1, 0.92, 0.55, u.alpha)  # V6: mining yellow
+			"magma": mod = Color(1.15, 0.6, 0.45, u.alpha)  # V6: glowing red
 	# barrel behind the turret
 	var pv := b.boss_pivot(u)
 	var bt: Texture2D = Art.tex.boss_barrel
@@ -758,6 +764,26 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 	if u.muzzle > 0 and not u.dead:
 		draw_muzzle(b.muzzle(u), -1, -u.aim_a)
+	if not u.dead:
+		match kit:
+			"engine":
+				# a smokestack and a cowcatcher
+				draw_rect(Rect2(pos.x + 18, pos.y - 104, 14, 26), Color(0.2, 0.21, 0.24, u.alpha))
+				draw_rect(Rect2(pos.x + 15, pos.y - 108, 20, 6), Color(0.3, 0.31, 0.35, u.alpha))
+				if b.t % 8 == 0:
+					b.puff(u.x + 25, u.y - 110, 1.2)
+				draw_colored_polygon(PackedVector2Array([pos + Vector2(-64, -4), pos + Vector2(-82, 0), pos + Vector2(-64, -30)]), Color(0.45, 0.2, 0.15, u.alpha))
+			"drill":
+				var spin := float(b.t % 8) / 8.0
+				draw_colored_polygon(PackedVector2Array([pos + Vector2(-62, -34), pos + Vector2(-96, -20), pos + Vector2(-62, -6)]), Color(0.75, 0.75, 0.8, u.alpha))
+				for k in 3:
+					var xx := -66.0 - (k + spin) * 9.0
+					draw_line(pos + Vector2(xx, -32 + (k + spin) * 4), pos + Vector2(xx - 4, -8 - (k + spin) * 4), Color(0.4, 0.4, 0.45, u.alpha), 2)
+			"magma":
+				for k in 4:
+					draw_rect(Rect2(pos.x - 40 + k * 22, pos.y - 26 + (k % 2) * 6, 10, 3), Color(1.0, 0.55 + 0.3 * sin(b.t / 7.0 + k), 0.1, u.alpha))
+				if b.t % 12 == 0:
+					b.part({"x": u.x + randf_range(-40, 40), "y": u.y - 40, "vx": 0.0, "vy": -1.2, "life": 24, "max": 24, "c": Color("ffb23e"), "s": 2.0, "g": -0.02, "fire": true})
 	if u.dead and b.t % 6 == 0:
 		b.puff(u.x + randf_range(-40, 40), u.y - 60, 1.8)
 	if u.cracked and not u.dead and b.t % 10 == 0:
