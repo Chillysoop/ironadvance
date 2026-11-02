@@ -4660,6 +4660,7 @@ func kill(tg: Unit, src) -> void:
 		stats.downs += 1
 		var cause := who_did(tg, src)
 		stats["last_down"] = "%s, BY %s" % [tg.def.name.to_upper(), cause]
+		stats["down_log"] = stats.get("down_log", []) + ["%s: %s, round %d" % [tg.def.name.to_upper(), cause, round_n]]  # H3: the playtest diary
 		banner("%s DOWN" % tg.def.name.to_upper(), Color("ffb23e"), cause)  # X2: say what did it
 		if state == "player" or state == "enemy":
 			regroup = true  # X7: the line waits one round before the stall clock counts again

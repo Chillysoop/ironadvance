@@ -9,12 +9,15 @@ const HqScript := preload("res://scripts/hq.gd")
 const WarRoomScript := preload("res://scripts/war_room.gd")
 const OperatorCall := preload("res://scripts/operator_call.gd")
 const DraftScript := preload("res://scripts/draft.gd")
+const Diary := preload("res://scripts/diary.gd")
 
 var battle: Battle = null
 var hud: CanvasLayer = null
 var screen: Control = null
 var ui_layer: CanvasLayer
 var speed := 1.0
+var shot_key: Node = null
+var battle_t0 := 0  # H3: when this mission started, for the playtest diary
 
 var call_layer: CanvasLayer = null
 var pending_call: Array = []   # C4: radio lines waiting for the squad to hit the ground
@@ -24,6 +27,8 @@ func _ready() -> void:
 	ui_layer = CanvasLayer.new()
 	ui_layer.layer = 5
 	add_child(ui_layer)
+	shot_key = Diary.ShotKey.new()  # H1: F12 screenshots
+	add_child(shot_key)
 	var args := OS.get_cmdline_user_args()
 	for a in args:
 		if a.begins_with("--speed="):
@@ -131,6 +136,10 @@ func show_title() -> void:
 	s.buttons = [["CAMPAIGN", func(): show_slots(), "5 ACTS  COMPANY OF %d  SAVED" % Data.COMPANY_MAX],
 		["QUICK RUN", func(): quick_run(), "%d LEVELS AND A FINALE" % Data.LEVELS.size()],
 		["TRAINING", func(): start_training(), "STEP BY STEP  ABOUT 10 MINUTES", Color("9aa2ae") if Run.meta.get("trained", false) else Color("ffb23e")]]
+	if int(Run.meta.get("lesson_at", 0)) > 0:
+		# H2: boot camp picks up at the lesson you reached (Esc > BACK TO LESSON 1 starts over)
+		s.buttons[2][2] = "RESUME AT LESSON %d OF %d" % [int(Run.meta.lesson_at) + 1, Data.LESSONS.size()]
+	s.nudge = not Run.meta.get("trained", false)  # H4
 	s.corner = ["DAILY OP", func(): start_daily()]  # D2
 	var rh := Run.run_head()
 	if rh.size():
@@ -167,6 +176,7 @@ func continue_run() -> void:
 		show_title()
 		return
 	Sfx.play("start")
+	Diary.line("CONTINUE RUN at HQ before level %d" % (Run.history.size() + 1))
 	show_hq(false)
 
 func show_draft() -> void:
@@ -183,6 +193,7 @@ func start_run() -> void:
 	Run.leave_campaign()
 	Run.daily = ""
 	Run.new_run()
+	Diary.line("NEW QUICK RUN  squad %s" % ", ".join(Run.soldiers.map(func(x): return x.def.name)))
 	if not Run.meta.get("ran", false):
 		Run.meta["ran"] = true  # P8: only the first quick run ever gets the plainer level 1
 		Run.save_meta()
@@ -192,6 +203,7 @@ func start_daily() -> void:
 	## D2: today's seed, today's squad. The best score of the day is kept.
 	Run.leave_campaign()
 	Run.start_daily()
+	Diary.line("NEW DAILY OP " + str(Run.daily))
 	show_hq(false)
 
 # ---------------------------------------------------------------- campaign mode
@@ -392,6 +404,9 @@ func start_battle(idx: int, custom := {}) -> Battle:
 	hud.setup(battle)
 	battle.mission_over.connect(_on_mission_over)
 	battle.begin()
+	battle_t0 = Time.get_ticks_msec()
+	if not (battle.in_lesson() or battle.practice() or battle.tutorial()):
+		Diary.line("START " + Diary.where(battle))
 	if pending_call.size():
 		call_in(pending_call)
 		pending_call = []
@@ -400,16 +415,20 @@ func start_battle(idx: int, custom := {}) -> Battle:
 var tut_snap := {}  # the run as it was when the tutorial started: every lesson try starts from it
 var tut_tries := 0  # failed tries on the current lesson
 
-func start_training() -> void:
+func start_training(from := -1) -> void:
 	## The step-by-step tutorial: one short lesson per screen, the sergeant on the tablet, and
 	## nothing carries over. A failed lesson starts again on the spot with the same kit.
+	## H2: it starts at the lesson reached last time unless from says otherwise.
+	if from < 0:
+		from = clampi(int(Run.meta.get("lesson_at", 0)), 0, Data.LESSONS.size() - 1)
+	Diary.line("BOOT CAMP from lesson %d" % (from + 1))
 	Run.new_run()
 	# always the four original classes, whatever squad the player drafts for quick runs
 	Run.soldiers.clear()
 	for k in Data.BASE_CLASSES:
 		Run.soldiers.append(Run.make_soldier(Run.class_def(k)))
 	tut_snap = Run.snapshot()
-	start_lesson(0)
+	start_lesson(from)
 
 func start_lesson(i: int, retry := "") -> void:
 	Run.set_state(tut_snap.duplicate(true))
@@ -417,6 +436,9 @@ func start_lesson(i: int, retry := "") -> void:
 		for c in call_layer.get_children():
 			c.queue_free()  # the last lesson's radio is over: this one calls in fresh
 	tut_tries = tut_tries + 1 if retry != "" else 0
+	if retry == "" and int(Run.meta.get("lesson_at", -1)) != i:
+		Run.meta["lesson_at"] = i  # H2
+		Run.save_meta()
 	var L: Dictionary = Data.LESSONS[i]
 	var m: Dictionary = Data.LESSON_BASE.duplicate(true)
 	m["segments"] = [L.seg]
@@ -435,6 +457,11 @@ func start_lesson(i: int, retry := "") -> void:
 	b.lesson_done.connect(func(res: String): lesson_done(i, res))
 
 func lesson_done(i: int, res: String) -> void:
+	var L: Dictionary = Data.LESSONS[i]
+	if res.begins_with("fail"):
+		Diary.line("  lesson %d %s: try %d failed (%s)" % [i + 1, str(L.title).to_upper(), tut_tries + 1, res.substr(5)])
+	else:
+		Diary.line("  lesson %d %s: %s on try %d, %s" % [i + 1, str(L.title).to_upper(), "SKIPPED" if res == "skip" else "passed", tut_tries + 1, Diary.minutes(Time.get_ticks_msec() - battle_t0)])
 	if res.begins_with("fail"):
 		start_lesson(i, res.substr(5))
 	elif i + 1 < Data.LESSONS.size():
@@ -442,7 +469,9 @@ func lesson_done(i: int, res: String) -> void:
 	else:
 		if res == "pass":
 			Run.meta["trained"] = true
-			Run.save_meta()
+		Run.meta.erase("lesson_at")  # H2: finished, so TRAINING starts from lesson 1 again
+		Run.save_meta()
+		Diary.line("BOOT CAMP finished")
 		Run.new_run()
 		show_title()
 		call_in(Data.TUT_DONE_LINES.map(func(l): return Run.radio_line("sarge", l, [])))
@@ -472,6 +501,10 @@ func _on_mission_over(won: bool) -> void:
 	var st: Dictionary = battle.stats.duplicate()
 	st["score"] = battle.score
 	st["won"] = won
+	# H3: one diary line per mission (logged before history grows, so the level number is right)
+	var downs_txt: String = "; ".join(battle.stats.get("down_log", []))
+	Diary.line("%s %s: %s in %d rounds, %s. Downs: %s" % ["END", Diary.where(battle), "WON" if won else "LOST", battle.round_n,
+		Diary.minutes(Time.get_ticks_msec() - battle_t0), downs_txt if downs_txt != "" else "none"])
 	var xp := {}
 	var kills := {}
 	var downs := {}
@@ -521,9 +554,11 @@ func _on_mission_over(won: bool) -> void:
 		Run.daily_over()
 		Run.clear_run()  # R4: a finished run can't be continued
 	if not won or Run.alive_count() == 0:
+		Diary.line("RUN LOST")
 		s.mode = "lost"
 		s.buttons = [["NEW RUN", func(): quick_run()], ["TITLE", func(): show_title()]]
 	elif Run.is_final_mission():
+		Diary.line("RUN WON")
 		s.mode = "final"
 		s.buttons = [["NEW RUN", func(): quick_run()], ["TITLE", func(): show_title()]]
 		Run.meta.wins = int(Run.meta.wins) + 1
@@ -586,6 +621,8 @@ class Screen extends Control:
 	var corner: Array = []  # a small extra button in the top-left corner: [label, callable]
 	var corner2: Array = []  # and one in the top-right corner
 	var cont: Array = []  # R4: the title's CONTINUE RUN [label, callable, sub], above QUICK RUN
+	var nudge := false  # H4: "NEW HERE?" over TRAINING until boot camp is done once
+	var train_rect := Rect2()
 	var t := 0
 	func _ready() -> void:
 		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -637,6 +674,8 @@ class Screen extends Control:
 					bt.small = true
 					bt.size = Vector2(170, 28)
 					bt.position = Vector2(20, 18) if i == nd else Vector2(770, 18)
+			if mode == "title" and i == 2:
+				train_rect = Rect2(x, 470, widths[i], 40)
 			if mode == "title" and i == 1 and cont.size():
 				var cb = load("res://scripts/hud.gd").PixButton.new()
 				cb.text = cont[0]
@@ -783,6 +822,12 @@ class Screen extends Control:
 		if corner.size():
 			var best := Run.daily_best()
 			Art.text(self, ("TODAY'S BEST %d" % best) if best > 0 else "ONE SEED A DAY", Vector2(105, 60), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+		if nudge and train_rect.size.x > 0:
+			# H4: point a first-timer at boot camp
+			var cx := train_rect.position.x + train_rect.size.x / 2
+			var ny := train_rect.position.y - 14 + sin(t / 8.0) * 2
+			Art.text(self, "NEW HERE? START WITH TRAINING", Vector2(cx, ny - 6), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			draw_colored_polygon(PackedVector2Array([Vector2(cx - 6, ny), Vector2(cx + 6, ny), Vector2(cx, ny + 7)]), Color("ffd23a"))
 		var ver := FileAccess.get_file_as_string("res://version.txt").strip_edges()
 		Art.text(self, "BUILD " + (ver if ver != "" else "DEV"), Vector2(950, 530), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)
 		if t % 60 < 40:
