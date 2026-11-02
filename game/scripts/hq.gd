@@ -97,6 +97,8 @@ func build() -> void:
 	if Run.scrip >= Services.price(Services.PATCH):
 		go.sub = "%d SCRIP UNSPENT" % Run.scrip
 	dial_btn = go
+	# the game menu (save, settings, quit): Esc here does the same
+	add_child(HudScript.menu_button(Vector2(574, 12), Vector2(96, 30)))
 	go.color = Color("ff4d3d")
 	go.size = Vector2(220, 44)
 	go.position = Vector2(370, 486)
@@ -356,6 +358,11 @@ func sub_busy() -> bool:
 
 func go(id: String) -> void:
 	## B2: jump straight from any building to another (or home), no walk.
+	if id == "menu":
+		var m = get_tree().current_scene
+		if m != null and m.has_method("open_menu"):
+			m.open_menu()
+		return
 	walk = {}
 	memorial_open = false
 	upgrades_open = false
@@ -466,15 +473,9 @@ func open_armory() -> void:
 func open_memorial() -> void:
 	Sfx.play("click")
 	memorial_open = true
-	var close := HudScript.PixButton.new()
-	close.text = "CLOSE"
-	close.color = Color("9aa2ae")
-	close.size = Vector2(110, 26)
-	close.position = Vector2(425, 470)
-	close.pressed.connect(func(): memorial_open = false; build())
 	for c in get_children():
 		c.queue_free()
-	add_child(close)
+	add_child(HudScript.back_to_hq(func(): memorial_open = false; build()))
 	# D3: fun toggles, each unlocked by an Armory feat
 	for i in Data.TOGGLES.size():
 		var tg: Dictionary = Data.TOGGLES[i]
@@ -794,7 +795,7 @@ func draw_doc_panel() -> void:
 	Art.text(self, "\"Hold still. Or don't, it's more fun.\"", Vector2(40, 76), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	Art.text(self, "%d BIO-PARTS   %d SALVAGE" % [int(Run.meta.get("bio", 0)), int(Run.meta.get("salvage", 0))], Vector2(920, 58), 16, Color("9df25c"), HORIZONTAL_ALIGNMENT_RIGHT, 2)
 	var r := Run.hq("doc")
-	var line := "%d BIO + %d SALVAGE EACH. %d SLOT%s PER %s, OLDEST COMES OUT WHEN FULL." % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE, r, "" if r == 1 else "S", "SOLDIER" if Run.campaign() else "CLASS"] if r >= 1 else "BUILD THE DOC'S LAB ON THE UPGRADE BOARD FIRST."
+	var line := "%d BIO + %d SALVAGE EACH. %d SLOT%s PER %s, OLDEST COMES OUT WHEN FULL." % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE, r, "" if r == 1 else "S", "SOLDIER" if Run.campaign() else "CLASS"] if r >= 1 else "SURGERY COSTS %d BIO + %d SALVAGE EACH, ONCE THE LAB IS BUILT." % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE]
 	Art.text(self, line, Vector2(920, 76), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT)
 	var ids: Array = Data.SURGERIES.keys()
 	for i in ids.size():
@@ -806,7 +807,20 @@ func draw_doc_panel() -> void:
 		# with a third column of soldier buttons the name drops to the small font to stay clear of them
 		Art.text(self, S.name, Vector2(cr.position.x + 10, cr.position.y + 20), 16 if doc_targets().size() <= 4 else 8, Color("ffd23a") if r >= 1 else Color("8a8a6a"), HORIZONTAL_ALIGNMENT_LEFT, 2)
 		var locked: bool = int(S.get("rank", 1)) > r
-		Art.text(self, ("RANK %d LAB: " % int(S.get("rank", 1)) if locked else "+ ") + S.up, Vector2(cr.position.x + 10, cr.position.y + 38), 8, Color("6a7a6a") if locked or r < 1 else Color("62d26f"))
+		var col := Color("6a7a6a") if locked or r < 1 else Color("62d26f")
+		var what: String = ("LAB RANK %d: " % int(S.get("rank", 1)) if locked else "+ ") + S.up
+		# the line stops short of the soldier buttons: the small font if it fits, else the narrower
+		# reading font, wrapped onto a second line if it has to be
+		var avail := cr.size.x - 62 * (2 if doc_targets().size() <= 4 else 3) - 16
+		var p := Vector2(cr.position.x + 10, cr.position.y + 38)
+		if Art.text_width(what, 8) <= avail:
+			Art.text(self, what, p, 8, col)
+		elif Art.text_width(what, 16, true) <= avail:
+			Art.text(self, what, p, 16, col, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		else:
+			var lines := CardView.wrap_text(what, avail, 16)
+			for k in mini(lines.size(), 2):
+				Art.text(self, lines[k], p + Vector2(0, -6 + k * 11), 16, col, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 
 # ---------------------------------------------------------------- C3: the campaign's night camp
 func draw_searchlights() -> void:

@@ -46,6 +46,7 @@ func _ready() -> void:
 	dz.position = Vector2(24, 474)
 	dz.pressed.connect(func(): Sfx.play("click"); HubUI.field_dossier(self, 0))
 	add_child(dz)
+	add_child(HudScript.menu_button(Vector2(816, 474), Vector2(120, 32)))
 
 func advance() -> void:
 	## After the crates, the squad picks one commander perk; then on to the shop.

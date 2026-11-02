@@ -179,7 +179,8 @@ class NavStrip extends Control:
 	## A dot marks a building that has something ready (the same checks as the HQ badges).
 	signal go(id: String)
 	const STOPS := [["HQ", "hq", "H"], ["QM TENT", "qm", "Q"], ["WORKSHOP", "workshop", "W"], ["ARMORY", "armory", "A"],
-		["DOC'S LAB", "doc", "D"], ["BARRACKS", "barracks", "B"], ["MEMORIAL", "memorial", "M"]]
+		["DOC'S LAB", "doc", "D"], ["BARRACKS", "barracks", "B"], ["MEMORIAL", "memorial", "M"], ["MENU", "menu", ""]]
+	const MENU_W := 64.0       # the game menu's cell at the end is narrower than the buildings
 	var current := "hq"
 	var badges := {}           # id -> short badge text
 	var hover := -1
@@ -188,7 +189,10 @@ class NavStrip extends Control:
 		position = Vector2(16, 12)
 		mouse_filter = Control.MOUSE_FILTER_STOP
 	func cell(i: int) -> Rect2:
-		var w := (size.x - 6 * 4) / 7.0
+		var n := STOPS.size()
+		var w := (size.x - MENU_W - (n - 1) * 4) / (n - 1)
+		if i == n - 1:
+			return Rect2(size.x - MENU_W, 0, MENU_W, size.y)
 		return Rect2(i * (w + 4), 0, w, size.y)
 	func _gui_input(ev: InputEvent) -> void:
 		if ev is InputEventMouseMotion:
