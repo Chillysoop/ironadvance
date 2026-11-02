@@ -117,6 +117,64 @@ func stand_y(x: float, from_y: float):
 	return null
 
 # ---------------------------------------------------------------- generation
+const REMIX_SKIP := ["bridge", "docks", "crust", "lift", "car", "coupler", "crane", "catwalk", "runway", "prop"]
+
+static func remix_seg(src: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
+	## V1: the same segment with its bones kept and the details moved: towers, overhangs, ledges,
+	## boulder columns and ground bumps change height, sandbags slide along, enemies on the ground
+	## shift a little, and now and then an extra barrel or sandbag line turns up. Pits never change,
+	## so every gap still hops the same, and nothing moves on or off a bridge, dock, car or catwalk.
+	## Camps, the yard and boss arenas are left alone.
+	if src.get("camp", false) or src.get("yard", false) or src.get("flat", false) or src.get("noremix", false):
+		return src
+	var s: Dictionary = src.duplicate(true)
+	var w: float = s.w
+	# no-go spans: pits, open gaps, and anything built over water or rails (bridges, docks, cars...)
+	var nogo: Array = s.pits.duplicate()
+	nogo.append_array(s.get("gaps", []))
+	for t in s.structs:
+		if t.t in REMIX_SKIP:
+			var a: float = t.get("x0", t.get("x", 0.0))
+			var z: float = t.get("x1", a + t.get("w", 0.0))
+			nogo.append([a, z])
+	var in_pit := func(x: float, pad: float) -> bool:
+		return nogo.any(func(p): return x > p[0] - pad and x < p[1] + pad)
+	for t in s.structs:
+		match t.t:
+			"tower", "over":
+				t.h = snappedf(t.h * rng.randf_range(0.8, 1.25), CELL)
+			"ledge":
+				t.dy = snappedf(t.dy * rng.randf_range(0.85, 1.2), CELL)
+			"boulder":
+				t.colH = snappedf(t.colH * rng.randf_range(0.85, 1.15), CELL)
+	for g in s.get("ground", []):
+		g.dh = snappedf(g.dh * rng.randf_range(0.6, 1.4), CELL)
+	var bags: Array = []
+	for sb in s.sandbags:
+		var nx: float = clampf(sb + rng.randf_range(-36, 36), 24, w - 24)
+		bags.append(nx if not in_pit.call(nx, 20) and not in_pit.call(sb, 20) else sb)
+	if rng.randf() < 0.3:
+		var nx := rng.randf_range(80, w - 80)
+		if not in_pit.call(nx, 24):
+			bags.append(nx)
+	s.sandbags = bags
+	var out: Array = []
+	for sp in s.spawns:
+		var opt: Dictionary = sp[2] if sp.size() > 2 else {}
+		var ty: String = sp[0]
+		if Data.ETYPES.has(ty) and ty != "boss" and ty != "mg" and opt.is_empty() and not in_pit.call(sp[1], 12):
+			var nx: float = clampf(sp[1] + rng.randf_range(-28, 28), 16, w - 16)
+			if not in_pit.call(nx, 12):
+				sp = sp.duplicate()
+				sp[1] = nx
+		out.append(sp)
+	if rng.randf() < 0.35:
+		var bx := rng.randf_range(60, w - 60)
+		if not in_pit.call(bx, 20):
+			out.append(["barrel", bx])
+	s.spawns = out
+	return s
+
 func build(mission: Dictionary) -> void:
 	# lay segments end to end
 	var x := 0
@@ -128,8 +186,13 @@ func build(mission: Dictionary) -> void:
 	var rules: Dictionary = mission.get("rules", {})
 	firm_x1 = float(rules.get("firm_lz", 0.0))
 	stretches = []   # fighting stretches, where a biome's extra fuel and mines and encounters go
+	# V1: a quick-run level remixes each fighting segment it lays down (heights, cover, enemy spots)
+	var rmx := RandomNumberGenerator.new()
+	rmx.seed = int(mission.get("remix", 0))
 	for sname in mission.segments:
 		var s: Dictionary = Data.SEGMENTS[sname]
+		if mission.has("remix") and sname != "start":
+			s = remix_seg(s, rmx)
 		if s.get("yard", false):
 			yard = [x, x + s.w]
 		elif sname != "start" and not s.get("camp", false) and not s.get("flat", false):

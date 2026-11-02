@@ -805,6 +805,8 @@ func run() -> void:
 			await lights_test()
 		"biomes2":
 			await biomes2_test()
+		"variety":
+			await variety_test()
 		"events10":
 			await events10_test()
 		"pickups":
@@ -10401,3 +10403,112 @@ func bp3_test() -> void:
 	await b.mid_events.crumble_round()
 	check(b.crumble.x == cx2 + Data.CRUMBLE_STEP, "then it carries on")
 	await shot("bp3_crumble")
+
+func variety_test() -> void:
+	## V1 segment remix and V2 Jackal garrisons (run-variety page).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	# same run, same level: the dial and the level you dial in agree
+	var a := Run.make_level("desert", 1)
+	var a2 := Run.make_level("desert", 1)
+	check(a.garrison == a2.garrison and a.remix == a2.remix, "the same run rolls the same garrison and remix for a biome")
+	# across runs: many garrisons, many remixes
+	var gs := {}
+	var rs := {}
+	for i in 60:
+		Run.seed_val = 1000 + i
+		var lv := Run.make_level("fortress", 1)
+		gs[lv.garrison] = true
+		rs[lv.remix] = true
+	check(gs.size() >= 6, "60 runs see %d of %d garrisons" % [gs.size(), Data.GARRISONS.size()])
+	check(rs.size() >= 55, "60 runs give %d different remixes" % rs.size())
+	check(range(20).all(func(i): Run.seed_val = 2000 + i; return Run.make_level("hive", 2).garrison == "regular"), "the Hive never has a Jackal garrison")
+	Run.first_run = true
+	check(range(20).all(func(i): Run.seed_val = 3000 + i; return Run.make_level("jungle", 0).garrison == "regular"), "the first-ever level keeps the plain garrison")
+	Run.first_run = false
+	# V1 on every segment: bones kept (width, pits), details moved
+	var changed := 0
+	var total := 0
+	var bad: Array = []
+	var rng := RandomNumberGenerator.new()
+	for k in Data.SEGMENTS:
+		var src: Dictionary = Data.SEGMENTS[k]
+		for sd in 3:
+			rng.seed = hash([k, sd])
+			var r: Dictionary = Terrain.remix_seg(src, rng)
+			if r.w != src.w or str(r.pits) != str(src.pits) or r.structs.size() != src.structs.size():
+				bad.append(k)
+			if r.sandbags.any(func(x): return x < 0 or x > r.w) or r.spawns.any(func(sp): return sp[1] < 0 or sp[1] > r.w):
+				bad.append(k)
+			if sd == 0 and k != "start":
+				total += 1
+				if str(r) != str(src):
+					changed += 1
+	check(bad.is_empty(), "a remix never changes a segment's width, pits or set pieces, and keeps everything inside it %s" % str(bad))
+	check(changed * 2 > total, "%d of %d segments come out different" % [changed, total])
+	check(str(Data.SEGMENTS.towers.structs[1].h) == "96", "remixing leaves the original data alone")
+	# two remixes of the same level lay different ground
+	Run.seed_val = 77
+	var l1 := Run.make_level("desert", 1)
+	Run.seed_val = 78
+	var l2 := Run.make_level("desert", 1)
+	l2.segments = l1.segments
+	var b1: Battle = main.start_battle(1, l1)
+	await until(func(): return b1.state == "player" and not b1.busy)
+	var t1: Terrain = b1.T
+	var b2: Battle = main.start_battle(1, l2)
+	await until(func(): return b2.state == "player" and not b2.busy)
+	var t2: Terrain = b2.T
+	var diff := 0
+	for x in range(0, mini(t1.cols, t2.cols) * Terrain.CELL, 8):
+		if t1.ground_at(x) != t2.ground_at(x):
+			diff += 1
+	check(diff > 10 or str(t1.sandbags) != str(t2.sandbags), "the same segments remix into different ground (%d columns differ)" % diff)
+	# V2 in a real battle: a Sniper Nest fills slots with snipers, a regular garrison doesn't
+	var counts := {}
+	for g in ["regular", "snipers", "shields"]:
+		Run.new_run()
+		Run.first_run = false
+		Run.seed_val = 4242
+		var lv := Run.make_level("fortress", 0)
+		lv.garrison = g
+		Run.level = lv
+		var b: Battle = main.start_battle(0, lv)
+		await until(func(): return b.state == "player" and not b.busy)
+		var n := {}
+		for u in b.units:
+			if u.team == "enemy":
+				n[u.type] = int(n.get(u.type, 0)) + 1
+		counts[g] = n
+		if g == "snipers":
+			await shot("variety_snipers")
+			main.show_brief()
+			await frames_wait(6)
+			await shot("variety_brief")
+	check(int(counts.snipers.get("jsniper", 0)) >= int(counts.regular.get("jsniper", 0)) + 2, "a Sniper Nest has more snipers (%s vs %s)" % [counts.snipers.get("jsniper", 0), counts.regular.get("jsniper", 0)])
+	check(int(counts.shields.get("shield", 0)) + int(counts.shields.get("wallshield", 0)) > int(counts.regular.get("shield", 0)) + int(counts.regular.get("wallshield", 0)), "a Shield Line has more riot shields")
+	# every biome still starts cleanly with its remix and garrison, and nobody starts in a pit
+	var fails: Array = []
+	for bid in Data.BIOMES:
+		Run.new_run()
+		Run.first_run = false
+		Run.seed_val = 900 + bid.length()
+		var lv := Run.make_level(bid, 2)
+		var bb: Battle = main.start_battle(2, lv)
+		await until(func(): return bb.state == "player" and not bb.busy, 3000)
+		if bb.state != "player":
+			fails.append(bid)
+	check(fails.is_empty(), "every biome starts with a remix and a garrison %s" % str(fails))
+	# the dial card shows the garrison
+	main.show_title()
+	await frames_wait(5)
+	Run.new_run()
+	Run.first_run = false
+	main.start_run()
+	await frames_wait(40)
+	main.screen.dial.emit()
+	await frames_wait(10)
+	check(Run.dial.all(func(id): return Run.dial_levels[id].has("garrison")), "every dial biome comes with its garrison")
+	await shot("variety_dial")
