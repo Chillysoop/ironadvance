@@ -10403,6 +10403,7 @@ func bp3_test() -> void:
 	await b.mid_events.crumble_round()
 	check(b.crumble.x == cx2 + Data.CRUMBLE_STEP, "then it carries on")
 	await shot("bp3_crumble")
+
 func tour() -> void:
 	## UI pass: a screenshot of every screen, quick run and campaign.
 	Run.meta["tips_off"] = false
