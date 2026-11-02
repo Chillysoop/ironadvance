@@ -4050,7 +4050,10 @@ func walk_along(u: Unit, pts: Array) -> void:
 		return
 	u.walk = pts
 	u.walk_i = 0
-	await until(func(): return u.walk == null or u.dead)
+	# the tick skips gone and sunk units, so their walk would never finish: stop waiting on them too
+	await until(func(): return u.walk == null or u.dead or u.gone or u.sunk)
+	if u.gone or u.sunk:
+		u.walk = null
 
 # ---------------------------------------------------------------- damage, adrenaline, xp, death
 func give_xp(u, n: int) -> void:
@@ -8645,10 +8648,11 @@ func enemy_phase() -> void:
 			booms.append({"t": 4, "x": c.x, "y": c.y - 4, "r": 48.0, "dmg": 16, "owner": null, "barrel": c})
 		await until(settled)
 		await wait(10)
-	var es := units.filter(func(u): return u.team == "enemy" and u.active and not u.dead)
+	# gone or sunk units are out of the tick, so they can't take a turn (a walk would wait forever)
+	var es := units.filter(func(u): return u.team == "enemy" and u.active and not u.dead and not u.gone and not u.sunk)
 	es.sort_custom(func(a, b): return a.x < b.x)
 	for e in es:
-		if e.dead or squad_alive().is_empty() or boss_dead:
+		if e.dead or e.gone or squad_alive().is_empty() or boss_dead:
 			break
 		if not in_play(e.x, 60) and not e.fl.get("hunt", false):
 			continue
