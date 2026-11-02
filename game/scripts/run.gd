@@ -229,12 +229,27 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	var boar_kit: String = kits[vr.randi() % kits.size()] if boss == "boar" else ""
 	if tier == 0 and first_run and daily == "" and not campaign():
 		boar_kit = "standard"
+	var rare := ""
+	if vr.randf() < Data.RARE_CHANCE:
+		var rk: Array = Data.RARES.keys()
+		rare = rk[vr.randi() % rk.size()]
+	if bm.rules.get("aliens", false) and rare == "ace":
+		rare = "wreck"  # no Jackals in the Hive
+	if tier == 0 and first_run and daily == "" and not campaign():
+		rare = ""
+	var fork: Array = []
+	if pool.size() >= 3 and pool[2] != pool[1] and not campaign() and not (tier == 0 and first_run and daily == ""):
+		var rd: Array = Data.ROADS.keys()
+		var r0: String = rd[vr.randi() % rd.size()]
+		rd.erase(r0)
+		var r1: String = rd[vr.randi() % rd.size()]
+		fork = [{"seg": pool[1], "road": r0}, {"seg": pool[2], "road": r1}]
 	var layout: Array = ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")]
 	if not campaign():
 		# X8: a quick-run level is one screen shorter: no second camp before the boss (the campaign's op layout)
 		layout = ["start", pool[0], "camp", "yard", pool[1], bm.get("arena", "arena")]
 	return {"event": event, "bounties": bpool.slice(0, 3), "name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "signal": signal_id, "breach": breach, "encounter": enc, "boss": boss, "walker": walker, "miniboss": miniboss,
-		"garrison": garrison, "remix": remix, "boar_kit": boar_kit,
+		"garrison": garrison, "remix": remix, "boar_kit": boar_kit, "rare": rare, "fork": fork, "road": "",
 		"segments": layout,
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
 
@@ -262,6 +277,45 @@ func take_run_order(id: String) -> void:
 					top = maxi(top, int(Data.CARDS[k].get("rarity", 0)))
 				var best: Array = pool.filter(func(k): return int(Data.CARDS[k].get("rarity", 0)) == top)
 				s.deck.append(new_card(best[rng.randi() % best.size()], -1, "order"))
+
+func pick_road(i: int) -> void:
+	## V4: take one of the two roads for the level's second stretch.
+	var f: Array = level.get("fork", [])
+	if i < 0 or i >= f.size():
+		return
+	level.segments[4] = f[i].seg  # start, stretch, camp, yard, THIS stretch, ...
+	level["road"] = f[i].road
+	level["fork"] = []
+
+func seg_features(sname: String) -> Array:
+	## V4: what a segment holds, in a few words, for the fork's road cards.
+	var sg: Dictionary = Data.SEGMENTS.get(sname, {})
+	var out: Array = []
+	var names := {"tower": "a watchtower", "over": "an overhang", "ledge": "a high ledge", "boulder": "a hanging boulder", "bunker": "a bunker",
+		"fort": "a fort", "bridge": "a bridge", "docks": "docks", "crane": "a crane", "fence": "a fence line", "catwalk": "catwalks"}
+	for t in sg.get("structs", []):
+		var nm: String = names.get(t.t, "")
+		if nm != "" and not out.has(nm):
+			out.append(nm)
+	var foes := 0
+	for sp in sg.get("spawns", []):
+		if Data.ETYPES.has(sp[0]) and sp[0] != "boss":
+			foes += 1
+	if sg.get("pits", []).size():
+		out.append("%d gap%s" % [sg.pits.size(), "" if sg.pits.size() == 1 else "s"])
+	out.append("%d enemy posts" % foes)
+	return out
+
+func road_text(id: String) -> String:
+	var tx: String = Data.ROADS[id].text
+	return tx % Data.WRECK_SALVAGE if id == "scrap" else tx
+
+func rare_text(id: String) -> String:
+	var tx: String = Data.RARES[id].text
+	match id:
+		"wreck": return tx % [Data.RARE_WRECK_SALVAGE, Data.RARE_WRECK_BIO]
+		"ace": return tx % Data.ACE_PAY
+	return tx
 
 func run_order_text(id: String) -> String:
 	var tx: String = Data.RUN_ORDERS[id].text
