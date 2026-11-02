@@ -677,7 +677,7 @@ func check_bridges(cause) -> void:
 				if randf() < 0.5 and grid[cy * cols + cx]:
 					b.debris(cx * CELL + 2, cy * CELL + 2, 3)
 			fill_r(px - 14, s.y, 28, 8, 0)
-		b.bridge_down(s)
+		b.biome_rules.bridge_down(s)
 		check_floating((s.x0 + s.x1) / 2.0, s.y + 40, (s.x1 - s.x0) / 2.0 + 16, cause)
 
 func check_floating(x: float, y: float, R: float, cause) -> void:

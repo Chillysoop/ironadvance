@@ -36,7 +36,7 @@ func _draw() -> void:
 			draw_camp(c)
 	if b.detour.get("id", "") == "colors" and not b.detour.done:
 		# O1: the green post the stolen colors go back to
-		var px: float = b.colors_post()
+		var px: float = b.camp_ops.colors_post()
 		var gy: float = b.T.stand_y(px, 0) if b.T.stand_y(px, 0) != null else b.T.ground_at(px)
 		draw_rect(Rect2(px - 1, gy - 40, 3, 40), C_DARK)
 		draw_colored_polygon(PackedVector2Array([Vector2(px + 2, gy - 40), Vector2(px + 16, gy - 36), Vector2(px + 2, gy - 32)]), Color("62d26f"))
@@ -428,7 +428,7 @@ func draw_unit(u: Unit) -> void:
 		return
 	if u.type == "jsniper" and not u.dead and u.fl.has("laser"):
 		# E1: the laser is always on, so you can see exactly where the next shot goes
-		var L: Dictionary = b.sniper_line(u)
+		var L: Dictionary = b.foe_ai.sniper_line(u)
 		draw_line(L.from, L.to, Color(1, 0.15, 0.1, 0.35), 3.0)
 		draw_line(L.from, L.to, Color(1, 0.25, 0.2, 0.9), 1.0)
 		draw_circle(L.to, 2.5 + (b.t / 6) % 2, Color("ff4d3d"))
@@ -801,7 +801,7 @@ func draw_sentry(u: Unit, pos: Vector2, white: bool) -> void:
 	if u.loot.get("trooper", false):
 		draw_trooper(u, pos, white)
 		return
-	var tg = b.sentry_target(u) if b.t % 6 == 0 or not u.fl.has("tg") else u.fl.tg
+	var tg = b.spec_kits.sentry_target(u) if b.t % 6 == 0 or not u.fl.has("tg") else u.fl.tg
 	u.fl["tg"] = tg
 	if tg != null and not tg.dead:
 		var a := Vector2(pos.x, pos.y - 14)
@@ -1269,7 +1269,7 @@ func draw_targeting() -> void:
 	if b.cam_x < b.world_w - Battle.W and not cine:
 		# the label sits left of the line, clear of the bounty board in the top right. With an
 		# enemy still alive behind the line the zone is locked and turns red.
-		var lock: int = b.push_blockers().size()
+		var lock: int = b.camp_ops.push_blockers().size()
 		var zc := Color(1, 0.7, 0.24) if lock == 0 else Color(1, 0.3, 0.24)
 		var yy := 48.0
 		while yy < Battle.H:
@@ -1280,7 +1280,7 @@ func draw_targeting() -> void:
 		var ty := 58.0
 		if b.units.any(func(e): return not e.dead and ((e.type in ["boss", "hiveship"] and b.boss_active) or (e.type == "queen" and e.active))):
 			ty = 92.0
-		elif b.job_left() != "":
+		elif b.camp_ops.job_left() != "":
 			ty = 72.0
 		# a soldier up a tower has their name tag right here: the zone words drop under their feet
 		var pw := Art.text_width("PUSH ZONE LOCKED", 8)
@@ -1299,7 +1299,7 @@ func draw_targeting() -> void:
 			var at_line: bool = b.squad_alive().any(func(s): return s.x >= pz - 40)
 			var hov: bool = push_rect.grow(6).has_point(m - Vector2(b.cam_x, 0))
 			if lock <= 2 or at_line or hov:
-				draw_lockers(b.push_blockers())
+				draw_lockers(b.camp_ops.push_blockers())
 	if b.jet_armed:
 		var sim := b.sim_body(u, 0.0, 0.0, m, u.fuel)
 		draw_dashed_line(Vector2(u.x, u.y - u.h / 2.0), m, Color(0.33, 0.83, 0.89, 0.6), 1.0, 4.0)
@@ -1310,8 +1310,8 @@ func draw_targeting() -> void:
 		return
 	if b.card_idx < 0:
 		if u.move_left > 1:
-			var L := b.sim_walk(u, u.x - u.move_left, u.move_left)
-			var R := b.sim_walk(u, u.x + u.move_left, u.move_left)
+			var L := b.phys.sim_walk(u, u.x - u.move_left, u.move_left)
+			var R := b.phys.sim_walk(u, u.x + u.move_left, u.move_left)
 			for s in [L, R]:
 				var i := 0
 				while i < s.pts.size():
@@ -1333,7 +1333,7 @@ func draw_targeting() -> void:
 				else:
 					Art.text(self, "LADDER: OUT OF REACH", Vector2(LD.x, LD.top - 14), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif hov == null and get_viewport().get_mouse_position().y >= 34 and not coach_up():  # a click on the top bar (or a tip) doesn't walk
-				var sim := b.sim_walk(u, m.x, u.move_left)
+				var sim := b.phys.sim_walk(u, m.x, u.move_left)
 				if sim.pts.size():
 					var i := 0
 					while i < sim.pts.size():
@@ -1421,7 +1421,7 @@ func draw_targeting() -> void:
 				elif hh.head: lab = "HEAD!"
 				elif tg.shield and hh.dx > 0: lab = "SHIELD"
 				elif tg.type == "boss" and tg.plate > 0: lab = "ARMOR"
-				elif tg.type == "hiveship" and b.ship_plated(tg): lab = "ARMOR: HIT THE PLATES"
+				elif tg.type == "hiveship" and b.vharr_ai.ship_plated(tg): lab = "ARMOR: HIT THE PLATES"
 				elif tg.type == "shipplate": lab = "DROP IT"
 				var est := ""
 				var ecol := col
@@ -1486,7 +1486,7 @@ func draw_targeting() -> void:
 				var fx := note_x(m, Art.text_width(fl, 8) + 8)
 				draw_rect(Rect2(fx, m.y + 12, Art.text_width(fl, 8) + 8, 14), Color(C_DARK, 0.75))
 				Art.text(self, fl, Vector2(fx + 4, m.y + 22), 8, Color("ffd23a"))
-			var sim := b.sim_arc(v.hx, v.hy, v.vx, v.vy, b.wind_of(u, c), 40)
+			var sim := b.phys.sim_arc(v.hx, v.hy, v.vx, v.vy, b.spec_kits.wind_of(u, c), 40)
 			for i in sim.pts.size():
 				if i % 2 == 0:
 					var p: Vector2 = sim.pts[i]
@@ -1507,11 +1507,11 @@ func draw_targeting() -> void:
 				else:
 					Art.text(self, "NO GRIP", Vector2(gs.ax, gs.ay - 10), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.has("dog"):
-				var dt: Dictionary = b.dog_target(u, c, m)
+				var dt: Dictionary = b.spec_kits.dog_target(u, c, m)
 				var rx = dt.get("rex")
 				if rx != null:
 					var a0 := Vector2(rx.x, rx.y - 8)
-					draw_arc(Vector2(rx.x, rx.y), b.dog_reach(u, c), 0, TAU, 48, Color(1, 0.82, 0.23, 0.18), 1.0)
+					draw_arc(Vector2(rx.x, rx.y), b.spec_kits.dog_reach(u, c), 0, TAU, 48, Color(1, 0.82, 0.23, 0.18), 1.0)
 					draw_dashed_line(a0, dt.get("to", m) + Vector2(0, -8), Color("ffd23a") if dt.ok else Color("ff4d3d"), 1.0, 4.0)
 				if not dt.ok:
 					Art.text(self, dt.why, m + Vector2(0, -14), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -1529,7 +1529,7 @@ func draw_targeting() -> void:
 				var from := Vector2(u.x, u.y - 22)
 				var reach: float = c.reach * (2.0 if u.perk("longspan") else 1.0)
 				var to := from + (m - from).limit_length(reach)
-				var gw: float = c.gw * b.build_scale(u) * (1.5 if u.perk("longspan") else 1.0)
+				var gw: float = c.gw * b.spec_kits.build_scale(u) * (1.5 if u.perk("longspan") else 1.0)
 				draw_dashed_line(from, to, Color(0.79, 0.82, 0.85, 0.7), 1.0, 4.0)
 				draw_rect(Rect2(to.x - gw / 2.0, to.y, gw, 8), Color(0.79, 0.82, 0.85, 0.45))
 			elif c.get("drill", false):
@@ -1555,7 +1555,7 @@ func draw_targeting() -> void:
 				else:
 					Art.text(self, "NO ROOM TO ROLL", Vector2(u.x, u.y - u.h - 8), 8, Color("ff7a3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.get("zipline", false):
-				var zs: Dictionary = b.zip_spot(u, c, m)
+				var zs: Dictionary = b.spec_kits.zip_spot(u, c, m)
 				draw_dashed_line(Vector2(zs.hx, zs.hy), Vector2(zs.x, zs.y - 30), Color("e8dcc2") if zs.ok else Color("ff4d3d"), 1.0, 4.0)
 				if zs.ok:
 					Art.draw_char(self, u.sheet, "idle", 0, Vector2(zs.x, zs.y), 1 if zs.x >= u.x else -1, false, 0, 0.5)
@@ -1566,7 +1566,7 @@ func draw_targeting() -> void:
 				else:
 					Art.text(self, "NOWHERE TO LAND", Vector2(zs.x, zs.y - 40), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			elif c.has("magnet") or c.has("iaido"):
-				var L: Dictionary = b.magnet_line(u, c, m) if c.has("magnet") else b.iaido_line(u, c, m)
+				var L: Dictionary = b.spec_kits.magnet_line(u, c, m) if c.has("magnet") else b.spec_kits.iaido_line(u, c, m)
 				draw_dashed_line(L.from, L.to, Color("c47bff") if c.has("magnet") else Color("e0f4ff"), 1.0, 4.0)
 				for o in L.hit:
 					draw_brackets(Rect2(o.x - o.w / 2 - 4, o.y - o.h - 4, o.w + 8, o.h + 8), Color("c47bff") if c.has("magnet") else Color("ff4d3d"))
@@ -1582,7 +1582,7 @@ func draw_targeting() -> void:
 				draw_ghost(u, sim, Color("62d26f"), ("LEG-UP" if b.legup_buddy(u, c) != null else "HOP") if c.get("hop", false) else "JUMP")
 			elif c.get("jump", false) or c.get("rush", false) or c.get("eject", false):
 				var v := b.jump_vel(u, m, b.jump_pow(u, c)) if c.get("jump", false) else b.rush_vel(u, m)
-				var sim := b.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50)
+				var sim := b.phys.sim_arc(u.x, u.y - u.h / 2.0, v.vx, v.vy, 0, 70 if c.get("jump", false) else 50)
 				for i in sim.pts.size():
 					if i % 2 == 0:
 						var p: Vector2 = sim.pts[i]
@@ -1840,7 +1840,7 @@ func draw_hover(cv: CanvasItem) -> void:
 		if h.fl.has("mind"):
 			lines.append("LINKED BY SABLE: it fights its own side until the Jackal phase ends.")
 		if h.type == "hiveship":
-			lines.append("HULL PLATES UP: shots do 40%" if b.ship_plated(h) else "HULL EXPOSED: TAKES +30%")
+			lines.append("HULL PLATES UP: shots do 40%" if b.vharr_ai.ship_plated(h) else "HULL EXPOSED: TAKES +30%")
 		if h.elite != "":
 			lines.append("ELITE %s: %s Drops an item." % [Data.ELITES[h.elite].name, Data.ELITES[h.elite].text])
 		for k in h.st:
@@ -1943,7 +1943,7 @@ func draw_biome() -> void:
 	var T = b.T
 	# M5: the lava and the line it climbs to next
 	if b.rules.get("lava", 0.0) > 0:
-		var ly: float = b.lava_y()
+		var ly: float = b.biome_rules.lava_y()
 		var x0 := b.cam_x - 8
 		if b.lava_k > 0:
 			draw_rect(Rect2(x0, ly, b.W + 16, b.WATER_Y - ly + 2), Color("c8320e"))
@@ -1952,7 +1952,7 @@ func draw_biome() -> void:
 				var bx := x0 + fmod(k * 97.0 + b.t * 0.4, b.W + 16)
 				draw_rect(Rect2(bx, ly + 4 + (k % 3) * 5, 6, 2), Color("ff7a1e"))
 		if b.lava_k < Battle.LAVA_MAX:
-			var ny: float = ly - b.lava_step()
+			var ny: float = ly - b.biome_rules.lava_step()
 			var x := x0
 			while x < b.cam_x + b.W + 8:
 				draw_rect(Rect2(x, ny, 10, 2), Color("ffd23a", 0.8))
@@ -2024,7 +2024,7 @@ func draw_trooper(u: Unit, pos: Vector2, white: bool) -> void:
 	var pinned: bool = u.loot.get("pinned", false)
 	var anim := "run" if u.walk != null else "idle"
 	Art.draw_char(self, "sq_rook_beret", anim, (b.t / 6) % 8 if anim == "run" else (b.t / 12 + u.id) % 4, pos, u.face, white, 0, 1.0, u.gun_angle, true, 1.0, Color(0.78, 1.0, 0.78))
-	var trs: Array = b.troopers()
+	var trs: Array = b.mid_events.troopers()
 	if pinned and trs.size() and trs[0] == u:
 		# one label over the pair, above the Jackals' name plates
 		var mid := pos + Vector2((trs[-1].x - u.x) / 2.0, 0)
