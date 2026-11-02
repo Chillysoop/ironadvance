@@ -807,6 +807,8 @@ func run() -> void:
 			await biomes2_test()
 		"variety":
 			await variety_test()
+		"boarkits":
+			await boarkits_test()
 		"events10":
 			await events10_test()
 		"pickups":
@@ -10512,3 +10514,61 @@ func variety_test() -> void:
 	await frames_wait(10)
 	check(Run.dial.all(func(id): return Run.dial_levels[id].has("garrison")), "every dial biome comes with its garrison")
 	await shot("variety_dial")
+
+
+func boarkits_test() -> void:
+	## V5: Iron Boar loadouts (run-variety page).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	var ks := {}
+	for i in 40:
+		Run.seed_val = 500 + i
+		ks[Run.make_level("jungle", 1).boar_kit] = true
+	check(ks.size() == Data.BOAR_KITS.size(), "40 runs see all %d Boar loadouts" % ks.size())
+	check(range(10).all(func(i): Run.seed_val = 600 + i; return Run.make_level("hive", 2).boar_kit == ""), "a Hive Ship level has no Boar loadout")
+	for kit in ["flame", "mortar", "carrier", "standard"]:
+		Run.new_run()
+		Run.first_run = false
+		Run.seed_val = 31
+		var lv := Run.make_level("desert", 1)
+		lv.boar_kit = kit
+		Run.level = lv
+		var b: Battle = main.start_battle(1, lv)
+		await until(func(): return b.state == "player" and not b.busy)
+		var bo: Unit = null
+		for u in b.units:
+			if u.type == "boss":
+				bo = u
+		for o in b.units:
+			if o.team == "enemy" and o != bo:
+				o.gone = true
+		var sq: Array = b.squad()
+		ground_unit(b, sq[0], bo.x - bo.w / 2.0 - 150, bo.y - 60)
+		for k in range(1, sq.size()):
+			ground_unit(b, sq[k], bo.x - 420 - k * 30, 0)
+		cam_on(b, bo.x - 200)
+		var hp0: int = sq[0].hp
+		var paras0 := b.units.filter(func(u): return u.para and not u.dead).size()
+		var fin := [false]
+		var go := func():
+			await b.vharr_ai.boss_act(bo)
+			fin[0] = true
+		go.call()
+		await until(func(): return fin[0], 3000)
+		await until(func(): return b.settled(), 600)
+		await shot("boar_" + kit)
+		match kit:
+			"flame":
+				check(sq[0].hp <= hp0 - Data.BOAR_FLAME_DMG and (sq[0].has_st("burn") or sq[0].hp <= 0), "a FLAME BOAR burns the soldier in front of it (%d -> %d)" % [hp0, sq[0].hp])
+			"carrier":
+				check(b.units.filter(func(u): return u.para and not u.dead).size() >= paras0 + 2, "a CARRIER BOAR calls paratroopers on its first turn")
+			_:
+				check(not bo.dead, "a %s BOAR takes its turn" % kit.to_upper())
+		if kit == "flame":
+			main.show_brief()
+			await frames_wait(6)
+			await shot("boar_brief")
+	main.show_title()
+	await frames_wait(5)

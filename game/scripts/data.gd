@@ -1621,6 +1621,16 @@ const GARRISONS := {
 }
 const GARRISON_SLOTS := ["grunt", "nade", "shield", "brute", "sapper", "jetter"]
 
+# V5: Iron Boar loadouts. Each quick-run level's Boar rolls one; the briefing says which.
+const BOAR_KITS := {
+	"standard": {"name": "IRON BOAR", "short": "SHELLS AND A CHAIN GUN"},
+	"flame": {"name": "FLAME BOAR", "short": "HOSES FIRE AT ANYONE CLOSE AND BURNS WOODEN COVER"},
+	"mortar": {"name": "MORTAR BOAR", "short": "EACH SHELL SPLITS INTO THREE SMALLER ONES"},
+	"carrier": {"name": "CARRIER BOAR", "short": "CALLS PARATROOPERS EVERY THIRD TURN"},
+}
+const BOAR_FLAME_RANGE := 200.0
+const BOAR_FLAME_DMG := 8
+
 const ENCOUNTERS := ["swarm", "nest", "droppods", "hunt", "outbreak", "gate"]
 const BIOME_ALIENS := {
 	"desert": ["skitter", "burrower", "squid", "warden"],
