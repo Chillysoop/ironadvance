@@ -908,6 +908,8 @@ func run() -> void:
 			await tcalls()
 		"xcalls":
 			await xcalls()
+		"runsave":
+			await runsave()
 		"qcalls":
 			await qcalls()
 		"polish1":
@@ -10163,3 +10165,40 @@ func clarity() -> void:
 	await frames_wait(5)
 	check(b.hud.water_rail.runs(b).size() >= 1, "an open lava pit is marked too")
 	await shot("clarity_lava_pit")
+
+
+func runsave() -> void:
+	## R4: a quick run saves at HQ, the title offers CONTINUE RUN, and loading it gives back the
+	## same squad, scrip and level; a finished run leaves nothing to continue.
+	Run.clear_run()
+	main.show_title()
+	await frames_wait(10)
+	check(main.screen.cont.is_empty(), "no saved run: the title has no CONTINUE RUN")
+	main.start_run()
+	await frames_wait(10)
+	check(FileAccess.file_exists(Run.RUN_PATH), "HQ saves the new run")
+	Run.scrip = 777
+	Run.history.append({"won": true, "score": 5})
+	Run.soldiers[0].xp = 33
+	var names: Array = Run.soldiers.map(func(x): return x.def.name)
+	main.show_hq(true)
+	await frames_wait(10)
+	var head := Run.run_head()
+	check(int(head.get("level", -1)) == 1, "the save says level 2 is next (got %s)" % head.get("level"))
+	Run.new_run()
+	Run.scrip = 1
+	main.show_title()
+	await frames_wait(20)
+	check(main.screen.cont.size() == 3 and "LEVEL 2" in str(main.screen.cont[2]), "title offers CONTINUE RUN at level 2: %s" % [main.screen.cont])
+	await shot("runsave_title")
+	main.continue_run()
+	await frames_wait(10)
+	check(Run.scrip == 777, "scrip comes back (%d)" % Run.scrip)
+	check(Run.history.size() == 1 and Run.mission == 1, "history and next level come back")
+	check(Run.soldiers.map(func(x): return x.def.name) == names, "same squad comes back")
+	check(int(Run.soldiers[0].xp) == 33, "soldier XP comes back")
+	check(not Run.campaign(), "continuing is a quick run, not a campaign")
+	Run.clear_run()
+	main.show_title()
+	await frames_wait(10)
+	check(main.screen.cont.is_empty(), "a finished run leaves nothing to continue")
