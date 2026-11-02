@@ -456,10 +456,12 @@ func use_belt(i: int) -> void:
 			var h := mini(d.n, u.max_hp - u.hp)
 			u.hp += h
 			float_text(u, "+%d HP" % h, Color("62d26f"), true)
+			Sfx.play("heal", -4)
 		"ration":
 			var h := mini(d.n, u.max_hp - u.hp)
 			u.hp += h
 			float_text(u, "+%d HP" % h, Color("62d26f"))
+			Sfx.play("heal", -4)
 			give_scrip(15, u.x, u.y - 50, "L436")
 		"smoke":
 			smokes.append({"x": u.x, "y": u.y - 24, "r": 64.0, "turns": 2, "seed": randf() * 10})
@@ -562,7 +564,7 @@ func open_crate(c: Unit, loud: bool) -> void:
 	c.dead = true
 	c.gone = true
 	debris(c.x, c.y - 6, 3)
-	Sfx.play("thud" if c.kind == "strongbox" else "bonk")
+	Sfx.play("crate")
 	if c.kind == "strongbox":
 		var p := crate_payload(1)
 		if loud:
@@ -1173,6 +1175,7 @@ func mount(u: Unit, type: String, hp := -1, own := false) -> void:
 	if u.mech != null:
 		return
 	var V: Dictionary = Data.VEHICLES[type]
+	Sfx.play("engine", -4)
 	var mx := mech_max(u, type, own)
 	u.mech = {"type": type, "hp": mx if hp < 0 else mini(hp, mx), "max": mx, "own": own, "h0": u.h, "w0": u.w}
 	u.h += V.seat
@@ -1327,6 +1330,7 @@ func field_refit(u: Unit, heal: int) -> void:
 	for s in squad_alive():
 		s.hp = mini(s.max_hp, s.hp + heal)
 		float_text(s, "+%d HP" % heal, Color("62d26f"), true)
+		Sfx.play("heal", -4)
 	Sfx.play("coin")
 
 func vehicles_new_turn() -> void:
@@ -1486,7 +1490,7 @@ func flamer_act(e: Unit) -> void:
 		return
 	e.face = 1 if tg.x >= e.x else -1
 	e.pose = "recoil"; e.pose_t = 30
-	Sfx.play("rocket")
+	Sfx.play("flame")
 	for f in 18:
 		for k in 3:
 			part({"x": e.x + e.face * 14, "y": e.y - 18, "vx": e.face * randf_range(4, 7), "vy": randf_range(-1.2, 1.2), "life": 18, "max": 18, "c": pick([Color("ffb23e"), Color("ff7a3d"), Color("ffe36a")]), "s": 3.0, "g": -0.03, "fire": true})
@@ -1971,7 +1975,7 @@ func tesla_arc(u: Unit, c: Dictionary) -> void:
 			break
 		hit.append(best)
 		var to := Vector2(best.x, best.y - best.h / 2.0)
-		Sfx.play("ping")
+		Sfx.play("zap")
 		for f in 4:
 			lightning(from, to)
 			await wait(1)
@@ -2668,6 +2672,7 @@ func lava_step() -> float:
 
 func lava_eat() -> void:
 	## The lava burns away wood, ice and rubber below its line, and scorches everything else.
+	Sfx.play("sizzle", -6)
 	var r0 := int(ceil(lava_y() / CELL))
 	for cy in range(r0, Terrain.WATER_ROW):
 		for cx in T.cols:
@@ -3008,7 +3013,7 @@ func crumble_round() -> void:
 	T.check_floating(x1 + 20, 300, 260, null)
 	T.check_bridges(null)
 	shake += 6
-	Sfx.play("bigboom")
+	Sfx.play("collapse")
 	for u in units:
 		if not u.dead and not u.gone and u.x >= x0 - 8 and u.x < x1 + 4:
 			u.air = true
@@ -3380,6 +3385,7 @@ func debris(x: float, y: float, m: int, slow := false) -> void:
 		part({"x": x, "y": y, "vx": (randf() - .5) * 6, "vy": -randf() * 6 - 1, "life": 60, "max": 60, "c": c, "s": 3.0, "g": 0.25})
 
 func fireball(x: float, y: float, r: float, burn := false) -> void:
+	Sfx.play("flame", -4)
 	# V1: the Sprite Fusion pixel blast (vfx/sf_explosion.gd). The boom entry stays so the critters
 	# scatter and the effects layer still sees it, but the old sprite, embers and ring are not drawn.
 	fx.append({"kind": "boom", "x": x, "y": y, "t": 0, "dur": 42, "sc": clampf(r / 24.0, 0.7, 3.2), "sf": true})
@@ -3855,7 +3861,7 @@ func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: boo
 	for p in tr.pings:
 		sparks(p.x, p.y, 4)
 	if tr.pings.size():
-		Sfx.play("ping")
+		Sfx.play("ricochet")
 	var foes := 0
 	for hh in tr.hits:
 		var tg: Unit = hh.u
@@ -3921,7 +3927,7 @@ func fire_bullet(a: Unit, x: float, y: float, ang: float, c: Dictionary, sc: boo
 			tg.fl.deflect -= 1
 			tracer(hh.x, hh.y, a.x, a.y - a.h / 2.0, Color("e0f4ff"))
 			float_text(tg, "DEFLECTED", Color("e0f4ff"), true)
-			Sfx.play("ping")
+			Sfx.play("ricochet")
 			damage(a, d * (2 if tg.perk("returnfire") else 1), tg)
 			continue
 		last_hit_head = hh.head
@@ -4527,7 +4533,7 @@ func kill(tg: Unit, src) -> void:
 		score += base * mult
 		float_text(tg, ("x%d " % mult if mult > 1 else "") + "+%d" % (base * mult), Color("ffb23e"), true)
 		float_at(tg.x, tg.y - tg.h - 34, pick(Data.SCREAMS), Color("ffe9c0"))
-		Sfx.play("scream", -6)
+		Sfx.play("alien_die" if faction(tg) == "vharr" else "scream", -6)
 		if src is Unit and src.team == "enemy" and src != tg and at_war(src, tg):
 			# F2 TURNCOAT: one faction killed the other. Whoever set it up gets the kill's XP, or the squad shares it.
 			var setter = null
@@ -4657,6 +4663,7 @@ func kill(tg: Unit, src) -> void:
 		stats.downs += 1
 		var cause := who_did(tg, src)
 		stats["last_down"] = "%s, BY %s" % [tg.def.name.to_upper(), cause]
+		stats["down_log"] = stats.get("down_log", []) + ["%s: %s, round %d" % [tg.def.name.to_upper(), cause, round_n]]  # H3: the playtest diary
 		banner("%s DOWN" % tg.def.name.to_upper(), Color("ffb23e"), cause)  # X2: say what did it
 		if state == "player" or state == "enemy":
 			regroup = true  # X7: the line waits one round before the stall clock counts again
@@ -4673,6 +4680,7 @@ func kill(tg: Unit, src) -> void:
 			float_text(tg, "KIA", Color("ff4d3d"), true)
 			log_msg("%s is killed in action (%s). No dog tags left." % [tg.def.name, cause.to_lower()])
 		Sfx.play("bad")
+		Sfx.play("death", -2)
 		for s in squad_alive():
 			gain_adr(s, 25)
 		if sel == tg:
@@ -5854,7 +5862,7 @@ func _act_arc(u: Unit, idx: int, c: Dictionary, p: Vector2, sc: bool) -> void:
 func _act_grapple(u: Unit, idx: int, gs: Dictionary) -> void:
 	spend_card(u, idx)
 	u.face = 1 if gs.x >= u.x else -1
-	Sfx.play("toss")
+	Sfx.play("grapple")
 	ropes.append({"u": u, "x": gs.ax, "y": gs.ay, "t": 30})
 	u.zip = {"x0": u.x, "y0": u.y, "x1": gs.x, "y1": gs.y, "t": 0.0}
 	await until(func(): return u.zip == null)
@@ -6178,6 +6186,7 @@ func _act_rush(u: Unit, idx: int, p: Vector2) -> void:
 			s.hp = mini(s.max_hp, s.hp + c.squadheal)
 			gain_adr(s, 25)
 			float_text(s, "+%d HP" % c.squadheal, Color("62d26f"))
+			Sfx.play("heal", -4)
 	var v := rush_vel(u, p)
 	if c.get("cannon", false):
 		v.vx *= 1.35
@@ -6292,6 +6301,7 @@ func _act_melee(u: Unit, idx: int, c: Dictionary, tg: Unit, sc: bool) -> void:
 	if c.has("selfheal"):
 		u.hp = mini(u.max_hp, u.hp + c.selfheal)
 		float_text(u, "+%d HP" % c.selfheal, Color("62d26f"))
+		Sfx.play("heal", -4)
 	await wait(16)
 
 func heal_amount(u: Unit, c: Dictionary) -> int:
@@ -6349,6 +6359,7 @@ func _act_ally(u: Unit, idx: int, c: Dictionary, tg: Unit) -> void:
 				if o2.team == "enemy" and not o2.dead and absf(o2.x - tg.x) < 90 and absf(o2.y - tg.y) < 60:
 					add_status(o2, "toxic", 2, u)
 		float_text(tg, "+%d HP" % h, Color("62d26f"), true)
+		Sfx.play("heal", -4)
 		Sfx.play("coin")
 		give_xp(u, maxi(1, (tg.hp - before) / 3))
 		if u.perk("pumpup"):
@@ -6417,6 +6428,7 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 				s.hp = mini(s.max_hp, s.hp + c.triage)
 				s.st = {}
 				float_text(s, "+%d HP" % c.triage, Color("62d26f"), true)
+				Sfx.play("heal", -4)
 	if c.get("immovable", false):
 		u.immovable = true
 		u.heavy = true
@@ -6523,6 +6535,7 @@ func _act_self(u: Unit, idx: int, c: Dictionary) -> void:
 			s.hp = mini(s.max_hp, s.hp + c.meddog)
 			s.energy += 1
 			float_text(s, "+%d HP" % c.meddog, Color("62d26f"), true)
+			Sfx.play("heal", -4)
 	if c.has("hmark"):
 		for s in squad_alive():
 			if s.def.key == "moss":
@@ -7762,6 +7775,7 @@ func post_action() -> void:
 				for s in squad_alive():
 					s.hp = mini(s.max_hp, s.hp + rh)
 					float_text(s, "+%d HP" % rh, Color("62d26f"))
+					Sfx.play("heal", -4)
 			await wait(60)
 			await supply_drop("Supply drop", null)
 			var nx: float = rest.map(func(e): return e.x).min()
@@ -8139,7 +8153,7 @@ func vharr_blink(u: Unit, reach: float) -> void:
 		var ny = T.stand_y(nx, e.y - 40)
 		if ny == null or nx < cam_x + 10 or nx > cam_x + W - 10:
 			continue
-		Sfx.play("power")
+		Sfx.play("warp")
 		if vfx != null:
 			await teleport(u, Vector2(nx, ny), -side)
 		else:
@@ -8231,6 +8245,7 @@ func consume_od(u: Unit) -> void:
 	u.adr = 0
 
 func draw_cards(u: Unit, n: int) -> void:
+	Sfx.play("draw", -12)
 	for i in n:
 		if u.draw.is_empty():
 			u.draw = u.disc
@@ -8252,6 +8267,8 @@ func hand_size(s: Unit) -> int:
 	return maxi(2, 4 + s.s.bonus.hand + (1 if s.perk("fieldkit") else 0) + (1 if Run.implanted(s.s, "thirdarm") else 0) + relay_hand - (1 if Run.threat_on(3) else 0) + (1 if Run.has_gear("ammodrone") else 0) + (1 if round_n == 1 and Run.relic_tier("ammodrone") >= 3 else 0))
 
 func start_player_turn() -> void:
+	Sfx.play("turn", -8)
+	Music.boss_check(self)
 	troopers_follow()
 	free_varga()
 	round_n += 1
@@ -8290,6 +8307,7 @@ func start_player_turn() -> void:
 			var rg := mini(int(s.g("regen")), s.max_hp - s.hp)
 			s.hp += rg
 			float_text(s, "+%d HP" % rg, Color("62d26f"))
+			Sfx.play("heal", -4)
 		s.overwatch = 0
 		s.dragged = false
 		if s.fuel_max > 0 and not s.air:
@@ -8473,6 +8491,7 @@ func grant_bonus(p: Unit, u: Unit) -> void:
 		var hl := mini(15, u.max_hp - u.hp)
 		u.hp += hl
 		float_text(u, "+%d HP" % hl, Color("62d26f"))
+		Sfx.play("heal", -4)
 	elif transform_bonus(k, u):
 		pass
 	elif k == "nadekit":
@@ -9565,7 +9584,7 @@ func fire_beam(e: Unit, ang: float) -> void:
 		print("[beam] from ", e.center(), " to ", bp.end, " hits ", bp.hits.map(func(h): return h.team + ":" + h.type))
 	var o := e.center()
 	e.face = 1 if cos(ang) >= 0 else -1
-	Sfx.play("snipe")
+	Sfx.play("laser")
 	e.muzzle = 4
 	e.muzzle_kind = "beam"
 	if vfx != null:
@@ -9666,7 +9685,7 @@ func rune_spot(e: Unit, tg: Unit):
 	return null
 
 func blink(e: Unit, r: Vector2) -> void:
-	Sfx.play("power")
+	Sfx.play("warp")
 	e.face = 1 if r.x >= e.x else -1
 	if vfx != null:
 		await teleport(e, r, e.face)
@@ -10124,6 +10143,7 @@ func tick_acids() -> void:
 	acids = acids.filter(func(a): return a.turns > 0)
 
 func spawn_skitter(x: float, y: float) -> Unit:
+	Sfx.play("chitter", -6)
 	var sy = T.stand_y(x, y - 40)
 	var k := mk_enemy("skitter", x, sy if sy != null else y)
 	k.active = true
@@ -11067,6 +11087,7 @@ func physics(u: Unit) -> void:
 
 func drown(u: Unit) -> void:
 	## Worms rules: anything that ends up in the water goes under for good.
+	Sfx.play("bubble")
 	if u.team == "squad" and not u.dead and u.s.get("trait", "") == "lifeguard" and lifeguard_swim(u):
 		return
 	splash(u.x)
@@ -11122,7 +11143,7 @@ var mine_by := {}   # unit id -> who last sent it flying, kept past the landing 
 func prime_mine(m: Unit, owner, delay: int) -> void:
 	m.primed = true
 	m.flash = 40
-	Sfx.play("tick")
+	Sfx.play("beep")
 	booms.append({"t": delay, "x": m.x, "y": m.y - 3, "r": 38.0, "dmg": 15, "owner": owner, "barrel": m})
 
 func mine_under(u: Unit, x: float, y: float, pad: float = 0.0):

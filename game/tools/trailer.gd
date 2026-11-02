@@ -39,6 +39,11 @@ func run(runner: Node, clip: String) -> void:
 	main = runner.main
 	Run.new_run()
 	cine = clip not in ["title", "gate"]
+	# the trailer lays its own soundtrack over the cut; record only SFX and ambience
+	var mb := AudioServer.get_bus_index("Music")
+	if mb >= 0:
+		AudioServer.set_bus_mute(mb, true)
+	print("[trailer] music bus muted ", mb)
 	match clip:
 		"title":
 			main.show_title()
@@ -274,7 +279,7 @@ const V2 := {
 	"steelrain": "v_steelrain", "gasfire": "v_gasfire", "cluster": "v_cluster", "rush": "v_rush",
 	"tesla": "v_tesla", "zantetsu": "v_zantetsu", "napalm": "v_napalm", "collapse": "v_collapse",
 	"haymaker": "v_haymaker", "tank": "v_tank", "queen": "v_queen", "shotgun": "v_shotgun",
-	"levelup": "v_levelup", "meta": "v_meta", "played": "v_played",
+	"levelup": "v_levelup", "meta": "v_meta", "played": "v_played", "modes": "v_modes",
 }
 
 func squad_battle(draft: Array, biome := "", tier := 0) -> Battle:
@@ -738,10 +743,44 @@ func v_levelup() -> void:
 	frame_on(b, m.x + 200)
 	main.hud.visible = true
 	mark("levelup", m)
+	m.s.lvl += 1  # the card reads LEVEL 2, like a real one
 	b.level_up(m)
 	await t.frames_wait(150)
 	b.hud.picked.emit(0)
 	await t.frames_wait(30)
+
+func v_modes() -> void:
+	## The three ways to play, one look each: the campaign's War Room, a quick run's gate dial, the daily op brief.
+	var slot: int = Data.CAMP_SLOTS - 1
+	Run.delete_campaign(slot)
+	Run.new_campaign(slot)
+	for i in 3:  # a war under way: three sectors taken, each next to the last
+		for sc in Run.act().sectors:
+			if sc.id != "boss" and Run.sector_open(sc) and not Run.camp.held.has(Run.sec_key(sc.id)):
+				Run.camp.held.append(Run.sec_key(sc.id))
+				break
+	main.show_war_room()
+	await t.frames_wait(20)
+	mark("campaign")
+	await t.frames_wait(90)
+	main.clear()
+	await t.frames_wait(2)  # let the War Room go before the campaign it draws is put away
+	Run.leave_campaign()
+	Run.delete_campaign(slot)
+	Run.new_run()
+	Run.dial = []
+	main.dial_gate()
+	await t.frames_wait(20)
+	mark("quickrun")
+	await t.frames_wait(90)
+	Run.start_daily()
+	Run.roll_dial()
+	Run.pick_biome(Run.dial[0])
+	main.show_brief()
+	await t.frames_wait(20)
+	mark("daily")
+	await t.frames_wait(90)
+	Run.daily = ""
 
 func v_meta() -> void:
 	## A flash of the HQ: hub, Quartermaster, Workshop, Dossier, War Room.
@@ -833,4 +872,33 @@ func v_played() -> void:
 	t.bot_hold = 36
 	t.bot_hook = deal
 	mark("start")
+	watch()
 	await t.bot(tier, int(arg("rounds", "6")), false, custom)
+	watching = false
+
+var watching := false
+
+func watch() -> void:
+	## Marks the beats a cut wants in a played mission: kill combos, level ups, someone climbing into a vehicle.
+	watching = true
+	var combo := 0
+	var lvls := {}
+	var rides := {}
+	while watching:
+		await t.get_tree().process_frame
+		var b = t.cur_b
+		if b == null or not is_instance_valid(b):
+			continue
+		b_now = b
+		if b.combo > combo and b.combo >= 2:
+			mark("combo%d" % b.combo)
+		combo = b.combo
+		for u in b.squad_alive():
+			var id: int = u.get_instance_id()
+			if lvls.has(id) and u.s.lvl > lvls[id]:
+				mark("lvl", u)
+			lvls[id] = u.s.lvl
+			var on: bool = u.mech != null
+			if on and not rides.get(id, true):
+				mark("ride", u)
+			rides[id] = on
