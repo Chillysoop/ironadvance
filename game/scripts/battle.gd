@@ -215,6 +215,11 @@ func setup(idx: int, custom := {}) -> void:
 			pincer = {"on": true, "view": "a", "a_cam": 0.0, "b_cam": float(world_w - W)}
 	var pi := randi() % Data.POW_NAMES.size()
 	var foot := 0  # plain rifleman and bomber slots seen so far (cast_foot)
+	var gar: Dictionary = Run.garrison_of(mission)
+	var gar_rate: float = 0.0 if tutorial() or in_lesson() else float(gar.rate)
+	var gar_rng := RandomNumberGenerator.new()
+	gar_rng.seed = int(mission.get("remix", 0)) + 7
+
 	var walled := false
 	for sp in T.spawns:
 		var type: String = sp[0]
@@ -279,6 +284,12 @@ func setup(idx: int, custom := {}) -> void:
 		elif rules.get("aliens", false) and type != "boss" and Data.ETYPES[type].get("faction", "jackal") != "vharr":
 			type = cast_foot(foot)  # M6: nothing but Vharr in the Hive
 			foot += 1
+		if gar_rate > 0.0 and type in Data.GARRISON_SLOTS and not opt.has("tut") and gar_rng.randf() < gar_rate:
+			# V2: the level's garrison refills some Jackal slots; up on a tower only its "high" types fit
+			var high := opt.has("hold") or opt.has("top") or opt.has("inside") or opt.has("up")
+			var gp: Array = gar.get("high", []) if high else gar.pool
+			if gp.size():
+				type = gp[gar_rng.randi() % gp.size()]
 		if type == "boss" and mission.get("boss", "") == "hiveship":
 			type = "hiveship"
 		var E: Dictionary = Data.ETYPES[type]
