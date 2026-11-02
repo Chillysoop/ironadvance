@@ -813,6 +813,8 @@ func run() -> void:
 			await orders_test()
 		"rares":
 			await rares_test()
+		"fork":
+			await fork_test()
 		"events10":
 			await events10_test()
 		"pickups":
@@ -4656,6 +4658,9 @@ func gate() -> void:
 	check(main.screen.get("mode") == "dial" and Run.mission == 0, "the first dial offers level 1's biomes")
 	press_first()
 	await frames_wait(10)
+	if main.screen.get("mode") == "route":
+		press_first()  # V4: a fork in the road comes first when the level has one
+		await frames_wait(10)
 	check(main.screen.get("mode") == "brief", "picking a biome goes to the briefing")
 	press_first()
 	await frames_wait(5)
@@ -4711,6 +4716,9 @@ func gate() -> void:
 	check(main.screen.get("mode") == "dial" and Run.dial.size() == 2, "after a mission the gate dials two biomes")
 	press_first()
 	await frames_wait(20)
+	if main.screen.get("mode") == "route":
+		press_first()  # V4
+		await frames_wait(20)
 	check(main.screen.get("mode") == "brief" and Run.mission == 1, "picking a biome briefs level 2")
 
 func detour_battle(id: String) -> Battle:
@@ -10693,5 +10701,72 @@ func rares_test() -> void:
 			main.show_brief()
 			await frames_wait(6)
 			await shot("rare_brief")
+	main.show_title()
+	await frames_wait(5)
+
+
+func fork_test() -> void:
+	## V4: fork in the road (run-variety page).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	var forks := 0
+	var roads := {}
+	for i in 40:
+		Run.seed_val = 8000 + i
+		var lv := Run.make_level("desert", 1)
+		if lv.fork.size() == 2:
+			forks += 1
+			if i < 3:
+				check(lv.fork[0].seg != lv.fork[1].seg and lv.fork[0].road != lv.fork[1].road and lv.segments[4] == lv.fork[0].seg, "fork %d: two different roads through two different segments" % i)
+			roads[lv.fork[0].road] = true
+			roads[lv.fork[1].road] = true
+	check(forks == 40, "a desert level always has a fork (%d of 40)" % forks)
+	check(roads.size() == Data.ROADS.size(), "all %d roads turn up" % roads.size())
+	# picking a road swaps the second stretch in and goes on to the briefing
+	main.show_title()
+	await frames_wait(5)
+	start_run_hq()
+	await frames_wait(20)
+	Run.dial = ["desert", "jungle"]
+	Run.dial_breach = {}
+	Run.dial_levels = {"desert": Run.make_level("desert", 0), "jungle": Run.make_level("jungle", 0)}
+	main.dial_gate()
+	await frames_wait(10)
+	press_first()
+	await frames_wait(10)
+	check(main.screen.get("mode") == "route", "dialing a biome with a fork opens the road choice")
+	await shot("fork_route")
+	var other: Dictionary = Run.level.fork[1]
+	main.screen.get_children().filter(func(c): return c.has_signal("pressed"))[1].pressed.emit()
+	await frames_wait(10)
+	check(main.screen.get("mode") == "brief" and Run.level.segments[4] == other.seg and Run.level.road == other.road and Run.level.fork.is_empty(), "the second road swaps in %s with %s" % [other.seg, other.road])
+	# each road's extra in the field
+	for id in ["supply", "prison", "scrap", "quiet"]:
+		Run.new_run()
+		Run.first_run = false
+		Run.seed_val = 8100
+		var lv := Run.make_level("desert", 1)
+		lv.rare = ""
+		Run.level = lv
+		lv.road = ""
+		seed(4321)  # the same map loot both times, so only the road differs
+		var b0: Battle = main.start_battle(1, lv)
+		await until(func(): return b0.state == "player" and not b0.busy)
+		var st: Array = b0.T.stretches[1]
+		var count := func(bb: Battle, kind: String): return bb.units.filter(func(u): return u.kind == kind and not u.gone and u.x >= st[0] and u.x <= st[1]).size()
+		var foes := func(bb: Battle): return bb.units.filter(func(u): return u.team == "enemy" and not u.gone and not bb.is_boss(u) and u.x >= st[0] and u.x <= st[1]).size()
+		var before := {"crate": count.call(b0, "crate"), "pow": count.call(b0, "pow"), "wreck": count.call(b0, "wreck"), "foes": foes.call(b0)}
+		lv.road = id
+		seed(4321)
+		var b: Battle = main.start_battle(1, lv)
+		await until(func(): return b.state == "player" and not b.busy)
+		match id:
+			"supply": check(count.call(b, "crate") >= before.crate + 2, "SUPPLY ROAD has extra crates (%d -> %d)" % [before.crate, count.call(b, "crate")])
+			"prison": check(count.call(b, "pow") == before.pow + 1, "PRISON ROAD has an extra prisoner")
+			"scrap": check(count.call(b, "wreck") == before.wreck + 2, "SCRAP ROAD has two wrecks")
+			"quiet": check(foes.call(b) <= before.foes - 1, "BACK ROAD has fewer Jackals (%d -> %d)" % [before.foes, foes.call(b)])
 	main.show_title()
 	await frames_wait(5)

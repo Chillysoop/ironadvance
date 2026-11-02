@@ -381,10 +381,25 @@ func dial_gate() -> void:
 	s.mode = "dial"
 	for b in Run.dial:
 		var id: String = b
-		s.buttons.append([Data.BIOMES[id].name, func(): Sfx.play("start"); Run.pick_biome(id); show_brief()])
+		s.buttons.append([Data.BIOMES[id].name, func(): Sfx.play("start"); Run.pick_biome(id); show_route()])
 	s.buttons.append(["<< BACK TO HQ", func(): show_hq(false)])
 	if (Run.hq("gate") >= 2 or Run.run_order == "widedial") and not Run.dial_rerolled:
 		s.buttons.append(["REROLL THE DIAL", func(): Sfx.play("click"); Run.reroll_dial(); dial_gate()])
+	open(s)
+
+func show_route() -> void:
+	## V4: two roads for the level's second stretch, or straight to the briefing when there's no fork.
+	var f: Array = Run.level.get("fork", [])
+	if f.size() < 2:
+		show_brief()
+		return
+	clear()
+	Music.play("hq")
+	var s := Screen.new()
+	s.mode = "route"
+	for i in f.size():
+		var k: int = i
+		s.buttons.append([Data.ROADS[f[i].road].name, func(): Sfx.play("start"); Run.pick_road(k); show_brief()])
 	open(s)
 
 func show_brief() -> void:
@@ -679,6 +694,11 @@ class Screen extends Control:
 				bt.color = buttons[i][3]
 			bt.size = Vector2(widths[i], 40)
 			bt.position = Vector2(x, 470)
+			if mode == "route":  # one button under each road card
+				var rc := route_card(i)
+				bt.size = Vector2(minf(250, rc.size.x - 30), 40)
+				bt.position = Vector2(rc.position.x + (rc.size.x - bt.size.x) / 2, 470)
+				bt.color = Color("ff4d3d")
 			if mode == "orders":  # one button under each order card
 				var oc := order_card(i)
 				bt.size = Vector2(minf(250, oc.size.x - 30), 40)
@@ -741,6 +761,7 @@ class Screen extends Control:
 			"won", "final", "lost", "outpost_lost", "op_won", "op_lost": draw_result()
 			"dial": draw_dial()
 			"orders": draw_orders()
+			"route": draw_route()
 			"hospital":
 				Art.text(self, "FIELD HOSPITAL", Vector2(480, 110), 32, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 				Art.text(self, "Everyone is patched up and gets one dog tag back. The dead stay dead.", Vector2(480, 150), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
@@ -971,6 +992,31 @@ class Screen extends Control:
 				Art.text(self, "+%d$" % bt.pay, Vector2(932, y), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
 				Art.text(self, bt.text, Vector2(686, y + 15), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 				y += 36
+	func route_card(i: int) -> Rect2:
+		return Rect2(110 + i * 390, 150, 350, 260)
+	func draw_route() -> void:
+		## V4: the fork in the road.
+		var m: Dictionary = Run.level
+		Art.text(self, "FORK IN THE ROAD", Vector2(480, 58), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+		Art.text(self, "%s: past the camp the road splits. Pick the way the squad goes." % m.get("name", ""), Vector2(480, 96), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		var f: Array = m.get("fork", [])
+		for i in f.size():
+			var cr := route_card(i)
+			var cx := cr.position.x + cr.size.x / 2
+			draw_rect(cr, Color(0.06, 0.05, 0.04, 0.9))
+			draw_rect(cr, Color("ffb23e"), false, 2)
+			Art.text(self, Data.ROADS[f[i].road].name, Vector2(cx, cr.position.y + 40), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+			draw_rect(Rect2(cr.position.x + 24, cr.position.y + 58, cr.size.x - 48, 2), Color("ffb23e"))
+			Art.text(self, "THROUGH " + str(Data.SEGMENT_NAMES.get(f[i].seg, "the " + str(f[i].seg))).to_upper(), Vector2(cx, cr.position.y + 86), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			var feats: Array = Run.seg_features(f[i].seg)
+			var y := cr.position.y + 112
+			for line in CardView.wrap_text(Run.road_text(f[i].road), cr.size.x - 40, 16):
+				Art.text(self, line, Vector2(cx, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+				y += 20
+			y += 10
+			for line in CardView.wrap_text(", ".join(feats), cr.size.x - 40, 16):
+				Art.text(self, line, Vector2(cx, y), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+				y += 18
 	func order_card(i: int) -> Rect2:
 		var n := maxi(1, Run.run_order_offer.size())
 		var cw := 280.0

@@ -62,6 +62,37 @@ func open_spot(st: Array) -> Array:
 				return [x, gy]
 	return []
 
+func setup_road() -> void:
+	## V4: the extra on the road the squad took, in the second fighting stretch.
+	var id: String = bt.mission.get("road", "")
+	if id == "" or bt.T.stretches.size() < 2 or bt.tutorial() or bt.in_lesson():
+		return
+	var st: Array = bt.T.stretches[1]
+	match id:
+		"supply", "scrap", "prison":
+			var n: int = {"supply": 3, "scrap": 2, "prison": 1}[id]
+			for i in n:
+				var x: float = lerpf(st[0], st[1], (i + 0.5) / n) + 20.0
+				var sp := open_spot([x - 60.0, x + 60.0])
+				if sp.is_empty():
+					continue
+				var u := bt.mk_unit(); u.team = "neutral"; u.x = sp[0]; u.y = sp[1]
+				match id:
+					"supply":
+						u.kind = "crate"; u.w = 16; u.h = 14; u.hp = 1; u.max_hp = 1
+					"scrap":
+						u.kind = "wreck"; u.w = 40; u.h = 18
+					"prison":
+						u.kind = "pow"; u.face = -1
+						u.pow_name = Data.POW_NAMES[randi() % Data.POW_NAMES.size()]
+						bt.stats.pows_total += 1
+				bt.units.append(u)
+		"quiet":
+			# two of the stretch's Jackals stayed home
+			var foes: Array = bt.units.filter(func(e): return e.team == "enemy" and not bt.is_boss(e) and e.x >= st[0] and e.x <= st[1] and bt.faction(e) == "jackal")
+			for k in mini(2, foes.size()):
+				foes[foes.size() - 1 - k].gone = true
+
 func setup_rare() -> void:
 	## V11: the level's rare encounter, in the second fighting stretch (or the first if there is one).
 	var id: String = bt.mission.get("rare", "")
