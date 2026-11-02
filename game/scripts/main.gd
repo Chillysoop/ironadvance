@@ -686,8 +686,6 @@ class Screen extends Control:
 			cb3.position = Vector2(16, 514)
 			cb3.pressed.connect(corner3[1])
 			add_child(cb3)
-		elif mode != "title" and mode != "dial" and corner2.is_empty():
-			add_child(load("res://scripts/hud.gd").menu_button(Vector2(830, 18)))
 		var n := buttons.size()
 		var widths: Array = []
 		var total := 0.0
@@ -732,6 +730,9 @@ class Screen extends Control:
 			x += widths[i] + 10
 			bt.pressed.connect(buttons[i][1])
 			add_child(bt)
+		if mode != "title" and mode != "dial" and corner2.is_empty():
+			# the game menu, added last so the screen's own buttons come first
+			add_child(load("res://scripts/hud.gd").menu_button(Vector2(830, 18)))
 		if mode == "title":
 			Sfx.play("start")
 	var held := {}  # textures must stay referenced until the frame renders
