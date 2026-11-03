@@ -11294,8 +11294,11 @@ func guide_act(b: Battle) -> String:
 		if tg.get("label", "") == "PICK A CARD" or tg.get("hand", false):
 			k = "hand"
 		if tg.get("btn", "") == "end":
+			# wait for the NEXT player turn: right after end_turn the state can still read "player",
+			# and a second END TURN then spent the lesson's next turn too (flaky lesson 3)
+			var r0: int = b.round_n
 			b.end_turn(true)
-			await until(func(): return gone(b) or (b.state == "player" and not b.busy), 900)
+			await until(func(): return gone(b) or (b.round_n > r0 and b.state == "player" and not b.busy), 900)
 			return "end turn"
 		if tg.get("btn", "") == "jet":
 			b.toggle_jet()
@@ -11318,8 +11321,9 @@ func guide_act(b: Battle) -> String:
 				if b.sel != u:
 					return "next soldier"
 			guide_hops = 0
+			var r1: int = b.round_n
 			b.end_turn(true)
-			await until(func(): return gone(b) or (b.state == "player" and not b.busy), 1500)
+			await until(func(): return gone(b) or (b.round_n > r1 and b.state == "player" and not b.busy), 1500)
 			return "end turn (nothing to shoot)"
 		# a card: click it
 		for i in hud_cards().size():

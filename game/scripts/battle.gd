@@ -4606,6 +4606,7 @@ func start_player_turn() -> void:
 	ui_dirty = true
 	if in_lesson():
 		boot_camp.lesson_hand()
+		boot_camp.guide_update()  # the step moves on with the turn, not up to 5 ticks later (END TURN stayed lit)
 	var autoload := units.any(func(o): return o.kind == "sentry" and not o.dead and o.loot.by is Unit and o.loot.by.perk("autoloader"))
 	resolve(func():
 		await spec_kits.dogs_new_turn()
