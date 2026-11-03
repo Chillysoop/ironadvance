@@ -532,15 +532,17 @@ func daily_squad(key: String) -> Array:
 
 const RUN_PATH := "user://run.save"
 
-func save_run() -> void:
+func save_run(resume := "") -> void:
 	## R4: the quick run (or today's Daily Op) as it stands at HQ, so CONTINUE RUN on the title
 	## can pick it up after the game is closed. Quitting mid-level comes back to HQ before that level.
+	## resume: the screen CONTINUE RUN opens instead of HQ ("orders", "route" or "brief"), for a save
+	## made after the run order or the level was picked but before it was played.
 	if campaign() or soldiers.is_empty():
 		return
 	var data := snapshot()
 	for k in ["meta", "run_base", "camp", "roster"]:
 		data.erase(k)
-	var head := {"level": mini(history.size(), Data.LEVELS.size()), "daily": daily,
+	var head := {"level": mini(history.size(), Data.LEVELS.size()), "daily": daily, "resume": resume,
 		"names": soldiers.filter(func(s): return s.alive).map(func(s): return s.def.name)}
 	var f := FileAccess.open(RUN_PATH, FileAccess.WRITE)
 	if f != null:

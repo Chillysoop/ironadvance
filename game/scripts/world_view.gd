@@ -1878,7 +1878,10 @@ func draw_hover(cv: CanvasItem) -> void:
 	elif h.kind == "crate":
 		lines = ["SUPPLY CRATE", "Shoot it or blast it open. The loot pops out:", "careful, it can roll into a pit."]
 	elif h.kind == "wreck":
-		lines = ["WRECK" + (" (STRIPPED)" if h.stripped else ""), "Walk over it to strip it: +%d Salvage for HQ." % Data.WRECK_SALVAGE]
+		if h.loot is Dictionary and h.loot.get("rare", false):
+			lines = ["CRASHED SCOUT SHIP" + (" (STRIPPED)" if h.stripped else ""), "Walk over it to strip it: +%d Salvage and +%d Bio-parts." % [Data.RARE_WRECK_SALVAGE, Data.RARE_WRECK_BIO]]
+		else:
+			lines = ["WRECK" + (" (STRIPPED)" if h.stripped else ""), "Walk over it to strip it: +%d Salvage for HQ." % Data.WRECK_SALVAGE]
 	elif h.kind == "strongbox":
 		lines = ["JACKAL STRONGBOX", "Pry it open with a MELEE card: quiet.", "Blast it: free, but ALERT +1 and it may damage the loot."]
 	elif h.kind == "loot":
