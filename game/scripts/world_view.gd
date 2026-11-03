@@ -1670,7 +1670,7 @@ func draw_targeting() -> void:
 				var end := b.cast_ray(hp_.x, hp_.y, a, 900)
 				draw_dashed_line(hp_, Vector2(end.x, end.y), Color(1, 0.48, 0.24, 0.9), 2.0, 8.0)
 				if end.hit:
-					var R: float = c.radius * (1.2 if sc else 1.0) * b.blast_scale(u)
+					var R: float = c.radius * (1.2 if sc else 1.0) * b.blast_scale(u) * b.blast_grow(u, end.x, end.y)
 					draw_arc(Vector2(end.x, end.y), R, 0, TAU, 32, Color("ff7a3d"), 2.0)
 					var al := b.squad_alive().filter(func(s): return Vector2(s.x - end.x, s.y - s.h / 2.0 - end.y).length() < R + s.w / 2.0)
 					if al.size():

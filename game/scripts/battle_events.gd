@@ -254,6 +254,13 @@ func crumble_round() -> void:
 				if (cx + cy) % 9 == 0:
 					bt.debris(cx * bt.CELL + 2, cy * bt.CELL + 2, bt.T.grid[cy * bt.T.cols + cx], true)
 				bt.T.set_cell(cx, cy, 0)
+	# the line holds: ground past the hatched strip stays put even when the collapse cut the only
+	# thing it hung from (a pier or ice shelf dropped soldiers standing clear of FALLS NEXT ROUND)
+	var ec := int(x1 / bt.CELL)
+	if ec < bt.T.cols:
+		for cy in Terrain.WATER_ROW:
+			if bt.T.grid[cy * bt.T.cols + ec] != 0:
+				bt.T.pins[cy * bt.T.cols + ec] = -2
 	bt.T.check_floating(x1 + 20, 300, 260, null)
 	bt.T.check_bridges(null)
 	bt.shake += 6
