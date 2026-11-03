@@ -67,6 +67,9 @@ var tut_blast := false        # a squad blast went off on the grenade step
 var lesson_over := false      # tutorial lesson: passed, failed or skipped, the next one is loading
 var lesson_said := false      # tutorial lesson: the sergeant has called this lesson in
 var lesson_why := ""          # tutorial lesson: why the last try failed, for the panel
+var guide_i := 0              # tutorial lesson: the guide step the recruit is on
+var guide_seen := {}          # tutorial lesson: things done so far this try (armed:hop, jet...)
+var jam_t := 0                # tutorial lesson: frames the battle has been busy, for the jam watchdog
 var boss_active := false
 var boss_dead := false
 var gate = null          # the gate home to HQ, opened after the boss falls
@@ -4593,7 +4596,10 @@ func start_player_turn() -> void:
 	if sel == null or sel.dead:
 		var al := squad_alive()
 		sel = al[-1] if al.size() else null
-	banner("ROUND %d" % round_n, Color.WHITE, ("WIND %s %d" % [">>" if wind > 0 else "<<", absi(wind)]) if wind else "NO WIND")
+	if in_lesson() and not lesson().get("live", false) and not (lesson().has("turns") and round_n > 1):
+		pass  # boot camp: no ROUND banner over a one-turn lesson
+	else:
+		banner("ROUND %d" % round_n, Color.WHITE, ("WIND %s %d" % [">>" if wind > 0 else "<<", absi(wind)]) if wind else "NO WIND")
 	# P3: the round banner and alert bar already say the round and alert; the log only gets news
 	if rounds_since_scroll == stall_limit():
 		log_msg("The line has stalled: alert rises every round until you push.")

@@ -1240,6 +1240,27 @@ func draw_fx() -> void:
 				draw_texture_rect_region(Art.tex.slash, Rect2(-10, -10, 20, 20), Rect2(fr * 20, 0, 20, 20))
 				draw_set_transform_matrix(Transform2D.IDENTITY)
 
+func draw_guide_ring() -> void:
+	## Boot camp: a pulsing ring and a bouncing arrow on the spot the current step wants clicked.
+	var tg: Dictionary = b.boot_camp.guide_target()
+	if not tg.has("w"):
+		return
+	var p: Vector2 = tg.w
+	var k := 0.5 + 0.5 * sin(b.t / 5.0)
+	var rad: float = tg.get("ring", 12.0) + 3 * k
+	var c := Color(1, 0.86, 0.25, 0.6 + 0.4 * k)
+	draw_arc(p, rad + 1.5, 0, TAU, 28, Color(0.05, 0.035, 0.03, 0.8), 3.0)
+	draw_arc(p, rad, 0, TAU, 28, c, 2.0)
+	draw_circle(p, 2.0, c)
+	if tg.label == "":
+		return
+	var ay := p.y - rad - 6 - 5 * k
+	draw_colored_polygon(PackedVector2Array([Vector2(p.x - 7, ay - 9), Vector2(p.x + 7, ay - 9), Vector2(p.x, ay)]), Color(0.05, 0.035, 0.03))
+	draw_colored_polygon(PackedVector2Array([Vector2(p.x - 5, ay - 8), Vector2(p.x + 5, ay - 8), Vector2(p.x, ay - 1)]), Color("ffd23a"))
+	var lw := Art.text_width(tg.label, 8) + 10
+	draw_rect(Rect2(p.x - lw / 2.0, ay - 24, lw, 12), Color(0.05, 0.035, 0.03, 0.85))
+	Art.text(self, tg.label, Vector2(p.x, ay - 15), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+
 # ---------------------------------------------------------------- targeting overlays
 func draw_lockers(foes: Array) -> void:
 	## P4: a slow red pulse of corner brackets on each enemy holding the push zone shut, and an
@@ -1290,6 +1311,7 @@ func draw_targeting() -> void:
 		var lf = b.lesson_flag()
 		if lf != null:
 			draw_tut_flag(lf.x, lf.y, "GET UP HERE" if b.lesson().has("fy") else "WALK HERE")
+		draw_guide_ring()
 	var pz := b.cam_x + Battle.W * 0.72
 	push_rect = Rect2()
 	if b.cam_x < b.world_w - Battle.W and not cine:

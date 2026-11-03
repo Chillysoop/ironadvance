@@ -54,11 +54,160 @@ func lesson_met() -> bool:
 			return absf(u.y - f.y) <= 6  # anywhere up on top
 		return u.x >= f.x - 8)
 
+# ---------------------------------------------------------------- the guide: one step at a time
+func armed_key() -> String:
+	var u: Unit = bt.sel
+	if u == null or bt.card_idx < 0 or bt.card_idx >= u.hand.size():
+		return ""
+	return str(u.hand[bt.card_idx].key)
+
+func guide_note() -> void:
+	## Remembers what the recruit has done this try, so a step stays done once it's done.
+	var u: Unit = bt.sel
+	var L := bt.lesson()
+	var k := armed_key()
+	if k != "":
+		bt.guide_seen["armed:" + k] = true
+	if bt.jet_armed or (u != null and u.fuel_max > 0 and u.fuel < u.fuel_max):
+		bt.guide_seen["jet"] = true
+	if u != null and not L.get("live", false):
+		for key in L.hand:
+			if u.hand.filter(func(c): return c.key == key).size() < L.hand.count(key):
+				bt.guide_seen["played:" + key] = true
+	if bt.squad_alive().any(func(s): return s.played > 0):
+		bt.guide_seen["played:any"] = true
+
+func guide_done(step: Array) -> bool:
+	var u: Unit = bt.sel
+	var cond: String = step[2]
+	if cond == "goal":
+		return lesson_met()
+	if cond == "move0":
+		return u != null and u.move_left <= 6 and u.walk == null
+	if cond == "turn2":
+		return bt.round_n >= 2
+	if cond == "kill1":
+		return bt.units.any(func(e): return e.team == "enemy" and e.dead)
+	if cond == "above":
+		var f = bt.lesson_flag()
+		return u != null and f != null and u.y < f.y - 16
+	if cond.begins_with("x:"):
+		return u != null and u.x >= float(cond.substr(2)) and u.walk == null and not u.air
+	return bt.guide_seen.get(cond, false)
+
+func guide_update() -> void:
+	## Moves the guide on: the furthest step whose "done" holds means every step before it is done too.
+	var G: Array = bt.lesson().get("guide", [])
+	guide_note()
+	for j in range(G.size() - 1, bt.guide_i - 1, -1):
+		if guide_done(G[j]):
+			if j + 1 > bt.guide_i:
+				bt.guide_i = j + 1
+				if bt.guide_i < G.size():
+					Sfx.play("click", -6)
+				bt.ui_dirty = true
+			break
+
+func guide_target() -> Dictionary:
+	## What the current step points at: {"w": world point} or {"r": HUD rect}, with a label.
+	if not bt.in_lesson() or bt.lesson_over or bt.state != "player" or (bt.busy and not bt.jet_hold):
+		return {}
+	var G: Array = bt.lesson().get("guide", [])
+	if bt.guide_i >= G.size():
+		return {}
+	var hi: Array = G[bt.guide_i][1]
+	var u: Unit = bt.sel
+	match str(hi[0]):
+		"flag":
+			if bt.lesson().has("turns") and u != null and u.move_left <= 6 and bt.round_n > 1:
+				return btn_target("end")  # out of MOVE on a walk over several turns: end the turn
+			var f = bt.lesson_flag()
+			return {"w": f, "label": "", "ring": 16.0} if f != null else {}  # the flag says WALK HERE itself
+		"pt":
+			return {"w": guide_pt(hi[1], hi[2]), "label": "CLICK HERE"}
+		"card":
+			if armed_key() == hi[1]:
+				return {}  # armed: the next step shows where to aim
+			return card_target(hi[1])
+		"shoot":
+			if armed_key() == hi[1]:
+				if hi.size() > 2:
+					return {"w": guide_pt(hi[2], hi[3]), "label": "CLICK HERE"}
+				var e = nearest_enemy()
+				return {"w": Vector2(e.x, e.y - e.h * 0.85), "label": "FIRE", "ring": 9.0} if e != null else {}
+			return card_target(hi[1])
+		"hand":
+			return hand_target()
+		"btn":
+			if hi[1] == "end" and bt.lesson().get("live", false) and bt.ready_count() > 0:
+				return hand_target()  # live fire: everyone acts before the turn ends
+			return btn_target(hi[1])
+		"enemy":
+			if bt.lesson().get("live", false) and bt.ready_count() == 0:
+				return btn_target("end")
+			if bt.card_idx < 0 and bt.lesson().get("live", false):
+				return hand_target()
+			var e = nearest_enemy()
+			return {"w": Vector2(e.x, e.y - e.h * 0.5), "label": "TARGET", "ring": 16.0} if e != null and u != null else {}
+	return {}
+
+func hand_target() -> Dictionary:
+	if bt.hud == null or bt.hud.cards.is_empty():
+		return {}
+	if bt.card_idx >= 0:
+		var e = nearest_enemy()  # a card is up: aim it at a Jackal (right-click puts it back)
+		return {"w": Vector2(e.x, e.y - e.h * 0.6), "label": "TARGET", "ring": 14.0} if e != null else {}
+	var r: Rect2 = Rect2(bt.hud.cards[0].position, Vector2(0, 70))
+	for cv in bt.hud.cards:
+		r = r.merge(Rect2(cv.position, Vector2(cv.size.x, 70)))
+	return {"r": r, "label": "PICK A CARD"}
+
+func btn_target(which: String) -> Dictionary:
+	if bt.hud == null:
+		return {}
+	var btn: Control = bt.hud.end_btn if which == "end" else bt.hud.jet_btn
+	if not btn.visible or (which == "jet" and bt.jet_armed):
+		return {}
+	return {"r": Rect2(btn.position, btn.size), "label": "CLICK  (OR ENTER)" if which == "end" else "CLICK  (OR J)", "btn": which}
+
+func guide_pt(x: float, up: float) -> Vector2:
+	var gy = bt.T.stand_y(x, 0)
+	return Vector2(x, (gy if gy != null else bt.T.ground_at(x)) - up)
+
+func card_target(key: String) -> Dictionary:
+	var u: Unit = bt.sel
+	if u == null or bt.hud == null:
+		return {}
+	for i in mini(u.hand.size(), bt.hud.cards.size()):
+		if u.hand[i].key == key:
+			var cv: Control = bt.hud.cards[i]
+			return {"r": Rect2(cv.position, Vector2(cv.size.x, 70)), "label": "CLICK  (OR PRESS %d)" % (i + 1)}
+	return {}
+
+func nearest_enemy():
+	var u: Unit = bt.sel
+	var best = null
+	for e in bt.units:
+		if e.team == "enemy" and not e.dead and (best == null or (u != null and absf(e.x - u.x) < absf(best.x - u.x))):
+			best = e
+	return best
+
 func lesson_update() -> void:
 	## Checks the lesson a few times a second: done, failed (drowned, down, nothing left to try), or going.
 	if bt.lesson_over or bt.state == "title" or bt.state == "over":
 		return
 	var L := bt.lesson()
+	# the jam watchdog: a battle that stays busy far longer than any move takes starts the lesson over,
+	# so nothing in boot camp can leave a recruit staring at a frozen screen
+	if bt.state == "player" and not bt.busy and bt.settled():
+		bt.jam_t = 0
+	else:
+		bt.jam_t += 5
+		if bt.jam_t > (60 * 45 if L.get("live", false) else 60 * 20):
+			lesson_fail("jam")
+			return
+	if bt.state == "player" and (not bt.busy or bt.jet_hold):
+		guide_update()  # on the jets too, so "now over the flag" shows up mid-flight
 	var main = bt.get_tree().current_scene
 	if not bt.lesson_said and bt.mission.get("retry", "") == "" and bt.banners.is_empty() and main != null and main.has_method("call_in"):
 		bt.lesson_said = true
