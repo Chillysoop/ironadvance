@@ -935,6 +935,8 @@ func run() -> void:
 			await xcalls()
 		"runsave":
 			await runsave()
+		"vpicks":
+			await vpicks()
 		"settings":
 			await settings_menu()
 		"qcalls":
@@ -10880,6 +10882,76 @@ func orders_test() -> void:
 	var b: Battle = main.start_battle(0, lv)
 	await until(func(): return b.state == "player" and not b.busy)
 	check(Run.run_order == "scavengers", "SCAVENGERS lasts into the level")
+	main.show_title()
+	await frames_wait(5)
+
+
+func vpicks() -> void:
+	## P1-P4 from the run-variety playtest page.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	# P4: level 1's mini-boss is always the Jackal Walker; level 2 still mixes them
+	var l1 := {}
+	var l2 := {}
+	for i in 60:
+		Run.seed_val = 500 + i
+		l1[Run.make_level("fortress", 0).miniboss] = true
+		l2[Run.make_level("fortress", 1).miniboss] = true
+	check(l1.keys() == ["jwalker"], "level 1 mini-boss is always the Walker (%s)" % [l1.keys()])
+	check(l2.size() >= 2, "level 2 still rolls other mini-bosses (%s)" % [l2.keys()])
+	# P1: the dial card names a loadout boss
+	main.show_title()
+	await frames_wait(5)
+	start_run_hq()
+	await frames_wait(10)
+	Run.mission = 1
+	Run.history = [{}]
+	Run.dial = ["fortress", "jungle"]
+	Run.dial_breach = {}
+	var a := Run.make_level("fortress", 1)
+	a.boar_kit = "flame"
+	a.rare = "ace"
+	a.garrison = "snipers"
+	Run.dial_levels = {"fortress": a, "jungle": Run.make_level("jungle", 1)}
+	main.dial_gate()
+	await frames_wait(10)
+	await shot("vpicks_dial")
+	# P3: a banner when the rare first comes into view, once
+	Run.seed_val = 99
+	var lv := Run.make_level("fortress", 1)
+	lv.rare = "ace"
+	lv.fork = []
+	Run.level = lv
+	var b: Battle = main.start_battle(1, lv)
+	await until(func(): return b.state == "player" and not b.busy)
+	check(not b.banners.any(func(x): return str(x.text).begins_with("RARE")), "no rare banner while the rare is off screen")
+	check(b.mid_events.rare_at > 0.0, "the rare's spot is kept for its banner")
+	b.cam_x = b.mid_events.rare_at - b.W / 2.0
+	b.camp_ops.activate_enemies()
+	check(b.banners.filter(func(x): return str(x.text) == "RARE: JACKAL ACE").size() == 1, "reaching the rare shows RARE: JACKAL ACE")
+	b.camp_ops.activate_enemies()
+	check(b.banners.filter(func(x): return str(x.text).begins_with("RARE")).size() == 1, "the rare banner shows only once")
+	await frames_wait(10)
+	await shot("vpicks_rare_banner")
+	# P2: the seed code on the result screens
+	main.battle.queue_free()
+	main.battle = null
+	if main.hud != null:
+		main.hud.queue_free()
+		main.hud = null
+	Run.seed_code = "K7QW2P"
+	Run.daily = ""
+	main.clear()
+	var rs = load("res://scripts/main.gd").Screen.new()
+	rs.mode = "lost"
+	rs.stats = {"won": false, "kills": 2, "score": 10, "xp": {}}
+	rs.buttons = [["TITLE", func(): pass]]
+	main.open(rs)
+	await frames_wait(10)
+	await shot("vpicks_lost_seed")
 	main.show_title()
 	await frames_wait(5)
 

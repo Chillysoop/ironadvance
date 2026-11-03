@@ -1210,6 +1210,17 @@ class Screen extends Control:
 				var gd: Dictionary = Data.GARRISONS[gk]
 				Art.text(self, "GARRISON: %s" % gd.name, Vector2(cx, y + 28), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 				y += 14
+			# P1: the boss, when it isn't the plain Iron Boar
+			var bk: String = Run.dial_levels[id].get("boar_kit", "") if Run.dial_levels.has(id) else ""
+			var bl: Dictionary = Run.dial_levels.get(id, {})
+			var bn := ""
+			if bl.get("boss", "") == "hiveship":
+				bn = "HIVE SHIP"
+			elif bk != "" and bk != "standard" and Data.BOAR_KITS.has(bk):
+				bn = Data.BOAR_KITS[bk].name
+			if bn != "":
+				Art.text(self, "BOSS: %s" % bn, Vector2(cx, y + 28), 8, Color("ff9a5d"), HORIZONTAL_ALIGNMENT_CENTER)
+				y += 14
 			var rk: String = Run.dial_levels[id].get("rare", "") if Run.dial_levels.has(id) else ""
 			if rk != "":
 				Art.text(self, "RARE: %s" % Data.RARES[rk].name, Vector2(cx, y + 28), 8, Color("9df25c") if t % 50 < 34 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -1275,6 +1286,12 @@ class Screen extends Control:
 			var why := "SQUAD WIPED. LAST DOWN: %s." % stats.last_down if stats.has("last_down") else "SQUAD WIPED."
 			Art.text(self, why, Vector2(480, 124), 8, Color("ff9a80"), HORIZONTAL_ALIGNMENT_CENTER)
 			Art.text(self, "THIS RUN IS OVER. SALVAGE, BIO-PARTS, HQ UPGRADES AND UNLOCKS CARRY TO THE NEXT ONE.", Vector2(480, 140), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+		if mode in ["won", "lost", "final"] and not Run.campaign():
+			# P2: the seed to share, on the screen you see when the level or run ends
+			if Run.daily != "":
+				Art.text(self, ("WEEKLY OP  %s" if Run.is_weekly() else "DAILY OP  %s") % Run.daily, Vector2(480, 50), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif Run.seed_code != "":
+				Art.text(self, "SEED %s" % Run.seed_code, Vector2(480, 50), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 		var rows := [["SCORE", str(stats.get("score", 0))], ["KILLS", str(stats.get("kills", 0))], ["CRUSHES", str(stats.get("crushes", 0))], ["POWS FREED", str(stats.get("pows", 0))], ["PUSHES", str(stats.get("pushes", 0))], ["ROUNDS", str(stats.get("rounds", 0))], ["SCRIP EARNED", str(stats.get("scrip", 0))]]
 		if int(stats.get("salvage", 0)) > 0:
 			rows.append(["SALVAGE FOR HQ", str(stats.salvage)])

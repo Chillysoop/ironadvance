@@ -204,6 +204,8 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	# E7, E8: or a Jackal Gunship or a Di-Cokka tank in its place
 	var minis := ["jwalker", "dicokka"] if bm.rules.get("ceiling", false) else ["jwalker", "gunship", "dicokka"]
 	var miniboss: String = minis[randi() % minis.size()]
+	if tier == 0:
+		miniboss = "jwalker"  # P4: level 1's mini-boss is always the Walker (Di-Cokka and Gunship from level 2)
 	# R2-R4: one mid-level event, R5: three bounties, all on the briefing
 	# (their own dice, so adding them left every level's layout as it was)
 	var er := RandomNumberGenerator.new()
