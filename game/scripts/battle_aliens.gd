@@ -1131,7 +1131,7 @@ func drill_bolt(bo: Unit) -> void:
 		if k % 3 == 0:
 			bt.dust(p.x, p.y, Color("8a7a6a"), 1)
 			await bt.wait(1)
-	bt.damage(tg, int(round(Data.DRILL_DMG * (1 + bt.alert * 0.06))), bo, {"melee": true})
+	bt.damage(tg, Data.DRILL_DMG, bo, {"melee": true})  # Q1: the bolt keeps its base damage; the chain gun still scales
 	await bt.until(bt.settled)
 	await bt.wait(8)
 
