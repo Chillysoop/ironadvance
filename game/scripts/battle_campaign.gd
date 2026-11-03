@@ -709,6 +709,7 @@ func activate_enemies() -> void:
 					bt.banner("WARNING!!", Color("ff4d3d"), "ROOKIE BOAR APPROACHING" if e.fl.get("rookie", false) else "%s APPROACHING" % Data.BOAR_KITS.get(bt.mission.get("boar_kit", ""), Data.BOAR_KITS.standard).name)
 					bt.log_msg("The IRON BOAR rolls in. Something heavy is hanging over it...")
 				Sfx.play("alarm")
+	bt.mid_events.rare_check()  # P3
 
 # ---------------------------------------------------------------- O2-O6: campaign op jobs
 func job_spot(x: float) -> float:

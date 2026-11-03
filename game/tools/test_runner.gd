@@ -25,6 +25,7 @@ var main: Node
 var frames := 0
 var mission_arg := 0
 var seed_arg := 1
+var weekly_arg := false  # playtest: play this week's Weekly Op instead of a fresh quick run
 var runs_arg := 1
 var playtest_debug := false
 var start_arg := 0
@@ -53,6 +54,8 @@ func _ready() -> void:
 			clip_arg = a.substr(7)
 		elif a.begins_with("--runs="):
 			runs_arg = int(a.substr(7))
+		elif a == "--weekly":
+			weekly_arg = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	await get_tree().process_frame
 	main = get_tree().current_scene
@@ -935,6 +938,8 @@ func run() -> void:
 			await xcalls()
 		"runsave":
 			await runsave()
+		"vpicks":
+			await vpicks()
 		"settings":
 			await settings_menu()
 		"qcalls":
@@ -1415,6 +1420,7 @@ func field() -> void:
 	await until(func(): return b.state == "player" and not b.busy)
 	check(b.squad().size() == 1 and b.squad()[0].s.key == moss.key, "only Moss goes to the range")
 	check(b.dummies.size() >= 4, "%d dummies stand on the range" % b.dummies.size())
+	check(not b.units.any(func(o): return o.team == "enemy" and o.elite != ""), "range dummies are never elites (a Thrall dummy left a Skitter that blocked the reset)")
 	await frames_wait(30)
 	await shot("field_range")
 	var me: Unit = b.squad()[0]
@@ -4441,7 +4447,10 @@ func peak_after_bounce(pts: Array, gy: float) -> float:
 	return best
 
 func ground_unit(b: Battle, u: Unit, x: float, from_y := 0.0) -> void:
-	u.x = x; u.y = b.T.stand_y(x, from_y); u.air = false; u.vx = 0; u.vy = 0; u.walk = null
+	var gy = b.T.stand_y(x, from_y)
+	if gy == null:
+		gy = b.T.stand_y(x, 0)  # ground above from_y (a hill or a roof): stand on the top of it instead
+	u.x = x; u.y = gy if gy != null else u.y; u.air = false; u.vx = 0; u.vy = 0; u.walk = null
 
 func soldat() -> void:
 	## The Soldat borrowings: grating and chain-link, bodies that stay, recoil with its ghost,
@@ -5685,7 +5694,10 @@ func playtest() -> void:
 	playtest_debug = true
 	for r in runs_arg:
 		seed(seed_arg * 1000 + r)
-		Run.new_run()
+		if weekly_arg:
+			Run.start_weekly()
+		else:
+			Run.new_run()
 		if Run.run_order_offer.size():
 			# V9: take one of the run orders on offer, like a player at the start of a run
 			Run.take_run_order(Run.run_order_offer[randi() % Run.run_order_offer.size()])
@@ -9324,7 +9336,8 @@ func events10_test() -> void:
 	var lv := Run.make_level("desert", 1)
 	check(Data.EVENTS.has(lv.event) and lv.bounties.size() == 3 and lv.bounties.all(func(k): return Data.BOUNTIES.any(func(x): return x.id == k)), "every level rolls an event and three bounties (%s %s)" % [lv.event, str(lv.bounties)])
 	check(range(20).all(func(_i): return not Run.make_level("hive", 2).bounties.has("sniperfirst")), "no Counter-Snipe bounty where there are no Snipers")
-	# R2 fire team
+	# R2 fire team (a fixed seed: an unseeded roll could put a wall or a gap between the fire team and the lead)
+	seed(2210)
 	Run.new_run()
 	var b: Battle = await e_battle("fireteam")
 	var trs: Array = b.mid_events.troopers()
@@ -10884,6 +10897,76 @@ func orders_test() -> void:
 	await frames_wait(5)
 
 
+func vpicks() -> void:
+	## P1-P4 from the run-variety playtest page.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	# P4: level 1's mini-boss is always the Jackal Walker; level 2 still mixes them
+	var l1 := {}
+	var l2 := {}
+	for i in 60:
+		Run.seed_val = 500 + i
+		l1[Run.make_level("fortress", 0).miniboss] = true
+		l2[Run.make_level("fortress", 1).miniboss] = true
+	check(l1.keys() == ["jwalker"], "level 1 mini-boss is always the Walker (%s)" % [l1.keys()])
+	check(l2.size() >= 2, "level 2 still rolls other mini-bosses (%s)" % [l2.keys()])
+	# P1: the dial card names a loadout boss
+	main.show_title()
+	await frames_wait(5)
+	start_run_hq()
+	await frames_wait(10)
+	Run.mission = 1
+	Run.history = [{}]
+	Run.dial = ["fortress", "jungle"]
+	Run.dial_breach = {}
+	var a := Run.make_level("fortress", 1)
+	a.boar_kit = "flame"
+	a.rare = "ace"
+	a.garrison = "snipers"
+	Run.dial_levels = {"fortress": a, "jungle": Run.make_level("jungle", 1)}
+	main.dial_gate()
+	await frames_wait(10)
+	await shot("vpicks_dial")
+	# P3: a banner when the rare first comes into view, once
+	Run.seed_val = 99
+	var lv := Run.make_level("fortress", 1)
+	lv.rare = "ace"
+	lv.fork = []
+	Run.level = lv
+	var b: Battle = main.start_battle(1, lv)
+	await until(func(): return b.state == "player" and not b.busy)
+	check(not b.banners.any(func(x): return str(x.text).begins_with("RARE")), "no rare banner while the rare is off screen")
+	check(b.mid_events.rare_at > 0.0, "the rare's spot is kept for its banner")
+	b.cam_x = b.mid_events.rare_at - b.W / 2.0
+	b.camp_ops.activate_enemies()
+	check(b.banners.filter(func(x): return str(x.text) == "RARE: JACKAL ACE").size() == 1, "reaching the rare shows RARE: JACKAL ACE")
+	b.camp_ops.activate_enemies()
+	check(b.banners.filter(func(x): return str(x.text).begins_with("RARE")).size() == 1, "the rare banner shows only once")
+	await frames_wait(10)
+	await shot("vpicks_rare_banner")
+	# P2: the seed code on the result screens
+	main.battle.queue_free()
+	main.battle = null
+	if main.hud != null:
+		main.hud.queue_free()
+		main.hud = null
+	Run.seed_code = "K7QW2P"
+	Run.daily = ""
+	main.clear()
+	var rs = load("res://scripts/main.gd").Screen.new()
+	rs.mode = "lost"
+	rs.stats = {"won": false, "kills": 2, "score": 10, "xp": {}}
+	rs.buttons = [["TITLE", func(): pass]]
+	main.open(rs)
+	await frames_wait(10)
+	await shot("vpicks_lost_seed")
+	main.show_title()
+	await frames_wait(5)
+
+
 func rares_test() -> void:
 	## V11: rare encounters (run-variety page).
 	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
@@ -11212,8 +11295,11 @@ func guide_act(b: Battle) -> String:
 		if tg.get("label", "") == "PICK A CARD" or tg.get("hand", false):
 			k = "hand"
 		if tg.get("btn", "") == "end":
+			# wait for the NEXT player turn: right after end_turn the state can still read "player",
+			# and a second END TURN then spent the lesson's next turn too (flaky lesson 3)
+			var r0: int = b.round_n
 			b.end_turn(true)
-			await until(func(): return gone(b) or (b.state == "player" and not b.busy), 900)
+			await until(func(): return gone(b) or (b.round_n > r0 and b.state == "player" and not b.busy), 900)
 			return "end turn"
 		if tg.get("btn", "") == "jet":
 			b.toggle_jet()
@@ -11236,8 +11322,9 @@ func guide_act(b: Battle) -> String:
 				if b.sel != u:
 					return "next soldier"
 			guide_hops = 0
+			var r1: int = b.round_n
 			b.end_turn(true)
-			await until(func(): return gone(b) or (b.state == "player" and not b.busy), 1500)
+			await until(func(): return gone(b) or (b.round_n > r1 and b.state == "player" and not b.busy), 1500)
 			return "end turn (nothing to shoot)"
 		# a card: click it
 		for i in hud_cards().size():

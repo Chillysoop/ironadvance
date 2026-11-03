@@ -93,6 +93,21 @@ func setup_road() -> void:
 			for k in mini(2, foes.size()):
 				foes[foes.size() - 1 - k].gone = true
 
+var rare_at := -1.0  # P3: where the level's rare encounter stands, until the squad first sees it
+
+func rare_check() -> void:
+	## P3: a banner the first time the rare encounter comes into view.
+	if rare_at < 0.0 or not bt.in_play(rare_at, 0.0):
+		return
+	rare_at = -1.0
+	var id: String = bt.mission.get("rare", "")
+	if not Data.RARES.has(id):
+		return
+	var sub: String = {"merc": "A HIRED GUN IS PINNED DOWN AHEAD: REACH HIM", "wreck": "A CRASHED SCOUT SHIP: WALK ONTO IT TO STRIP IT",
+		"market": "A SMUGGLER SELLS A LEGENDARY AND TWO EPICS", "ace": "A VETERAN JACKAL: KILL HIM FOR %d SCRIP AND AN EPIC" % Data.ACE_PAY}.get(id, "")
+	bt.banner("RARE: " + Data.RARES[id].name, Color("9df25c"), sub)
+	Sfx.play("coin")
+
 func setup_rare() -> void:
 	## V11: the level's rare encounter, in the second fighting stretch (or the first if there is one).
 	var id: String = bt.mission.get("rare", "")
@@ -128,6 +143,7 @@ func setup_rare() -> void:
 			e.fl["ace"] = true
 			bt.units.append(e)
 	bt.log_msg("RARE: %s. %s" % [Data.RARES[id].name, Run.rare_text(id)])
+	rare_at = x
 
 func troopers() -> Array:
 	return bt.units.filter(func(o): return o.kind == "sentry" and o.loot.get("trooper", false) and not o.dead and not o.gone)
