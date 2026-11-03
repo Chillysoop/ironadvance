@@ -5304,6 +5304,8 @@ func tags() -> void:
 	await frames_wait(10)
 	check(Run.soldiers.reduce(func(n, x): return n + x.tags, 0) == tags_before + 1, "the shop's DOG TAG service gives back one tag")
 
+var hop_sank: Array = []   # playtest bot: hop spots that sank a soldier this mission
+
 func hop_to(b: Battle, u: Unit, tx: float) -> void:
 	## play the built-in Hop sized to land at tx
 	u.energy = 3; u.move_left = 100
@@ -5648,10 +5650,17 @@ func bot(mission: int, max_rounds: int, fresh := true, custom := {}) -> bool:
 						while jx > x0 + 30 and not hopped:
 							for lift in [90.0, 150.0]:
 								var jy = b.T.stand_y(jx, u.y - lift)
-								if jy != null and jy < Battle.WATER_Y - 4:
+								# a person picks a spot with footing either side, not a bank edge, and never
+								# the spot a squadmate just sank from
+								var jl = b.T.stand_y(jx - 14, u.y - lift)
+								var jr = b.T.stand_y(jx + 14, u.y - lift)
+								var firm: bool = jl != null and jr != null and absf(jl - jy) < 10 and absf(jr - jy) < 10 if jy != null else false
+								if jy != null and jy < Battle.WATER_Y - 4 and firm and not hop_sank.any(func(sx): return absf(sx - jx) < 40):
 									var aim := hop_aim(b, u, jx)
 									if aim.e < 10:
 										await play_hop(b, u, aim.v)
+										if is_instance_valid(u) and (u.sunk or u.dead):
+											hop_sank.append(jx)
 										hopped = true
 										break
 							jx -= 10
@@ -5715,6 +5724,7 @@ func playtest() -> void:
 		for m in Data.LEVELS.size() + 1:
 			Run.mission = m
 			Run.side = ""
+			hop_sank = []
 			if m < Data.LEVELS.size():
 				Run.roll_dial()
 				Run.pick_biome(biome_arg if biome_arg != "" and m == start_arg else Run.dial[randi() % Run.dial.size()])
@@ -9388,6 +9398,24 @@ func events10_test() -> void:
 	check(b.crumble.x == cx + Data.CRUMBLE_STEP and not b.T.solid(cx + 40, b.T.ground_at(cx + 40) if b.T.ground_at(cx + 40) < 600 else 600), "a round later 120px of ground is gone")
 	await frames_wait(4)
 	await shot("r3_collapse")
+	# a shelf past the hatched strip that only hung from it stays up, and so does whoever stands on it
+	var ex: float = b.crumble.x + Data.CRUMBLE_STEP
+	var gy: float = b.T.ground_at(ex + 60)
+	for cxx in range(int((ex - 10) / b.CELL), int((ex + 130) / b.CELL)):
+		for cyy in range(int(gy / b.CELL) + 6, Terrain.WATER_ROW):
+			b.T.set_cell(cxx, cyy, 0)
+	for cxx in range(int((ex + 120) / b.CELL), int((ex + 130) / b.CELL)):
+		for cyy in Terrain.WATER_ROW:
+			b.T.set_cell(cxx, cyy, 0)
+	b.T.flush()
+	for o in sq:
+		if not o.dead:
+			ground_unit(b, o, ex + 300, 0)
+	ground_unit(b, sq[0], ex + 60, gy - 30)
+	await frames_wait(4)
+	await b.mid_events.crumble_round()
+	await frames_wait(30)
+	check(not sq[0].sunk and not sq[0].dead and b.T.solid(ex + 60, gy + 4), "ground past FALLS NEXT ROUND holds when the strip it hung from goes (%s at %d,%d, ex %d gy %d solid %s)" % [sq[0].sunk, sq[0].x, sq[0].y, ex, gy, b.T.solid(ex + 60, gy + 4)])
 	# R4 dealer
 	b = await e_battle("dealer")
 	var ds: Array = b.units.filter(func(o): return o.kind == "dealer")
@@ -11074,6 +11102,16 @@ func vpicks2() -> void:
 	check(hits[0] == hits[1] and hits[1] <= Data.DRILL_DMG and hits[1] > 0, "Q1: the drill bolt hits the same at alert 0 and 12 (%s)" % [hits])
 	b.alert = 0
 	u.hp = u.max_hp
+	# the rocket aim ring grows with FUEL-AIR the way the blast does
+	var gx := u.x + 200.0
+	check(is_equal_approx(b.blast_grow(u, gx, u.y - 20), 1.0), "aim ring: no growth in clear air")
+	b.gases.append({"x": gx, "y": u.y - 20, "r": 70.0, "turns": 1, "seed": 0.0, "owner": u})
+	check(is_equal_approx(b.blast_grow(u, gx, u.y - 20), 1.5), "aim ring: +50% inside gas, like the FUEL-AIR blast")
+	var hexu = b.squad().filter(func(o): return o.def.key == "hex")
+	if hexu.size():
+		b.gases[-1].owner = hexu[0]
+		check(is_equal_approx(b.blast_grow(u, gx, u.y - 20), 2.0), "aim ring: double inside Hex's gas (THERMOBARIC)")
+	b.gases.clear()
 	# Q3: two bunched enemies with statuses and an elite: no two tags overlap
 	var e1 := j2_enemy(b, "grunt", u.x + 120)
 	var e2 := j2_enemy(b, "grunt", u.x + 132)

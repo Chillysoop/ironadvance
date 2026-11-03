@@ -2404,6 +2404,16 @@ func blast_scale(owner) -> float:
 		return 1.0
 	return (1.2 if owner.perk("bigboom") else 1.0) + float(owner.g("blast", 0.0))
 
+# what explode() will grow a blast by at this spot (FAT, FUEL-AIR), so an aim ring never draws smaller than the bang
+func blast_grow(owner, x: float, y: float) -> float:
+	var k := 1.0
+	if owner is Unit and owner.has_st("fat"):
+		k *= 1.5
+	var g = gas_at(x, y)
+	if g != null or smoke_at(x, y):
+		k *= 2.0 if g != null and g.owner is Unit and g.owner.def.key == "hex" else 1.5
+	return k
+
 func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> void:
 	if dmg > 0:
 		coach_hit("blast")
