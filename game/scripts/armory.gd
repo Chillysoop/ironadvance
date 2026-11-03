@@ -372,7 +372,7 @@ func build_actions(it) -> void:
 	if shop_mode and Run.fab_options().has(it):
 		x = action("COPY %d$" % price(Data.FAB_PRICE), Color("b48cff"), copy_sel, x, Run.scrip < price(Data.FAB_PRICE))
 	if shop_mode and it.get("affixes", []).size() > 0:
-		var cost := 0 if Run.reroll_tokens > 0 else gunsmith_price()
+		var cost := 0 if Run.rerolls > 0 else gunsmith_price()
 		x = action("REROLL AFFIX %s" % ("FREE" if cost == 0 else "%d$" % cost), Color("b48cff"), reroll_sel, x, Run.scrip < cost)
 
 func merge_actions(it, x: float) -> float:
@@ -492,8 +492,8 @@ func sell_sel() -> void:
 
 func reroll_sel() -> void:
 	var it = selected_item()
-	if Run.reroll_tokens > 0:
-		Run.reroll_tokens -= 1
+	if Run.rerolls > 0:
+		Run.rerolls -= 1
 	else:
 		var cost := gunsmith_price()
 		if Run.scrip < cost:
@@ -578,8 +578,8 @@ func _draw() -> void:
 	Art.text(self, "BELT: USE MID-MISSION, NO CARD NEEDED", Vector2(470, 214), 8, Color("62d26f"))
 	if shop_mode and shelf.size():
 		Art.text(self, "ITEM SHELF" + ("  %d%% OFF" % int(Run.discount * 100) if Run.discount > 0 else ""), Vector2(470, 288), 8, Color("53d4e2"))
-	if Run.reroll_tokens > 0:
-		Art.text(self, "FREE REROLLS: %d" % Run.reroll_tokens, Vector2(808, 410), 8, Color("b48cff"))
+	if Run.rerolls > 0:
+		Art.text(self, "REROLL TOKENS: %d" % Run.rerolls, Vector2(808, 410), 8, Color("b48cff"))
 	draw_help()
 	if equip_lbl >= 0:
 		Art.text(self, "EQUIP ON", Vector2(equip_lbl, 457), 8, Color("53d4e2"))

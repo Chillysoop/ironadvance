@@ -97,6 +97,8 @@ class SquadBar extends Control:
 				Art.text(self, "KIA", pb.get_center() + Vector2(0, 4), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 			var x := r.position.x + 42
 			Art.text(self, s.def.name, Vector2(x, r.position.y + 14), 8, Color.WHITE if s.alive else Color("8a7a7a"))
+			# S7: hover the name for every trait this soldier has, in one list
+			Tip.zone(self, Rect2(r.position.x, r.position.y, 96, 18), "%s TRAITS" % s.def.name, " ".join(Run.traits_of(s).map(func(tr): return "%s: %s" % [tr.name, tr.text])), Color("62d26f"))
 			# a long name (DIESEL, a recruit's) pushes the level tag right instead of touching it
 			Art.text(self, "LV%d" % s.lvl, Vector2(maxf(x + 52, x + Art.text_width(s.def.name, 8) + 8), r.position.y + 14), 8, Color("ffd23a"))
 			Art.text(self, str(i + 1), Vector2(r.end.x - 8, r.position.y + 14), 8, Color("6c7480"), HORIZONTAL_ALIGNMENT_RIGHT)
@@ -123,6 +125,53 @@ class SquadBar extends Control:
 				if why.size():
 					Tip.zone(self, Rect2(ap, Vector2(aw, 12)).grow(3), why[0], why[1], Color("ff4d3d") if al == "HURT" else Color("ffd23a"))
 
+class KitRow extends Control:
+	## S5: everything the whole squad carries, in one row under the squad bar: squad gear
+	## (relics and boss trophies) and the commander's standing orders. Hover one for what it does.
+	func _ready() -> void:
+		size = Vector2(928, 16)
+		mouse_filter = Control.MOUSE_FILTER_PASS
+	static func entries() -> Array:
+		var out: Array = []
+		for id in Run.gear:
+			var g: Dictionary = Data.gear(id)
+			if g.is_empty():
+				continue
+			var tier := Run.relic_tier(id)
+			out.append({"name": g.name.to_upper(), "icon": g.get("icon", ""), "c": Color("ffb21e") if g.get("boss", false) else Color("53d4e2"),
+				"tip": g.text + (" %s." % Data.tier_name(tier).capitalize() if tier > 0 else "") + " Squad gear: everyone has it."})
+		for id in Run.cmd:
+			var cm: Array = Data.COMMANDS.filter(func(x): return x.id == id)
+			if cm.size():
+				out.append({"name": cm[0].name.to_upper(), "icon": "", "c": Color("ffd23a"), "tip": cm[0].text + " Standing order from the commander."})
+		return out
+	func _process(_d: float) -> void:
+		queue_redraw()
+	func _draw() -> void:
+		Tip.clear(self)
+		var es := entries()
+		if es.is_empty():
+			return
+		var x0: float = Art.text_width("SQUAD KIT", 8) + 16
+		var w := x0
+		for e in es:
+			w += Art.text_width(e.name, 8) + (22 if e.icon != "" else 10) + 6
+		w = minf(w, size.x)
+		draw_rect(Rect2(0, 0, w, size.y), Color(0.05, 0.035, 0.03, 0.88))
+		Art.text(self, "SQUAD KIT", Vector2(6, 12), 8, Color("9aa2ae"))
+		var x := x0
+		for e in es:
+			var cw: float = Art.text_width(e.name, 8) + (22 if e.icon != "" else 10)
+			if x + cw > size.x:
+				break
+			var cx := x
+			if e.icon != "" and Art.tex.has(e.icon):
+				draw_texture_rect(Art.tex[e.icon], Rect2(x + 2, 2, 12, 12), false)
+				cx += 14
+			Art.text(self, e.name, Vector2(cx + 3, 12), 8, e.c)
+			Tip.zone(self, Rect2(x, 0, cw, size.y), e.name, e.tip, e.c)
+			x += cw + 6
+
 class ActionTile extends Control:
 	## A service button big enough to explain itself: name and price on top, then what it
 	## does, or (greyed) what is missing. Clicking a greyed tile only plays the deny sound.
@@ -133,6 +182,7 @@ class ActionTile extends Control:
 	var line := ""             # what happens
 	var why := ""              # why it can't happen right now
 	var ok := true
+	var ready_tag := false     # S3: the card bench marks what can be done right now
 	var color := Color("53d4e2")
 	var hover := false
 	func _ready() -> void:
@@ -173,6 +223,10 @@ class ActionTile extends Control:
 				break
 			Art.text(self, ln, Vector2(6, y), 16, (Color("62d26f") if desc != "" else Color("e8dcc2")) if ok else Color("8a9099"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 			y += 12
+		if ready_tag and ok:
+			var rw := Art.text_width("READY", 8) + 8
+			draw_rect(Rect2(w - rw - 3, h - 15, rw, 12), Color("62d26f"))
+			Art.text(self, "READY", Vector2(w - 7, h - 5), 8, INK, HORIZONTAL_ALIGNMENT_RIGHT)
 
 class NavStrip extends Control:
 	## B2: every building one click (or one key) away, along the top of each HQ screen.

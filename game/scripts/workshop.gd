@@ -125,6 +125,19 @@ func build() -> void:
 			x = shortcut("%s: FUSE 3 %s" % [s.def.name, Data.card(g[0]).name.to_upper()], s, g[0], "fuse", x, y)
 		for e in Run.evolutions(s):
 			x = shortcut("%s: EVOLVE %s" % [s.def.name, Data.card(e.card).name.to_upper()], s, e.card, "evolve", x, y)
+	# S3: straight to the card bench on the first soldier's deck
+	var bench := HudScript.PixButton.new()
+	bench.text = "OPEN CARD BENCH"
+	bench.color = Color("53d4e2")
+	bench.size = Vector2(190, 30)
+	bench.position = Vector2(16, 412)
+	bench.pressed.connect(func():
+		var al := living()
+		if al.is_empty() or al[0].deck.is_empty():
+			return
+		Sfx.play("click")
+		open_dossier(Run.soldiers.find(al[0]), "", al[0].deck[0], "", "deck"))
+	add_child(bench)
 	if picking != "":
 		var cancel := HudScript.PixButton.new()
 		cancel.text = "CANCEL"
@@ -196,7 +209,7 @@ func _draw() -> void:
 	var any := living().any(func(s): return Run.fusable(s).size() > 0 or Run.evolutions(s).size() > 0)
 	if not any:
 		Art.text(self, "Nothing to fuse or evolve yet. Buy or level into a third copy of a card to fuse it.", Vector2(16, 346), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
-	Art.text(self, "Or open any soldier from the bar above: select a card in their deck to see every service for it.", Vector2(16, 400), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+	Art.text(self, "CARD BENCH: every upgrade for one card side by side, marked READY when you can do it now.", Vector2(16, 400), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	if picking != "":
 		var by := 300.0
 		draw_rect(Rect2(0, by, 960, 50), Color(0.05, 0.035, 0.03, 0.94))

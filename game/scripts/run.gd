@@ -20,9 +20,8 @@ var belt: Array = []       # consumables usable mid-mission without a card
 var gear_tier := {}        # squad gear (commander relic) id -> rarity tier
 var trophies: Array = []   # Iron Boar parts brought home this run
 var discount := 0.0        # next shop's price cut (Quartermaster POW)
-var reroll_tokens := 0     # free affix rerolls at the gunsmith
 var gunsmith_uses := 0     # each paid reroll costs more
-var lvl_rerolls := 2       # level-up rerolls (P4); POWs and medals add more
+var rerolls := 2           # S2: REROLL tokens, spent on a level-up or a gunsmith affix (P4); POWs and medals add more
 var banishes := 2          # level-up banishes (P4)
 var banished := {}         # soldier key -> option ids that never show up again
 var cmd: Array = []        # commander perks (P5)
@@ -44,13 +43,13 @@ var sway_mul := 1.0        # the current biome's sway rule, read by Data.card du
 var first_run := false     # P8: the player's first-ever quick run (level 1 skips bounties and the event)
 var daily := ""            # D2: the date of today's Daily Op while one is running, else ""
 var seed_code := ""        # V13: the quick run's shareable seed code (type it in to replay the same start)
-var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "bio": 0, "hq": {}, "implants": {}}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
+var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "hq": {}, "implants": {}}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
 const META_PATH := "user://meta.json"
-# Campaign mode (B1): the campaign keeps its own HQ, Salvage, Bio-parts, implants and Memorial.
+# Campaign mode (B1): the campaign keeps its own HQ, Salvage, implants and Memorial.
 # While a campaign is loaded those keys in meta hold the campaign's values and run_base holds the
 # standard run's, so every screen that reads meta works in both modes. Feats and Armory unlocks
 # stay shared (L2).
-const CAMP_KEYS := ["salvage", "bio", "hq", "implants", "memorial"]
+const CAMP_KEYS := ["salvage", "hq", "implants", "memorial"]
 var camp := {}             # campaign state; empty during a standard run
 var roster: Array = []     # campaign: the whole company (C1); soldiers is the squad that deploys
 var reserve: Array = []    # quick run: rescued soldiers waiting in the barracks while the squad is full
@@ -67,6 +66,13 @@ func load_meta() -> void:
 	if j is Dictionary:
 		for k in j:
 			meta[k] = j[k]
+	fold_bio(meta)
+
+static func fold_bio(d: Dictionary) -> void:
+	## S1: Bio-parts were folded into Salvage. Old saves turn theirs in at Data.BIO_VALUE each.
+	if d.has("bio"):
+		d["salvage"] = int(d.get("salvage", 0)) + int(d.bio) * Data.BIO_VALUE
+		d.erase("bio")
 
 func snapshot() -> Dictionary:
 	## Every bit of run state, deep-copied, for the practice range to put back afterwards (D5).
@@ -89,6 +95,8 @@ func set_state(snap: Dictionary) -> void:
 	for k in snap:
 		if not k.begins_with("_") and not k in ["meta", "run_base", "base"]:
 			set(k, snap[k])
+	if snap.has("lvl_rerolls"):  # S2: a save from before the two reroll pools were merged
+		rerolls = int(snap.lvl_rerolls) + int(snap.get("reroll_tokens", 0))
 	if snap.has("_squad"):
 		soldiers = snap._squad.filter(func(i): return i >= 0).map(func(i): return roster[i])
 
@@ -318,7 +326,7 @@ func road_text(id: String) -> String:
 func rare_text(id: String) -> String:
 	var tx: String = Data.RARES[id].text
 	match id:
-		"wreck": return tx % [Data.RARE_WRECK_SALVAGE, Data.RARE_WRECK_BIO]
+		"wreck": return tx % Data.RARE_WRECK_SALVAGE
 		"ace": return tx % Data.ACE_PAY
 	return tx
 
@@ -406,14 +414,6 @@ func synergies(s: Dictionary) -> Array:
 	var out: Array = []
 	if not s.has("equip"):
 		return out
-	var sets := {}
-	for sl in s.equip:
-		var it = s.equip[sl]
-		if it != null and Data.ITEMS[it.id].has("set"):
-			sets[Data.ITEMS[it.id].set] = sets.get(Data.ITEMS[it.id].set, 0) + 1
-	for k in sets:
-		out.append({"kind": "set", "name": Data.SETS[k].name.to_upper(), "prog": "%d/2" % mini(2, sets[k]), "done": sets[k] >= 2,
-			"text": set_tip(k, sets[k])})
 	for sl in ["kit1", "kit2"]:
 		var it = s.equip.get(sl)
 		if it == null:
@@ -436,16 +436,6 @@ func synergies(s: Dictionary) -> Array:
 			continue
 		out.append({"kind": "duo", "name": "DUO " + Data.CARDS[d.card].name.to_upper(), "prog": other.def.name, "done": true, "text": duo_tip(d)})
 	return out
-
-func set_tip(k: String, n := -1) -> String:
-	## What a gear set needs and gives, and how far this soldier is.
-	var st: Dictionary = Data.SETS[k]
-	var t := "Gear set. %s" % st.text
-	if n >= 2:
-		t += " ACTIVE on this soldier."
-	elif n >= 0:
-		t += " Wearing %d: one more piece on the same soldier switches it on." % n
-	return t
 
 func duo_tip(d: Dictionary) -> String:
 	## A duo Overdrive: who, what it does, and how it shows up.
@@ -480,9 +470,8 @@ func new_run() -> void:
 	gear_tier.clear()
 	trophies.clear()
 	discount = 0.0
-	reroll_tokens = 0
 	gunsmith_uses = 0
-	lvl_rerolls = 2
+	rerolls = 2
 	banishes = 2
 	banished = {}
 	cmd = []
@@ -880,15 +869,14 @@ func surgery_block(id: String, who) -> String:
 		return "DOC'S LAB RANK %d" % int(S.rank)
 	if (implants_of(who) if who is Dictionary else implants(cls)).has(id):
 		return "INSTALLED"
-	if int(meta.get("bio", 0)) < Data.SURGERY_BIO or int(meta.get("salvage", 0)) < Data.SURGERY_SALVAGE:
-		return "NEED %d BIO + %d SALVAGE" % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE]
+	if int(meta.get("salvage", 0)) < Data.SURGERY_SALVAGE:
+		return "NEED %d SALVAGE" % Data.SURGERY_SALVAGE
 	return ""
 
 func operate(id: String, who) -> bool:
 	## Install a surgery on a class, or on one soldier in the campaign. Past the slot cap the oldest comes out.
 	if surgery_block(id, who) != "":
 		return false
-	meta.bio = int(meta.bio) - Data.SURGERY_BIO
 	meta.salvage = int(meta.salvage) - Data.SURGERY_SALVAGE
 	var cls: String = who.key if who is Dictionary else who
 	var have: Array = (implants_of(who) if who is Dictionary else implants(cls)).duplicate()
@@ -1398,7 +1386,6 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 	var out := {}
 	if not s.has("equip"):
 		return out
-	var sets := {}
 	for slot in s.equip:
 		var it = s.equip[slot]
 		if it == null:
@@ -1408,13 +1395,6 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 			out[k] = out.get(k, 0) + st[k]
 		if Data.ITEMS[it.id].has("keystone"):
 			out["ks_" + it.id] = 1
-		var set_id: String = Data.ITEMS[it.id].get("set", "")
-		if set_id != "":
-			sets[set_id] = sets.get(set_id, 0) + 1
-	for set_id in sets:
-		if sets[set_id] >= 2:
-			for k in Data.SETS[set_id].bonus:
-				out[k] = out.get(k, 0) + Data.SETS[set_id].bonus[k]
 	# G8: squad gear with stats (Nanite Swarm, boss trophies) counts as worn by everyone
 	for id in gear:
 		var gs: Dictionary = Data.gear(id).get("stats", {})
@@ -1429,6 +1409,18 @@ func gear_bonus(s: Dictionary) -> Dictionary:
 			var st: Dictionary = Data.SURGERIES[id].get("stats", {})
 			for k in st:
 				out[k] = out.get(k, 0) + st[k]
+	return out
+
+func traits_of(s: Dictionary) -> Array:
+	## S7: every trait a soldier has, in one list: the class trait, a recruit's trait and a prestige
+	## second trait. Each is {kind, name, prog, done, text}, ready for Tip.chips.
+	var out: Array = [{"kind": "set", "name": String(s.def.trait[0]).to_upper(), "prog": "", "done": true, "text": "Class trait. " + s.def.trait[1]}]
+	for tr in Data.RECRUIT_TRAITS:
+		if tr.id == str(s.get("trait", "")):
+			out.append({"kind": "evo", "name": String(tr.name).to_upper(), "prog": "", "done": true, "text": "Recruit trait. " + tr.text})
+	if s.has("prestige"):
+		var pt: Dictionary = Data.PRESTIGE_TRAITS[int(s.get("ptrait", 0))]
+		out.append({"kind": "duo", "name": String(pt.name).to_upper(), "prog": "", "done": true, "text": "Prestige trait (%s). %s" % [title_of(s), pt.text]})
 	return out
 
 func eff_max_hp(s: Dictionary) -> int:
@@ -1665,7 +1657,6 @@ func new_campaign(slot: int) -> void:
 	## A fresh war: the starting four, a small war chest, an empty base.
 	_enter_base()
 	meta.salvage = 0
-	meta.bio = 0
 	meta.hq = {}
 	meta.implants = {}
 	meta.memorial = []
@@ -1686,6 +1677,7 @@ func load_campaign(slot: int) -> bool:
 	_enter_base()
 	var data: Dictionary = d.data
 	set_state(data)
+	fold_bio(data.base)
 	for k in CAMP_KEYS:
 		meta[k] = data.base.get(k, run_base[k])
 	camp.slot = slot
@@ -1839,7 +1831,7 @@ func hold_pay(sc: Dictionary, f: int) -> Dictionary:
 
 func income() -> Dictionary:
 	## M2: what every held sector in the war pays after each op.
-	var out := {"scrip": 0, "salvage": 0, "bio": 0}
+	var out := {"scrip": 0, "salvage": 0}
 	if not campaign():
 		return out
 	for key in camp.held:
@@ -2021,7 +2013,6 @@ func after_op(st := {}) -> Dictionary:
 	write_journal(st, inc)
 	scrip += inc.scrip
 	meta.salvage = int(meta.get("salvage", 0)) + inc.salvage
-	meta.bio = int(meta.get("bio", 0)) + inc.bio
 	roster = company()
 	var rookies: Array = []
 	while roster.size() < Data.SQUAD_MAX:
@@ -2167,10 +2158,9 @@ func check_challenges(st: Dictionary) -> Array:
 			continue
 		done[key] = true
 		meta.salvage = int(meta.get("salvage", 0)) + int(Data.CHALLENGE_PAY.salvage)
-		meta.bio = int(meta.get("bio", 0)) + int(Data.CHALLENGE_PAY.bio)
 		var it := roll_item(Data.TIER_MAX)
 		add_loot(it)
-		out.append("Challenge done: %s. +%d salvage, +%d bio and a Legendary %s." % [Data.CHALLENGES[id].name, Data.CHALLENGE_PAY.salvage, Data.CHALLENGE_PAY.bio, Data.item_name(it)])
+		out.append("Challenge done: %s. +%d salvage and a Legendary %s." % [Data.CHALLENGES[id].name, Data.CHALLENGE_PAY.salvage, Data.item_name(it)])
 	camp["chal"] = done
 	return out
 
@@ -2220,15 +2210,14 @@ func tech_block(id: String) -> String:
 		return "BUILD THE ALIEN LAB"
 	if tech_kills(T.alien) < tech_need():
 		return "KILL %d MORE" % (tech_need() - tech_kills(T.alien))
-	if int(meta.get("bio", 0)) < Data.TECH_BIO or int(meta.get("salvage", 0)) < Data.TECH_SALVAGE:
-		return "NEED %d BIO + %d SALVAGE" % [Data.TECH_BIO, Data.TECH_SALVAGE]
+	if int(meta.get("salvage", 0)) < Data.TECH_SALVAGE:
+		return "NEED %d SALVAGE" % Data.TECH_SALVAGE
 	return ""
 
 func build_tech(id: String) -> Dictionary:
 	## Builds one piece of Vharr tech into the stash. The first build unlocks it for runs too (L2).
 	if tech_block(id) != "":
 		return {}
-	meta.bio = int(meta.bio) - Data.TECH_BIO
 	meta.salvage = int(meta.salvage) - Data.TECH_SALVAGE
 	if not meta.unlocked.has(id):
 		meta.unlocked.append(id)
