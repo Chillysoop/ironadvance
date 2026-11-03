@@ -127,13 +127,13 @@ func setup(battle: Battle) -> void:
 	deck_btn.size = Vector2(58, 20)
 	deck_btn.pressed.connect(show_deck)
 	root.add_child(deck_btn)
-	var mute := PixButton.new()
-	mute.text = "SND"
-	mute.color = Color("9aa2ae")
-	mute.position = Vector2(894, 456)
-	mute.size = Vector2(58, 20)
-	mute.pressed.connect(func(): Sfx.muted = not Sfx.muted; mute.text = "MUTE" if Sfx.muted else "SND")
-	root.add_child(mute)
+	var menu := PixButton.new()  # the game menu (same as Esc); volumes live in its SETTINGS
+	menu.text = "MENU"
+	menu.color = Color("9aa2ae")
+	menu.position = Vector2(894, 456)
+	menu.size = Vector2(58, 20)
+	menu.pressed.connect(func(): Sfx.play("click"); toggle_pause())
+	root.add_child(menu)
 	for i in Run.belt_max():
 		var bs := BeltSlot.new()
 		bs.hud = self
@@ -166,6 +166,19 @@ func setup(battle: Battle) -> void:
 		sk.size = Vector2(56, 24)
 		sk.pressed.connect(func(): Sfx.play("click"); b.boot_camp.lesson_skip())
 		root.add_child(sk)
+		if not b.lesson().get("live", false):
+			# boot camp keeps the screen to what the lesson uses: no undo, swap, deck, belt or NEXT yet
+			for c in [undo_btn, swap_btn, deck_btn, move_btn, next_btn]:
+				c.visible = false
+			for c in root.get_children():
+				if c is BeltSlot:
+					c.visible = false
+	if b.in_lesson():
+		var gl := GuideLayer.new()
+		gl.hud = self
+		gl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		gl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		root.add_child(gl)
 	modal = Control.new()
 	modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -596,6 +609,21 @@ static func back_to_hq(cb: Callable, text := "<< BACK TO HQ") -> PixButton:
 	bt.pressed.connect(func(): Sfx.play("click"); cb.call())
 	return bt
 
+static func menu_button(pos: Vector2, size := Vector2(110, 26)) -> Control:
+	## A small MENU button (same as Esc) for screens that have room for one.
+	var bt := PixButton.new()
+	bt.text = "MENU"
+	bt.sub = "ESC" if size.y >= 30 else ""
+	bt.small = true
+	bt.color = Color("9aa2ae")
+	bt.size = size
+	bt.position = pos
+	bt.pressed.connect(func():
+		var m = bt.get_tree().current_scene
+		if m != null and m.has_method("open_menu"):
+			m.open_menu())
+	return bt
+
 class PixButton extends Control:
 	signal pressed
 	var text := ""
@@ -769,11 +797,15 @@ class Tag extends Control:
 			Art.text(self, "DOWN" if u.downed else "KIA", Vector2(x0 + 36, 21), 8, Color("ffb23e") if u.downed else Color("ff4d3d"))
 
 class PauseMenu extends Control:
-	## N7: RESUME, CONTROLS, QUIT TO TITLE. Runs while the tree is paused.
-	var hud
-	var page := "menu"     # "menu", "controls", "manual" (S8), "bug" (H1) or "quit"
+	## N7: the game menu. In battle Esc pauses under it; everywhere else (HQ, its rooms, the
+	## debrief, the results) Esc or a MENU button opens it. It says what is saved, saves on the
+	## spot outside battle, and quits to the title or out of the game. Runs while the tree is paused.
+	var hud = null         # the battle HUD, or null outside battle
+	var main = null        # the game (main.gd)
+	var page := "menu"     # "menu", "controls", "manual" (S8), "bug" (H1), "quit" or "exit"
 	var man_page := 0
 	var n_menu := 5
+	var note := ""         # what is saved, shown under the title
 	const CONTROLS := [
 		["CLICK A CARD / 1-9", "Arm a card, then click to fire"],
 		["RIGHT-CLICK / ESC", "Cancel the armed card"],
@@ -790,20 +822,92 @@ class PauseMenu extends Control:
 		["ALT / V", "Intel on every soldier"],
 		["J", "Jet Boots, when equipped"],
 	]
+	const HQ_CONTROLS := [
+		["RIGHT-CLICK / ESC", "Go back a step; at HQ itself, open this menu"],
+		["H", "HQ"],
+		["Q", "Quartermaster"],
+		["W", "Workshop"],
+		["A", "Armory"],
+		["D", "Doc's Lab"],
+		["B", "Barracks"],
+		["M", "Memorial"],
+		["U", "Upgrade HQ"],
+		["G", "Dial the gate (the War Room in a campaign)"],
+		["1-5", "Open a soldier's Dossier"],
+		["Q / E   TAB", "In a Dossier: next soldier, next tab"],
+		["F12", "Save a screenshot, any time"],
+	]
 	func _ready() -> void:
 		process_mode = Node.PROCESS_MODE_ALWAYS
 		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		mouse_filter = Control.MOUSE_FILTER_STOP
+		if main == null and hud != null:
+			main = hud.get_parent()
+		note = save_now()
 		build()
+	func battle():
+		## The battle under the menu, or null.
+		if hud != null and is_instance_valid(hud) and is_instance_valid(hud.b):
+			return hud.b
+		return null
+	func lesson() -> bool:
+		var b = battle()
+		return b != null and b.in_lesson()
+	func live_run() -> bool:
+		## A quick run (or Daily Op) still going: not over, not a lesson.
+		if Run.campaign() or Run.soldiers.is_empty() or Run.alive_count() == 0:
+			return false
+		var sc = main.get("screen") if main != null else null
+		if sc != null and is_instance_valid(sc) and str(sc.get("mode") if sc.get("mode") != null else "") in ["lost", "final"]:
+			return false  # the run is over and its save already cleared
+		return true
+	func save_now() -> String:
+		## Outside battle the game saves the moment the menu opens. Says what is on disk.
+		var b = battle()
+		if b != null:
+			if b.in_lesson() or b.tutorial():
+				return "Boot camp keeps nothing, so there is nothing to save."
+			if b.practice():
+				return "Nothing on the practice range is kept."
+			if Run.campaign():
+				return "The war was saved at HQ before this op. Quitting now loses only this op."
+			if Run.run_head().size():
+				return "Your run was saved just before this level."
+			return ""
+		if Run.campaign():
+			Run.save_campaign()
+			return "SAVED. The war is in campaign slot %d." % (int(Run.camp.slot) + 1)
+		if live_run():
+			Run.mission = Run.history.size()
+			# the run order or the level is already picked here: come back to this screen, not HQ
+			# (HQ would roll a new dial, and the level picked here was already burned)
+			var sc = main.get("screen") if main != null else null
+			var md := str(sc.get("mode")) if sc != null and is_instance_valid(sc) and sc.get("mode") != null else ""
+			if md in ["orders", "route", "brief"] and not Run.level.is_empty() or md == "orders":
+				Run.save_run(md)
+				return "SAVED. CONTINUE RUN on the title brings you back to this screen."
+			Run.save_run()
+			return "SAVED. CONTINUE RUN on the title brings you back to HQ."
+		return ""
+	func calls(on: bool) -> void:
+		## The operator's tablet sits on a higher layer: tuck it away while the menu is up.
+		if main != null and "call_layer" in main and main.call_layer != null:
+			main.call_layer.visible = on
 	func build() -> void:
 		for c in get_children():
 			c.queue_free()
 		var opts: Array = []
+		var in_b: bool = battle() != null
+		var saves: bool = not in_b and (Run.campaign() or live_run())  # outside battle, quitting saves first
 		match page:
 			"menu":
 				opts = [["RESUME", Color("62d26f"), resume], ["CONTROLS", Color("53d4e2"), func(): go("controls")], ["FIELD MANUAL", Color("b48cff"), func(): man_page = 0; go("manual")], ["SETTINGS", Color("53d4e2"), settings],
-					["REPORT A BUG", Color("ffb23e"), func(): go("bug")], ["QUIT TO TITLE", Color("ff4d3d"), func(): go("quit")]]
-				if is_instance_valid(hud.b) and hud.b.in_lesson() and int(hud.b.mission.get("lesson_i", 0)) > 0:
+					["REPORT A BUG", Color("ffb23e"), func(): go("bug")],
+					["SAVE AND QUIT" if saves else "QUIT TO TITLE", Color("ff4d3d"), func(): go("quit")],
+					["QUIT GAME", Color("9aa2ae"), func(): go("exit")]]
+				if OS.has_feature("web"):
+					opts.pop_back()  # a browser tab closes itself
+				if lesson() and int(battle().mission.get("lesson_i", 0)) > 0:
 					opts.insert(4, ["BACK TO LESSON 1", Color("9aa2ae"), restart_camp])  # H2
 				n_menu = opts.size()
 			"bug":
@@ -812,13 +916,15 @@ class PauseMenu extends Control:
 				opts = [["BACK", Color("9aa2ae"), func(): go("menu")]]
 			"manual":
 				opts = [["BACK", Color("9aa2ae"), func(): go("menu")]]
-				if manual(hud.b).size() > MAN_ROWS:
-					opts.append(["MORE", Color("b48cff"), func(): man_page = (man_page + 1) % ceili(manual(hud.b).size() / float(MAN_ROWS)); go("manual")])
+				if manual(battle()).size() > MAN_ROWS:
+					opts.append(["MORE", Color("b48cff"), func(): man_page = (man_page + 1) % ceili(manual(battle()).size() / float(MAN_ROWS)); go("manual")])
 			"quit":
-				opts = [["QUIT", Color("ff4d3d"), quit], ["STAY", Color("62d26f"), func(): go("menu")]]
+				opts = [["SAVE AND QUIT" if saves else "QUIT", Color("ff4d3d"), quit], ["STAY", Color("62d26f"), func(): go("menu")]]
+			"exit":
+				opts = [["QUIT GAME", Color("ff4d3d"), exit_game], ["STAY", Color("62d26f"), func(): go("menu")]]
 		var y := 300.0 if page != "controls" else 446.0
 		if page == "menu":
-			y = 170.0
+			y = 178.0
 		elif page == "bug":
 			y = 400.0
 		for i in opts.size():
@@ -826,8 +932,9 @@ class PauseMenu extends Control:
 			bt.process_mode = Node.PROCESS_MODE_ALWAYS
 			bt.text = opts[i][0]
 			bt.color = opts[i][1]
-			bt.size = Vector2(240, 36)
-			if page == "quit":
+			bt.size = Vector2(240, 34)
+			if page in ["quit", "exit"]:
+				bt.size = Vector2(240, 36)
 				bt.position = Vector2(480 - 250 + i * 260, y)
 			elif page == "manual":
 				bt.size = Vector2(180, 32)
@@ -835,8 +942,11 @@ class PauseMenu extends Control:
 			elif page == "bug":
 				bt.size = Vector2(200, 36)
 				bt.position = Vector2(480 - 315 + i * 215, y)
+			elif page == "controls":
+				bt.size = Vector2(240, 36)
+				bt.position = Vector2(360, y)
 			else:
-				bt.position = Vector2(360, y + i * 46)
+				bt.position = Vector2(360, y + i * 42)
 			bt.pressed.connect(opts[i][2])
 			add_child(bt)
 	func go(p: String) -> void:
@@ -883,39 +993,61 @@ class PauseMenu extends Control:
 			out.append([String(ev.name), String(ev.text)])
 		return out
 	func settings() -> void:
-		## R5: the settings panel sits over the pause menu until BACK
+		## R5: the settings panel sits over the menu until BACK
 		var sp: Control = preload("res://scripts/settings.gd").new()
 		add_child(sp)
 	func resume() -> void:
 		Sfx.play("click")
 		get_tree().paused = false
-		hud.set_call_shown(true)
+		calls(true)
 		queue_free()
 	func restart_camp() -> void:
 		Sfx.play("click")
 		get_tree().paused = false
-		hud.set_call_shown(true)
-		hud.get_parent().start_training.call_deferred(0)
+		calls(true)
+		main.start_training.call_deferred(0)
+		queue_free()
 	func shot_now() -> void:
-		## The screenshot shows the battle, not this panel: hide it for the frame, then come back.
+		## The screenshot shows the game, not this panel: hide it for the frame, then come back.
 		visible = false
 		await get_tree().process_frame
-		var sk = hud.get_parent().get("shot_key")
+		var sk = main.get("shot_key") if main != null else null
 		if sk != null:
 			await sk.snap()
 		visible = true
+	func leave_note() -> void:
+		## H3: where the tester stopped
+		var qb = battle()
+		if qb != null:
+			Diary.line(("QUIT boot camp at lesson %d" % (int(qb.mission.get("lesson_i", 0)) + 1)) if qb.in_lesson() else ("QUIT mid-mission: %s, round %d" % [Diary.where(qb), qb.round_n]))
+		else:
+			Diary.line("SAVE AND QUIT outside battle")
+	func settle() -> void:
+		## Outside battle: crates already opening on the debrief land in the stash, then save once more.
+		var sc = main.get("screen") if main != null else null
+		if sc != null and is_instance_valid(sc) and sc.get("crates") is Array:
+			for c in sc.crates:
+				if c.open_t >= 0 and not c.shown:
+					c.shown = true
+					Run.add_loot(c.item)
+		save_now()
 	func quit() -> void:
 		get_tree().paused = false
-		hud.set_call_shown(true)
-		var main = hud.get_parent()
-		var qb: Battle = hud.b
-		if is_instance_valid(qb):
-			# H3: where the tester stopped
-			Diary.line(("QUIT boot camp at lesson %d" % (int(qb.mission.get("lesson_i", 0)) + 1)) if qb.in_lesson() else ("QUIT mid-mission: %s, round %d" % [Diary.where(qb), qb.round_n]))
-		if Run.campaign():
-			# like closing the window mid-op: the war rolls back to the last HQ save
-			Run.load_campaign(int(Run.camp.slot))
+		calls(true)
+		leave_note()
+		if battle() != null:
+			if Run.campaign():
+				# like closing the window mid-op: the war rolls back to the last HQ save
+				Run.load_campaign(int(Run.camp.slot))
+		else:
+			settle()
+		queue_free()
 		main.show_title()
+	func exit_game() -> void:
+		leave_note()
+		if battle() == null:
+			settle()
+		get_tree().quit()
 	func _input(ev: InputEvent) -> void:
 		# right-click backs out like Esc (the game is paused, so the main screen can't map it)
 		var back: bool = ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT
@@ -928,28 +1060,47 @@ class PauseMenu extends Control:
 			get_viewport().set_input_as_handled()
 	func _process(_d: float) -> void:
 		queue_redraw()
+	func quit_line() -> String:
+		## What quitting costs, said plainly.
+		if lesson():
+			return "Boot camp stops here. TRAINING on the title starts it again, and SKIP jumps past a lesson."
+		if battle() != null:
+			if Run.campaign():
+				return "This op is lost. The war picks up from your last HQ save."
+			if Run.run_head().size():
+				return "Your run is saved at HQ. CONTINUE RUN on the title takes you back to HQ, just before this level."
+			return "This run is lost. Salvage, HQ upgrades and unlocks you already earned are kept."
+		if Run.campaign():
+			return "The war is saved. Pick slot %d under CAMPAIGN on the title to carry on." % (int(Run.camp.slot) + 1)
+		if live_run():
+			return "Your run is saved. CONTINUE RUN on the title brings you back to HQ."
+		return "Salvage, HQ upgrades and unlocks are always kept."
 	func _draw() -> void:
 		draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.8))
 		var r := Rect2(150, 90, 660, 410) if page == "controls" else Rect2(280, 130, 400, 240)
 		if page == "manual":
 			r = Rect2(70, 40, 820, 460)
 		if page == "menu":
-			r = Rect2(280, 96, 400, 94 + n_menu * 46)
+			r = Rect2(280, 82, 400, 112 + n_menu * 42)
 		elif page == "bug":
 			r = Rect2(150, 110, 660, 340)
-		if page == "quit":
+		if page in ["quit", "exit"]:
 			r = Rect2(200, 170, 560, 190)
 		draw_rect(r.grow(2), Color(0.05, 0.035, 0.03))
 		draw_rect(r, Color("2a2e34"))
 		draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 2), Color("6c7480"))
 		match page:
 			"menu":
-				Art.text(self, "PAUSED", Vector2(480, 138), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+				Art.text(self, "PAUSED" if battle() != null else "MENU", Vector2(480, 124), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+				if note != "":
+					var lines := CardView.wrap_text(note, 370, 16)
+					for i in mini(lines.size(), 2):
+						Art.text(self, lines[i], Vector2(480, 144 + i * 14 + (7 if lines.size() == 1 else 0)), 16, Color("62d26f") if note.begins_with("SAVED") else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 			"bug":
 				# H1: what to send and where it is
 				Art.text(self, "REPORT A BUG", Vector2(480, 148), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 				Art.text(self, "BUILD " + Diary.build().to_upper(), Vector2(480, 170), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
-				var rows := ["Press F12 any time to save a screenshot (SCREENSHOT NOW takes one of the battle).",
+				var rows := ["Press F12 any time to save a screenshot (SCREENSHOT NOW takes one of the game).",
 					"Send us, from the folder below:",
 					"    screenshots/  the pictures you took",
 					"    logs/godot.log  what the game was doing (send it before you restart)",
@@ -961,7 +1112,7 @@ class PauseMenu extends Control:
 				Art.text(self, Diary.folder(), Vector2(480, 352), fsz, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER, 2, fsz == 16)
 			"manual":
 				# S8: every system met so far, one line each
-				var es := manual(hud.b)
+				var es := manual(battle())
 				var pages := ceili(es.size() / float(MAN_ROWS))
 				Art.text(self, "FIELD MANUAL" + ("  %d/%d" % [man_page + 1, pages] if pages > 1 else ""), Vector2(480, 70), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 				Art.text(self, "Everything you've run into so far. More shows up as you meet it.", Vector2(480, 88), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
@@ -974,20 +1125,20 @@ class PauseMenu extends Control:
 						Art.text(self, lines[k], Vector2(300, ry + k * 13), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 					ry += 9 + 13 * mini(2, lines.size())
 			"controls":
-				Art.text(self, "CONTROLS", Vector2(480, 120), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+				var rows: Array = CONTROLS if battle() != null else HQ_CONTROLS
+				Art.text(self, "CONTROLS" if battle() != null else "HQ CONTROLS", Vector2(480, 120), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
 				# every row clear of the BACK button and inside the panel, the longest (R) included
-				for i in CONTROLS.size():
-					Art.text(self, CONTROLS[i][0], Vector2(420, 150 + i * 21), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
-					Art.text(self, CONTROLS[i][1], Vector2(440, 150 + i * 21), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
-			"quit":
-				Art.text(self, "QUIT TO TITLE?", Vector2(480, 210), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
-				var line := "This op is lost. The war picks up from your last HQ save." if Run.campaign() else "This run is lost. Salvage, HQ upgrades and unlocks you already earned are kept."
-				var bb: Battle = hud.b
-				if is_instance_valid(bb) and bb.in_lesson():
-					line = "Boot camp stops here. TRAINING on the title starts it again, and SKIP jumps past a lesson."
-				elif not Run.campaign() and Run.run_head().size():
-					line = "Your run is saved at HQ. CONTINUE RUN on the title takes you back to HQ, just before this level."
-				Art.text(self, line, Vector2(480, 246), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+				for i in rows.size():
+					Art.text(self, rows[i][0], Vector2(420, 150 + i * 21), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
+					Art.text(self, rows[i][1], Vector2(440, 150 + i * 21), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			"quit", "exit":
+				var head := "SAVE AND QUIT TO TITLE?" if battle() == null and (Run.campaign() or live_run()) else "QUIT TO TITLE?"
+				if page == "exit":
+					head = "QUIT THE GAME?"
+				Art.text(self, head, Vector2(480, 210), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+				var lines := CardView.wrap_text(quit_line(), 520, 16)
+				for i in lines.size():
+					Art.text(self, lines[i], Vector2(480, 246 + i * 18), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 
 class Coach extends Control:
 	## N1/N5: new-player tips in the Quartermaster's box style. NEXT pages through the queue;
@@ -1095,6 +1246,38 @@ class ModalBG extends Control:
 		elif who != null and kind == "deck":
 			Art.draw_char(self, who.sheet, "idle", (Time.get_ticks_msec() / 200) % 4, Vector2(100, 200), 1, false, 0, 1.0, 0, true, 2.0)
 
+class GuideLayer extends Control:
+	## Boot camp: the frame and arrow on the card or button to click, drawn over the hand and buttons.
+	var hud
+	func _process(_d: float) -> void:
+		queue_redraw()
+	func _draw() -> void:
+		var b: Battle = hud.b
+		if b != null and b.in_lesson():
+			draw_guide(b)
+
+	func draw_guide(b: Battle) -> void:
+		## Boot camp: a pulsing frame and a bouncing arrow on the card or button the current step wants.
+		var tg: Dictionary = b.boot_camp.guide_target()
+		if not tg.has("r"):
+			return
+		var r: Rect2 = tg.r
+		var p := 0.5 + 0.5 * sin(b.t / 5.0)
+		var c := Color(1, 0.86, 0.25, 0.55 + 0.45 * p)
+		var g := r.grow(3 + 2 * p)
+		for k in 2:
+			var gg := g.grow(k)
+			draw_rect(gg, Color(0.05, 0.035, 0.03, 0.8) if k == 1 else c, false, 2.0)
+		var ax := r.get_center().x
+		var ay := r.position.y - 12 - 4 * p
+		draw_colored_polygon(PackedVector2Array([Vector2(ax - 7, ay - 8), Vector2(ax + 7, ay - 8), Vector2(ax, ay)]), Color(0.05, 0.035, 0.03))
+		draw_colored_polygon(PackedVector2Array([Vector2(ax - 5, ay - 7), Vector2(ax + 5, ay - 7), Vector2(ax, ay - 1)]), Color("ffd23a"))
+		# the label sits beside the arrow, clear of the ENERGY panel left of the hand
+		var lw := Art.text_width(tg.label, 8) + 10
+		var lx := ax + 10 if ax + 10 + lw < 956 else ax - 10 - lw
+		draw_rect(Rect2(lx, ay - 11, lw, 12), Color(0.05, 0.035, 0.03, 0.9))
+		Art.text(self, tg.label, Vector2(lx + 5, ay - 2), 8, Color("ffd23a"))
+
 class Overlay extends Control:
 	## Top bar, boss bar, log, hint, the selected soldier's action panel and banners.
 	var hud
@@ -1147,25 +1330,25 @@ class Overlay extends Control:
 		Art.text(self, Data.meters(mv), Vector2(r.get_center().x, my + 21), 8, Color("62d26f") if mv > 1 else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 
 	func draw_lesson(b: Battle) -> float:
-		## The tutorial's lesson card: which lesson, what to do step by step, and how the last try went.
-		## Returns the bottom edge so the log and power-ups sit under it.
+		## The tutorial's lesson card: which lesson, the steps (done ones ticked, the current one lit),
+		## a line on what's going on, and how the last try went. Returns the bottom edge.
 		var L: Dictionary = b.lesson()
 		var ink := Color(0.05, 0.035, 0.03)
 		var x: float = hud.LESSON_X
 		var y: float = hud.LESSON_Y
 		var w: float = hud.LESSON_W
-		var rows: Array = []
-		var k := 1
-		for st in L.steps:
-			var wl: Array = CardView.wrap_text("%d. %s" % [k, st], w - 26, 16)
+		var G: Array = L.get("guide", [])
+		var rows: Array = []  # [text, state: 0 done, 1 now, 2 later, 3 note]
+		for k in G.size():
+			var st := 0 if k < b.guide_i else (1 if k == b.guide_i else 2)
+			var wl: Array = CardView.wrap_text(G[k][0], w - 34, 16)
 			for j in wl.size():
-				rows.append(("    " if j > 0 else "") + wl[j])
-			k += 1
+				rows.append([wl[j], st, j == 0])
+		var note: Array = CardView.wrap_text(str(L.get("note", "")), w - 20, 16) if L.get("note", "") != "" else []
 		var why: String = b.lesson_why
-		# 48: room under the last row for descenders (the "g" of "flag" was cut off)
-		var h := 48.0 + rows.size() * 14 + (16.0 if why != "" and why != "retry" else 0.0)
+		var h := 48.0 + rows.size() * 14 + (note.size() * 13 + 8 if note.size() else 0) + (16.0 if why != "" and why != "retry" else 0.0)
 		draw_rect(Rect2(x - 1, y - 1, w + 2, h + 2), ink)
-		draw_rect(Rect2(x, y, w, h), Color(0.1, 0.11, 0.13, 0.9))
+		draw_rect(Rect2(x, y, w, h), Color(0.1, 0.11, 0.13, 0.92))
 		draw_rect(Rect2(x, y, w, 2), Color("ffb23e"))
 		var n: int = int(b.mission.get("lesson_i", 0))
 		var head := "LESSON %d OF %d" % [n + 1, Data.LESSONS.size()]
@@ -1182,8 +1365,23 @@ class Overlay extends Control:
 			Art.text(self, "TRY %d" % (tries + 1), Vector2(px0, y + 28), 8, Color("ff7a3d"))
 		var ry := y + 46
 		for r in rows:
-			Art.text(self, r, Vector2(x + 10, ry), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+			var col := Color("6f7782") if r[1] == 0 else (Color("ffd23a") if r[1] == 1 else Color("9aa2ae"))
+			if r[1] == 1:
+				draw_rect(Rect2(x + 4, ry - 11, w - 8, 14), Color(1, 0.82, 0.23, 0.10 + 0.06 * sin(b.t / 8.0)))
+			if r[2]:
+				if r[1] == 0:
+					Art.text(self, "OK", Vector2(x + 8, ry), 8, Color("62d26f"))
+				elif r[1] == 1:
+					Art.text(self, ">", Vector2(x + 10 + (2 if b.t % 30 < 15 else 0), ry), 8, Color("ffd23a"))
+			Art.text(self, r[0], Vector2(x + 26, ry), 16, col, HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 			ry += 14
+		if note.size():
+			ry += 4
+			draw_rect(Rect2(x + 8, ry - 10, w - 16, 1), Color("3a3f46"))
+			for l in note:
+				Art.text(self, l, Vector2(x + 10, ry + 2), 16, Color("53d4e2"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
+				ry += 13
+			ry += 4
 		if why != "" and why != "retry":
 			Art.text(self, "LAST TRY: " + Data.LESSON_FAIL.get(why, "AGAIN!").trim_suffix(" AGAIN!") + "  Press T or RETRY any time.", Vector2(x + 10, ry + 2), 8, Color("ff7a3d"))
 		return y + h
@@ -1408,6 +1606,13 @@ class Overlay extends Control:
 		Art.text(self, str(n) if n else "CALM", Vector2(wx + 150, 28), 8, Color("53d4e2") if n <= 4 else Color("ff7a3d"))
 		Art.text(self, "RND", Vector2(912, 14), 8, Color("e8dcc2"))
 		Art.text(self, str(b.round_n), Vector2(912, 28), 8, Color.WHITE)
+		if b.in_lesson() and not b.lesson().get("live", false):
+			# boot camp: score, scrip, alert and wind don't mean anything yet, so the bar just says where you are
+			draw_rect(Rect2(0, 2, 960, 28), Color("2a2e34"))
+			Art.text(self, "BOOT CAMP", Vector2(14, 20), 8, Color("ffb23e"))
+			Art.text(self, "LESSON %d: %s" % [int(b.mission.get("lesson_i", 0)) + 1, b.lesson().title], Vector2(110, 20), 8, Color("e8dcc2"))
+			if b.lesson().has("turns"):
+				Art.text(self, "TURN %d" % b.round_n, Vector2(940, 20), 8, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
 		var jl: String = b.camp_ops.job_left()
 		# boss bar
 		var boss = null
@@ -1436,7 +1641,7 @@ class Overlay extends Control:
 		elif boss != null and b.boss_active and not boss.dead:
 			var bw := 360.0
 			var bx := 480 - bw / 2
-			var bname := "VHARR BOAR" if boss.fl.get("vharr", false) else ("ROOKIE BOAR" if boss.fl.get("rookie", false) else "IRON BOAR")
+			var bname: String = "VHARR BOAR" if boss.fl.get("vharr", false) else ("ROOKIE BOAR" if boss.fl.get("rookie", false) else Data.BOAR_KITS.get(b.mission.get("boar_kit", ""), Data.BOAR_KITS.standard).name)
 			if boss.dome > 0:
 				Art.text(self, bname + "  DOMED: CRUSH OR MELEE IT", Vector2(bx, 52), 8, Color("9df25c"))
 			else:
@@ -1606,6 +1811,7 @@ class WaterRail extends Control:
 		var c0: Color = Color("ff5a1e") if lava else Color(b.th.water[1])
 		var c1: Color = Color("ffd23a") if lava else c0.lightened(0.45)
 		var word := "LAVA" if lava else "DROWN"
+		var tagged := false
 		for r in runs(b):
 			var x0: float = r[0]
 			var x1: float = r[1]
@@ -1621,15 +1827,17 @@ class WaterRail extends Control:
 				if int((x + b.cam_x) / 4) % 3 == 0:
 					draw_rect(Rect2(x, yy - 1, minf(2, x1 - x), 1), Color(c1, a2))
 				x += 4
-			# the tag goes on the part of the run that's over the hand, never over a roster tag
-			var lx0 := maxf(x0, LO)
-			var lx1 := minf(x1, HI)
-			if lx1 - lx0 >= 30:
-				var mx := (lx0 + lx1) / 2.0
-				var bob := 1.0 if b.t % 40 < 20 else 0.0
-				var tw := Art.text_width(word, 8) + 8
-				draw_rect(Rect2(mx - tw / 2, Y - 15 + bob, tw, 11), Color(0.03, 0.03, 0.05, 0.85 * al))
-				Art.text(self, word, Vector2(mx, Y - 7 + bob), 8, Color(c1, al), HORIZONTAL_ALIGNMENT_CENTER)
+			if minf(x1, HI) - maxf(x0, LO) >= 30:
+				tagged = true
+		if tagged:
+			# Q4: one tag at the strip's left end, above the ENERGY box (and above JET when it shows),
+			# so it never sits on the hand and hides a card's PUMPED tab
+			var mx: float = maxf(160.0, hud.hand_x0 - 52) + 23.0
+			var ty := 397.0 if hud.jet_btn.visible else 427.0
+			var bob := 1.0 if b.t % 40 < 20 else 0.0
+			var tw := Art.text_width(word, 8) + 8
+			draw_rect(Rect2(mx - tw / 2, ty + bob, tw, 11), Color(0.03, 0.03, 0.05, 0.85 * al))
+			Art.text(self, word, Vector2(mx, ty + 8 + bob), 8, Color(c1, al), HORIZONTAL_ALIGNMENT_CENTER)
 
 # ---------------------------------------------------------------- the boarding card
 class VehiclePop extends Control:

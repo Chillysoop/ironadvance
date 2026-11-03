@@ -23,9 +23,29 @@ const C_ALIEN := Color("c47bff")  # Vharr markers and labels
 const C_OOZE := Color("9df25c")
 const SUNK_Y := 452.0  # world y where a soldier disappears behind the card tray
 
+var tag_rects: Array = []   # Q3: where this frame's enemy name tags already sit, so the next one steps up
+
+func tag_y(cx: float, w: float, y: float) -> float:
+	## Q3: the baseline for a world tag centered on cx: y, or a row up (and up again) until it clears
+	## every tag already placed this frame. Claims the spot it returns.
+	var yy := y
+	for k in 6:
+		var r := Rect2(cx - w / 2.0 - 1, yy - 8, w + 2, 9)
+		if not tag_rects.any(func(o: Rect2): return o.intersects(r)):
+			break
+		yy -= 11.0
+	tag_rects.append(Rect2(cx - w / 2.0 - 1, yy - 8, w + 2, 9))
+	return yy
+
+func put_tag(text: String, p: Vector2, c: Color) -> void:
+	## A centered enemy tag, pulled in from the view edges and stepped clear of the others.
+	var q := in_view(p, text)
+	Art.text(self, text, Vector2(q.x, tag_y(q.x, Art.text_width(text, 8), q.y)), 8, c, HORIZONTAL_ALIGNMENT_CENTER)
+
 func _draw() -> void:
 	if b.T == null:
 		return
+	tag_rects.clear()
 	Art.big_heads = Run.toggle_on("bigheads")  # D3, for this draw only
 	var cx := b.cam_x
 	draw_ladders(cx)
@@ -66,7 +86,11 @@ func _draw() -> void:
 	draw_parts()
 	draw_fx()
 	if not cine:
-		for u in b.units:
+		# Q3: the higher tags go down first, so where two would overlap the lower one steps up
+		var pl := b.units.duplicate()
+		# the selected soldier's name tag goes first: it bobs, so the enemy tags step around it
+		pl.sort_custom(func(a, c): return (a == b.sel) if (a == b.sel) != (c == b.sel) else a.y - a.h < c.y - c.h)
+		for u in pl:
 			draw_plate(u)
 	Art.big_heads = false
 	draw_targeting()
@@ -562,7 +586,7 @@ func draw_pad(u: Unit, pos: Vector2) -> void:
 		var cd: String = "%s IN %d" % [B.name, L.t]
 		# wider than the pad itself, so it clears a Jackal's tags across its whole width
 		if word_ok(pos, false, Art.text_width(cd, 8) / 2.0 + 16) and not stood_on(pos):
-			Art.text(self, cd, in_view(Vector2(pos.x, pos.y - 30), cd), 8, Color(B.c, 0.85), HORIZONTAL_ALIGNMENT_CENTER)
+			put_tag(cd, Vector2(pos.x, pos.y - 30), Color(B.c, 0.85))
 
 func draw_drill(u: Unit, d: Vector2, spin: bool) -> void:
 	## A drill bit held out in front: a steel cone along the bore line, its threads turning.
@@ -748,6 +772,12 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
 	if u.fl.get("vharr", false) and not u.dead:
 		mod = Color(0.86, 0.78, 1.08, u.alpha)  # Q3: refit in Vharr violet
+	var kit: String = b.mission.get("boar_kit", "") if not u.fl.get("vharr", false) else ""
+	if not u.dead:
+		match kit:
+			"engine": mod = Color(0.62, 0.66, 0.78, u.alpha)  # V6: gunmetal
+			"drill": mod = Color(1.1, 0.92, 0.55, u.alpha)  # V6: mining yellow
+			"magma": mod = Color(1.15, 0.6, 0.45, u.alpha)  # V6: glowing red
 	# barrel behind the turret
 	var pv := b.boss_pivot(u)
 	var bt: Texture2D = Art.tex.boss_barrel
@@ -758,6 +788,26 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 	if u.muzzle > 0 and not u.dead:
 		draw_muzzle(b.muzzle(u), -1, -u.aim_a)
+	if not u.dead:
+		match kit:
+			"engine":
+				# a smokestack and a cowcatcher
+				draw_rect(Rect2(pos.x + 18, pos.y - 104, 14, 26), Color(0.2, 0.21, 0.24, u.alpha))
+				draw_rect(Rect2(pos.x + 15, pos.y - 108, 20, 6), Color(0.3, 0.31, 0.35, u.alpha))
+				if b.t % 8 == 0:
+					b.puff(u.x + 25, u.y - 110, 1.2)
+				draw_colored_polygon(PackedVector2Array([pos + Vector2(-64, -4), pos + Vector2(-82, 0), pos + Vector2(-64, -30)]), Color(0.45, 0.2, 0.15, u.alpha))
+			"drill":
+				var spin := float(b.t % 8) / 8.0
+				draw_colored_polygon(PackedVector2Array([pos + Vector2(-62, -34), pos + Vector2(-96, -20), pos + Vector2(-62, -6)]), Color(0.75, 0.75, 0.8, u.alpha))
+				for k in 3:
+					var xx := -66.0 - (k + spin) * 9.0
+					draw_line(pos + Vector2(xx, -32 + (k + spin) * 4), pos + Vector2(xx - 4, -8 - (k + spin) * 4), Color(0.4, 0.4, 0.45, u.alpha), 2)
+			"magma":
+				for k in 4:
+					draw_rect(Rect2(pos.x - 40 + k * 22, pos.y - 26 + (k % 2) * 6, 10, 3), Color(1.0, 0.55 + 0.3 * sin(b.t / 7.0 + k), 0.1, u.alpha))
+				if b.t % 12 == 0:
+					b.part({"x": u.x + randf_range(-40, 40), "y": u.y - 40, "vx": 0.0, "vy": -1.2, "life": 24, "max": 24, "c": Color("ffb23e"), "s": 2.0, "g": -0.02, "fire": true})
 	if u.dead and b.t % 6 == 0:
 		b.puff(u.x + randf_range(-40, 40), u.y - 60, 1.8)
 	if u.cracked and not u.dead and b.t % 10 == 0:
@@ -794,7 +844,7 @@ func draw_relay(u: Unit, pos: Vector2) -> void:
 		# (measured from where it lands once pulled in from the view edge, not from the relay)
 		var rp := in_view(pos + Vector2(0, -44), rl)
 		if word_ok(Vector2(rp.x, pos.y), false, Art.text_width(rl, 8) / 2.0 + 24):
-			Art.text(self, rl, rp, 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			put_tag(rl, rp, Color("53d4e2"))
 
 func draw_sentry(u: Unit, pos: Vector2, white: bool) -> void:
 	## N2: a squat tripod turret in Bolt's orange, with its laser on whatever it will shoot.
@@ -992,7 +1042,7 @@ func draw_plate(u: Unit) -> void:
 		var tw := Art.text_width(wt, 8) + 4
 		# and it gives way to an elite's name right beside it (BROOD over LIGHT read as BRLIGHT)
 		if not b.units.any(func(o): return o != u and o.kind == "enemy" and not o.dead and not o.gone and absf(o.y - o.h - u.y + u.h) < 12 and ((o.id < u.id and o.weight == u.weight and o.elite == "" and absf(o.x - u.x) < tw) or (o.elite != "" and absf(o.x - u.x) < (tw + Art.text_width(Data.ELITES[o.elite].name, 8)) / 2.0 + 4))):
-			Art.text(self, wt, in_view(Vector2(x, y - 4), wt), 8, C_ALIEN, HORIZONTAL_ALIGNMENT_CENTER)
+			put_tag(wt, Vector2(x, y - 4), C_ALIEN)
 	var lift := 0.0
 	if u.elite != "":
 		draw_rect(Rect2(x - w / 2 - 2, y - 2, w + 4, 7), Color("ffd23a"), false, 1.0)
@@ -1004,10 +1054,10 @@ func draw_plate(u: Unit) -> void:
 		var ny := y - 4 - lift
 		if b.units.any(func(o): return o != u and o.kind == "enemy" and not o.dead and not o.gone and absf(o.x - u.x) < ew / 2 + 12 and o.y - o.h - 7 > ny - 8 and o.y - o.h - 10 < ny):
 			lift += 10.0
-		Art.text(self, en, in_view(Vector2(x, y - 4 - lift), en), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		put_tag(en, Vector2(x, y - 4 - lift), Color("ffd23a"))
 		if u.fl.has("quarry"):
 			var wn: String = ("NEMESIS: " if u.fl.has("nemesis") else "WANTED: ") + u.fl.quarry
-			Art.text(self, wn, in_view(Vector2(x, y - 14 - lift), wn), 8, Color("ff4d3d") if b.t % 40 < 28 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			put_tag(wn, Vector2(x, y - 14 - lift), Color("ff4d3d") if b.t % 40 < 28 else Color("ffd23a"))
 	var st_y: float = y - lift - (24 if u.fl.has("quarry") else (14 if u.elite != "" else 4))
 	var has_st := draw_statuses(u, x, st_y)
 	if u.type == "radio" and b.radio_t != null and u.active:
@@ -1017,6 +1067,7 @@ func draw_plate(u: Unit) -> void:
 		var col := Color("ff4d3d") if b.radio_t <= 1 else Color("ffd23a")
 		var rx := clampf(x, b.cam_x + 44, b.cam_x + 916)
 		var rs := "BACKUP %d" % b.radio_t
+		y = tag_y(rx - 35 + (Art.text_width(rs, 8) + 26) / 2.0, Art.text_width(rs, 8) + 26, y - 4) + 4
 		# a dark plate under the icon and the word, so a status letter beside it can't read as part of it (MBACKUP)
 		draw_rect(Rect2(rx - 35, y - 16, Art.text_width(rs, 8) + 26, 17), Color(C_DARK, 0.75))
 		draw_texture_rect(Art.tex.ic_radio, Rect2(rx - 34, y - 16, 16, 16), false)
@@ -1078,7 +1129,9 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 		if not b.inspect:
 			var tag := "%s LV%d" % [u.def.name, u.s.lvl]
 			var hw := Art.text_width(tag, 8) / 2.0 + 2
-			Art.text(self, tag, Vector2(clampf(x, b.cam_x + hw, b.cam_x + Battle.W - hw), by - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			var tx := clampf(x, b.cam_x + hw, b.cam_x + Battle.W - hw)
+			tag_rects.append(Rect2(tx - hw, by - 14, hw * 2, 11))  # Q3: claimed, so enemy tags step clear of it
+			Art.text(self, tag, Vector2(tx, by - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_statuses(u: Unit, x: float, y: float) -> bool:
 	## Short colored tags for C5 statuses, plus AIR for a body a squadmate launched (SKEET bait).
@@ -1100,6 +1153,8 @@ func draw_statuses(u: Unit, x: float, y: float) -> bool:
 		tw += Art.text_width(tg[0], 8) + 4
 	# pulled in from the view edges like the other world labels
 	var cx := clampf(x - tw / 2, b.cam_x + 4, b.cam_x + Battle.W - tw - 2)
+	if u.team == "enemy":
+		y = tag_y(cx - 2 + (tw + 2) / 2.0, tw + 2, y)  # Q3
 	draw_rect(Rect2(cx - 2, y - 9, tw + 2, 11), Color(C_DARK, 0.8))
 	for tg in tags:
 		Art.text(self, tg[0], Vector2(cx, y), 8, tg[1])
@@ -1214,6 +1269,27 @@ func draw_fx() -> void:
 				draw_texture_rect_region(Art.tex.slash, Rect2(-10, -10, 20, 20), Rect2(fr * 20, 0, 20, 20))
 				draw_set_transform_matrix(Transform2D.IDENTITY)
 
+func draw_guide_ring() -> void:
+	## Boot camp: a pulsing ring and a bouncing arrow on the spot the current step wants clicked.
+	var tg: Dictionary = b.boot_camp.guide_target()
+	if not tg.has("w"):
+		return
+	var p: Vector2 = tg.w
+	var k := 0.5 + 0.5 * sin(b.t / 5.0)
+	var rad: float = tg.get("ring", 12.0) + 3 * k
+	var c := Color(1, 0.86, 0.25, 0.6 + 0.4 * k)
+	draw_arc(p, rad + 1.5, 0, TAU, 28, Color(0.05, 0.035, 0.03, 0.8), 3.0)
+	draw_arc(p, rad, 0, TAU, 28, c, 2.0)
+	draw_circle(p, 2.0, c)
+	if tg.label == "":
+		return
+	var ay := p.y - rad - 6 - 5 * k
+	draw_colored_polygon(PackedVector2Array([Vector2(p.x - 7, ay - 9), Vector2(p.x + 7, ay - 9), Vector2(p.x, ay)]), Color(0.05, 0.035, 0.03))
+	draw_colored_polygon(PackedVector2Array([Vector2(p.x - 5, ay - 8), Vector2(p.x + 5, ay - 8), Vector2(p.x, ay - 1)]), Color("ffd23a"))
+	var lw := Art.text_width(tg.label, 8) + 10
+	draw_rect(Rect2(p.x - lw / 2.0, ay - 24, lw, 12), Color(0.05, 0.035, 0.03, 0.85))
+	Art.text(self, tg.label, Vector2(p.x, ay - 15), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+
 # ---------------------------------------------------------------- targeting overlays
 func draw_lockers(foes: Array) -> void:
 	## P4: a slow red pulse of corner brackets on each enemy holding the push zone shut, and an
@@ -1264,6 +1340,7 @@ func draw_targeting() -> void:
 		var lf = b.lesson_flag()
 		if lf != null:
 			draw_tut_flag(lf.x, lf.y, "GET UP HERE" if b.lesson().has("fy") else "WALK HERE")
+		draw_guide_ring()
 	var pz := b.cam_x + Battle.W * 0.72
 	push_rect = Rect2()
 	if b.cam_x < b.world_w - Battle.W and not cine:
@@ -1852,7 +1929,10 @@ func draw_hover(cv: CanvasItem) -> void:
 	elif h.kind == "crate":
 		lines = ["SUPPLY CRATE", "Shoot it or blast it open. The loot pops out:", "careful, it can roll into a pit."]
 	elif h.kind == "wreck":
-		lines = ["WRECK" + (" (STRIPPED)" if h.stripped else ""), "Walk over it to strip it: +%d Salvage for HQ." % Data.WRECK_SALVAGE]
+		if h.loot is Dictionary and h.loot.get("rare", false):
+			lines = ["CRASHED SCOUT SHIP" + (" (STRIPPED)" if h.stripped else ""), "Walk over it to strip it: +%d Salvage." % Data.RARE_WRECK_SALVAGE]
+		else:
+			lines = ["WRECK" + (" (STRIPPED)" if h.stripped else ""), "Walk over it to strip it: +%d Salvage for HQ." % Data.WRECK_SALVAGE]
 	elif h.kind == "strongbox":
 		lines = ["JACKAL STRONGBOX", "Pry it open with a MELEE card: quiet.", "Blast it: free, but ALERT +1 and it may damage the loot."]
 	elif h.kind == "loot":

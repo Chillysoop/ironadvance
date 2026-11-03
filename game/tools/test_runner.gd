@@ -25,6 +25,7 @@ var main: Node
 var frames := 0
 var mission_arg := 0
 var seed_arg := 1
+var weekly_arg := false  # playtest: play this week's Weekly Op instead of a fresh quick run
 var runs_arg := 1
 var playtest_debug := false
 var start_arg := 0
@@ -53,6 +54,8 @@ func _ready() -> void:
 			clip_arg = a.substr(7)
 		elif a.begins_with("--runs="):
 			runs_arg = int(a.substr(7))
+		elif a == "--weekly":
+			weekly_arg = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	await get_tree().process_frame
 	main = get_tree().current_scene
@@ -479,7 +482,7 @@ func run() -> void:
 			# title -> brief -> each mission (forced win) -> results -> shop -> next brief
 			main.show_title()
 			await frames_wait(20)
-			main.start_run()  # QUICK RUN; the first title button is CAMPAIGN now
+			start_run_hq()  # QUICK RUN; the first title button is CAMPAIGN now
 			await frames_wait(20)
 			await shot("flow_hq_start")
 			main.screen.dial.emit()
@@ -807,6 +810,22 @@ func run() -> void:
 			await lights_test()
 		"biomes2":
 			await biomes2_test()
+		"variety":
+			await variety_test()
+		"boarkits":
+			await boarkits_test()
+		"orders":
+			await orders_test()
+		"rares":
+			await rares_test()
+		"fork":
+			await fork_test()
+		"seeds":
+			await seeds_test()
+		"biomebosses":
+			await biomebosses_test()
+		"segments3":
+			await segments3_test()
 		"events10":
 			await events10_test()
 		"pickups":
@@ -899,6 +918,8 @@ func run() -> void:
 			await clicks()
 		"pause":
 			await pause_menu()
+		"tour":
+			await tour()
 		"uiclarity":
 			await ui_clarity()
 		"newplayer3":
@@ -919,6 +940,10 @@ func run() -> void:
 			await xcalls()
 		"runsave":
 			await runsave()
+		"vpicks2":
+			await vpicks2()
+		"vpicks":
+			await vpicks()
 		"settings":
 			await settings_menu()
 		"qcalls":
@@ -937,6 +962,12 @@ func run() -> void:
 			await operator_call()
 		"training", "lessons":
 			await lessons()
+		"guided":
+			await guided_test()
+		"tutfuzz":
+			await tutfuzz_test()
+		"nadeprobe":
+			await nadeprobe()
 		"survey":
 			await survey()
 		"clarity":
@@ -1393,6 +1424,7 @@ func field() -> void:
 	await until(func(): return b.state == "player" and not b.busy)
 	check(b.squad().size() == 1 and b.squad()[0].s.key == moss.key, "only Moss goes to the range")
 	check(b.dummies.size() >= 4, "%d dummies stand on the range" % b.dummies.size())
+	check(not b.units.any(func(o): return o.team == "enemy" and o.elite != ""), "range dummies are never elites (a Thrall dummy left a Skitter that blocked the reset)")
 	await frames_wait(30)
 	await shot("field_range")
 	var me: Unit = b.squad()[0]
@@ -1731,10 +1763,17 @@ func press_key(k: Key) -> void:
 
 func pause_menu() -> void:
 	## N7: Esc cancels an armed card first; with nothing armed it pauses under a menu, and Esc resumes.
+	# The new-player coach box opens once the ROUND banner clears and takes every key (Esc = SKIP),
+	# so on a fresh profile it raced these presses. Tips are off here; the coach has its own tests.
+	Run.meta["tips_off"] = true
 	Run.new_run()
 	var b: Battle = main.start_battle(0)
 	await until(func(): return b.state == "player" and not b.busy)
-	b.select_card(0)
+	# the opening hand is random and a SELF card plays the moment it's picked instead of arming,
+	# so Esc would pause at once and every check below read the wrong state: arm an aimed card
+	var ai := range(b.sel.hand.size()).filter(func(i): return Data.card(b.sel.hand[i]).type != "SELF" and b.sel.energy >= b.card_cost(b.sel, b.sel.hand[i]))
+	b.select_card(ai[0] if ai.size() else 0)
+	check(b.card_idx >= 0, "a card is armed (%d)" % b.card_idx)
 	await press_key(KEY_ESCAPE)
 	check(b.card_idx < 0 and not get_tree().paused, "Esc with a card armed cancels it and doesn't pause")
 	await press_key(KEY_ESCAPE)
@@ -4421,7 +4460,10 @@ func peak_after_bounce(pts: Array, gy: float) -> float:
 	return best
 
 func ground_unit(b: Battle, u: Unit, x: float, from_y := 0.0) -> void:
-	u.x = x; u.y = b.T.stand_y(x, from_y); u.air = false; u.vx = 0; u.vy = 0; u.walk = null
+	var gy = b.T.stand_y(x, from_y)
+	if gy == null:
+		gy = b.T.stand_y(x, 0)  # ground above from_y (a hill or a roof): stand on the top of it instead
+	u.x = x; u.y = gy if gy != null else u.y; u.air = false; u.vx = 0; u.vy = 0; u.walk = null
 
 func soldat() -> void:
 	## The Soldat borrowings: grating and chain-link, bodies that stay, recoil with its ghost,
@@ -4650,7 +4692,7 @@ func gate() -> void:
 	## Beating the boss opens the gate; the squad walks through and comes out at HQ.
 	main.show_title()
 	await frames_wait(5)
-	main.start_run()
+	start_run_hq()
 	await frames_wait(40)
 	await shot("gate_hq_start")
 	check(main.screen.get("arrived") == false, "a run starts at HQ")
@@ -4659,6 +4701,9 @@ func gate() -> void:
 	check(main.screen.get("mode") == "dial" and Run.mission == 0, "the first dial offers level 1's biomes")
 	press_first()
 	await frames_wait(10)
+	if main.screen.get("mode") == "route":
+		press_first()  # V4: a fork in the road comes first when the level has one
+		await frames_wait(10)
 	check(main.screen.get("mode") == "brief", "picking a biome goes to the briefing")
 	press_first()
 	await frames_wait(5)
@@ -4711,9 +4756,12 @@ func gate() -> void:
 	main.screen.dial.emit()
 	await frames_wait(20)
 	await shot("gate_dial")
-	check(main.screen.get("mode") == "dial" and Run.dial.size() == 2, "after a mission the gate dials two biomes")
+	check(main.screen.get("mode") == "dial" and Run.dial.size() == (3 if Run.run_order == "widedial" else 2), "after a mission the gate dials two biomes")
 	press_first()
 	await frames_wait(20)
+	if main.screen.get("mode") == "route":
+		press_first()  # V4
+		await frames_wait(20)
 	check(main.screen.get("mode") == "brief" and Run.mission == 1, "picking a biome briefs level 2")
 
 func detour_battle(id: String) -> Battle:
@@ -5656,13 +5704,22 @@ func playtest() -> void:
 	playtest_debug = true
 	for r in runs_arg:
 		seed(seed_arg * 1000 + r)
-		Run.new_run()
+		if weekly_arg:
+			Run.start_weekly()
+		else:
+			Run.new_run()
+		if Run.run_order_offer.size():
+			# V9: take one of the run orders on offer, like a player at the start of a run
+			Run.take_run_order(Run.run_order_offer[randi() % Run.run_order_offer.size()])
+		print("[pt-run] ", JSON.stringify({"seed": seed_arg, "run": r, "order": Run.run_order, "squad": Run.soldiers.map(func(x): return x.def.name)}))
 		for m in Data.LEVELS.size() + 1:
 			Run.mission = m
 			Run.side = ""
 			if m < Data.LEVELS.size():
 				Run.roll_dial()
 				Run.pick_biome(biome_arg if biome_arg != "" and m == start_arg else Run.dial[randi() % Run.dial.size()])
+				if Run.level.get("fork", []).size() >= 2:
+					Run.pick_road(randi() % 2)  # V4: one of the two roads
 			else:
 				Run.start_finale()
 			if m < start_arg:
@@ -5687,7 +5744,7 @@ func playtest() -> void:
 			row["secs"] = (Time.get_ticks_msec() - ms0) / 1000.0
 			row.erase("round_hp")
 			row.merge({"seed": seed_arg, "run": r, "m": m, "biome": lv.get("biome", "finale"), "breach": lv.get("breach", false), "enc": lv.get("encounter", ""),
-				"intel": Run.intel, "detours": lv.get("detours", []), "scrip_in": before.scrip, "scrip_out": Run.scrip, "hp_in": before.hp,
+				"intel": Run.intel, "garrison": lv.get("garrison", ""), "rare": lv.get("rare", ""), "road": lv.get("road", ""), "boss_kit": lv.get("boar_kit", ""), "segs": lv.get("segments", []), "detours": lv.get("detours", []), "scrip_in": before.scrip, "scrip_out": Run.scrip, "hp_in": before.hp,
 				"hp_out": Run.soldiers.map(func(x): return x.hp if x.alive else -1), "tags_out": Run.soldiers.map(func(x): return x.tags),
 				"lv": Run.soldiers.map(func(x): return x.lvl), "max_round_hp": bot_stats.round_hp.max() if bot_stats.round_hp.size() else 0})
 			print("[pt] ", JSON.stringify(row))
@@ -5752,7 +5809,8 @@ func bcalls() -> void:
 	Run.mission = 0
 	Run.level = Run.make_level("jungle", 0)
 	check(int(Run.level.boss_hp) == 100 and int(Run.level.plate) == 30, "B1: a level 1 jungle builds the softer Boar")
-	# B2 + B3 in a real battle
+	# B2 + B3 in a real battle (with the plain Boar: V5's Mortar Boar fires smaller shells)
+	Run.level.boar_kit = "standard"
 	var b: Battle = main.start_battle(0, Run.level)
 	await frames_wait(20)
 	var sq := b.squad_alive()
@@ -9284,7 +9342,8 @@ func events10_test() -> void:
 	var lv := Run.make_level("desert", 1)
 	check(Data.EVENTS.has(lv.event) and lv.bounties.size() == 3 and lv.bounties.all(func(k): return Data.BOUNTIES.any(func(x): return x.id == k)), "every level rolls an event and three bounties (%s %s)" % [lv.event, str(lv.bounties)])
 	check(range(20).all(func(_i): return not Run.make_level("hive", 2).bounties.has("sniperfirst")), "no Counter-Snipe bounty where there are no Snipers")
-	# R2 fire team
+	# R2 fire team (a fixed seed: an unseeded roll could put a wall or a gap between the fire team and the lead)
+	seed(2210)
 	Run.new_run()
 	var b: Battle = await e_battle("fireteam")
 	var trs: Array = b.mid_events.troopers()
@@ -10219,7 +10278,7 @@ func runsave() -> void:
 	main.show_title()
 	await frames_wait(10)
 	check(main.screen.cont.is_empty(), "no saved run: the title has no CONTINUE RUN")
-	main.start_run()
+	start_run_hq()
 	await frames_wait(10)
 	check(FileAccess.file_exists(Run.RUN_PATH), "HQ saves the new run")
 	Run.scrip = 777
@@ -10247,6 +10306,42 @@ func runsave() -> void:
 	main.show_title()
 	await frames_wait(10)
 	check(main.screen.cont.is_empty(), "a finished run leaves nothing to continue")
+	# a save made from the game menu on the run orders or the briefing comes back to that screen,
+	# instead of HQ (which lost the order offer, and rolled a new dial after the level was burned)
+	main.show_title()
+	await frames_wait(5)
+	main.start_run()
+	await frames_wait(10)
+	var offer: Array = Run.run_order_offer.duplicate()
+	var pm = main.open_menu()
+	await frames_wait(5)
+	check(pm != null and str(Run.run_head().get("resume", "")) == "orders", "the game menu on the run orders saves with resume=orders")
+	pm.queue_free(); get_tree().paused = false
+	main.show_title()
+	await frames_wait(5)
+	main.continue_run()
+	await frames_wait(10)
+	check(main.screen.get("mode") == "orders" and Run.run_order_offer == offer, "CONTINUE RUN goes back to the same run orders")
+	Run.take_run_order(offer[0])
+	main.dial_gate()
+	await frames_wait(5)
+	var pick: String = Run.dial[0]
+	Run.pick_biome(pick)
+	Run.level["fork"] = []
+	var segs: Array = Run.level.segments.duplicate()
+	main.show_brief()
+	await frames_wait(10)
+	var burned: Array = Run.burned.duplicate()
+	pm = main.open_menu()
+	await frames_wait(5)
+	check(pm != null and str(Run.run_head().get("resume", "")) == "brief", "the game menu on the briefing saves with resume=brief")
+	pm.queue_free(); get_tree().paused = false
+	main.show_title()
+	await frames_wait(5)
+	main.continue_run()
+	await frames_wait(10)
+	check(main.screen.get("mode") == "brief" and Run.level.get("biome", "") == pick and Run.level.segments == segs and Run.burned == burned, "CONTINUE RUN goes back to the same briefing (%s)" % pick)
+	Run.clear_run()
 
 
 func settings_menu() -> void:
@@ -10300,8 +10395,17 @@ func bp3_test() -> void:
 	Run.leave_campaign()
 	# F2: the Delta landing zone sits on bedrock that blasts only dent
 	var lvl := Run.make_level("delta", 0)
+	for k in 30:
+		# a docks or gully stretch right after the start puts water over the landing zone, and the
+		# dry-ground checks below need land there: roll again
+		if not lvl.segments.slice(1, 2).any(func(sg): return sg in ["docks", "gully"]):
+			break
+		lvl = Run.make_level("delta", 0)
 	lvl["event"] = ""
 	lvl["encounter"] = ""
+	lvl.erase("remix")
+	lvl.erase("rare")
+	lvl.erase("road")
 	Run.level = lvl
 	var b: Battle = main.start_battle(0, lvl)
 	await until(func(): return b.state == "player" and not b.busy)
@@ -10337,7 +10441,7 @@ func bp3_test() -> void:
 		var f1: float = top_at.call(b.T, fx)
 		check(f1 - f0 > g1 - g0 + 20, "beyond it the same blasts dig much deeper (%d vs %d px)" % [f1 - f0, g1 - g0])
 	var lv2 := Run.make_level("desert", 0)
-	check(not lv2.rules.has("firm_lz"), "only the Delta has it")
+	check(not lv2.rules.has("firm_lz"), "a dry biome has no bedrock landing zone")
 	# F3: an enemy shot that cuts the ground away gets named when the soldier drowns
 	var sq: Array = b.squad()
 	var u: Unit = sq[0]
@@ -10509,3 +10613,1122 @@ func audit_test() -> void:
 	main.clear()
 	Run.meta = keep
 	Run.save_meta()
+
+func tour() -> void:
+	## UI pass: a screenshot of every screen, quick run and campaign.
+	Run.meta["tips_off"] = false
+	main.show_title()
+	await frames_wait(30)
+	await shot("t01_title")
+	var sp = main.open_settings()
+	await frames_wait(10)
+	await shot("t02_settings")
+	sp.queue_free()
+	main.show_draft()
+	await frames_wait(20)
+	await shot("t03_draft")
+	Run.new_run()
+	Run.scrip = 300
+	main.show_hq(false)
+	await frames_wait(40)
+	await shot("t04_hq")
+	var hq: Control = main.screen
+	for id in ["qm", "barracks", "workshop", "armory", "doc", "memorial", "upgrades"]:
+		hq.go(id)
+		await frames_wait(20)
+		await shot("t05_hq_" + id)
+	hq.go("hq")
+	await frames_wait(10)
+	Run.clear_run()
+	await press_key(KEY_ESCAPE)
+	await frames_wait(5)
+	await shot("t05_menu_hq")
+	check(get_tree().paused and main.menu_layer != null and main.menu_layer.get_child_count() > 0, "Esc at HQ opens the game menu")
+	check(Run.run_head().size() > 0, "opening the menu at HQ saves the run")
+	var gm = main.menu_layer.get_child(main.menu_layer.get_child_count() - 1)
+	check(str(gm.note).begins_with("SAVED"), "the menu says it saved (%s)" % gm.note)
+	gm.go("controls")
+	await frames_wait(3)
+	await shot("t05_menu_controls")
+	gm.go("quit")
+	await frames_wait(3)
+	await shot("t05_menu_quit")
+	gm.resume()
+	await frames_wait(5)
+	check(not get_tree().paused, "RESUME closes the menu")
+	hq.go("memorial")
+	await frames_wait(5)
+	check(main.back_button(main.ui_layer) != null and main.back_button(main.ui_layer).text == "<< BACK TO HQ", "the Memorial leaves through BACK TO HQ")
+	var nav = hq.get_node_or_null("Nav")
+	check(nav != null and nav.STOPS[-1][1] == "menu", "every HQ room's top strip ends in MENU")
+	hq.go("menu")
+	await frames_wait(3)
+	check(get_tree().paused, "MENU on the strip opens the game menu")
+	main.menu_layer.get_child(main.menu_layer.get_child_count() - 1).resume()
+	await frames_wait(3)
+	hq.go("hq")
+	await frames_wait(5)
+	hq.open_dossier(0)
+	await frames_wait(20)
+	await shot("t06_dossier")
+	main.dial_gate()
+	await frames_wait(20)
+	await shot("t07_dial")
+	Run.pick_biome(Run.dial[0])
+	main.show_brief()
+	await frames_wait(20)
+	await shot("t08_brief")
+	var b: Battle = main.start_battle(Run.mission, Run.current_mission())
+	await until(func(): return b.state == "player" and not b.busy)
+	await frames_wait(20)
+	await shot("t09_battle")
+	check(main.hud.get_children().any(func(c): return _has_text(c, "MENU")), "the battle has a MENU button")
+	main.hud.toggle_pause()
+	await frames_wait(10)
+	await shot("t10_pause")
+	var pm = main.hud.get_children().filter(func(c): return c is HudScript.PauseMenu)[0]
+	pm.go("controls")
+	await frames_wait(5)
+	await shot("t11_controls")
+	pm.go("quit")
+	await frames_wait(5)
+	await shot("t12_quit")
+	pm.resume()
+	main.clear()
+	main.show_debrief({"won": true, "kills": 5})
+	await frames_wait(60)
+	await shot("t13_debrief")
+	main.screen.open_all()
+	await frames_wait(100)
+	await shot("t13_debrief_open")
+	await press_key(KEY_ESCAPE)
+	check(get_tree().paused, "Esc on the debrief opens the game menu")
+	var dm = main.menu_layer.get_child(main.menu_layer.get_child_count() - 1)
+	dm.quit()
+	await frames_wait(5)
+	check(not get_tree().paused and main.screen.mode == "title", "SAVE AND QUIT lands on the title")
+	check(Run.run_head().size() > 0 and int(Run.run_head().level) == Run.history.size(), "and the run is saved past the level just played (%s)" % [Run.run_head()])
+	check(_has_text(main.screen, "QUIT GAME"), "the title has QUIT GAME")
+	main.show_shop()
+	await frames_wait(20)
+	await shot("t14_shop")
+	# campaign
+	Run.delete_campaign(4)
+	Run.new_campaign(4)
+	main.show_slots()
+	await frames_wait(20)
+	await shot("t15_slots")
+	main.show_hq(false)
+	await frames_wait(40)
+	await shot("t16_camp_hq")
+	main.show_war_room()
+	await frames_wait(30)
+	await shot("t17_war_room")
+	var wr: Control = main.screen
+	wr.company_open = true
+	wr.build()
+	await frames_wait(10)
+	await shot("t17_company")
+	wr.company_open = false
+	wr.book_open = true
+	wr.build()
+	await frames_wait(10)
+	await shot("t17_book")
+	main.show_radio(Run.landfall_radio(), func(): pass)
+	await frames_wait(30)
+	await shot("t18_radio")
+	main.show_act_end(0, Run.soldiers[0], func(): pass)
+	await frames_wait(60)
+	await shot("t19_act_end")
+	var MainS = load("res://scripts/main.gd")
+	for md in ["op_won", "op_lost"]:
+		main.clear()
+		var rs = MainS.Screen.new()
+		rs.mode = md
+		rs.stats = {"won": md == "op_won", "kills": 7, "score": 1234, "xp": {}, "op": {}}
+		rs.buttons = [["BACK TO HQ", func(): pass]]
+		main.open(rs)
+		await frames_wait(20)
+		await shot("t20_" + md)
+	Run.leave_campaign()
+	Run.new_run()
+	for md in ["won", "lost"]:
+		main.clear()
+		var rs = MainS.Screen.new()
+		rs.mode = md
+		rs.stats = {"won": md == "won", "kills": 7, "score": 1234, "xp": {}}
+		rs.buttons = [["OPEN SUPPLY CRATES", func(): pass]]
+		main.open(rs)
+		await frames_wait(20)
+		await shot("t21_" + md)
+		await press_key(KEY_ESCAPE)
+		await frames_wait(3)
+		await shot("t21_%s_menu" % md)
+		main.menu_layer.get_child(main.menu_layer.get_child_count() - 1).resume()
+		await frames_wait(3)
+	main.clear()
+	Run.delete_campaign(4)
+	Run.leave_campaign()
+	main.show_title()
+	await frames_wait(10)
+
+func _has_text(n: Node, t: String) -> bool:
+	if n.get("text") is String and n.text == t:
+		return true
+	return n.get_children().any(func(c): return _has_text(c, t))
+
+func variety_test() -> void:
+	## V1 segment remix and V2 Jackal garrisons (run-variety page).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	# same run, same level: the dial and the level you dial in agree
+	var a := Run.make_level("desert", 1)
+	var a2 := Run.make_level("desert", 1)
+	check(a.garrison == a2.garrison and a.remix == a2.remix, "the same run rolls the same garrison and remix for a biome")
+	# across runs: many garrisons, many remixes
+	var gs := {}
+	var rs := {}
+	for i in 60:
+		Run.seed_val = 1000 + i
+		var lv := Run.make_level("fortress", 1)
+		gs[lv.garrison] = true
+		rs[lv.remix] = true
+	check(gs.size() >= 6, "60 runs see %d of %d garrisons" % [gs.size(), Data.GARRISONS.size()])
+	check(rs.size() >= 55, "60 runs give %d different remixes" % rs.size())
+	check(range(20).all(func(i): Run.seed_val = 2000 + i; return Run.make_level("hive", 2).garrison == "regular"), "the Hive never has a Jackal garrison")
+	Run.first_run = true
+	check(range(20).all(func(i): Run.seed_val = 3000 + i; return Run.make_level("jungle", 0).garrison == "regular"), "the first-ever level keeps the plain garrison")
+	Run.first_run = false
+	# V1 on every segment: bones kept (width, pits), details moved
+	var changed := 0
+	var total := 0
+	var bad: Array = []
+	var rng := RandomNumberGenerator.new()
+	for k in Data.SEGMENTS:
+		var src: Dictionary = Data.SEGMENTS[k]
+		for sd in 3:
+			rng.seed = hash([k, sd])
+			var r: Dictionary = Terrain.remix_seg(src, rng)
+			if r.w != src.w or str(r.pits) != str(src.pits) or r.structs.size() != src.structs.size():
+				bad.append(k)
+			if r.sandbags.any(func(x): return x < 0 or x > r.w) or r.spawns.any(func(sp): return sp[1] < 0 or sp[1] > r.w):
+				bad.append(k)
+			if sd == 0 and k != "start":
+				total += 1
+				if str(r) != str(src):
+					changed += 1
+	check(bad.is_empty(), "a remix never changes a segment's width, pits or set pieces, and keeps everything inside it %s" % str(bad))
+	check(changed * 2 > total, "%d of %d segments come out different" % [changed, total])
+	check(str(Data.SEGMENTS.towers.structs[1].h) == "96", "remixing leaves the original data alone")
+	# two remixes of the same level lay different ground
+	Run.seed_val = 77
+	var l1 := Run.make_level("desert", 1)
+	Run.seed_val = 78
+	var l2 := Run.make_level("desert", 1)
+	l2.segments = l1.segments
+	var b1: Battle = main.start_battle(1, l1)
+	await until(func(): return b1.state == "player" and not b1.busy)
+	var t1: Terrain = b1.T
+	var b2: Battle = main.start_battle(1, l2)
+	await until(func(): return b2.state == "player" and not b2.busy)
+	var t2: Terrain = b2.T
+	var diff := 0
+	for x in range(0, mini(t1.cols, t2.cols) * Terrain.CELL, 8):
+		if t1.ground_at(x) != t2.ground_at(x):
+			diff += 1
+	check(diff > 10 or str(t1.sandbags) != str(t2.sandbags), "the same segments remix into different ground (%d columns differ)" % diff)
+	# V2 in a real battle: a Sniper Nest fills slots with snipers, a regular garrison doesn't
+	var counts := {}
+	# summed over three seeds: one level can have few slots a garrison may take
+	for g in ["regular", "snipers", "shields"]:
+		var n := {}
+		var b: Battle
+		for sd in [4242, 4243, 4244]:
+			Run.new_run()
+			Run.first_run = false
+			Run.seed_val = sd
+			var lv := Run.make_level("fortress", 0)
+			lv.garrison = g
+			Run.level = lv
+			b = main.start_battle(0, lv)
+			await until(func(): return b.state == "player" and not b.busy)
+			for u in b.units:
+				if u.team == "enemy":
+					n[u.type] = int(n.get(u.type, 0)) + 1
+		counts[g] = n
+		if g == "snipers":
+			await shot("variety_snipers")
+			main.show_brief()
+			await frames_wait(6)
+			await shot("variety_brief")
+	check(int(counts.snipers.get("jsniper", 0)) >= int(counts.regular.get("jsniper", 0)) + 2, "a Sniper Nest has more snipers (%s vs %s)" % [counts.snipers.get("jsniper", 0), counts.regular.get("jsniper", 0)])
+	check(int(counts.shields.get("shield", 0)) + int(counts.shields.get("wallshield", 0)) > int(counts.regular.get("shield", 0)) + int(counts.regular.get("wallshield", 0)), "a Shield Line has more riot shields (%s vs %s)" % [counts.shields, counts.regular])
+	# every biome still starts cleanly with its remix and garrison, and nobody starts in a pit
+	var fails: Array = []
+	for bid in Data.BIOMES:
+		Run.new_run()
+		Run.first_run = false
+		Run.seed_val = 900 + bid.length()
+		var lv := Run.make_level(bid, 2)
+		var bb: Battle = main.start_battle(2, lv)
+		await until(func(): return bb.state == "player" and not bb.busy, 3000)
+		if bb.state != "player":
+			fails.append(bid)
+	check(fails.is_empty(), "every biome starts with a remix and a garrison %s" % str(fails))
+	# the dial card shows the garrison
+	main.show_title()
+	await frames_wait(5)
+	Run.new_run()
+	Run.first_run = false
+	start_run_hq()
+	await frames_wait(40)
+	main.screen.dial.emit()
+	await frames_wait(10)
+	check(Run.dial.all(func(id): return Run.dial_levels[id].has("garrison")), "every dial biome comes with its garrison")
+	await shot("variety_dial")
+
+
+func boarkits_test() -> void:
+	## V5: Iron Boar loadouts (run-variety page).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	var ks := {}
+	for i in 40:
+		Run.seed_val = 500 + i
+		ks[Run.make_level("jungle", 1).boar_kit] = true
+	var plain: int = Data.BOAR_KITS.keys().filter(func(k): return not Data.BOAR_KITS[k].get("biome", false)).size()
+	check(ks.size() == plain, "40 runs see all %d Boar loadouts" % ks.size())
+	check(range(10).all(func(i): Run.seed_val = 600 + i; return Run.make_level("hive", 2).boar_kit == ""), "a Hive Ship level has no Boar loadout")
+	for kit in ["flame", "mortar", "carrier", "standard"]:
+		Run.new_run()
+		Run.first_run = false
+		Run.seed_val = 31
+		var lv := Run.make_level("desert", 1)
+		lv.boar_kit = kit
+		Run.level = lv
+		var b: Battle = main.start_battle(1, lv)
+		await until(func(): return b.state == "player" and not b.busy)
+		var bo: Unit = null
+		for u in b.units:
+			if u.type == "boss":
+				bo = u
+		for o in b.units:
+			if o.team == "enemy" and o != bo:
+				o.gone = true
+		var sq: Array = b.squad()
+		ground_unit(b, sq[0], bo.x - bo.w / 2.0 - 150, bo.y - 60)
+		for k in range(1, sq.size()):
+			ground_unit(b, sq[k], bo.x - 420 - k * 30, 0)
+		cam_on(b, bo.x - 200)
+		var hp0: int = sq[0].hp
+		var paras0 := b.units.filter(func(u): return u.para and not u.dead).size()
+		var fin := [false]
+		var go := func():
+			await b.vharr_ai.boss_act(bo)
+			fin[0] = true
+		go.call()
+		await until(func(): return fin[0], 3000)
+		await until(func(): return b.settled(), 600)
+		await shot("boar_" + kit)
+		match kit:
+			"flame":
+				check(sq[0].hp <= hp0 - Data.BOAR_FLAME_DMG and (sq[0].has_st("burn") or sq[0].hp <= 0), "a FLAME BOAR burns the soldier in front of it (%d -> %d)" % [hp0, sq[0].hp])
+			"carrier":
+				check(b.units.filter(func(u): return u.para and not u.dead).size() >= paras0 + 2, "a CARRIER BOAR calls paratroopers on its first turn")
+			_:
+				check(not bo.dead, "a %s BOAR takes its turn" % kit.to_upper())
+		if kit == "flame":
+			main.show_brief()
+			await frames_wait(6)
+			await shot("boar_brief")
+	main.show_title()
+	await frames_wait(5)
+
+
+func start_run_hq() -> void:
+	## A fresh quick run straight to HQ: takes the first run order on offer (V9).
+	main.start_run()
+	if main.screen != null and main.screen.get("mode") == "orders":
+		Run.take_run_order(Run.run_order_offer[0])
+		main.show_hq(false)
+
+func orders_test() -> void:
+	## V9: run orders (run-variety page).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	main.show_title()
+	await frames_wait(5)
+	main.start_run()
+	await frames_wait(20)
+	check(main.screen.get("mode") == "orders" and Run.run_order_offer.size() == 3, "a fresh quick run opens on 3 run orders")
+	await shot("orders")
+	var seen := {}
+	for i in 30:
+		Run.new_run()
+		for o in Run.run_order_offer:
+			seen[o] = true
+	check(seen.size() == Data.RUN_ORDERS.size(), "30 runs offer all %d orders" % seen.size())
+	press_first()
+	await frames_wait(20)
+	check(Run.run_order != "" and Run.run_order_offer.is_empty() and main.screen.has_signal("dial"), "taking an order goes on to HQ (%s)" % Run.run_order)
+	# each order's effect
+	Run.new_run(); var s0: int = Run.scrip; Run.take_run_order("warchest")
+	check(Run.scrip == s0 + Data.ORDER_CHEST, "WAR CHEST pays out")
+	Run.new_run(); var t0: int = int(Run.soldiers[0].tags); Run.take_run_order("ironwill")
+	check(Run.soldiers.all(func(x): return int(x.tags) == t0 + 1), "IRON WILL gives every soldier a dog tag")
+	Run.new_run(); var l0: int = Run.luck; Run.take_run_order("lucky")
+	check(Run.luck == l0 + 2, "LUCKY STARS adds 2 Luck")
+	Run.new_run(); var d0: Array = Run.soldiers.map(func(x): return x.deck.size()); Run.take_run_order("heavy")
+	check(range(Run.soldiers.size()).all(func(i): return Run.soldiers[i].deck.size() == d0[i] + 1), "HEAVY WEAPONS adds a card to every deck")
+	Run.new_run(); Run.take_run_order("widedial"); Run.mission = 0; Run.roll_dial()
+	check(Run.dial.size() == 3, "WIDE DIAL shows 3 biomes")
+	main.dial_gate()
+	await frames_wait(10)
+	check(main.screen.buttons.any(func(bb): return bb[0] == "REROLL THE DIAL"), "WIDE DIAL can spin the dial again")
+	await shot("orders_widedial")
+	# a Daily Op stays the same for everyone: no orders
+	Run.daily = "2026-11-02"
+	Run.new_run()
+	check(Run.run_order_offer.is_empty(), "a Daily Op has no run orders")
+	Run.daily = ""
+	# scavengers and medics hook into the field
+	Run.new_run(); Run.take_run_order("scavengers")
+	var lv := Run.make_level("desert", 0)
+	Run.level = lv
+	var b: Battle = main.start_battle(0, lv)
+	await until(func(): return b.state == "player" and not b.busy)
+	check(Run.run_order == "scavengers", "SCAVENGERS lasts into the level")
+	main.show_title()
+	await frames_wait(5)
+
+
+func vpicks2() -> void:
+	## Q1-Q4 from the second run-variety playtest page.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	# Q2: every water biome lands on bedrock that blasts only dent
+	var top_at := func(T: Terrain, x: float) -> float:
+		var yy := 4.0
+		while yy < Data.WATER_Y and not T.solid(x, yy):
+			yy += 4.0
+		return yy
+	var b: Battle = null
+	for bio in ["jungle", "harbor", "lake", "city"]:
+		Run.seed_val = 900
+		var lvl := Run.make_level(bio, 0)
+		check(lvl.rules.get("firm_lz", 0.0) == 1200.0, "Q2: %s has a bedrock landing zone" % bio)
+		lvl["event"] = ""
+		lvl["encounter"] = ""
+		lvl.erase("remix"); lvl.erase("rare"); lvl.erase("road")
+		Run.level = lvl
+		b = main.start_battle(0, lvl)
+		await until(func(): return b.state == "player" and not b.busy)
+		var tx := 0.0
+		for x in range(300, 1100, 8):
+			if top_at.call(b.T, x) < Data.WATER_Y - 60 and not b.T.pits.any(func(p): return x > p[0] - 30 and x < p[1] + 30) and not b.units.any(func(o): return not o.dead and absf(o.x - x) < 40):
+				tx = x
+				break
+		if tx == 0.0:
+			check(false, "Q2: found dry ground in the %s landing zone" % bio)
+			continue
+		var g0: float = top_at.call(b.T, tx)
+		for k in 4:
+			b.T.carve(tx, top_at.call(b.T, tx), 30, null)
+		b.T.flush()
+		var g1: float = top_at.call(b.T, tx)
+		check(g1 < Data.WATER_Y - 4, "Q2: four big blasts in one crater still leave ground over the water in the %s (%d -> %d)" % [bio, g0, g1])
+		# control: the same blasts next door with the bedrock switched off dig deeper
+		var cx := tx + 70.0
+		var c0: float = top_at.call(b.T, cx)
+		b.T.firm_x1 = 0.0
+		for k in 4:
+			b.T.carve(cx, top_at.call(b.T, cx), 30, null)
+		b.T.flush()
+		var c1: float = top_at.call(b.T, cx)
+		check(c1 - c0 > g1 - g0, "Q2: without the bedrock the same blasts dig deeper in the %s (%d vs %d px)" % [bio, c1 - c0, g1 - g0])
+	b.speed = 2.0
+	var sq: Array = b.squad_alive()
+	var u: Unit = sq[0]
+	# Q1: the Drill Rig's bolt hits for its base damage at any alert
+	var bo := j2_enemy(b, "grunt", u.x + 200)
+	var hits: Array = []
+	for al in [0, 12]:
+		b.alert = al
+		var h0 := 0
+		for o in b.squad_alive():
+			o.hp = o.max_hp
+			h0 += o.hp
+		await b.vharr_ai.drill_bolt(bo)
+		var h1 := 0
+		for o in b.squad():
+			h1 += maxi(0, o.hp)
+		hits.append(h0 - h1)
+	check(hits[0] == hits[1] and hits[1] <= Data.DRILL_DMG and hits[1] > 0, "Q1: the drill bolt hits the same at alert 0 and 12 (%s)" % [hits])
+	b.alert = 0
+	u.hp = u.max_hp
+	# Q3: two bunched enemies with statuses and an elite: no two tags overlap
+	var e1 := j2_enemy(b, "grunt", u.x + 120)
+	var e2 := j2_enemy(b, "grunt", u.x + 132)
+	b.make_elite(e2, Data.ELITES.keys()[0])
+	e1.st["mark"] = 2
+	e2.st["mark"] = 2
+	e1.st["stun"] = 1
+	e1.active = true
+	e2.active = true
+	await frames_wait(4)
+	var rs: Array = b.view.tag_rects
+	var bad := 0
+	for i in rs.size():
+		for j in range(i + 1, rs.size()):
+			if rs[i].intersects(rs[j]):
+				bad += 1
+	check(rs.size() >= 3 and bad == 0, "Q3: %d enemy tags drawn, %d overlap" % [rs.size(), bad])
+	b.cam_x = clampf(u.x - 300, 0, b.world_w - Battle.W)
+	await frames_wait(4)
+	await shot("vpicks2_tags")
+	# Q4: the DROWN tag sits above the ENERGY box, off the hand
+	var rail = b.hud.water_rail
+	check(rail != null, "Q4: the water rail is up")
+	await shot("vpicks2_drown")
+
+func vpicks() -> void:
+	## P1-P4 from the run-variety playtest page.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	# P4: level 1's mini-boss is always the Jackal Walker; level 2 still mixes them
+	var l1 := {}
+	var l2 := {}
+	for i in 60:
+		Run.seed_val = 500 + i
+		l1[Run.make_level("fortress", 0).miniboss] = true
+		l2[Run.make_level("fortress", 1).miniboss] = true
+	check(l1.keys() == ["jwalker"], "level 1 mini-boss is always the Walker (%s)" % [l1.keys()])
+	check(l2.size() >= 2, "level 2 still rolls other mini-bosses (%s)" % [l2.keys()])
+	# P1: the dial card names a loadout boss
+	main.show_title()
+	await frames_wait(5)
+	start_run_hq()
+	await frames_wait(10)
+	Run.mission = 1
+	Run.history = [{}]
+	Run.dial = ["fortress", "jungle"]
+	Run.dial_breach = {}
+	var a := Run.make_level("fortress", 1)
+	a.boar_kit = "flame"
+	a.rare = "ace"
+	a.garrison = "snipers"
+	Run.dial_levels = {"fortress": a, "jungle": Run.make_level("jungle", 1)}
+	main.dial_gate()
+	await frames_wait(10)
+	await shot("vpicks_dial")
+	# P3: a banner when the rare first comes into view, once
+	Run.seed_val = 99
+	var lv := Run.make_level("fortress", 1)
+	lv.rare = "ace"
+	lv.fork = []
+	Run.level = lv
+	var b: Battle = main.start_battle(1, lv)
+	await until(func(): return b.state == "player" and not b.busy)
+	check(not b.banners.any(func(x): return str(x.text).begins_with("RARE")), "no rare banner while the rare is off screen")
+	check(b.mid_events.rare_at > 0.0, "the rare's spot is kept for its banner")
+	b.cam_x = b.mid_events.rare_at - b.W / 2.0
+	b.camp_ops.activate_enemies()
+	check(b.banners.filter(func(x): return str(x.text) == "RARE: JACKAL ACE").size() == 1, "reaching the rare shows RARE: JACKAL ACE")
+	b.camp_ops.activate_enemies()
+	check(b.banners.filter(func(x): return str(x.text).begins_with("RARE")).size() == 1, "the rare banner shows only once")
+	await frames_wait(10)
+	await shot("vpicks_rare_banner")
+	# P2: the seed code on the result screens
+	main.battle.queue_free()
+	main.battle = null
+	if main.hud != null:
+		main.hud.queue_free()
+		main.hud = null
+	Run.seed_code = "K7QW2P"
+	Run.daily = ""
+	main.clear()
+	var rs = load("res://scripts/main.gd").Screen.new()
+	rs.mode = "lost"
+	rs.stats = {"won": false, "kills": 2, "score": 10, "xp": {}}
+	rs.buttons = [["TITLE", func(): pass]]
+	main.open(rs)
+	await frames_wait(10)
+	await shot("vpicks_lost_seed")
+	main.show_title()
+	await frames_wait(5)
+
+
+func rares_test() -> void:
+	## V11: rare encounters (run-variety page).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	var n := 0
+	var kinds := {}
+	for i in 200:
+		Run.seed_val = 7000 + i
+		var r: String = Run.make_level("fortress", 1).rare
+		if r != "":
+			n += 1
+			kinds[r] = true
+	check(n > 20 and n < 70, "about 1 level in 5 has a rare encounter (%d of 200)" % n)
+	check(kinds.size() == Data.RARES.size(), "all %d rare encounters turn up" % kinds.size())
+	for id in ["merc", "wreck", "market", "ace"]:
+		Run.new_run()
+		Run.first_run = false
+		Run.seed_val = 99
+		var lv := Run.make_level("fortress", 1)
+		lv.rare = id
+		Run.level = lv
+		var b: Battle = main.start_battle(1, lv)
+		await until(func(): return b.state == "player" and not b.busy)
+		var st: Array = b.T.stretches[1]
+		var inside := func(u): return u.x >= st[0] and u.x <= st[1]
+		match id:
+			"merc":
+				var m: Array = b.units.filter(func(u): return u.kind == "sentry" and u.loot.get("merc", false))
+				check(m.size() == 1 and inside.call(m[0]) and m[0].loot.get("pinned", false), "MERCENARY ACE waits pinned in the second stretch")
+			"wreck":
+				var w: Array = b.units.filter(func(u): return u.kind == "wreck" and u.loot.get("rare", false))
+				check(w.size() == 1 and inside.call(w[0]), "the scout ship lies in the second stretch")
+				if w.size():
+					var s0 := int(Run.meta.get("salvage", 0))
+					b.camp_ops.strip_wreck(w[0], b.squad()[0])
+					check(int(Run.meta.salvage) == s0 + Data.RARE_WRECK_SALVAGE and not Run.meta.has("bio"), "stripping it pays salvage (S1: no Bio-parts)")
+			"market":
+				var d: Array = b.units.filter(func(u): return u.kind == "dealer" and u.loot.get("market", false))
+				check(d.size() == 1 and d[0].loot.stock.size() == 3 and int(d[0].loot.stock[0].tier) == Data.TIER_MAX, "the black market sells a Legendary")
+			"ace":
+				var a: Array = b.units.filter(func(u): return u.fl.get("ace", false))
+				check(a.size() == 1 and a[0].elite != "" and inside.call(a[0]), "the Jackal Ace is an elite in the second stretch")
+				if a.size():
+					var sc := Run.scrip
+					b.damage(a[0], 999, b.squad()[0], {})
+					await frames_wait(10)
+					check(Run.scrip >= sc + Data.ACE_PAY, "killing the Ace pays %d scrip" % Data.ACE_PAY)
+		if id == "ace":
+			cam_on(b, b.units.filter(func(u): return u.fl.get("ace", false))[0].x)
+			main.show_brief()
+			await frames_wait(6)
+			await shot("rare_brief")
+	main.show_title()
+	await frames_wait(5)
+
+
+func fork_test() -> void:
+	## V4: fork in the road (run-variety page).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	var forks := 0
+	var roads := {}
+	for i in 40:
+		Run.seed_val = 8000 + i
+		var lv := Run.make_level("desert", 1)
+		if lv.fork.size() == 2:
+			forks += 1
+			if i < 3:
+				check(lv.fork[0].seg != lv.fork[1].seg and lv.fork[0].road != lv.fork[1].road and lv.segments[4] == lv.fork[0].seg, "fork %d: two different roads through two different segments" % i)
+			roads[lv.fork[0].road] = true
+			roads[lv.fork[1].road] = true
+	check(forks == 40, "a desert level always has a fork (%d of 40)" % forks)
+	check(roads.size() == Data.ROADS.size(), "all %d roads turn up" % roads.size())
+	# picking a road swaps the second stretch in and goes on to the briefing
+	main.show_title()
+	await frames_wait(5)
+	start_run_hq()
+	await frames_wait(20)
+	Run.dial = ["desert", "jungle"]
+	Run.dial_breach = {}
+	Run.dial_levels = {"desert": Run.make_level("desert", 0), "jungle": Run.make_level("jungle", 0)}
+	main.dial_gate()
+	await frames_wait(10)
+	press_first()
+	await frames_wait(10)
+	check(main.screen.get("mode") == "route", "dialing a biome with a fork opens the road choice")
+	await shot("fork_route")
+	var other: Dictionary = Run.level.fork[1]
+	main.screen.get_children().filter(func(c): return c.has_signal("pressed"))[1].pressed.emit()
+	await frames_wait(10)
+	check(main.screen.get("mode") == "brief" and Run.level.segments[4] == other.seg and Run.level.road == other.road and Run.level.fork.is_empty(), "the second road swaps in %s with %s" % [other.seg, other.road])
+	# each road's extra in the field
+	for id in ["supply", "prison", "scrap", "quiet"]:
+		Run.new_run()
+		Run.first_run = false
+		Run.seed_val = 8100
+		var lv := Run.make_level("desert", 1)
+		lv.rare = ""
+		Run.level = lv
+		lv.road = ""
+		seed(4321)  # the same map loot both times, so only the road differs
+		var b0: Battle = main.start_battle(1, lv)
+		await until(func(): return b0.state == "player" and not b0.busy)
+		var st: Array = b0.T.stretches[1]
+		var count := func(bb: Battle, kind: String): return bb.units.filter(func(u): return u.kind == kind and not u.gone and u.x >= st[0] and u.x <= st[1]).size()
+		var foes := func(bb: Battle): return bb.units.filter(func(u): return u.team == "enemy" and not u.gone and not bb.is_boss(u) and u.x >= st[0] and u.x <= st[1]).size()
+		var before := {"crate": count.call(b0, "crate"), "pow": count.call(b0, "pow"), "wreck": count.call(b0, "wreck"), "foes": foes.call(b0)}
+		lv.road = id
+		seed(4321)
+		var b: Battle = main.start_battle(1, lv)
+		await until(func(): return b.state == "player" and not b.busy)
+		match id:
+			"supply": check(count.call(b, "crate") >= before.crate + 2, "SUPPLY ROAD has extra crates (%d -> %d)" % [before.crate, count.call(b, "crate")])
+			"prison": check(count.call(b, "pow") == before.pow + 1, "PRISON ROAD has an extra prisoner")
+			"scrap":
+				check(count.call(b, "wreck") == before.wreck + 2, "SCRAP ROAD has two wrecks")
+				# a plain wreck (no loot) strips for salvage: it used to stop on a null loot
+				var wr: Array = b.units.filter(func(u): return u.kind == "wreck" and not u.stripped)
+				var sv0 := int(Run.meta.get("salvage", 0))
+				b.camp_ops.strip_wreck(wr[0], b.squad()[0])
+				check(int(Run.meta.get("salvage", 0)) == sv0 + Data.WRECK_SALVAGE, "stripping a SCRAP ROAD wreck pays %d salvage" % Data.WRECK_SALVAGE)
+			"quiet": check(foes.call(b) <= before.foes - 1, "BACK ROAD has fewer Jackals (%d -> %d)" % [before.foes, foes.call(b)])
+	main.show_title()
+	await frames_wait(5)
+
+
+func seeds_test() -> void:
+	## V13: shareable seeds and the Weekly Op (run-variety page).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	# a typed seed replays the same start
+	Run.start_seeded("ab-c 12x")
+	check(Run.seed_code == "ABC2X" or Run.seed_code.length() <= 6, "a typed seed is cleaned up (%s)" % Run.seed_code)
+	Run.start_seeded("K7QW2P")
+	var a := {"seed": Run.seed_val, "orders": Run.run_order_offer.duplicate()}
+	Run.mission = 0
+	Run.roll_dial()
+	a["dial"] = Run.dial.duplicate()
+	a["segs"] = Run.dial_levels[Run.dial[0]].segments.duplicate()
+	Run.start_seeded("K7QW2P")
+	Run.mission = 0
+	Run.roll_dial()
+	check(Run.seed_val == a.seed and Run.run_order_offer == a.orders and Run.dial == a.dial and Run.dial_levels[Run.dial[0]].segments == a.segs, "the same seed gives the same orders, dial and level (%s)" % [a.dial])
+	Run.start_seeded("ZZ9PLQ")
+	check(Run.seed_val != a.seed, "another seed gives another run")
+	Run.start_seeded("")
+	check(Run.seed_code.length() == 6, "a fresh quick run gets its own 6-letter code (%s)" % Run.seed_code)
+	# the special ops screen
+	main.show_title()
+	await frames_wait(5)
+	check(main.screen.corner[0] == "SPECIAL OPS", "the title's corner opens SPECIAL OPS")
+	main.show_ops()
+	await frames_wait(5)
+	check(main.screen.get("mode") == "ops" and main.seed_box != null, "SPECIAL OPS has a seed box")
+	main.seed_box.text = "K7QW2P"
+	await shot("seeds_ops")
+	main.screen.buttons[2][1].call()
+	await frames_wait(20)
+	check(Run.seed_code == "K7QW2P" and Run.seed_val == a.seed, "SEEDED RUN starts the typed seed")
+	# the weekly op
+	Run.start_weekly()
+	check(Run.is_weekly() and Run.run_order != "" and Run.run_order_offer.is_empty(), "the Weekly Op sets its run order (%s)" % Run.run_order)
+	var o1: String = Run.run_order
+	var sv: int = Run.seed_val
+	Run.start_weekly()
+	check(Run.run_order == o1 and Run.seed_val == sv, "the Weekly Op is the same every time this week")
+	Run.mission = 0
+	check(Run.make_level("desert", 0).rare != "" and Run.make_level("jungle", 1).rare != "", "every Weekly Op level has a rare encounter")
+	Run.total_score = 1234
+	Run.daily_over()
+	check(Run.weekly_best() == 1234 and int(Run.meta.get("daily", {}).get("score", 0)) != 1234, "the Weekly best is kept apart from the Daily best")
+	main.start_weekly()
+	await frames_wait(20)
+	Run.level = Run.make_level("desert", 0)
+	main.show_brief()
+	await frames_wait(5)
+	await shot("seeds_weekly_brief")
+	# the busiest brief a level can have still clears the squad: garrison, rare, kit, specialist
+	Run.level = Run.make_level("mine", 0)
+	Run.level["garrison"] = "shields"
+	Run.level["rare"] = "merc"
+	Run.level["boar_kit"] = "flame"
+	Run.level["specialist"] = Data.SQUAD_DEFS[-1].key
+	main.show_brief()
+	await frames_wait(5)
+	await shot("seeds_busy_brief")
+	Run.daily = ""
+	main.show_title()
+	await frames_wait(5)
+
+
+func biomebosses_test() -> void:
+	## V6: biome bosses (run-variety page): Armored Engine, Drill Rig, Magma Crawler.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	check(Run.make_level("train", 1).boar_kit == "engine" and Run.make_level("mine", 2).boar_kit == "drill" and Run.make_level("volcano", 2).boar_kit == "magma", "the Train, Mine and Volcano have their own bosses from level 2")
+	check(range(20).all(func(i): Run.seed_val = 50 + i; return not Data.BOAR_KITS[Run.make_level("mine", 0).boar_kit].get("biome", false)), "a level 1 Mine keeps an ordinary Boar")
+	check(range(20).all(func(i): Run.seed_val = 90 + i; return not Data.BOAR_KITS[Run.make_level("desert", 2).boar_kit].get("biome", false)), "other biomes never roll a biome boss")
+	for kit in ["engine", "drill", "magma"]:
+		Run.new_run()
+		Run.first_run = false
+		Run.seed_val = 31
+		var lv := Run.make_level("desert", 1)
+		lv.boar_kit = kit
+		Run.level = lv
+		var b: Battle = main.start_battle(1, lv)
+		await until(func(): return b.state == "player" and not b.busy)
+		var bo: Unit = null
+		for u in b.units:
+			if u.type == "boss":
+				bo = u
+		for o in b.units:
+			if o.team == "enemy" and o != bo:
+				o.gone = true
+		var sq: Array = b.squad()
+		var gap := 60.0 if kit == "engine" else 160.0
+		ground_unit(b, sq[0], bo.x - bo.w / 2.0 - gap, bo.y - 60)
+		for k in range(1, sq.size()):
+			ground_unit(b, sq[k], bo.x - 460 - k * 30, bo.y - 60)
+		cam_on(b, bo.x - 200)
+		var hp0: int = sq[0].hp
+		var bx0: float = bo.x
+		var fin := [false]
+		var go := func():
+			await b.vharr_ai.boss_act(bo)
+			fin[0] = true
+		go.call()
+		await until(func(): return fin[0], 3000)
+		await until(func(): return b.settled(), 600)
+		await shot("biomeboss_" + kit)
+		match kit:
+			"engine":
+				check(bo.x < bx0 - 20 and sq[0].hp < hp0, "the ARMORED ENGINE rams forward (%d px) and runs the soldier down (%d -> %d)" % [int(bx0 - bo.x), hp0, sq[0].hp])
+			"drill":
+				check(sq[0].hp < hp0, "the DRILL RIG bores into the nearest soldier (%d -> %d)" % [hp0, sq[0].hp])
+			"magma":
+				check(b.squad().any(func(x): return x.has_st("burn")) or sq[0].hp < hp0, "the MAGMA CRAWLER's shell sets the ground burning")
+		if kit == "engine":
+			main.show_brief()
+			await frames_wait(6)
+			await shot("biomeboss_brief")
+	main.show_title()
+	await frames_wait(5)
+
+
+const V3_SEGS := ["dunes", "oasis", "sphinx", "gatehouse", "barracks", "swamp", "temple", "canopy", "stilts", "mangrove", "tankfarm", "pipeline",
+	"switchback", "pass", "seawall", "drydock", "courtyard", "pagoda", "icefall", "lodge", "overpass", "rubble", "cavern", "crossing", "boxcars",
+	"caboose", "vents", "obsidian", "nest", "spires", "bridgedeck", "elevator"]
+
+func segments3_test() -> void:
+	## V3: the new segments (run-variety page). Each one, in every biome that uses it: it builds,
+	## its enemies stand on something, and the ground never asks for a climb or a gap the squad can't make.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	check(V3_SEGS.all(func(k): return Data.SEGMENTS.has(k) and Data.SEGMENT_NAMES.has(k)), "all %d new segments exist and have names" % V3_SEGS.size())
+	check(Data.BIOMES.keys().all(func(b): return Data.BIOMES[b].segments.size() >= 5), "every biome has at least 5 segments")
+	var used := {}
+	for b in Data.BIOMES:
+		for k in Data.BIOMES[b].segments:
+			if k in V3_SEGS:
+				used[k] = used.get(k, []) + [b]
+	check(used.size() == V3_SEGS.size(), "every new segment is in some biome (%d of %d)" % [used.size(), V3_SEGS.size()])
+	var bad: Array = []
+	for k in V3_SEGS:
+		for bid in used.get(k, []):
+			var b: Battle = await m_battle(bid, [k])
+			var x0: float = 460.0
+			var w: float = Data.SEGMENTS[k].w
+			# enemies placed somewhere real
+			for u in b.units:
+				if u.team == "enemy" and u.x >= x0 and u.x <= x0 + w and (u.y == null or u.y >= Battle.WATER_Y - 6) and u.weight != "hover":
+					bad.append("%s/%s: %s in the water at %d,%s" % [bid, k, u.type, int(u.x - x0), str(u.y)])
+			# no wall taller than a hop with no ladder, no gap wider than a hop
+			var x := x0
+			var gap := 0.0
+			while x < x0 + w:
+				var g1: float = b.T.ground_at(x)
+				var g2: float = b.T.ground_at(x + 8)
+				var open1: bool = b.T.stand_y(x, 0) == null
+				gap = gap + 8.0 if open1 else 0.0
+				if gap > 180:
+					bad.append("%s/%s: gap at %d" % [bid, k, int(x - x0)])
+					gap = -9999
+				if g1 - g2 > 100 and not b.T.ladders.any(func(l): return absf(l.x - x) < 40):
+					bad.append("%s/%s: wall at %d (%d px)" % [bid, k, int(x - x0), int(g1 - g2)])
+				x += 8
+			if k in ["dunes", "gatehouse", "canopy", "tankfarm", "boxcars", "spires", "elevator"] and bid == used[k][0]:
+				cam_on(b, x0 + w / 2.0)
+				await frames_wait(4)
+				await shot("seg_" + k)
+	check(bad.is_empty(), "every new segment is walkable and its enemies stand on ground %s" % str(bad))
+	main.show_title()
+	await frames_wait(5)
+
+
+var guide_hops := 0  # live fire: soldiers skipped in a row with nothing to shoot
+
+func guide_act(b: Battle) -> String:
+	## One move of a recruit who does nothing but what the highlight says. Returns what it did.
+	var tg: Dictionary = b.boot_camp.guide_target()
+	var G: Array = b.lesson().get("guide", [])
+	var step: Array = G[mini(b.guide_i, G.size() - 1)]
+	var u: Unit = b.sel
+	if tg.is_empty():
+		await frames_wait(15)
+		return "none"
+	if tg.has("w") and b.lesson().get("live", false):
+		if b.card_idx >= 0:
+			b.cancel_card()
+		tg = {"r": Rect2(), "hand": true}
+	if tg.has("r"):
+		var hi: Array = step[1]
+		var k := str(hi[0])
+		if tg.get("label", "") == "PICK A CARD" or tg.get("hand", false):
+			k = "hand"
+		if tg.get("btn", "") == "end":
+			# wait for the NEXT player turn: right after end_turn the state can still read "player",
+			# and a second END TURN then spent the lesson's next turn too (flaky lesson 3)
+			var r0: int = b.round_n
+			b.end_turn(true)
+			await until(func(): return gone(b) or (b.round_n > r0 and b.state == "player" and not b.busy), 900)
+			return "end turn"
+		if tg.get("btn", "") == "jet":
+			b.toggle_jet()
+			await frames_wait(4)
+			return "jet on"
+		if k == "hand":
+			# any card that hurts, at the nearest Jackal
+			for i in u.hand.size():
+				var c := Data.card(u.hand[i])
+				if Data.is_attack(c) and c.type in ["AIM", "ARC"] and b.card_cost(u, u.hand[i]) <= u.energy:
+					var e = b.boot_camp.nearest_enemy()
+					var key := str(u.hand[i].key)
+					b.aim_hold = true
+					await aim_card(b, i, Vector2(e.x, e.y - e.h * 0.6))
+					return "attack " + key
+			guide_hops += 1
+			if guide_hops <= b.squad_alive().size() and b.squad_alive().any(func(o): return o != u and o.energy > 0):
+				b.next_unit()
+				await frames_wait(6)
+				if b.sel != u:
+					return "next soldier"
+			guide_hops = 0
+			var r1: int = b.round_n
+			b.end_turn(true)
+			await until(func(): return gone(b) or (b.round_n > r1 and b.state == "player" and not b.busy), 1500)
+			return "end turn (nothing to shoot)"
+		# a card: click it
+		for i in hud_cards().size():
+			if Rect2(hud_cards()[i].position, Vector2(hud_cards()[i].size.x, 70)).encloses(tg.r):
+				b.select_card(i)
+				await frames_wait(4)
+				return "card %d" % i
+		return "card?"
+	var p: Vector2 = tg.w
+	if step[2] == "above" or b.jet_hold:
+		# jet: hold toward the ring, then over the flag and let go
+		b.mouse = p
+		if not b.jet_hold:
+			b.start_jet(u)
+		if step[2] == "above":
+			await until(func(): return gone(b) or u.fuel <= 0 or b.guide_i > 2, 600)
+			print("[guided] jet up: at %s fuel %d flag %s ring %s hold %s" % [px(b), u.fuel, b.lesson_flag(), p, b.jet_hold])
+			return "jet up"
+		await until(func(): return gone(b) or u.fuel <= 0 or (absf(u.x - p.x) < 30 and absf(u.vx) < 1.5), 600)
+		if is_instance_valid(b):
+			b.jet_hold = false
+		await until(func(): return gone(b) or (not b.busy and not u.air), 600)
+		return "jet over"
+	if b.card_idx >= 0:
+		b.aim_hold = true
+		b.mouse = p
+		await frames_wait(3)
+		b.world_click(p)
+		await frames_wait(2)
+		await until(func(): return gone(b) or (not b.busy and b.settled()), 1500)
+		await frames_wait(6)
+		return "aim %d,%d" % [p.x, p.y]
+	await walk(b, p.x)
+	return "walk %d" % p.x
+
+func hud_cards() -> Array:
+	return main.battle.hud.cards if main.battle != null and main.battle.hud != null else []
+
+func guided_test() -> void:
+	## A recruit who only ever clicks what the tutorial highlights gets through every lesson on the
+	## first try: proof that each step points at the right card, button and spot.
+	Run.meta["tips_off"] = false
+	main.start_training()
+	for i in range(start_arg, Data.LESSONS.size()):
+		if i == start_arg and start_arg > 0:
+			main.start_lesson(i)
+		var b: Battle = await lesson_battle(i)
+		var L: Dictionary = Data.LESSONS[i]
+		await frames_wait(20)
+		await shot("guided_%02d_%s" % [i + 1, L.key])
+		var did: Array = []
+		var tries := 1
+		for n in 40:
+			if gone(b):
+				break
+			if L.get("live", false) and n == 0:
+				check(b.boot_camp.guide_target().get("label", "") == "PICK A CARD", "live fire: the guide points at the hand first")
+			did.append(await guide_act(b))
+			if n == 0 and not gone(b):
+				await shot("guided_%02d_%s_b" % [i + 1, L.key])
+		var r := await lesson_left(b)
+		print("[guided] lesson %d %s: %s after %s" % [i + 1, L.key, r, did])
+		check(r == "pass", "lesson %d (%s): following only the highlights passes first try (%s, %s)" % [i + 1, L.title, r, did])
+		if r != "pass" and r != "":
+			# keep going: skip ahead to the next lesson
+			await lesson_battle(i)
+			main.battle.boot_camp.lesson_skip()
+		elif r == "":
+			main.battle.boot_camp.lesson_skip()
+	await until(func(): return Run.meta.get("trained", false), 600)
+	check(Run.meta.get("trained", false), "the guided recruit finishes boot camp")
+	main.show_title()
+	await frames_wait(5)
+
+func tutfuzz_test() -> void:
+	## Nothing in boot camp can lock up: random clicks, cards, keys, jets, turn ends, pauses and retries
+	## on every lesson, and after each one the game is back to the player within the jam watchdog's time.
+	main.start_training()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var worst := 0
+	var stuck: Array = []
+	for i in Data.LESSONS.size():
+		main.start_lesson(i)
+		var b: Battle = await lesson_battle(i)
+		for n in 30:
+			if not is_instance_valid(b) or b.lesson_over:
+				await until(func(): return lesson_res != "", 600)
+				if lesson_res in ["pass", "skip"]:
+					main.start_lesson(i)  # the fuzzer passed it by accident: back to this lesson
+				b = await lesson_battle(i)
+			var u: Unit = b.sel
+			var roll := rng.randi() % 10
+			var what := ""
+			match roll:
+				0, 1, 2:
+					var p := Vector2(b.cam_x + rng.randf_range(20, 940), rng.randf_range(80, 480))
+					b.mouse = p
+					b.world_click(p)
+					what = "click"
+				3, 4:
+					if u != null and u.hand.size():
+						b.select_card(rng.randi() % u.hand.size())
+						var p2 := Vector2(b.cam_x + rng.randf_range(20, 940), rng.randf_range(60, 480))
+						b.mouse = p2
+						await frames_wait(3)
+						b.world_click(p2)
+					what = "card"
+				5:
+					b.cancel_card()
+					what = "cancel"
+				6:
+					if u != null and u.fuel_max > 0:
+						b.toggle_jet()
+						b.mouse = Vector2(b.cam_x + rng.randf_range(20, 940), rng.randf_range(60, 480))
+						b.start_jet(u)
+						await frames_wait(rng.randi_range(10, 90))
+						if is_instance_valid(b):
+							b.jet_hold = false
+					what = "jet"
+				7:
+					await press_key(KEY_ENTER)
+					await press_key(KEY_ENTER)
+					what = "end"
+				8:
+					b.cancel_card()
+					b.jet_armed = false
+					await press_key(KEY_ESCAPE)
+					await frames_wait(10)
+					if get_tree().paused:
+						await press_key(KEY_ESCAPE)
+					what = "pause"
+				9:
+					await press_key(KEY_SPACE if rng.randi() % 2 else KEY_1)
+					what = "key"
+			# back to the player within the watchdog's time, or the lesson ended (pass, fail or jam)
+			var t0 := Time.get_ticks_msec()
+			await until(func(): return not is_instance_valid(b) or b.lesson_over or (b.state == "player" and not b.busy and b.settled()), 3000)
+			var waited := Time.get_ticks_msec() - t0
+			worst = maxi(worst, waited)
+			if get_tree().paused:
+				stuck.append("lesson %d: still paused after %s" % [i + 1, what])
+				get_tree().paused = false
+			if is_instance_valid(b) and not b.lesson_over and not (b.state == "player" and not b.busy):
+				stuck.append("lesson %d after %s" % [i + 1, what])
+				b.boot_camp.lesson_fail("retry")
+		# and RETRY still works at the end of all that
+		if is_instance_valid(b) and not b.lesson_over:
+			b.boot_camp.lesson_fail("retry")
+		else:
+			main.start_lesson(i)
+		b = await lesson_battle(i)
+		check(b.state == "player" and not b.lesson_over, "lesson %d: RETRY brings back a fresh try after the fuzzing" % (i + 1))
+		print("[fuzz] lesson %d done, worst wait %d ms" % [i + 1, worst])
+	check(stuck.is_empty(), "no lesson ever got stuck: %s" % str(stuck))
+	# the watchdog: a lesson frozen mid-move (busy for good) starts over on its own
+	main.start_lesson(0)
+	var jb: Battle = await lesson_battle(0)
+	jb.busy = true
+	var r := await lesson_left(jb)
+	check(r == "fail:jam", "a lesson frozen for 20 seconds starts over by itself (%s)" % r)
+	main.show_title()
+	await frames_wait(5)
+
+
+func nadeprobe() -> void:
+	## Maps which aim points win the grenade lesson in one throw, to place its ring in the middle.
+	main.start_training()
+	var li := 9 if start_arg == 0 else start_arg
+	main.start_lesson(li)
+	for x in (range(110, 171, 15) if li == 9 else range(250, 351, 20)):
+		for up in (range(120, 181, 15) if li == 9 else range(60, 181, 30)):
+			var b: Battle = await lesson_battle(li)
+			if li == 3:
+				await walk(b, 236)
+			var p: Vector2 = b.boot_camp.guide_pt(x, up)
+			b.select_card(0)
+			b.mouse = p
+			await frames_wait(3)
+			b.world_click(p)
+			var last := Vector2.ZERO
+			var sx: float = b.sel.x
+			for f in 600:
+				await frames_wait(1)
+				if not is_instance_valid(b) or b.lesson_over:
+					break
+				if b.projs.size():
+					last = Vector2(b.projs[0].x, b.projs[0].y)
+				elif f > 20 and b.settled() and not b.busy:
+					break
+			print("[probe] from %d: blew at %s" % [sx, last])
+			await frames_wait(30)
+			if not is_instance_valid(b) or b.lesson_over:
+				await until(func(): return lesson_res != "", 300)
+			var dead: int = b.units.filter(func(e): return e.team == "enemy" and e.dead).size() if is_instance_valid(b) else -1
+			print("[probe] x %d up %d: %d dead %s" % [x, up, dead, lesson_res])
+			if li == 3 and is_instance_valid(b) and not b.lesson_over:
+				await frames_wait(20)
+				print("[probe] hop landed at ", px(b))
+			if is_instance_valid(b) and not b.lesson_over:
+				b.boot_camp.lesson_fail("retry")
+			else:
+				main.start_lesson(li)
+	check(true, "probe done")
+	main.show_title()
+	await frames_wait(5)

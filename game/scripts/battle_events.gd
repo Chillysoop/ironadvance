@@ -52,6 +52,99 @@ func setup_events() -> void:
 				d.loot = {"stock": [Run.roll_item(1), Run.roll_item(1), Run.roll_item(2)]}
 				bt.units.append(d)
 
+func open_spot(st: Array) -> Array:
+	## V11: a spot on open ground near the middle of a stretch, or [] if there is none.
+	var mid: float = (st[0] + st[1]) / 2.0
+	for d in range(0, int((st[1] - st[0]) / 2.0), 8):
+		for x in [mid + d, mid - d]:
+			var gy = bt.T.stand_y(x, bt.T.ground_at(x) - 40)
+			if gy != null and absf(gy - bt.T.ground_at(x)) < 9 and not bt.T.pits.any(func(p): return x > p[0] - 20 and x < p[1] + 20):
+				return [x, gy]
+	return []
+
+func setup_road() -> void:
+	## V4: the extra on the road the squad took, in the second fighting stretch.
+	var id: String = bt.mission.get("road", "")
+	if id == "" or bt.T.stretches.size() < 2 or bt.tutorial() or bt.in_lesson():
+		return
+	var st: Array = bt.T.stretches[1]
+	match id:
+		"supply", "scrap", "prison":
+			var n: int = {"supply": 3, "scrap": 2, "prison": 1}[id]
+			for i in n:
+				var x: float = lerpf(st[0], st[1], (i + 0.5) / n) + 20.0
+				var sp := open_spot([x - 60.0, x + 60.0])
+				if sp.is_empty():
+					continue
+				var u := bt.mk_unit(); u.team = "neutral"; u.x = sp[0]; u.y = sp[1]
+				match id:
+					"supply":
+						u.kind = "crate"; u.w = 16; u.h = 14; u.hp = 1; u.max_hp = 1
+					"scrap":
+						u.kind = "wreck"; u.w = 40; u.h = 18
+					"prison":
+						u.kind = "pow"; u.face = -1
+						u.pow_name = Data.POW_NAMES[randi() % Data.POW_NAMES.size()]
+						bt.stats.pows_total += 1
+				bt.units.append(u)
+		"quiet":
+			# two of the stretch's Jackals stayed home
+			var foes: Array = bt.units.filter(func(e): return e.team == "enemy" and not bt.is_boss(e) and e.x >= st[0] and e.x <= st[1] and bt.faction(e) == "jackal")
+			for k in mini(2, foes.size()):
+				foes[foes.size() - 1 - k].gone = true
+
+var rare_at := -1.0  # P3: where the level's rare encounter stands, until the squad first sees it
+
+func rare_check() -> void:
+	## P3: a banner the first time the rare encounter comes into view.
+	if rare_at < 0.0 or not bt.in_play(rare_at, 0.0):
+		return
+	rare_at = -1.0
+	var id: String = bt.mission.get("rare", "")
+	if not Data.RARES.has(id):
+		return
+	var sub: String = {"merc": "A HIRED GUN IS PINNED DOWN AHEAD: REACH HIM", "wreck": "A CRASHED SCOUT SHIP: WALK ONTO IT TO STRIP IT",
+		"market": "A SMUGGLER SELLS A LEGENDARY AND TWO EPICS", "ace": "A VETERAN JACKAL: KILL HIM FOR %d SCRIP AND AN EPIC" % Data.ACE_PAY}.get(id, "")
+	bt.banner("RARE: " + Data.RARES[id].name, Color("9df25c"), sub)
+	Sfx.play("coin")
+
+func setup_rare() -> void:
+	## V11: the level's rare encounter, in the second fighting stretch (or the first if there is one).
+	var id: String = bt.mission.get("rare", "")
+	if id == "" or bt.T.stretches.is_empty() or bt.mission.get("finale", false) or bt.tutorial() or bt.in_lesson():
+		return
+	var st: Array = bt.T.stretches[mini(1, bt.T.stretches.size() - 1)]
+	var sp := open_spot(st)
+	if sp.is_empty():
+		return
+	var x: float = sp[0]
+	var y: float = sp[1]
+	match id:
+		"merc":
+			var tr := bt.spec_kits.make_sentry(null, x, y, 40, [6, 8])
+			tr.loot["trooper"] = true
+			tr.loot["pinned"] = true
+			tr.loot["merc"] = true
+			tr.heavy = false
+			tr.w = 14; tr.h = 30
+			tr.face = 1
+		"wreck":
+			var w := bt.mk_unit(); w.team = "neutral"; w.kind = "wreck"; w.x = x; w.y = y; w.w = 40; w.h = 18
+			w.loot = {"rare": true}
+			bt.units.append(w)
+		"market":
+			var d := bt.mk_unit(); d.team = "neutral"; d.kind = "dealer"; d.x = x; d.y = y; d.w = 20; d.h = 30; d.face = -1
+			d.loot = {"stock": [Run.roll_item(Data.TIER_MAX), Run.roll_item(3), Run.roll_item(3)], "market": true}
+			bt.units.append(d)
+		"ace":
+			var e := bt.mk_enemy("brute" if randf() < 0.5 else "jsniper", x, y)
+			bt.make_elite(e, bt.pick_elite(false))
+			e.hp *= 2; e.max_hp = e.hp
+			e.fl["ace"] = true
+			bt.units.append(e)
+	bt.log_msg("RARE: %s. %s" % [Data.RARES[id].name, Run.rare_text(id)])
+	rare_at = x
+
 func troopers() -> Array:
 	return bt.units.filter(func(o): return o.kind == "sentry" and o.loot.get("trooper", false) and not o.dead and not o.gone)
 

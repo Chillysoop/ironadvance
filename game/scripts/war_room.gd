@@ -460,8 +460,9 @@ func draw_book() -> void:
 		draw_journal()
 		return
 	var a := int(Run.camp.get("act", 0))
-	Art.text(self, "Act %s. Optional, each pays %d salvage and a Legendary item once." % [Run.act().roman, Data.CHALLENGE_PAY.salvage], Vector2(MAP.end.x - 12, MAP.position.y + 25), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_RIGHT, 2, true)
 	var ids: Array = Data.ACT_CHALLENGES[a]
+	# under the cards, clear of the tabs it used to run into
+	Art.text(self, "Act %s challenges are optional. Each pays %d salvage and a Legendary item, once." % [Run.act().roman, Data.CHALLENGE_PAY.salvage], Vector2(MAP.position.x + 14, MAP.position.y + 62 + ids.size() * 70), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 2, true)
 	for i in ids.size():
 		var id: String = ids[i]
 		var done: bool = Run.camp.get("chal", {}).has("%d:%s" % [a, id])

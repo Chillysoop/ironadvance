@@ -11,6 +11,8 @@ var history: Array = []    # per-mission result dictionaries
 var seed_val := 0
 var uid := 1
 var luck := 0              # shifts every rarity roll upward
+var run_order := ""        # V9: the run order taken at the start of a quick run
+var run_order_offer: Array = []  # V9: the three orders on offer before one is taken
 var pity_rare := 0         # rolls since the last Rare or better
 var pity_epic := 0         # rolls since the last Epic or better
 var stash: Array = []      # unequipped items, shared by the squad
@@ -40,6 +42,7 @@ var dial_rerolled := false # Gate Control 2: one reroll per HQ visit
 var sway_mul := 1.0        # the current biome's sway rule, read by Data.card during a battle
 var first_run := false     # P8: the player's first-ever quick run (level 1 skips bounties and the event)
 var daily := ""            # D2: the date of today's Daily Op while one is running, else ""
+var seed_code := ""        # V13: the quick run's shareable seed code (type it in to replay the same start)
 var meta := {"feats": {}, "unlocked": [], "threat_max": 0, "wins": 0, "memorial": [], "salvage": 0, "hq": {}, "implants": {}}   # kept across runs (W4, W5); memorial = the fallen; salvage (HQ) and bio (the Doc) are detour pay
 const META_PATH := "user://meta.json"
 # Campaign mode (B1): the campaign keeps its own HQ, Salvage, implants and Memorial.
@@ -158,7 +161,7 @@ func roll_dial() -> Array:
 	## Two biomes from this level's pool, never one already played or burned.
 	var pool: Array = Data.LEVELS[mini(mission, Data.LEVELS.size() - 1)].pool.filter(func(b): return not burned.has(b))
 	pool.shuffle()
-	dial = pool.slice(0, 3 if hq("gate") >= 1 else 2)
+	dial = pool.slice(0, 3 if hq("gate") >= 1 or run_order == "widedial" else 2)
 	dial_breach = {}
 	dial_levels = {}
 	for b in dial:
@@ -209,6 +212,8 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	# E7, E8: or a Jackal Gunship or a Di-Cokka tank in its place
 	var minis := ["jwalker", "dicokka"] if bm.rules.get("ceiling", false) else ["jwalker", "gunship", "dicokka"]
 	var miniboss: String = minis[randi() % minis.size()]
+	if tier == 0:
+		miniboss = "jwalker"  # P4: level 1's mini-boss is always the Walker (Di-Cokka and Gunship from level 2)
 	# R2-R4: one mid-level event, R5: three bounties, all on the briefing
 	# (their own dice, so adding them left every level's layout as it was)
 	var er := RandomNumberGenerator.new()
@@ -223,13 +228,126 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	if tier == 0 and first_run and daily == "" and not campaign():
 		event = ""  # P8: the first fight is the level, the POWs and the Boar; both start from level 2
 		bpool = []
+	# V1, V2: the segment remix and the Jackal garrison have their own dice too, so every other
+	# roll above stays where it was (and a Daily Op still gives everyone the same level)
+	var vr := RandomNumberGenerator.new()
+	vr.seed = hash([id, tier, seed_val, mission, "variety"])
+	var garrison := roll_garrison(vr)
+	if bm.rules.get("aliens", false) or (tier == 0 and first_run and daily == "" and not campaign()):
+		garrison = "regular"  # nothing but Vharr in the Hive; the very first fight stays the plain one
+	var remix := vr.randi()
+	var kits: Array = Data.BOAR_KITS.keys().filter(func(k): return not Data.BOAR_KITS[k].get("biome", false))
+	var boar_kit: String = kits[vr.randi() % kits.size()] if boss == "boar" else ""
+	if boss == "boar" and tier >= 1 and Data.BIOME_BOSSES.has(id):
+		boar_kit = Data.BIOME_BOSSES[id]  # V6: the biome's own boss
+	if tier == 0 and first_run and daily == "" and not campaign():
+		boar_kit = "standard"
+	var rare := ""
+	if vr.randf() < (1.0 if is_weekly() else Data.RARE_CHANCE):
+		var rk: Array = Data.RARES.keys()
+		rare = rk[vr.randi() % rk.size()]
+	if bm.rules.get("aliens", false) and rare == "ace":
+		rare = "wreck"  # no Jackals in the Hive
+	if tier == 0 and first_run and daily == "" and not campaign():
+		rare = ""
+	var fork: Array = []
+	if pool.size() >= 3 and pool[2] != pool[1] and not campaign() and not (tier == 0 and first_run and daily == ""):
+		var rd: Array = Data.ROADS.keys()
+		var r0: String = rd[vr.randi() % rd.size()]
+		rd.erase(r0)
+		var r1: String = rd[vr.randi() % rd.size()]
+		fork = [{"seg": pool[1], "road": r0}, {"seg": pool[2], "road": r1}]
 	var layout: Array = ["start", pool[0], "camp", "yard", pool[1], "camp", bm.get("arena", "arena")]
 	if not campaign():
 		# X8: a quick-run level is one screen shorter: no second camp before the boss (the campaign's op layout)
 		layout = ["start", pool[0], "camp", "yard", pool[1], bm.get("arena", "arena")]
 	return {"event": event, "bounties": bpool.slice(0, 3), "name": bm.name, "theme": bm.theme, "biome": id, "look": bm.look, "rules": bm.rules, "detours": detours.slice(0, nd), "signal": signal_id, "breach": breach, "encounter": enc, "boss": boss, "walker": walker, "miniboss": miniboss,
+		"garrison": garrison, "remix": remix, "boar_kit": boar_kit, "rare": rare, "fork": fork, "road": "",
 		"segments": layout,
 		"boss_hp": lv.boss_hp, "plate": lv.plate, "hp_mul": lv.hp_mul, "brief": bm.text}
+
+func take_run_order(id: String) -> void:
+	## V9: the run order is set for the whole run. Some pay out right away.
+	run_order = id
+	run_order_offer = []
+	match id:
+		"warchest":
+			scrip += Data.ORDER_CHEST
+		"ironwill":
+			for s in soldiers:
+				s.tags = int(s.tags) + 1
+		"lucky":
+			luck += 2
+		"heavy":
+			var rng := RandomNumberGenerator.new()
+			rng.seed = hash([seed_val, "heavy"])
+			for s in soldiers:
+				var pool: Array = s.def.get("pool", []).filter(func(k): return Data.CARDS.has(k))
+				if pool.is_empty():
+					continue
+				var top := 0
+				for k in pool:
+					top = maxi(top, int(Data.CARDS[k].get("rarity", 0)))
+				var best: Array = pool.filter(func(k): return int(Data.CARDS[k].get("rarity", 0)) == top)
+				s.deck.append(new_card(best[rng.randi() % best.size()], -1, "order"))
+
+func pick_road(i: int) -> void:
+	## V4: take one of the two roads for the level's second stretch.
+	var f: Array = level.get("fork", [])
+	if i < 0 or i >= f.size():
+		return
+	level.segments[4] = f[i].seg  # start, stretch, camp, yard, THIS stretch, ...
+	level["road"] = f[i].road
+	level["fork"] = []
+
+func seg_features(sname: String) -> Array:
+	## V4: what a segment holds, in a few words, for the fork's road cards.
+	var sg: Dictionary = Data.SEGMENTS.get(sname, {})
+	var out: Array = []
+	var names := {"tower": "a watchtower", "over": "an overhang", "ledge": "a high ledge", "boulder": "a hanging boulder", "bunker": "a bunker",
+		"fort": "a fort", "bridge": "a bridge", "docks": "docks", "crane": "a crane", "fence": "a fence line", "catwalk": "catwalks"}
+	for t in sg.get("structs", []):
+		var nm: String = names.get(t.t, "")
+		if nm != "" and not out.has(nm):
+			out.append(nm)
+	var foes := 0
+	for sp in sg.get("spawns", []):
+		if Data.ETYPES.has(sp[0]) and sp[0] != "boss":
+			foes += 1
+	if sg.get("pits", []).size():
+		out.append("%d gap%s" % [sg.pits.size(), "" if sg.pits.size() == 1 else "s"])
+	out.append("%d enemy posts" % foes)
+	return out
+
+func road_text(id: String) -> String:
+	var tx: String = Data.ROADS[id].text
+	return tx % Data.WRECK_SALVAGE if id == "scrap" else tx
+
+func rare_text(id: String) -> String:
+	var tx: String = Data.RARES[id].text
+	match id:
+		"wreck": return tx % Data.RARE_WRECK_SALVAGE
+		"ace": return tx % Data.ACE_PAY
+	return tx
+
+func run_order_text(id: String) -> String:
+	var tx: String = Data.RUN_ORDERS[id].text
+	return tx % Data.ORDER_CHEST if id == "warchest" else tx
+
+func roll_garrison(rng: RandomNumberGenerator) -> String:
+	## V2: which Jackal garrison holds a level, weighted by Data.GARRISONS[k].w.
+	var total := 0
+	for k in Data.GARRISONS:
+		total += int(Data.GARRISONS[k].w)
+	var r := rng.randi() % total
+	for k in Data.GARRISONS:
+		r -= int(Data.GARRISONS[k].w)
+		if r < 0:
+			return k
+	return "regular"
+
+func garrison_of(lv: Dictionary) -> Dictionary:
+	return Data.GARRISONS.get(lv.get("garrison", "regular"), Data.GARRISONS.regular)
 
 func start_finale() -> void:
 	level = Data.FINALE.duplicate(true)
@@ -376,6 +494,16 @@ func new_run() -> void:
 	seed_val = randi()
 	for k in (daily_squad(daily) if daily != "" else draft()):
 		soldiers.append(make_soldier(class_def(k)))
+	run_order = ""
+	run_order_offer = []
+	if daily == "":
+		var ks: Array = Data.RUN_ORDERS.keys()
+		var orng := RandomNumberGenerator.new()
+		orng.seed = hash([seed_val, "orders"])
+		for i in range(ks.size() - 1, 0, -1):
+			var j := orng.randi() % (i + 1)
+			var t = ks[i]; ks[i] = ks[j]; ks[j] = t
+		run_order_offer = ks.slice(0, 3)
 
 # ---------------------------------------------------------------- D2 Daily Op, D3 fun toggles
 func daily_key() -> String:
@@ -395,15 +523,17 @@ func daily_squad(key: String) -> Array:
 
 const RUN_PATH := "user://run.save"
 
-func save_run() -> void:
+func save_run(resume := "") -> void:
 	## R4: the quick run (or today's Daily Op) as it stands at HQ, so CONTINUE RUN on the title
 	## can pick it up after the game is closed. Quitting mid-level comes back to HQ before that level.
+	## resume: the screen CONTINUE RUN opens instead of HQ ("orders", "route" or "brief"), for a save
+	## made after the run order or the level was picked but before it was played.
 	if campaign() or soldiers.is_empty():
 		return
 	var data := snapshot()
 	for k in ["meta", "run_base", "camp", "roster"]:
 		data.erase(k)
-	var head := {"level": mini(history.size(), Data.LEVELS.size()), "daily": daily,
+	var head := {"level": mini(history.size(), Data.LEVELS.size()), "daily": daily, "resume": resume,
 		"names": soldiers.filter(func(s): return s.alive).map(func(s): return s.def.name)}
 	var f := FileAccess.open(RUN_PATH, FileAccess.WRITE)
 	if f != null:
@@ -433,9 +563,56 @@ func clear_run() -> void:
 	if FileAccess.file_exists(RUN_PATH):
 		DirAccess.remove_absolute(RUN_PATH)
 
+const SEED_CHARS := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+func new_seed_code() -> String:
+	var c := ""
+	for i in 6:
+		c += SEED_CHARS[randi() % SEED_CHARS.length()]
+	return c
+
+func clean_seed(code: String) -> String:
+	## V13: a typed seed, upper-cased with anything that isn't a seed letter dropped.
+	var out := ""
+	for ch in code.to_upper():
+		if SEED_CHARS.contains(ch):
+			out += ch
+	return out.substr(0, 6)
+
+func start_seeded(code: String) -> void:
+	## V13: a quick run from a seed code: the same squad draws, orders, dials and maps for anyone who types it.
+	seed_code = clean_seed(code) if code != "" else new_seed_code()
+	daily = ""
+	seed(hash("ironadvance-seed-" + seed_code))
+	new_run()
+
+func weekly_key() -> String:
+	## V13: this week's Weekly Op, Monday to Sunday.
+	var t := Time.get_unix_time_from_system()
+	var d := Time.get_datetime_dict_from_unix_time(int(t))
+	var monday := int(t) - ((int(d.weekday) + 6) % 7) * 86400
+	return "WEEK OF " + Time.get_date_string_from_unix_time(monday)
+
+func is_weekly() -> bool:
+	return daily.begins_with("WEEK")
+
+func start_weekly() -> void:
+	## V13: one seed a week: today's squad rule, a fixed run order, and a rare encounter on every level.
+	daily = weekly_key()
+	seed_code = ""
+	seed(hash("ironadvance-" + daily))
+	new_run()
+	var ks: Array = Data.RUN_ORDERS.keys()
+	take_run_order(ks[hash(daily) % ks.size()])
+
+func weekly_best() -> int:
+	var d: Dictionary = meta.get("weekly", {})
+	return int(d.get("score", 0)) if d.get("day", "") == weekly_key() else 0
+
 func start_daily() -> void:
 	## A fresh run on today's seed: same squad, same dials and maps for everyone today.
 	daily = daily_key()
+	seed_code = ""
 	seed(hash("ironadvance-" + daily))
 	new_run()
 
@@ -446,6 +623,11 @@ func daily_best() -> int:
 func daily_over() -> void:
 	## Keep today's best score. Yesterday's is dropped: the op comes back fresh each day.
 	if daily == "":
+		return
+	if is_weekly():
+		if weekly_best() < total_score:
+			meta["weekly"] = {"day": daily, "score": total_score}
+			save_meta()
 		return
 	if daily_best() < total_score or meta.get("daily", {}).get("day", "") != daily:
 		meta["daily"] = {"day": daily, "score": maxi(total_score, daily_best())}

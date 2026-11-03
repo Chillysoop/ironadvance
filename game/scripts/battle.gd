@@ -67,6 +67,9 @@ var tut_blast := false        # a squad blast went off on the grenade step
 var lesson_over := false      # tutorial lesson: passed, failed or skipped, the next one is loading
 var lesson_said := false      # tutorial lesson: the sergeant has called this lesson in
 var lesson_why := ""          # tutorial lesson: why the last try failed, for the panel
+var guide_i := 0              # tutorial lesson: the guide step the recruit is on
+var guide_seen := {}          # tutorial lesson: things done so far this try (armed:hop, jet...)
+var jam_t := 0                # tutorial lesson: frames the battle has been busy, for the jam watchdog
 var boss_active := false
 var boss_dead := false
 var gate = null          # the gate home to HQ, opened after the boss falls
@@ -215,6 +218,11 @@ func setup(idx: int, custom := {}) -> void:
 			pincer = {"on": true, "view": "a", "a_cam": 0.0, "b_cam": float(world_w - W)}
 	var pi := randi() % Data.POW_NAMES.size()
 	var foot := 0  # plain rifleman and bomber slots seen so far (cast_foot)
+	var gar: Dictionary = Run.garrison_of(mission)
+	var gar_rate: float = 0.0 if tutorial() or in_lesson() else float(gar.rate)
+	var gar_rng := RandomNumberGenerator.new()
+	gar_rng.seed = int(mission.get("remix", 0)) + 7
+
 	var walled := false
 	for sp in T.spawns:
 		var type: String = sp[0]
@@ -279,6 +287,12 @@ func setup(idx: int, custom := {}) -> void:
 		elif rules.get("aliens", false) and type != "boss" and Data.ETYPES[type].get("faction", "jackal") != "vharr":
 			type = cast_foot(foot)  # M6: nothing but Vharr in the Hive
 			foot += 1
+		if gar_rate > 0.0 and type in Data.GARRISON_SLOTS and not opt.has("tut") and gar_rng.randf() < gar_rate:
+			# V2: the level's garrison refills some Jackal slots; up on a tower only its "high" types fit
+			var high := opt.has("hold") or opt.has("top") or opt.has("inside") or opt.has("up")
+			var gp: Array = gar.get("high", []) if high else gar.pool
+			if gp.size():
+				type = gp[gar_rng.randi() % gp.size()]
 		if type == "boss" and mission.get("boss", "") == "hiveship":
 			type = "hiveship"
 		var E: Dictionary = Data.ETYPES[type]
@@ -301,7 +315,7 @@ func setup(idx: int, custom := {}) -> void:
 				# D1: until a player has beaten one Boar, the level 1 Boar is a softer Rookie Boar
 				u.fl["rookie"] = true
 				u.hp = int(u.hp * ROOKIE_HP); u.max_hp = u.hp; u.plate = int(u.plate * ROOKIE_HP)
-		elif not tutorial() and not in_lesson() and randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
+		elif not tutorial() and not in_lesson() and not practice() and randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
 			make_elite(u, pick_elite(faction(u) == "vharr"))
 		units.append(u)
 		if opt.has("tut"):
@@ -332,6 +346,8 @@ func setup(idx: int, custom := {}) -> void:
 	vehicle_ops.place_vehicles()
 	biome_rules.setup_biome()
 	mid_events.setup_events()
+	mid_events.setup_rare()  # V11
+	mid_events.setup_road()  # V4
 	camp_ops.place_job()
 	camp_ops.trap_varga()
 	camp_ops.place_nemesis()
@@ -524,7 +540,7 @@ func spawn_map_loot() -> void:
 		return  # the drill lays out its own crate
 	var lo := 520.0
 	var hi := world_w - 900.0
-	var n := int((hi - lo) / 360.0) * (2 if Run.intel == "surplus" else 1)
+	var n := int((hi - lo) / 360.0) * (2 if Run.intel == "surplus" or Run.run_order == "scavengers" else 1)
 	for i in n:
 		var x := lo + (i + randf_range(0.15, 0.85)) * (hi - lo) / n
 		var k := "strongbox" if randf() < 0.22 else "crate"
@@ -1979,6 +1995,11 @@ func kill(tg: Unit, src) -> void:
 		tg.bow = false
 		drop_loot(tg.x, tg.y - 14, {"type": "bow"}, 0.4)
 	feed_kill(tg, src)
+	if tg.fl.get("ace", false):
+		# V11: the Jackal Ace pays out
+		Run.scrip += Data.ACE_PAY
+		drop_loot(tg.x, tg.y - 20, {"type": "item", "item": Run.roll_item(3)})
+		banner("ACE DOWN!", Color("ffd23a"), "+%d SCRIP AND AN EPIC" % Data.ACE_PAY)
 	if tg.fl.has("nemesis"):
 		# W3: a nemesis put down for good drops a Legendary with their name on it
 		var it := Run.roll_item(Data.TIER_MAX)
@@ -2254,6 +2275,8 @@ func feed_kill(tg: Unit, src) -> void:
 			kc = Color("ffd23a")
 		elif src.kind == "enemy":
 			killer = Data.ETYPES[src.type].name.to_upper()
+			if src.type == "boss" and mission.get("boar_kit", "standard") not in ["standard", ""]:
+				killer = Data.BOAR_KITS[mission.boar_kit].name.to_upper()  # V5/V6: the feed names the loadout
 			kc = Color("ff4d3d")
 	var how := kill_how
 	if how == "":
@@ -2277,6 +2300,8 @@ func feed_kill(tg: Unit, src) -> void:
 			log_msg(fin)
 			float_text(src, Data.ORDERS[src.s.orders_done.back()].title + "!", Color("ffd23a"), true)
 	var victim: String = (Data.ETYPES[tg.type].name if tg.team == "enemy" else tg.def.name).to_upper()
+	if tg.type == "boss" and tg.team == "enemy" and mission.get("boar_kit", "standard") not in ["standard", ""]:
+		victim = Data.BOAR_KITS[mission.boar_kit].name.to_upper()
 	var stamp := ""
 	if pop_next:
 		stamp = "OVERKILL!"
@@ -4571,13 +4596,17 @@ func start_player_turn() -> void:
 	if sel == null or sel.dead:
 		var al := squad_alive()
 		sel = al[-1] if al.size() else null
-	banner("ROUND %d" % round_n, Color.WHITE, ("WIND %s %d" % [">>" if wind > 0 else "<<", absi(wind)]) if wind else "NO WIND")
+	if in_lesson() and not lesson().get("live", false) and not (lesson().has("turns") and round_n > 1):
+		pass  # boot camp: no ROUND banner over a one-turn lesson
+	else:
+		banner("ROUND %d" % round_n, Color.WHITE, ("WIND %s %d" % [">>" if wind > 0 else "<<", absi(wind)]) if wind else "NO WIND")
 	# P3: the round banner and alert bar already say the round and alert; the log only gets news
 	if rounds_since_scroll == stall_limit():
 		log_msg("The line has stalled: alert rises every round until you push.")
 	ui_dirty = true
 	if in_lesson():
 		boot_camp.lesson_hand()
+		boot_camp.guide_update()  # the step moves on with the turn, not up to 5 ticks later (END TURN stayed lit)
 	var autoload := units.any(func(o): return o.kind == "sentry" and not o.dead and o.loot.by is Unit and o.loot.by.perk("autoloader"))
 	resolve(func():
 		await spec_kits.dogs_new_turn()

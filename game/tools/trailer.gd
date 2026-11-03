@@ -246,11 +246,14 @@ func jet() -> void:
 	await t.frames_wait(40)
 
 func gate() -> void:
-	main.start_run()
+	t.start_run_hq()
 	main.screen.dial.emit()
 	await t.frames_wait(5)
 	t.press_first()
 	await t.frames_wait(5)
+	if main.screen != null and main.screen.get("mode") == "route":
+		t.press_first()  # V4: take the first road
+		await t.frames_wait(5)
 	t.press_first()
 	await t.frames_wait(5)
 	var b: Battle = main.battle

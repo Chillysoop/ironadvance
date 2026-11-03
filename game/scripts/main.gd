@@ -78,6 +78,7 @@ func field_overlay() -> bool:
 func _unhandled_input(ev: InputEvent) -> void:
 	## Esc that no screen used goes back: it presses the screen's BACK / DONE / CLOSE / CANCEL
 	## (or << ...) button, the topmost one that's showing.
+	## With no way back (HQ itself, the debrief, the results) it opens the game menu instead.
 	if not (ev is InputEventKey and ev.pressed and not ev.echo and ev.keycode == KEY_ESCAPE) or battle != null:
 		return
 	var bt = back_button(ui_layer)
@@ -85,6 +86,35 @@ func _unhandled_input(ev: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		Sfx.play("click")
 		bt.pressed.emit()
+	elif menu_ok():
+		get_viewport().set_input_as_handled()
+		open_menu()
+
+var menu_layer: CanvasLayer = null
+
+func menu_ok() -> bool:
+	## The game menu opens over any screen but the title (which has its own buttons for all of it).
+	if get_tree().paused or battle != null or screen == null or not is_instance_valid(screen):
+		return false
+	return not (screen is Screen and screen.mode == "title")
+
+func open_menu() -> Control:
+	## The game menu outside battle: save, settings, controls, report a bug, quit. It pauses the
+	## screen underneath and sits over everything, the operator's tablet included.
+	if not menu_ok():
+		return null
+	Sfx.play("click")
+	if menu_layer == null:
+		menu_layer = CanvasLayer.new()
+		menu_layer.layer = 9
+		add_child(menu_layer)
+	var pm = HudScript.PauseMenu.new()
+	pm.main = self
+	menu_layer.add_child(pm)
+	get_tree().paused = true
+	pm.calls(false)
+	return pm
+
 
 func back_button(n: Node):
 	## The last (topmost) visible, enabled back button under n.
@@ -140,7 +170,7 @@ func show_title() -> void:
 		# H2: boot camp picks up at the lesson you reached (Esc > BACK TO LESSON 1 starts over)
 		s.buttons[2][2] = "RESUME AT LESSON %d OF %d" % [int(Run.meta.lesson_at) + 1, Data.LESSONS.size()]
 	s.nudge = not Run.meta.get("trained", false)  # H4
-	s.corner = ["DAILY OP", func(): start_daily()]  # D2
+	s.corner = ["SPECIAL OPS", func(): show_ops()]  # D2 daily, V13 weekly and seeded runs
 	var rh := Run.run_head()
 	if rh.size():
 		# R4: a quick run saved at HQ picks up where it left off
@@ -149,6 +179,8 @@ func show_title() -> void:
 		s.buttons[1][2] = "NEW RUN  REPLACES THE SAVED ONE"  # starting over overwrites the save at the first HQ
 	# R5: volumes, fullscreen, shake, tips and blood (V6) live in one settings panel
 	s.corner2 = ["SETTINGS", func(): open_settings()]
+	if not OS.has_feature("web"):
+		s.corner3 = ["QUIT GAME", func(): get_tree().quit()]
 	var tmax := mini(int(Run.meta.threat_max), Data.THREATS.size())
 	if tmax > 0:
 		# W5: every campaign win opens the next threat level
@@ -172,12 +204,21 @@ func open_settings() -> Control:
 	return p
 
 func continue_run() -> void:
+	var resume: String = str(Run.run_head().get("resume", ""))
 	if not Run.load_run():
 		show_title()
 		return
 	Sfx.play("start")
 	Diary.line("CONTINUE RUN at HQ before level %d" % (Run.history.size() + 1))
-	show_hq(false)
+	# a save made on the run orders, the fork or the briefing comes back to that screen
+	if Run.run_order_offer.size():
+		show_orders()
+	elif resume == "route" and Run.level.get("fork", []).size() >= 2:
+		show_route()
+	elif resume in ["route", "brief"] and not Run.level.is_empty():
+		show_brief()
+	else:
+		show_hq(false)
 
 func show_draft() -> void:
 	## X1: more than four classes unlocked, so the run starts with picking the squad.
@@ -189,14 +230,60 @@ func show_draft() -> void:
 	d.back.connect(show_title)
 	open(d)
 
-func start_run() -> void:
+func start_run(code := "") -> void:
 	Run.leave_campaign()
-	Run.daily = ""
-	Run.new_run()
+	Run.start_seeded(code)  # V13: every quick run has a seed code; a typed one replays its start
 	Diary.line("NEW QUICK RUN  squad %s" % ", ".join(Run.soldiers.map(func(x): return x.def.name)))
 	if not Run.meta.get("ran", false):
 		Run.meta["ran"] = true  # P8: only the first quick run ever gets the plainer level 1
 		Run.save_meta()
+	if Run.run_order_offer.size():
+		show_orders()
+	else:
+		show_hq(false)
+
+func show_orders() -> void:
+	## V9: pick 1 of 3 run orders before the squad reaches HQ.
+	clear()
+	Music.play("hq")
+	var s := Screen.new()
+	s.mode = "orders"
+	for id in Run.run_order_offer:
+		var oid: String = id
+		s.buttons.append([Data.RUN_ORDERS[oid].name, func(): Sfx.play("start"); Run.take_run_order(oid); Diary.line("RUN ORDER " + oid); show_hq(false)])
+	open(s)
+
+func show_ops() -> void:
+	## V13: Daily Op, Weekly Op and a seeded quick run.
+	clear()
+	Music.play("title")
+	var s := Screen.new()
+	s.mode = "ops"
+	s.buttons = [["DAILY OP", func(): start_daily(), "ONE SEED A DAY"],
+		["WEEKLY OP", func(): start_weekly(), "ORDERS SET  A RARE ON EVERY LEVEL"],
+		["SEEDED RUN", func(): start_run(seed_box.text if seed_box != null else ""), "TYPE A CODE ABOVE"],
+		["<< BACK", func(): show_title()]]
+	open(s)
+	seed_box = LineEdit.new()
+	seed_box.placeholder_text = "SEED CODE"
+	seed_box.max_length = 6
+	seed_box.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	seed_box.position = Vector2(380, 384)
+	seed_box.size = Vector2(200, 36)
+	seed_box.add_theme_font_size_override("font_size", 22)
+	seed_box.text_changed.connect(func(tx: String):
+		var c := Run.clean_seed(tx)
+		if c != tx:
+			seed_box.text = c
+			seed_box.caret_column = c.length())
+	s.add_child(seed_box)
+
+var seed_box: LineEdit = null
+
+func start_weekly() -> void:
+	Run.leave_campaign()
+	Run.start_weekly()
+	Diary.line("NEW WEEKLY OP " + str(Run.daily))
 	show_hq(false)
 
 func start_daily() -> void:
@@ -367,10 +454,25 @@ func dial_gate() -> void:
 	s.mode = "dial"
 	for b in Run.dial:
 		var id: String = b
-		s.buttons.append([Data.BIOMES[id].name, func(): Sfx.play("start"); Run.pick_biome(id); show_brief()])
+		s.buttons.append([Data.BIOMES[id].name, func(): Sfx.play("start"); Run.pick_biome(id); show_route()])
 	s.buttons.append(["<< BACK TO HQ", func(): show_hq(false)])
-	if Run.hq("gate") >= 2 and not Run.dial_rerolled:
+	if (Run.hq("gate") >= 2 or Run.run_order == "widedial") and not Run.dial_rerolled:
 		s.buttons.append(["REROLL THE DIAL", func(): Sfx.play("click"); Run.reroll_dial(); dial_gate()])
+	open(s)
+
+func show_route() -> void:
+	## V4: two roads for the level's second stretch, or straight to the briefing when there's no fork.
+	var f: Array = Run.level.get("fork", [])
+	if f.size() < 2:
+		show_brief()
+		return
+	clear()
+	Music.play("hq")
+	var s := Screen.new()
+	s.mode = "route"
+	for i in f.size():
+		var k: int = i
+		s.buttons.append([Data.ROADS[f[i].road].name, func(): Sfx.play("start"); Run.pick_road(k); show_brief()])
 	open(s)
 
 func show_brief() -> void:
@@ -620,6 +722,7 @@ class Screen extends Control:
 	var unlock := ""
 	var corner: Array = []  # a small extra button in the top-left corner: [label, callable]
 	var corner2: Array = []  # and one in the top-right corner
+	var corner3: Array = []  # and one in the bottom-left corner (the title's QUIT GAME)
 	var cont: Array = []  # R4: the title's CONTINUE RUN [label, callable, sub], above QUICK RUN
 	var nudge := false  # H4: "NEW HERE?" over TRAINING until boot camp is done once
 	var train_rect := Rect2()
@@ -644,6 +747,15 @@ class Screen extends Control:
 			cb2.position = Vector2(770, 18)
 			cb2.pressed.connect(corner2[1])
 			add_child(cb2)
+		if corner3.size():
+			var cb3 = load("res://scripts/hud.gd").PixButton.new()
+			cb3.text = corner3[0]
+			cb3.small = true
+			cb3.color = Color("6c7480")
+			cb3.size = Vector2(110, 20)
+			cb3.position = Vector2(16, 514)
+			cb3.pressed.connect(corner3[1])
+			add_child(cb3)
 		var n := buttons.size()
 		var widths: Array = []
 		var total := 0.0
@@ -665,6 +777,16 @@ class Screen extends Control:
 				bt.color = buttons[i][3]
 			bt.size = Vector2(widths[i], 40)
 			bt.position = Vector2(x, 470)
+			if mode == "route":  # one button under each road card
+				var rc := route_card(i)
+				bt.size = Vector2(minf(250, rc.size.x - 30), 40)
+				bt.position = Vector2(rc.position.x + (rc.size.x - bt.size.x) / 2, 470)
+				bt.color = Color("ff4d3d")
+			if mode == "orders":  # one button under each order card
+				var oc := order_card(i)
+				bt.size = Vector2(minf(250, oc.size.x - 30), 40)
+				bt.position = Vector2(oc.position.x + (oc.size.x - bt.size.x) / 2, 470)
+				bt.color = Color("ff4d3d")
 			if mode == "dial":  # one button under each biome card, then a small way back and the reroll
 				if i < nd:
 					var cr := dial_card(i)
@@ -688,6 +810,9 @@ class Screen extends Control:
 			x += widths[i] + 10
 			bt.pressed.connect(buttons[i][1])
 			add_child(bt)
+		if mode != "title" and mode != "dial" and corner2.is_empty():
+			# the game menu, added last so the screen's own buttons come first
+			add_child(load("res://scripts/hud.gd").menu_button(Vector2(830, 18)))
 		if mode == "title":
 			Sfx.play("start")
 	var held := {}  # textures must stay referenced until the frame renders
@@ -721,6 +846,9 @@ class Screen extends Control:
 			"brief": draw_brief()
 			"won", "final", "lost", "outpost_lost", "op_won", "op_lost": draw_result()
 			"dial": draw_dial()
+			"orders": draw_orders()
+			"ops": draw_ops()
+			"route": draw_route()
 			"hospital":
 				Art.text(self, "FIELD HOSPITAL", Vector2(480, 110), 32, Color("62d26f"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 				Art.text(self, "Everyone is patched up and gets one dog tag back. The dead stay dead.", Vector2(480, 150), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
@@ -821,7 +949,7 @@ class Screen extends Control:
 		Art.text(self, "TURN-BASED RUN AND GUN", Vector2(480, 140), 16, Color("ffb070"), HORIZONTAL_ALIGNMENT_CENTER, 3)
 		if corner.size():
 			var best := Run.daily_best()
-			Art.text(self, ("TODAY'S BEST %d" % best) if best > 0 else "ONE SEED A DAY", Vector2(105, 60), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, ("TODAY'S BEST %d" % best) if best > 0 else "DAILY  WEEKLY  SEEDS", Vector2(105, 60), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 		if nudge and train_rect.size.x > 0:
 			# H4: point a first-timer at boot camp
 			var cx := train_rect.position.x + train_rect.size.x / 2
@@ -850,7 +978,12 @@ class Screen extends Control:
 			y += 16
 		y += 4  # room between the last line of the brief and the GOOD FOR / ROUGH ON line
 		if jb == "push":
-			Art.text(self, "IRON BOAR HP %d   ARMOR %d   JACKALS +%d%% HP" % [m.boss_hp, m.plate, roundi((m.hp_mul - 1) * 100)], Vector2(480, y + 14), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_CENTER)
+			var bk: Dictionary = Data.BOAR_KITS.get(m.get("boar_kit", ""), Data.BOAR_KITS.standard)
+			if m.get("boar_kit", "standard") in ["standard", ""]:
+				Art.text(self, "%s HP %d   ARMOR %d   JACKALS +%d%% HP" % [bk.name, m.boss_hp, m.plate, roundi((m.hp_mul - 1) * 100)], Vector2(480, y + 14), 8, Color("9fb4c9"), HORIZONTAL_ALIGNMENT_CENTER)
+			else:
+				# V5: the Boar's loadout rides on its own stat line, so it costs no row under the intel
+				Art.text(self, "%s: %s.   HP %d  ARMOR %d   JACKALS +%d%%" % [bk.name, bk.short, m.boss_hp, m.plate, roundi((m.hp_mul - 1) * 100)], Vector2(480, y + 14), 8, Color("ff9a5d"), HORIZONTAL_ALIGNMENT_CENTER)
 		else:
 			Art.text(self, "%s: %s   JACKALS +%d%% HP   PAYS +%d SCRIP" % [Data.JOBS[jb].name, Data.JOBS[jb].goal, roundi((m.hp_mul - 1) * 100), Data.JOB_PAY], Vector2(480, y + 14), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 		if m.has("biome"):
@@ -860,6 +993,9 @@ class Screen extends Control:
 		var tight := y > 210.0
 		var sy := y + (32.0 if tight else 40.0)
 		var iy := sy + (14.0 if tight else 18.0)
+		var crowded := brief_rows(m) >= 2
+		if crowded:
+			iy = sy  # a busy level: the scrip moves to the left end of the intel row, freeing a row for the rest
 		var it: Dictionary = Data.INTEL[Run.intel] if Data.INTEL.has(Run.intel) else Data.INTEL.clear
 		Art.text(self, "INTEL: %s  %s" % [it.name, it.text.to_upper()], Vector2(480, iy), 8, Color("53d4e2") if Run.intel != "clear" else Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
 		if Run.campaign() and Run.hq("comms") >= 1:
@@ -881,20 +1017,44 @@ class Screen extends Control:
 			# W13: the colonel's last stand
 			Art.text(self, "LAST STAND: BRING COLONEL VARGA OUT ALIVE AND HE JOINS THE COMPANY.", Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 			ny += 14
+		if m.get("garrison", "regular") != "regular" or m.get("rare", "") != "":
+			# V2: the level's Jackal garrison; V11: a rare encounter on the same line
+			var parts: Array = []
+			if m.get("garrison", "regular") != "regular":
+				var gd: Dictionary = Run.garrison_of(m)
+				parts.append("GARRISON: %s, %s." % [gd.name, gd.short])
+			if m.get("rare", "") != "":
+				parts.append("RARE: %s!" % Data.RARES[m.rare].name)
+			Art.text(self, "   ".join(parts), Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			ny += 14
 		if m.get("specialist", "") != "":
 			# X2: a specialist is held somewhere in this level
 			var D: Dictionary = Run.class_def(m.specialist)
 			Art.text(self, "SPECIALIST POW: %s THE %s IS HELD HERE. FREE THEM TO UNLOCK THE CLASS." % [D.name, D.cls.to_upper()], Vector2(480, ny + (14 if Run.threat > 0 else 0)), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
-		draw_texture_rect(Art.tex.ic8_coin, Rect2(410, sy - 10, 10, 10), false)
-		Art.text(self, "%d SCRIP" % Run.scrip, Vector2(426, sy), 8, Color("ffd23a"))
+		var cx := 140.0 if crowded else 410.0
+		draw_texture_rect(Art.tex.ic8_coin, Rect2(cx, sy - 10, 10, 10), false)
+		Art.text(self, "%d SCRIP" % Run.scrip, Vector2(cx + 16, sy), 8, Color("ffd23a"))
 		brief_line_up(m)
 		draw_extras(m)  # over the squad, so no rifle pokes through the boards
+	func brief_rows(m: Dictionary) -> int:
+		## How many of the small rows under the intel this level needs (threat, W3/W9/W13, V2+V11, X2).
+		var r := 0
+		if Run.threat > 0:
+			r += 1
+		r += int(m.get("nemesis", {}).size() > 0) + int(m.get("pincer", false)) + int(m.get("story", "") == "varga")
+		if m.get("garrison", "regular") != "regular" or m.get("rare", "") != "":
+			r += 1
+		if m.get("specialist", "") != "":
+			r += 1
+		return r
 	func brief_plate(m: Dictionary, n: int) -> void:
 		## A dark plate under the brief's text, so the small lines read even over the dusk sun.
 		## Mirrors draw_brief's row math: brief lines, GOOD FOR, intel, threat and specialist.
 		var y := 170.0 + n * 16 + 4
 		var sy := y + (32.0 if y > 210.0 else 40.0)
 		var last := sy + (14.0 if y > 210.0 else 18.0)
+		if brief_rows(m) >= 2:
+			last = sy
 		if Run.threat > 0:
 			last += 14
 		if m.get("specialist", "") != "":
@@ -902,11 +1062,15 @@ class Screen extends Control:
 		for k in ["nemesis", "pincer", "story"]:
 			if m.get(k, false):
 				last += 14  # W3/W9/W13 lines under the intel
+		if m.get("garrison", "regular") != "regular" or m.get("rare", "") != "":
+			last += 14  # V2, V11
 		draw_rect(Rect2(122, 154, 716, last - 148), Color(0.05, 0.035, 0.03, 0.55))
 	func draw_extras(m: Dictionary) -> void:
 		## R2-R5: the level's event on the left, its bounty board on the right. D2: the daily tag.
 		if Run.daily != "":
-			Art.text(self, "DAILY OP  %s" % Run.daily, Vector2(480, 62), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, ("WEEKLY OP  %s" if Run.is_weekly() else "DAILY OP  %s") % Run.daily, Vector2(480, 62), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+		elif Run.seed_code != "" and not Run.campaign():
+			Art.text(self, "SEED %s" % Run.seed_code, Vector2(480, 62), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 		if Data.EVENTS.has(m.get("event", "")):
 			var ev: Dictionary = Data.EVENTS[m.event]
 			var evl: Array = CardView.wrap_text(ev.text, 246, 16)
@@ -932,6 +1096,69 @@ class Screen extends Control:
 				Art.text(self, "+%d$" % bt.pay, Vector2(932, y), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_RIGHT)
 				Art.text(self, bt.text, Vector2(686, y + 15), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 				y += 36
+	func draw_ops() -> void:
+		## V13: the special ops screen.
+		Art.text(self, "SPECIAL OPS", Vector2(480, 70), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+		draw_rect(Rect2(150, 100, 660, 300), Color(0.05, 0.035, 0.03, 0.7))
+		var lines := [
+			["DAILY OP", "Today's seed and squad, the same for everyone. Best today: %d" % Run.daily_best()],
+			["WEEKLY OP", "%s: a set run order and a rare encounter on every level. Best this week: %d" % [Run.weekly_key(), Run.weekly_best()]],
+			["SEEDED RUN", "Every quick run shows its seed code on the briefing. Type one below to play the same start as a friend."]]
+		var y := 130.0
+		for l in lines:
+			Art.text(self, l[0], Vector2(480, y), 16, Color("ffb23e"), HORIZONTAL_ALIGNMENT_CENTER, 2)
+			y += 24
+			for line in CardView.wrap_text(l[1], 640, 16):
+				Art.text(self, line, Vector2(480, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+				y += 18
+			y += 14
+	func route_card(i: int) -> Rect2:
+		return Rect2(110 + i * 390, 150, 350, 260)
+	func draw_route() -> void:
+		## V4: the fork in the road.
+		var m: Dictionary = Run.level
+		Art.text(self, "FORK IN THE ROAD", Vector2(480, 58), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+		Art.text(self, "%s: past the camp the road splits. Pick the way the squad goes." % m.get("name", ""), Vector2(480, 96), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		var f: Array = m.get("fork", [])
+		for i in f.size():
+			var cr := route_card(i)
+			var cx := cr.position.x + cr.size.x / 2
+			draw_rect(cr, Color(0.06, 0.05, 0.04, 0.9))
+			draw_rect(cr, Color("ffb23e"), false, 2)
+			Art.text(self, Data.ROADS[f[i].road].name, Vector2(cx, cr.position.y + 40), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+			draw_rect(Rect2(cr.position.x + 24, cr.position.y + 58, cr.size.x - 48, 2), Color("ffb23e"))
+			Art.text(self, "THROUGH " + str(Data.SEGMENT_NAMES.get(f[i].seg, "the " + str(f[i].seg))).to_upper(), Vector2(cx, cr.position.y + 86), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			var feats: Array = Run.seg_features(f[i].seg)
+			var y := cr.position.y + 112
+			for line in CardView.wrap_text(Run.road_text(f[i].road), cr.size.x - 40, 16):
+				Art.text(self, line, Vector2(cx, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+				y += 20
+			y += 10
+			for line in CardView.wrap_text(", ".join(feats), cr.size.x - 40, 16):
+				Art.text(self, line, Vector2(cx, y), 16, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+				y += 18
+	func order_card(i: int) -> Rect2:
+		var n := maxi(1, Run.run_order_offer.size())
+		var cw := 280.0
+		var gap := 24.0
+		var x0 := (960.0 - n * cw - (n - 1) * gap) / 2.0
+		return Rect2(x0 + i * (cw + gap), 170, cw, 230)
+	func draw_orders() -> void:
+		## V9: the run orders on offer.
+		Art.text(self, "ORDERS FROM HQ", Vector2(480, 58), 32, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+		Art.text(self, "Pick one. It holds for the whole run.", Vector2(480, 96), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+		for i in Run.run_order_offer.size():
+			var id: String = Run.run_order_offer[i]
+			var cr := order_card(i)
+			draw_rect(cr, Color(0.06, 0.05, 0.04, 0.9))
+			draw_rect(cr, Color("ffb23e"), false, 2)
+			var cx := cr.position.x + cr.size.x / 2
+			Art.text(self, Data.RUN_ORDERS[id].name, Vector2(cx, cr.position.y + 44), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, 3)
+			draw_rect(Rect2(cr.position.x + 24, cr.position.y + 62, cr.size.x - 48, 2), Color("ffb23e"))
+			var y := cr.position.y + 100
+			for line in CardView.wrap_text(Run.run_order_text(id), cr.size.x - 40, 16):
+				Art.text(self, line, Vector2(cx, y), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
+				y += 20
 	func dial_card(i: int) -> Rect2:
 		## Where biome card i sits: two wide cards, or three narrower ones with Gate Control.
 		var n := Run.dial.size()
@@ -977,6 +1204,27 @@ class Screen extends Control:
 					Art.text(self, "HIVE SHIP HP %d   2 HULL PLATES" % lv.boss_hp, Vector2(cx, 452), 8, Color("c47bff"), HORIZONTAL_ALIGNMENT_CENTER)
 				else:
 					Art.text(self, "BOSS HP %d   ARMOR %d" % [lv.boss_hp, lv.plate], Vector2(cx, 452), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			# V2: who holds it
+			var gk: String = Run.dial_levels[id].get("garrison", "") if Run.dial_levels.has(id) else ""
+			if gk != "" and gk != "regular":
+				var gd: Dictionary = Data.GARRISONS[gk]
+				Art.text(self, "GARRISON: %s" % gd.name, Vector2(cx, y + 28), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+				y += 14
+			# P1: the boss, when it isn't the plain Iron Boar
+			var bk: String = Run.dial_levels[id].get("boar_kit", "") if Run.dial_levels.has(id) else ""
+			var bl: Dictionary = Run.dial_levels.get(id, {})
+			var bn := ""
+			if bl.get("boss", "") == "hiveship":
+				bn = "HIVE SHIP"
+			elif bk != "" and bk != "standard" and Data.BOAR_KITS.has(bk):
+				bn = Data.BOAR_KITS[bk].name
+			if bn != "":
+				Art.text(self, "BOSS: %s" % bn, Vector2(cx, y + 28), 8, Color("ff9a5d"), HORIZONTAL_ALIGNMENT_CENTER)
+				y += 14
+			var rk: String = Run.dial_levels[id].get("rare", "") if Run.dial_levels.has(id) else ""
+			if rk != "":
+				Art.text(self, "RARE: %s" % Data.RARES[rk].name, Vector2(cx, y + 28), 8, Color("9df25c") if t % 50 < 34 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+				y += 14
 			# how each soldier's deck fits this biome
 			y += 38
 			# five soldiers still fit inside the card; the bottom is free unless Gate Control 3 prints there
@@ -1038,6 +1286,12 @@ class Screen extends Control:
 			var why := "SQUAD WIPED. LAST DOWN: %s." % stats.last_down if stats.has("last_down") else "SQUAD WIPED."
 			Art.text(self, why, Vector2(480, 124), 8, Color("ff9a80"), HORIZONTAL_ALIGNMENT_CENTER)
 			Art.text(self, "THIS RUN IS OVER. SALVAGE, HQ UPGRADES AND UNLOCKS CARRY TO THE NEXT ONE.", Vector2(480, 140), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+		if mode in ["won", "lost", "final"] and not Run.campaign():
+			# P2: the seed to share, on the screen you see when the level or run ends
+			if Run.daily != "":
+				Art.text(self, ("WEEKLY OP  %s" if Run.is_weekly() else "DAILY OP  %s") % Run.daily, Vector2(480, 50), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			elif Run.seed_code != "":
+				Art.text(self, "SEED %s" % Run.seed_code, Vector2(480, 50), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
 		var rows := [["SCORE", str(stats.get("score", 0))], ["KILLS", str(stats.get("kills", 0))], ["CRUSHES", str(stats.get("crushes", 0))], ["POWS FREED", str(stats.get("pows", 0))], ["PUSHES", str(stats.get("pushes", 0))], ["ROUNDS", str(stats.get("rounds", 0))], ["SCRIP EARNED", str(stats.get("scrip", 0))]]
 		if int(stats.get("salvage", 0)) > 0:
 			rows.append(["SALVAGE FOR HQ", str(stats.salvage)])
