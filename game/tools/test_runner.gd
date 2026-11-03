@@ -25,6 +25,7 @@ var main: Node
 var frames := 0
 var mission_arg := 0
 var seed_arg := 1
+var weekly_arg := false  # playtest: play this week's Weekly Op instead of a fresh quick run
 var runs_arg := 1
 var playtest_debug := false
 var start_arg := 0
@@ -53,6 +54,8 @@ func _ready() -> void:
 			clip_arg = a.substr(7)
 		elif a.begins_with("--runs="):
 			runs_arg = int(a.substr(7))
+		elif a == "--weekly":
+			weekly_arg = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	await get_tree().process_frame
 	main = get_tree().current_scene
@@ -4443,7 +4446,10 @@ func peak_after_bounce(pts: Array, gy: float) -> float:
 	return best
 
 func ground_unit(b: Battle, u: Unit, x: float, from_y := 0.0) -> void:
-	u.x = x; u.y = b.T.stand_y(x, from_y); u.air = false; u.vx = 0; u.vy = 0; u.walk = null
+	var gy = b.T.stand_y(x, from_y)
+	if gy == null:
+		gy = b.T.stand_y(x, 0)  # ground above from_y (a hill or a roof): stand on the top of it instead
+	u.x = x; u.y = gy if gy != null else u.y; u.air = false; u.vx = 0; u.vy = 0; u.walk = null
 
 func soldat() -> void:
 	## The Soldat borrowings: grating and chain-link, bodies that stay, recoil with its ghost,
@@ -5687,7 +5693,10 @@ func playtest() -> void:
 	playtest_debug = true
 	for r in runs_arg:
 		seed(seed_arg * 1000 + r)
-		Run.new_run()
+		if weekly_arg:
+			Run.start_weekly()
+		else:
+			Run.new_run()
 		if Run.run_order_offer.size():
 			# V9: take one of the run orders on offer, like a player at the start of a run
 			Run.take_run_order(Run.run_order_offer[randi() % Run.run_order_offer.size()])
@@ -9326,7 +9335,8 @@ func events10_test() -> void:
 	var lv := Run.make_level("desert", 1)
 	check(Data.EVENTS.has(lv.event) and lv.bounties.size() == 3 and lv.bounties.all(func(k): return Data.BOUNTIES.any(func(x): return x.id == k)), "every level rolls an event and three bounties (%s %s)" % [lv.event, str(lv.bounties)])
 	check(range(20).all(func(_i): return not Run.make_level("hive", 2).bounties.has("sniperfirst")), "no Counter-Snipe bounty where there are no Snipers")
-	# R2 fire team
+	# R2 fire team (a fixed seed: an unseeded roll could put a wall or a gap between the fire team and the lead)
+	seed(2210)
 	Run.new_run()
 	var b: Battle = await e_battle("fireteam")
 	var trs: Array = b.mid_events.troopers()
