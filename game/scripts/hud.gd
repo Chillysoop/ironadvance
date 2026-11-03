@@ -871,13 +871,20 @@ class PauseMenu extends Control:
 			if Run.campaign():
 				return "The war was saved at HQ before this op. Quitting now loses only this op."
 			if Run.run_head().size():
-				return "Your run was saved at HQ, just before this level."
+				return "Your run was saved just before this level."
 			return ""
 		if Run.campaign():
 			Run.save_campaign()
 			return "SAVED. The war is in campaign slot %d." % (int(Run.camp.slot) + 1)
 		if live_run():
 			Run.mission = Run.history.size()
+			# the run order or the level is already picked here: come back to this screen, not HQ
+			# (HQ would roll a new dial, and the level picked here was already burned)
+			var sc = main.get("screen") if main != null else null
+			var md := str(sc.get("mode")) if sc != null and is_instance_valid(sc) and sc.get("mode") != null else ""
+			if md in ["orders", "route", "brief"] and not Run.level.is_empty() or md == "orders":
+				Run.save_run(md)
+				return "SAVED. CONTINUE RUN on the title brings you back to this screen."
 			Run.save_run()
 			return "SAVED. CONTINUE RUN on the title brings you back to HQ."
 		return ""

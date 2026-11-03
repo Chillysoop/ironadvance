@@ -204,12 +204,21 @@ func open_settings() -> Control:
 	return p
 
 func continue_run() -> void:
+	var resume: String = str(Run.run_head().get("resume", ""))
 	if not Run.load_run():
 		show_title()
 		return
 	Sfx.play("start")
 	Diary.line("CONTINUE RUN at HQ before level %d" % (Run.history.size() + 1))
-	show_hq(false)
+	# a save made on the run orders, the fork or the briefing comes back to that screen
+	if Run.run_order_offer.size():
+		show_orders()
+	elif resume == "route" and Run.level.get("fork", []).size() >= 2:
+		show_route()
+	elif resume in ["route", "brief"] and not Run.level.is_empty():
+		show_brief()
+	else:
+		show_hq(false)
 
 func show_draft() -> void:
 	## X1: more than four classes unlocked, so the run starts with picking the squad.

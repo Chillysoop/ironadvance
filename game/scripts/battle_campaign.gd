@@ -360,7 +360,7 @@ func detour_enemy(type: String, x: float, mod: String) -> Unit:
 
 func strip_wreck(w: Unit, u: Unit) -> void:
 	w.stripped = true
-	if w.loot.get("rare", false):
+	if w.loot is Dictionary and w.loot.get("rare", false):
 		# V11: the crashed scout ship
 		Run.meta.salvage = int(Run.meta.get("salvage", 0)) + Data.RARE_WRECK_SALVAGE
 		Run.meta.bio = int(Run.meta.get("bio", 0)) + Data.RARE_WRECK_BIO

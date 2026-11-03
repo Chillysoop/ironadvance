@@ -5686,12 +5686,18 @@ func playtest() -> void:
 	for r in runs_arg:
 		seed(seed_arg * 1000 + r)
 		Run.new_run()
+		if Run.run_order_offer.size():
+			# V9: take one of the run orders on offer, like a player at the start of a run
+			Run.take_run_order(Run.run_order_offer[randi() % Run.run_order_offer.size()])
+		print("[pt-run] ", JSON.stringify({"seed": seed_arg, "run": r, "order": Run.run_order, "squad": Run.soldiers.map(func(x): return x.def.name)}))
 		for m in Data.LEVELS.size() + 1:
 			Run.mission = m
 			Run.side = ""
 			if m < Data.LEVELS.size():
 				Run.roll_dial()
 				Run.pick_biome(biome_arg if biome_arg != "" and m == start_arg else Run.dial[randi() % Run.dial.size()])
+				if Run.level.get("fork", []).size() >= 2:
+					Run.pick_road(randi() % 2)  # V4: one of the two roads
 			else:
 				Run.start_finale()
 			if m < start_arg:
@@ -5716,7 +5722,7 @@ func playtest() -> void:
 			row["secs"] = (Time.get_ticks_msec() - ms0) / 1000.0
 			row.erase("round_hp")
 			row.merge({"seed": seed_arg, "run": r, "m": m, "biome": lv.get("biome", "finale"), "breach": lv.get("breach", false), "enc": lv.get("encounter", ""),
-				"intel": Run.intel, "detours": lv.get("detours", []), "scrip_in": before.scrip, "scrip_out": Run.scrip, "hp_in": before.hp,
+				"intel": Run.intel, "garrison": lv.get("garrison", ""), "rare": lv.get("rare", ""), "road": lv.get("road", ""), "boss_kit": lv.get("boar_kit", ""), "segs": lv.get("segments", []), "detours": lv.get("detours", []), "scrip_in": before.scrip, "scrip_out": Run.scrip, "hp_in": before.hp,
 				"hp_out": Run.soldiers.map(func(x): return x.hp if x.alive else -1), "tags_out": Run.soldiers.map(func(x): return x.tags),
 				"lv": Run.soldiers.map(func(x): return x.lvl), "max_round_hp": bot_stats.round_hp.max() if bot_stats.round_hp.size() else 0})
 			print("[pt] ", JSON.stringify(row))
@@ -10281,6 +10287,42 @@ func runsave() -> void:
 	main.show_title()
 	await frames_wait(10)
 	check(main.screen.cont.is_empty(), "a finished run leaves nothing to continue")
+	# a save made from the game menu on the run orders or the briefing comes back to that screen,
+	# instead of HQ (which lost the order offer, and rolled a new dial after the level was burned)
+	main.show_title()
+	await frames_wait(5)
+	main.start_run()
+	await frames_wait(10)
+	var offer: Array = Run.run_order_offer.duplicate()
+	var pm = main.open_menu()
+	await frames_wait(5)
+	check(pm != null and str(Run.run_head().get("resume", "")) == "orders", "the game menu on the run orders saves with resume=orders")
+	pm.queue_free(); get_tree().paused = false
+	main.show_title()
+	await frames_wait(5)
+	main.continue_run()
+	await frames_wait(10)
+	check(main.screen.get("mode") == "orders" and Run.run_order_offer == offer, "CONTINUE RUN goes back to the same run orders")
+	Run.take_run_order(offer[0])
+	main.dial_gate()
+	await frames_wait(5)
+	var pick: String = Run.dial[0]
+	Run.pick_biome(pick)
+	Run.level["fork"] = []
+	var segs: Array = Run.level.segments.duplicate()
+	main.show_brief()
+	await frames_wait(10)
+	var burned: Array = Run.burned.duplicate()
+	pm = main.open_menu()
+	await frames_wait(5)
+	check(pm != null and str(Run.run_head().get("resume", "")) == "brief", "the game menu on the briefing saves with resume=brief")
+	pm.queue_free(); get_tree().paused = false
+	main.show_title()
+	await frames_wait(5)
+	main.continue_run()
+	await frames_wait(10)
+	check(main.screen.get("mode") == "brief" and Run.level.get("biome", "") == pick and Run.level.segments == segs and Run.burned == burned, "CONTINUE RUN goes back to the same briefing (%s)" % pick)
+	Run.clear_run()
 
 
 func settings_menu() -> void:
@@ -10963,7 +11005,13 @@ func fork_test() -> void:
 		match id:
 			"supply": check(count.call(b, "crate") >= before.crate + 2, "SUPPLY ROAD has extra crates (%d -> %d)" % [before.crate, count.call(b, "crate")])
 			"prison": check(count.call(b, "pow") == before.pow + 1, "PRISON ROAD has an extra prisoner")
-			"scrap": check(count.call(b, "wreck") == before.wreck + 2, "SCRAP ROAD has two wrecks")
+			"scrap":
+				check(count.call(b, "wreck") == before.wreck + 2, "SCRAP ROAD has two wrecks")
+				# a plain wreck (no loot) strips for salvage: it used to stop on a null loot
+				var wr: Array = b.units.filter(func(u): return u.kind == "wreck" and not u.stripped)
+				var sv0 := int(Run.meta.get("salvage", 0))
+				b.camp_ops.strip_wreck(wr[0], b.squad()[0])
+				check(int(Run.meta.get("salvage", 0)) == sv0 + Data.WRECK_SALVAGE, "stripping a SCRAP ROAD wreck pays %d salvage" % Data.WRECK_SALVAGE)
 			"quiet": check(foes.call(b) <= before.foes - 1, "BACK ROAD has fewer Jackals (%d -> %d)" % [before.foes, foes.call(b)])
 	main.show_title()
 	await frames_wait(5)
