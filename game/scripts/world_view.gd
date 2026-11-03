@@ -1911,7 +1911,7 @@ func draw_hover(cv: CanvasItem) -> void:
 			if h.fl.get("vharr", false):
 				lines.append("VHARR REFIT: a dome every third turn (crushing and melee go through it), and a tongue that yanks the nearest soldier in a clear line.")
 		if h.fl.get("lead", false):
-			lines.append("THE HUNT: kill it for Epic gear and Bio-parts.")
+			lines.append("THE HUNT: kill it for Epic gear and salvage.")
 		if h.fl.get("turned", false):
 			lines.append("TURNED: this Jackal fights the Vharr now, and still you.")
 		if h.fl.has("mind"):
@@ -1930,7 +1930,7 @@ func draw_hover(cv: CanvasItem) -> void:
 		lines = ["SUPPLY CRATE", "Shoot it or blast it open. The loot pops out:", "careful, it can roll into a pit."]
 	elif h.kind == "wreck":
 		if h.loot is Dictionary and h.loot.get("rare", false):
-			lines = ["CRASHED SCOUT SHIP" + (" (STRIPPED)" if h.stripped else ""), "Walk over it to strip it: +%d Salvage and +%d Bio-parts." % [Data.RARE_WRECK_SALVAGE, Data.RARE_WRECK_BIO]]
+			lines = ["CRASHED SCOUT SHIP" + (" (STRIPPED)" if h.stripped else ""), "Walk over it to strip it: +%d Salvage." % Data.RARE_WRECK_SALVAGE]
 		else:
 			lines = ["WRECK" + (" (STRIPPED)" if h.stripped else ""), "Walk over it to strip it: +%d Salvage for HQ." % Data.WRECK_SALVAGE]
 	elif h.kind == "strongbox":

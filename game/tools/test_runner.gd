@@ -428,7 +428,7 @@ func run() -> void:
 			await frames_wait(10)
 			b.hud.picked.emit(0)
 			await frames_wait(10)
-			print("[arch] rerolls ", Run.lvl_rerolls, " banishes ", Run.banishes, " banished ", Run.banished)
+			print("[arch] rerolls ", Run.rerolls, " banishes ", Run.banishes, " banished ", Run.banished)
 			Run.scrip = 300
 			main.show_shop()
 			await frames_wait(10)
@@ -782,6 +782,8 @@ func run() -> void:
 			await crumble()
 		"bp3":
 			await bp3_test()
+		"audit":
+			await audit_test()
 		"jumppack":
 			await jumppack()
 		"stranded":
@@ -2469,8 +2471,15 @@ func synergies() -> void:
 	Run.equip(Run.soldiers[1], Run.new_item("plate"))
 	var syn: Array = Run.synergies(s0)
 	print("[synergies] ", s0.key, " ", syn.map(func(sy): return "%s %s %s" % [sy.kind, sy.name, sy.done]))
-	check(syn.any(func(sy): return sy.kind == "set" and sy.done and sy.text.contains("+1m move")), "a full Desert Rat set is ACTIVE and says what it gives")
-	check(Run.synergies(Run.soldiers[1]).any(func(sy): return sy.kind == "set" and not sy.done and sy.prog == "1/2"), "one Boar piece reads 1/2 and is not on yet")
+	check(not syn.any(func(sy): return sy.kind == "set"), "S4: gear sets are gone from the synergies")
+	var gl := Run.new_item("ghillie", Data.TIER_MAX)
+	gl.affixes = []
+	gl.erase("named")
+	var ge := gl.duplicate()
+	ge.tier = Data.TIER_MAX - 1
+	var g4: Dictionary = Data.item_stats(gl)
+	var g3: Dictionary = Data.item_stats(ge)
+	check(int(g4.get("move", 0)) == 20 and int(g3.get("move", 0)) == 0, "S4: a Legendary Ghillie Suit carries the Desert Rat affix built in, an Epic one doesn't (%s / %s)" % [str(g4), str(g3)])
 	check(syn.any(func(sy): return sy.kind == "duo" and sy.text.contains("Overdrive")), "duo partners in the squad are listed with their card")
 	Run.scrip = 500
 	main.show_shop()
@@ -2479,7 +2488,7 @@ func synergies() -> void:
 	await frames_wait(10)
 	var arm = main.screen.get_children()[-1]
 	await hover_at(Vector2(arm.col_x(0) + 12, 190))
-	check(Tip.cur.get("title", "") == "DESERT RAT", "hovering the set in the Armory opens its tip (%s)" % Tip.cur.get("title", ""))
+	check(Tip.cur.get("title", "") == syn[0].name, "hovering the first synergy in the Armory opens its tip (%s)" % Tip.cur.get("title", ""))
 	await shot("syn_armory")
 	main.show_hq(false)
 	await frames_wait(20)
@@ -2487,7 +2496,7 @@ func synergies() -> void:
 	await frames_wait(20)
 	var d: Control = main.screen.sub
 	await hover_at(Vector2(d.MID.position.x + 292, d.MID.position.y + 42))
-	check(Tip.cur.get("title", "") == "DESERT RAT", "hovering the set in the Dossier gear tab opens its tip (%s)" % Tip.cur.get("title", ""))
+	check(Tip.cur.get("title", "") == syn[0].name, "hovering the first synergy in the Dossier gear tab opens its tip (%s)" % Tip.cur.get("title", ""))
 	await shot("syn_dossier_gear")
 	d.set_tab("sheet")
 	await frames_wait(10)
@@ -2508,19 +2517,15 @@ func synergies() -> void:
 	await frames_wait(20)
 	var rows: Array = b.synergy_board()
 	print("[synergies] field ", rows.map(func(r): return r.name + " " + r.who))
-	check(rows.size() >= 2 and rows[0].name == "DESERT RAT", "the field lists the full set and the duo pairs")
-	check(not rows.any(func(r): return r.name == "BOAR SALVAGE"), "a half set stays off the field list")
-	await hover_at(Vector2(954 - 232 + 30, 40 + 29 - 4))
-	check(Tip.cur.get("title", "") == "DESERT RAT", "hovering a field synergy opens its tip (%s)" % Tip.cur.get("title", ""))
+	check(rows.size() >= 1 and not rows.any(func(r): return r.name in ["DESERT RAT", "BOAR SALVAGE"]), "the field lists the duo pairs, and no gear sets any more")
 	await shot("syn_field")
 	# P5: the pairs row waits until a pair is pumped; the header tip lists them meanwhile
 	check(rows.any(func(r): return r.name == "DUO PAIRS" and r.get("quiet", false)), "P5: the duo pairs row is quiet at the start")
-	await hover_at(Vector2(954 - 232 + 60, 40 + 8))
-	check(Tip.cur.get("title", "") == "SYNERGIES" and Tip.cur.text.contains("Spotter Strike (MOSS+VEE)"), "P5: the SYNERGIES header lists every pair (%s)" % Tip.cur.get("title", ""))
 	var moss: Unit = b.squad_alive().filter(func(o): return o.def.key == "moss")[0]
 	var vee: Unit = b.squad_alive().filter(func(o): return o.def.key == "vee")[0]
 	moss.adr = 50; vee.adr = 60
-	await hover_at(Vector2(954 - 232 + 30, 40 + 29 + 14 - 4))
+	await frames_wait(4)
+	await hover_at(Vector2(954 - 232 + 30, 40 + 29 - 4))
 	check(Tip.cur.get("title", "") == "DUO PAIRS" and Tip.cur.text.contains("Spotter Strike (MOSS+VEE)"), "the duo pairs row lists every pair on the field (%s)" % Tip.cur.get("title", ""))
 	await shot("syn_field_pairs")
 	# a duo card in hand gets its own READY row
@@ -2531,8 +2536,14 @@ func synergies() -> void:
 	await frames_wait(4)
 	rows = b.synergy_board()
 	check(rows.any(func(r): return r.name == "DUO SPOTTER STRIKE" and r.who == "READY"), "a duo card in hand shows as READY on the list")
-	await hover_at(Vector2(954 - 232 + 30, 40 + 29 + 14 - 4))
+	var ri: int = rows.map(func(r): return r.name).find("DUO SPOTTER STRIKE")
+	await hover_at(Vector2(954 - 232 + 30, 40 + 29 + 14 * ri - 4))
 	check(Tip.cur.get("title", "") == "DUO SPOTTER STRIKE", "the ready duo has its own tip (%s)" % Tip.cur.get("title", ""))
+	# P5: with the pair calmed down again, its row goes quiet and the header tip still lists it
+	moss.adr = 0; vee.adr = 0
+	await frames_wait(4)
+	await hover_at(Vector2(954 - 232 + 60, 40 + 8))
+	check(Tip.cur.get("title", "") == "SYNERGIES" and Tip.cur.text.contains("Spotter Strike (MOSS+VEE)"), "P5: the SYNERGIES header lists every pair (%s)" % Tip.cur.get("text", ""))
 	await shot("syn_field_duo")
 	await hover_at(Vector2(300, 300))
 	check(Tip.cur.is_empty(), "the tip closes when the mouse leaves")
@@ -3368,9 +3379,9 @@ func aliens7() -> void:
 		var ld: Unit = leads[0]
 		cam_on(b, ld.x - Battle.W - 200)
 		check(ld.active and ld.x > b.cam_x + Battle.W, "it comes after you before it's on screen")
-		var bio0 := int(Run.meta.get("bio", 0))
+		var sal0 := int(Run.meta.get("salvage", 0))
 		b.kill(ld, b.squad()[0])
-		check(int(Run.meta.get("bio", 0)) == bio0 + Data.ELITE_BIO, "bringing it down pays Bio-parts like an elite outpost")
+		check(int(Run.meta.get("salvage", 0)) == sal0 + Data.ELITE_SALVAGE, "bringing it down pays salvage like an elite outpost")
 	# --- E5
 	b = await enc_battle("outbreak")
 	var ovs := b.units.filter(func(u): return u.fl.get("outbreak", false))
@@ -4779,7 +4790,6 @@ func detours2() -> void:
 	var keep: Dictionary = Run.meta.duplicate(true)
 	Run.new_run()
 	Run.meta.salvage = 0
-	Run.meta.bio = 0
 	var kinds := {}
 	for i in 40:
 		var lv := Run.make_level(["jungle", "desert", "mountain", "delta"][i % 4], i % 3)
@@ -4811,7 +4821,7 @@ func detours2() -> void:
 	for e in sk:
 		e.dead = true
 	await b.camp_ops.check_detour()
-	check(b.detour.done and int(Run.meta.bio) == Data.SIGNAL_BIO and int(Run.meta.salvage) == Data.SIGNAL_SALVAGE, "putting them down pays Bio-parts and salvage")
+	check(b.detour.done and int(Run.meta.salvage) == Data.SIGNAL_SALVAGE and not Run.meta.has("bio"), "putting them down pays salvage (S1: no Bio-parts any more)")
 	main.clear()
 	# Strange Signal: the buried tank
 	b = await signal_battle("tank")
@@ -4835,7 +4845,6 @@ func detours2() -> void:
 	main.clear()
 	# the Lab's rank 3: the strangest surgeries open only then
 	Run.meta.hq = {}
-	Run.meta.bio = 40
 	Run.meta.salvage = 300
 	var strange: Array = Data.SURGERIES.keys().filter(func(k): return int(Data.SURGERIES[k].get("rank", 1)) >= 3)
 	check(strange.size() >= 2, "the Doc has rank 3 surgeries: %s" % [strange])
@@ -4885,11 +4894,10 @@ func signal_battle(ev: String) -> Battle:
 	return b
 
 func doc() -> void:
-	## Step 7: the Doc's surgeries go on a class, cost Bio-parts and Salvage, and do exactly what they say.
+	## Step 7: the Doc's surgeries go on a class, cost Salvage, and do exactly what they say.
 	var keep: Dictionary = Run.meta.duplicate(true)
 	Run.meta.hq = {}
 	Run.meta.implants = {}
-	Run.meta.bio = 20
 	Run.meta.salvage = 200
 	Run.new_run()
 	check(Run.surgery_block("cybereye", "moss") == "BUILD THE DOC'S LAB", "no surgery before the Doc's Lab is built")
@@ -4898,14 +4906,14 @@ func doc() -> void:
 	check(Data.SQUAD_DEFS.all(func(d): return Data.SURGERIES.keys().all(func(k): return Run.surgery_block(k, d.key) == "" or int(Data.SURGERIES[k].get("rank", 1)) > Run.hq("doc"))), "every class can take every surgery its Lab rank allows")
 	for op in [["cybereye", "moss"], ["thirdarm", "hex"], ["asbestos", "vee"], ["spine", "rook"]]:
 		check(Run.operate(op[0], op[1]), "%s installs on %s" % op)
-	check(int(Run.meta.bio) == 20 - 4 * Data.SURGERY_BIO and int(Run.meta.salvage) == 190 - 4 * Data.SURGERY_SALVAGE, "each surgery costs %d Bio and %d Salvage" % [Data.SURGERY_BIO, Data.SURGERY_SALVAGE])
+	check(int(Run.meta.salvage) == 190 - 4 * Data.SURGERY_SALVAGE, "each surgery costs %d Salvage" % Data.SURGERY_SALVAGE)
 	check(Run.operate("magnet", "moss") and Run.implants("moss") == ["magnet"], "one slot: a new implant replaces the oldest")
 	Run.hq_upgrade("doc")
 	check(Run.operate("cybereye", "moss") and Run.implants("moss") == ["magnet", "cybereye"], "two slots hold two implants")
 	check(Run.operate("adrenal", "vee"), "Adrenal Pump goes on any class")
 	# stat surgeries feed the same bonus table gear uses
 	Run.hq_upgrade("doc")
-	Run.meta.bio = 40
+	Run.meta.salvage = 200
 	var hex: Dictionary = Run.soldier("hex")
 	var gb0 := Run.gear_bonus(hex)
 	for k in ["legs", "reflex"]:
@@ -5038,7 +5046,6 @@ func detours() -> void:
 	check(lv.detours.size() == 3 and lv.segments[3] == "yard" and lv.segments[2] == "camp", "a level has a yard after the mid camp and 3 detour offers")
 	Run.new_run()
 	Run.meta.salvage = 0
-	Run.meta.bio = 0
 	# the pick screen
 	Run.level = Run.make_level("desert", 0)
 	var b: Battle = main.start_battle(0, Run.level)
@@ -5065,7 +5072,7 @@ func detours() -> void:
 	for e in el:
 		e.dead = true
 	await b.camp_ops.check_detour()
-	check(b.detour.done and int(Run.meta.bio) == Data.ELITE_BIO and b.units.any(func(l): return l.kind == "loot" and l.loot.get("item", {}).get("tier", 0) >= 3), "clearing the outpost pays Bio-parts and an Epic item")
+	check(b.detour.done and int(Run.meta.salvage) == Data.ELITE_SALVAGE and b.units.any(func(l): return l.kind == "loot" and l.loot.get("item", {}).get("tier", 0) >= 3), "clearing the outpost pays salvage and an Epic item")
 	await frames_wait(20)
 	await shot("detour_elite_done")
 	main.clear()
@@ -5109,10 +5116,11 @@ func detours() -> void:
 	var wrecks: Array = b.units.filter(func(w): return w.kind == "wreck")
 	check(wrecks.size() == 5, "five wrecks in the yard")
 	var u: Unit = b.squad()[0]
+	var sal0 := int(Run.meta.salvage)  # S1: the outpost above paid salvage too
 	u.x = wrecks[0].x
 	u.y = b.T.stand_y(u.x, 0)
 	await frames_wait(10)
-	check(wrecks[0].stripped and int(Run.meta.salvage) == Data.WRECK_SALVAGE, "walking over a wreck strips it for salvage")
+	check(wrecks[0].stripped and int(Run.meta.salvage) == sal0 + Data.WRECK_SALVAGE, "walking over a wreck strips it for salvage")
 	var n0: int = b.units.filter(func(e): return e.team == "enemy" and e.detour).size()
 	await b.camp_ops.detour_round()
 	check(b.units.filter(func(e): return e.team == "enemy" and e.detour).size() == n0 + 1, "a scavenger drifts in each round")
@@ -5992,7 +6000,7 @@ func campaignplay() -> void:
 		main.screen.attack.emit(sc, false)
 		await frames_wait(6)
 		var lv: Dictionary = Run.current_mission()
-		var before := {"scrip": Run.scrip, "sal": int(Run.meta.salvage), "bio": int(Run.meta.bio), "co": Run.company().size()}
+		var before := {"scrip": Run.scrip, "sal": int(Run.meta.salvage), "co": Run.company().size()}
 		pt_tag = "cp%d_op%d" % [seed_arg, n]
 		var ms0 := Time.get_ticks_msec()
 		var ok := await bot(int(A.tier), 70, false, lv)
@@ -6024,7 +6032,7 @@ func campaignplay() -> void:
 			bought.append(bs[0].id)
 		var row := {"n": n, "act": int(Run.camp.act), "sec": sc.id, "job": lv.get("job", ""), "bonus": lv.get("bonus", ""), "won": ok,
 			"rounds": bot_stats.get("rounds", 0), "kills": bot_stats.get("kills", 0), "downs": bot_stats.get("downs", 0), "fallen": bot_stats.get("fallen", []),
-			"secs": (Time.get_ticks_msec() - ms0) / 1000.0, "scrip": [before.scrip, Run.scrip], "sal": [before.sal, int(Run.meta.salvage)], "bio": [before.bio, int(Run.meta.bio)],
+			"secs": (Time.get_ticks_msec() - ms0) / 1000.0, "scrip": [before.scrip, Run.scrip], "sal": [before.sal, int(Run.meta.salvage)],
 			"co": [before.co, Run.company().size()], "bought": bought, "op": st.get("op", {}), "news": main.screen.get("news") if main.screen.get("news") != null else [],
 			"ranks": Run.company().map(func(s): return Run.rank(s)), "lv": Run.company().map(func(s): return s.lvl), "decks": Run.soldiers.map(func(s): return s.deck.size()),
 			"stash": Run.stash.size(), "mem": Run.meta.memorial.size()}
@@ -6182,7 +6190,8 @@ func wardeep() -> void:
 	await until(func(): return b.state == "player" and not b.busy)
 	var sal := int(Run.meta.salvage)
 	b.camp_ops.job_reward()
-	check(int(Run.meta.salvage) == sal + Data.BONUS_SALVAGE, "a salvage yard pays %d salvage" % Data.BONUS_SALVAGE)
+	var job_pay: int = Data.ELITE_SALVAGE if b.job() in ["demolish", "hold"] else 0  # S1: the job's old Bio-parts are salvage now
+	check(int(Run.meta.salvage) == sal + Data.BONUS_SALVAGE + job_pay, "a salvage yard pays %d salvage (+%d for the job)" % [Data.BONUS_SALVAGE, job_pay])
 	Run.camp.bonus = {"sec": Run.sec_key("d1"), "kind": "column", "left": 2}
 	Run.start_op(Run.sector("d1"))
 	b.mission = Run.level
@@ -6943,7 +6952,7 @@ func op_end(b: Battle) -> Variant:
 func ops() -> void:
 	## Campaign step 3: op jobs. Rescue, demolish, hold, escort and hunt each lay out their
 	## objective, show it on the HUD, finish the op when done, and pay their bonus.
-	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate(), "bio": Run.meta.get("bio", 0)}
+	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate()}
 	Run.delete_campaign(2)
 	Run.new_campaign(2)
 	var jobs: Array = []
@@ -7099,13 +7108,12 @@ func ops() -> void:
 	Run.delete_campaign(2)
 	Run.meta.salvage = keep.salvage
 	Run.meta.hq = keep.hq
-	Run.meta.bio = keep.bio
 	Run.save_meta()
 
 func story() -> void:
 	## Campaign step 4: radio briefings, the villains, per-soldier implants, Comms and Hangar,
 	## the Jackal Defector class and deserters, and Colonel Varga's op.
-	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate(), "bio": Run.meta.get("bio", 0), "implants": Run.meta.get("implants", {}).duplicate(true), "mem": Run.meta.get("memorial", []).size()}
+	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate(), "implants": Run.meta.get("implants", {}).duplicate(true), "mem": Run.meta.get("memorial", []).size()}
 	Run.delete_campaign(3)
 	Run.new_campaign(3)
 	# S2: the act's opening plays once, then job lines
@@ -7135,8 +7143,7 @@ func story() -> void:
 
 	# B3: implants go on a person in the campaign
 	Run.meta.hq = {"doc": 2}
-	Run.meta.bio = 20
-	Run.meta.salvage = 40
+	Run.meta.salvage = 100
 	var a: Dictionary = Run.soldiers[0]
 	var b2: Dictionary = Run.soldiers[1]
 	check(Run.operate("cybereye", a), "the Doc operates on one soldier")
@@ -7239,14 +7246,13 @@ func story() -> void:
 	Run.delete_campaign(3)
 	Run.meta.salvage = keep.salvage
 	Run.meta.hq = keep.hq
-	Run.meta.bio = keep.bio
 	Run.meta.implants = keep.implants
 	Run.save_meta()
 
 func lab() -> void:
 	## Campaign step 5: the Alien Lab and Vharr tech, the Gate Engineer, bonus ops, and campaign
 	## milestones that unlock run content.
-	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate(), "bio": Run.meta.get("bio", 0), "unlocked": Run.meta.unlocked.duplicate()}
+	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate(), "unlocked": Run.meta.unlocked.duplicate()}
 	Run.delete_campaign(4)
 	Run.new_campaign(4)
 	check(not Run.hq_buildings().any(func(B): return B.id == "lab"), "no Alien Lab before Act III")
@@ -7263,12 +7269,11 @@ func lab() -> void:
 	Run.after_op({"kinds": {"blinker": 9, "warden": 4}})
 	Run.after_op({"kinds": {"blinker": 6}})
 	check(Run.tech_kills("blinker") == 15 and Run.tech_kills("warden") == 4, "every op's alien kills add up (%d, %d)" % [Run.tech_kills("blinker"), Run.tech_kills("warden")])
-	Run.meta.bio = 10
 	Run.meta.salvage = 20
 	check(Run.tech_block("blinkpack") == "", "15 Blinkers and the parts: Blink Pack can be built")
 	Run.meta.unlocked.erase("blinkpack")
 	var it := Run.build_tech("blinkpack")
-	check(not it.is_empty() and Run.stash.has(it) and int(Run.meta.bio) == 10 - Data.TECH_BIO, "the Blink Pack goes to the stash for its price")
+	check(not it.is_empty() and Run.stash.has(it) and int(Run.meta.salvage) == 20 - Data.TECH_SALVAGE, "the Blink Pack goes to the stash for its price")
 	check(Run.meta.unlocked.has("blinkpack") and Run.unlocked("blinkpack"), "built once, runs can find it too")
 	Run.meta.hq.lab = 2
 	check(Run.tech_need() == 10, "Lab 2: tech needs 10 kills")
@@ -7397,7 +7402,6 @@ func lab() -> void:
 	Run.delete_campaign(4)
 	Run.meta.salvage = keep.salvage
 	Run.meta.hq = keep.hq
-	Run.meta.bio = keep.bio
 	Run.meta.unlocked = keep.unlocked
 	Run.save_meta()
 
@@ -10441,8 +10445,8 @@ func bp3_test() -> void:
 			yy += 4.0
 		return yy
 	var tx := 0.0
-	for x in range(600, 1100, 8):
-		if top_at.call(b.T, x) < Data.WATER_Y - 60 and not b.T.pits.any(func(p): return x > p[0] - 30 and x < p[1] + 30):
+	for x in range(300, 1150, 8):
+		if top_at.call(b.T, x) < Data.WATER_Y - 50 and not b.T.pits.any(func(p): return x > p[0] - 30 and x < p[1] + 30):
 			tx = x
 			break
 	check(tx > 0, "found dry ground in the landing zone (%d)" % tx)
@@ -10533,6 +10537,110 @@ func bp3_test() -> void:
 	await b.mid_events.crumble_round()
 	check(b.crumble.x == cx2 + Data.CRUMBLE_STEP, "then it carries on")
 	await shot("bp3_crumble")
+
+
+func audit_test() -> void:
+	## System audit picks S1-S8: fewer currencies, one place for a card's upgrades, clearer sheets.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	# S1: Bio-parts are folded into Salvage, and old saves convert theirs
+	var old := {"salvage": 2, "bio": 4}
+	Run.fold_bio(old)
+	check(int(old.salvage) == 2 + 4 * Data.BIO_VALUE and not old.has("bio"), "S1: saved Bio-parts turn into %d Salvage each (%s)" % [Data.BIO_VALUE, str(old)])
+	check(not Run.meta.has("bio") and not Run.CAMP_KEYS.has("bio"), "S1: no Bio-parts left in the save")
+	Run.new_run()
+	Run.meta.hq = {"doc": 1}
+	Run.meta.salvage = Data.SURGERY_SALVAGE - 1
+	check(Run.surgery_block("cybereye", "moss") == "NEED %d SALVAGE" % Data.SURGERY_SALVAGE, "S1: a surgery costs Salvage only (%s)" % Run.surgery_block("cybereye", "moss"))
+	Run.meta.salvage = Data.SURGERY_SALVAGE
+	check(Run.operate("cybereye", "moss") and int(Run.meta.salvage) == 0, "S1: and installs for exactly that")
+	# S2: one REROLL pool for level-ups and the gunsmith
+	Run.new_run()
+	check(Run.rerolls == 2 and not ("reroll_tokens" in Run), "S2: a run starts with 2 REROLL tokens in one pool")
+	Run.set_state({"lvl_rerolls": 1, "reroll_tokens": 2})
+	check(Run.rerolls == 3, "S2: an old save's two pools add up (%d)" % Run.rerolls)
+	var it := Run.roll_item(3)
+	Run.stash.append(it)
+	Run.scrip = 500
+	main.show_shop()
+	await frames_wait(10)
+	main.screen.open_armory()
+	await frames_wait(10)
+	var arm = main.screen.get_children()[-1]
+	arm.select({"where": "stash", "i": Run.stash.size() - 1})
+	Run.rerolls = 1
+	arm.reroll_sel()
+	check(Run.rerolls == 0 and Run.scrip == 500, "S2: the gunsmith spends a REROLL token before scrip")
+	await frames_wait(4)
+	await shot("audit_armory")
+	var price: int = arm.gunsmith_price()
+	arm.reroll_sel()
+	check(Run.scrip == 500 - price, "then charges scrip when the pool is empty (%d)" % price)
+	main.clear()
+	# S5: squad gear and standing orders share one SQUAD KIT row under the HQ squad bar
+	Run.gear = ["boots"]
+	Run.cmd = ["supply"]
+	main.show_hq(false)
+	await frames_wait(20)
+	var kits: Array = main.screen.get_children().filter(func(c): return c is HubUI.KitRow)
+	check(kits.size() == 1 and HubUI.KitRow.entries().map(func(e): return e.name) == ["STEEL-TOE BOOTS", "SUPPLY LINES"], "S5: the HQ shows one SQUAD KIT row with the gear and the order")
+	if kits.size():
+		await hover_at(kits[0].global_position + Vector2(Art.text_width("SQUAD KIT", 8) + 30, 8))
+		check(Tip.cur.get("title", "") == "STEEL-TOE BOOTS", "hovering a kit chip says what it does (%s)" % Tip.cur.get("title", ""))
+	await shot("audit_kit")
+	# S6: hover a stat on the Dossier for its sources
+	var moss: Dictionary = Run.soldiers[0]
+	Run.equip(moss, Run.new_item("ghillie", 2))
+	main.screen.open_dossier(0, "sheet")
+	await frames_wait(20)
+	var d: Control = main.screen.sub
+	var src: String = d.stat_sources(moss, "DODGE")
+	check(src.contains("Class Marksman: %d%%" % int(moss.def.dodge)) and src.contains("Ghillie Suit"), "S6: DODGE lists the class and the Ghillie Suit (%s)" % src)
+	var zs: Array = Tip.zones.get(d.get_instance_id(), []).filter(func(z): return z.title.begins_with("DODGE"))
+	check(zs.size() == 1, "the DODGE row is hoverable")
+	if zs.size():
+		await hover_at(d.global_position + zs[0].r.get_center())
+		check(Tip.cur.get("title", "").begins_with("DODGE") and Tip.cur.text.contains("Ghillie"), "hovering it shows where the dodge comes from (%s)" % Tip.cur.get("text", ""))
+		await shot("audit_sources")
+	# S7: class, recruit and prestige traits on one line
+	var rs: Dictionary = Run.soldiers[1]
+	rs["trait"] = Data.RECRUIT_TRAITS[0].id
+	rs["prestige"] = 1
+	rs["ptrait"] = 0
+	var tl: Array = Run.traits_of(rs)
+	check(tl.size() == 3 and tl[0].text.begins_with("Class trait") and tl[1].text.begins_with("Recruit trait") and tl[2].text.begins_with("Prestige trait"), "S7: one list holds the class, recruit and prestige traits (%s)" % str(tl.map(func(t): return t.name)))
+	d.switch_to(1)
+	d.set_tab("sheet")
+	await frames_wait(10)
+	var tz: Array = Tip.zones.get(d.get_instance_id(), []).filter(func(z): return z.title == tl[1].name)
+	check(tz.size() == 1, "the Dossier sheet shows them as one TRAITS line of chips")
+	await shot("audit_traits")
+	var bars: Array = d.get_children().filter(func(c): return c is HubUI.SquadBar)
+	check(bars.size() == 1 and Tip.zones.get(bars[0].get_instance_id(), []).any(func(z): return z.title == "%s TRAITS" % rs.def.name and z.text.contains(tl[2].name)), "the squad bar lists them on hover")
+	main.clear()
+	# S8: the pause menu's FIELD MANUAL lists what the player has met, and grows
+	Run.new_run()
+	Run.meta.hq = {}
+	var fresh: Array = HudScript.PauseMenu.manual(null)
+	check(not fresh.any(func(e): return e[0] in ["LEVEL-UPS", "DOC'S LAB", "SQUAD KIT"]), "S8: a fresh run's manual leaves out what hasn't come up (%d lines)" % fresh.size())
+	var b: Battle = await e_battle("collapse")
+	await press_key(KEY_ESCAPE)
+	var menu = main.hud.get_children().filter(func(c): return c is HudScript.PauseMenu)
+	check(menu.size() == 1, "pause menu open")
+	if menu.size():
+		menu[0].man_page = 0
+		menu[0].go("manual")
+		await frames_wait(6)
+		var es: Array = HudScript.PauseMenu.manual(b)
+		check(es.any(func(e): return e[0] == Data.EVENTS.collapse.name) and es.any(func(e): return e[0] == String(Data.BIOMES[b.mission.biome].name)), "the manual explains this level's biome and event")
+		await shot("audit_manual")
+		Run.soldiers[0].lvl = 3
+		Run.gear = ["boots"]
+		check(HudScript.PauseMenu.manual(b).size() >= es.size() + 3, "and grows as systems come up")
+		menu[0].resume()
+	await frames_wait(4)
+	main.clear()
+	Run.meta = keep
+	Run.save_meta()
 
 func tour() -> void:
 	## UI pass: a screenshot of every screen, quick run and campaign.
@@ -11136,9 +11244,8 @@ func rares_test() -> void:
 				check(w.size() == 1 and inside.call(w[0]), "the scout ship lies in the second stretch")
 				if w.size():
 					var s0 := int(Run.meta.get("salvage", 0))
-					var b0 := int(Run.meta.get("bio", 0))
 					b.camp_ops.strip_wreck(w[0], b.squad()[0])
-					check(int(Run.meta.salvage) == s0 + Data.RARE_WRECK_SALVAGE and int(Run.meta.bio) == b0 + Data.RARE_WRECK_BIO, "stripping it pays salvage and bio-parts")
+					check(int(Run.meta.salvage) == s0 + Data.RARE_WRECK_SALVAGE and not Run.meta.has("bio"), "stripping it pays salvage (S1: no Bio-parts)")
 			"market":
 				var d: Array = b.units.filter(func(u): return u.kind == "dealer" and u.loot.get("market", false))
 				check(d.size() == 1 and d[0].loot.stock.size() == 3 and int(d[0].loot.stock[0].tier) == Data.TIER_MAX, "the black market sells a Legendary")

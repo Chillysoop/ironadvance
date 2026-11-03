@@ -372,7 +372,7 @@ func campaign_home(st := {}) -> void:
 	if int(inc.bench) > 0 and Run.bench().size():
 		news.append("The bench trained: +%d XP each." % inc.bench)
 	var parts: Array = []
-	for k in ["scrip", "salvage", "bio"]:
+	for k in ["scrip", "salvage"]:
 		if int(inc[k]) > 0:
 			parts.append("+%d %s" % [inc[k], k])
 	if parts.size():
@@ -1285,7 +1285,7 @@ class Screen extends Control:
 			# N3: what ended it, and what the next run keeps
 			var why := "SQUAD WIPED. LAST DOWN: %s." % stats.last_down if stats.has("last_down") else "SQUAD WIPED."
 			Art.text(self, why, Vector2(480, 124), 8, Color("ff9a80"), HORIZONTAL_ALIGNMENT_CENTER)
-			Art.text(self, "THIS RUN IS OVER. SALVAGE, BIO-PARTS, HQ UPGRADES AND UNLOCKS CARRY TO THE NEXT ONE.", Vector2(480, 140), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "THIS RUN IS OVER. SALVAGE, HQ UPGRADES AND UNLOCKS CARRY TO THE NEXT ONE.", Vector2(480, 140), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
 		if mode in ["won", "lost", "final"] and not Run.campaign():
 			# P2: the seed to share, on the screen you see when the level or run ends
 			if Run.daily != "":

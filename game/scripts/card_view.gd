@@ -183,7 +183,7 @@ func _draw() -> void:
 			stat = "  ".join(sl.filter(func(l): return not l.begins_with("ON ")) + sl.filter(func(l): return l.begins_with("ON ")))
 			body = d.text
 			if d.has("set"):
-				body += " SET %s: %s" % [Data.SETS[d.set].name.to_upper(), Data.SETS[d.set].text]
+				body += (" %s AFFIX: %s" if int(it.tier) >= Data.TIER_MAX else " At Legendary it gains the %s affix: %s") % [Data.SETS[d.set].name.to_upper(), Data.SETS[d.set].text.split(": ", true, 1)[1]]
 			var evo := Data.evolve_hint(it.id)
 			if evo != "":
 				body += " " + evo

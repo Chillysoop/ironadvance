@@ -485,8 +485,9 @@ const AFFIXES := {
 const AFFIX_COUNT := [0, 1, 2, 2, 3]
 const AFFIX_MUL := [1.0, 1.0, 1.0, 1.5, 2.0]
 const SETS := {
-	"desert": {"name": "Desert Rat", "bonus": {"move": 20, "dodge": 5}, "text": "Ghillie Suit, Grip Tape, Machete. 2 pieces: +1m move, +5 dodge."},
-	"boar": {"name": "Boar Salvage", "bonus": {"armor_turn": 2, "hp": 4}, "text": "Riot Plate, Det Cord, Bazooka Tube. 2 pieces: +2 armor each turn, +4 max HP."},
+	# S4: no set rule any more. A Legendary piece of one of these lines carries the old set bonus built in.
+	"desert": {"name": "Desert Rat", "bonus": {"move": 20, "dodge": 5}, "text": "Legendary Ghillie Suit, Grip Tape or Machete: +1m move and +5 dodge built in."},
+	"boar": {"name": "Boar Salvage", "bonus": {"armor_turn": 2, "hp": 4}, "text": "Legendary Riot Plate, Det Cord, Bazooka Tube or Boar Plating: +2 armor each turn and +4 max HP built in."},
 }
 const STAT_FMT := {
 	"hp": "+%d max HP", "move": "+%s move", "dodge": "+%d dodge", "armor_turn": "+%d armor each turn",
@@ -522,7 +523,7 @@ const ELITES := {
 # Named POWs with a specialty (L5). Anyone else gives +1 Luck.
 const POW_SPECIAL := {
 	"Sgt. Bramble": {"id": "quartermaster", "text": "QUARTERMASTER: 20% off at the next shop"},
-	"Pvt. Okonkwo": {"id": "gunsmith", "text": "GUNSMITH: a free affix reroll"},
+	"Pvt. Okonkwo": {"id": "gunsmith", "text": "GUNSMITH: an extra REROLL token"},
 	"Cpl. Teller": {"id": "medic", "text": "MEDIC: the squad heals 6"},
 }
 const TROPHIES := ["BOAR TREAD", "BOAR CANNON", "BOAR ENGINE"]
@@ -1070,7 +1071,7 @@ const STOPS := {
 	"front": {"name": "STRAIGHT TO THE FRONT", "text": "No detour. The gate opens right on the next mission."},
 	"depot": {"name": "SUPPLY DEPOT", "text": "The Quartermaster: cards, gear, services and the Armory."},
 	"outpost": {"name": "ELITE OUTPOST", "text": "A short, hard fight against elite Jackals. Pays an Epic crate and a Boar part."},
-	"powcamp": {"name": "POW CAMP", "text": "Free a camp: a free crate, 2 level-up rerolls and a gunsmith token."},
+	"powcamp": {"name": "POW CAMP", "text": "Free a camp: a free crate and 3 REROLL tokens, good on a level-up or at the gunsmith."},
 	"hospital": {"name": "FIELD HOSPITAL", "text": "Heal everyone to full and give back one dog tag each."},
 }
 
@@ -1114,7 +1115,7 @@ const CAMP_HEAL := 0.25
 # Detours (run structure step 5): the mid-level camp offers 3, each a short side stretch in the
 # clearing right after camp. Each pays in a different currency, so elites are never the only good pick.
 const DETOURS := {
-	"elite": {"name": "ELITE OUTPOST", "pays": "EPIC GEAR + 2 BIO-PARTS", "icon": "ic_skull", "text": "Four elite Jackals, all with the same modifier, dug into the clearing. One of them carries the Rambo Bow."},
+	"elite": {"name": "ELITE OUTPOST", "pays": "EPIC GEAR + 6 SALVAGE", "icon": "ic_skull", "text": "Four elite Jackals, all with the same modifier, dug into the clearing. One of them carries the Rambo Bow."},
 	"pow": {"name": "POW RESCUE", "pays": "A FREE RECRUIT OR A DOG TAG", "icon": "ic_cross", "text": "Three prisoners and two guards. Free all three in %d rounds or they are moved out."},
 	"salvage": {"name": "SALVAGE YARD", "pays": "SALVAGE FOR HQ", "icon": "ic_bolt", "text": "Walk over wrecks to strip them, %d salvage each. Scavengers drift in every round. Leave whenever you like."},
 	"cache": {"name": "SUPPLY CACHE", "pays": "SCRIP + A CARD PICK", "icon": "ic_coin", "text": "An easy fight: three Jackals sitting on a supply cache."},
@@ -1126,10 +1127,9 @@ const DETOURS := {
 const SIGNALS := {
 	"tank": {"name": "BURIED TANK", "pays": "A FREE TANK", "text": "A Jackal tank lies half buried in the clearing with two guards dozing on it. Walk onto it and it's yours."},
 	"deserter": {"name": "A DESERTER'S OFFER", "pays": "A LEGENDARY ITEM", "text": "A Jackal waves a white flag at the far end of the clearing. Reach him and he trades his best kit for a way out."},
-	"gate": {"name": "MISFIRING GATE", "pays": "%d BIO-PARTS + %d SALVAGE", "text": "A captured gate sputters in the clearing and spits out a Skitter pack. Put them down and pick through what came through."},
+	"gate": {"name": "MISFIRING GATE", "pays": "%d SALVAGE", "text": "A captured gate sputters in the clearing and spits out a Skitter pack. Put them down and pick through what came through."},
 }
-const SIGNAL_BIO := 3
-const SIGNAL_SALVAGE := 10
+const SIGNAL_SALVAGE := 19   # S1: was 3 Bio-parts + 10 Salvage
 const COLORS_SALVAGE := 15
 const POW_RESCUE_ROUNDS := 5
 
@@ -1150,8 +1150,7 @@ const CAMP_BUILDINGS := [
 	{"id": "hangar", "name": "HANGAR", "act": 1, "ranks": ["The Slug rolls out with the squad every op.", "It stays in the fight 1 round longer.", "The Slug can also be called back once per op."]},
 ]
 const HQ_COST := [10, 20, 30]   # Salvage for rank 1, 2, 3
-const BOSS_SALVAGE := 5         # every Boar you beat pays this much Salvage
-const BOSS_BIO := 1             # ...and a Bio-part for the Doc
+const BOSS_SALVAGE := 8         # every Boar you beat pays this much Salvage (S1: Bio-parts folded in)
 
 # The Doc's surgeries (step 7): installed on a CLASS, so every future soldier of that class has it
 # and permadeath never erases it. Pure upgrades, no side effects: the only choice is what fills the slots.
@@ -1176,10 +1175,10 @@ const SURGERIES := {
 	"mantis": {"name": "MANTIS LENSES", "cls": "", "rank": 3, "up": "+3 aimed shot damage and +6 dodge.", "stats": {"aim_dmg": 3, "dodge": 6}},
 	"vharrgland": {"name": "VHARR GLAND", "cls": "", "rank": 3, "up": "+8 max HP and heal 3 HP every turn.", "stats": {"hp": 8, "regen": 3}},
 }
-const SURGERY_BIO := 2
-const SURGERY_SALVAGE := 5
+const SURGERY_SALVAGE := 11   # S1: was 2 Bio-parts + 5 Salvage
 const WRECK_SALVAGE := 3
-const ELITE_BIO := 2     # share of max HP everyone gets back just for reaching camp
+const BIO_VALUE := 3     # S1: Bio-parts were folded into Salvage at this rate
+const ELITE_SALVAGE := 6     # an elite outpost or a hunt pays this much Salvage
 
 # Briefing intel (W2): each mission rolls one condition.
 const INTEL := {
@@ -1770,13 +1769,12 @@ const ORDER_CHEST := 120
 # V11: rare encounters. About 1 level in 5 has one; it shows on the dial card and the briefing.
 const RARES := {
 	"merc": {"name": "MERCENARY ACE", "text": "A hired gun is pinned down in the second stretch. Reach him and he fights for you for the rest of the level."},
-	"wreck": {"name": "CRASHED SCOUT SHIP", "text": "A Vharr scout ship came down in the second stretch. Walk onto the wreck to strip it: %d salvage and %d bio-parts."},
+	"wreck": {"name": "CRASHED SCOUT SHIP", "text": "A Vharr scout ship came down in the second stretch. Walk onto the wreck to strip it: %d salvage."},
 	"market": {"name": "BLACK MARKET", "text": "A smuggler in the second stretch sells a Legendary and two Epics at the dealer's prices."},
 	"ace": {"name": "JACKAL ACE", "text": "A veteran Jackal hunts the second stretch: twice the HP and an elite trait. Kill him for %d scrip and an Epic."},
 }
 const RARE_CHANCE := 0.2
-const RARE_WRECK_SALVAGE := 15
-const RARE_WRECK_BIO := 3
+const RARE_WRECK_SALVAGE := 24   # S1: was 15 Salvage + 3 Bio-parts
 const ACE_PAY := 60
 
 # V4: what the fork's road cards call each fighting segment
@@ -1864,8 +1862,7 @@ const VHARR_TECH := [
 	{"id": "prismplate", "alien": "prism"},
 ]
 const TECH_KILLS := [15, 10]        # kills needed: Lab rank 1, rank 2+
-const TECH_BIO := 2
-const TECH_SALVAGE := 4
+const TECH_SALVAGE := 10   # S1: was 2 Bio-parts + 4 Salvage
 
 # P2: bonus ops that sit on a held sector for a couple of ops. Skipping one costs nothing.
 # "pay" is what finishing one brings: an Epic crate, Salvage, a Jackal Defector, or double Alien Lab kills (W6).
@@ -1897,7 +1894,7 @@ const CHALLENGES := {
 }
 const ACT_CHALLENGES := [["clean", "fast", "sweep"], ["clean", "bonus", "threat"], ["fast", "sweep", "threat"], ["clean", "bonus", "sweep"], ["clean", "fast", "threat"]]
 const BLITZ_ROUNDS := 10
-const CHALLENGE_PAY := {"salvage": 3, "bio": 2}   # plus a Legendary item into the stash
+const CHALLENGE_PAY := {"salvage": 9}   # plus a Legendary item into the stash
 const BONUS_CHANCE := 0.35
 const BONUS_OPS_LEFT := 2
 const TOUR_HARDER := 0.2   # S5: each Second Tour adds this much to enemy and boss HP   # S4: odds a won Act III op ends with a Jackal deserter asking to join
@@ -2120,7 +2117,7 @@ const ACTS := [
 		{"id": "d3", "name": "FERRY DOCKS", "biome": "delta", "job": "demolish", "at": [340, 410], "links": ["d1", "j2"], "hold": {"salvage": 2}},
 		{"id": "j1", "name": "SIGNAL RIDGE", "biome": "jungle", "job": "hold", "at": [230, 160], "links": ["d2", "j3"], "perk": "lookout"},
 		{"id": "j2", "name": "RIVER BATTERY", "biome": "jungle", "job": "demolish", "at": [440, 300], "links": ["d2", "d3", "boss"], "hold": {"scrip": 20}},
-		{"id": "j3", "name": "TEMPLE TRAIL", "biome": "jungle", "job": "hunt", "at": [400, 150], "links": ["j1", "boss"], "hold": {"bio": 1}},
+		{"id": "j3", "name": "TEMPLE TRAIL", "biome": "jungle", "job": "hunt", "at": [400, 150], "links": ["j1", "boss"], "hold": {"salvage": 3}},
 		{"id": "boss", "name": "BOAR'S DEN", "biome": "jungle", "at": [580, 220], "links": ["j2", "j3"], "stronghold": true}]},
 	{"id": "breach", "name": "THE BREACH", "roman": "II", "tier": 1, "hp_mul": 1.15, "boss_hp": 160, "plate": 46, "need": 3, "breach": 0.4,
 	 "text": "Desert ruins and the mountain pass. The Jackals made a deal with something that came through their gate.",
@@ -2128,7 +2125,7 @@ const ACTS := [
 	 "sectors": [
 		{"id": "s1", "name": "BROKEN AQUEDUCT", "biome": "desert", "job": "escort", "at": [200, 150], "links": ["lz", "s2", "s3"], "hold": {"scrip": 25}},
 		{"id": "s2", "name": "SALT FLATS", "biome": "desert", "job": "hold", "at": [220, 330], "links": ["lz", "s1", "m1"], "perk": "airfield"},
-		{"id": "s3", "name": "SUNKEN TEMPLE", "biome": "desert", "job": "rescue", "at": [350, 180], "links": ["s1", "m1", "m2"], "hold": {"bio": 1}},
+		{"id": "s3", "name": "SUNKEN TEMPLE", "biome": "desert", "job": "rescue", "at": [350, 180], "links": ["s1", "m1", "m2"], "hold": {"salvage": 3}},
 		{"id": "m1", "name": "SWITCHBACKS", "biome": "mountain", "job": "escort", "at": [380, 360], "links": ["s2", "s3", "m3"], "hold": {"salvage": 3}},
 		{"id": "m2", "name": "OBSERVATORY", "biome": "mountain", "job": "hunt", "at": [480, 130], "links": ["s3", "boss"], "perk": "lookout"},
 		{"id": "m3", "name": "CABLE CAR STATION", "biome": "mountain", "job": "demolish", "at": [520, 330], "links": ["m1", "boss"], "perk": "fuel"},
@@ -2141,7 +2138,7 @@ const ACTS := [
 		{"id": "r2", "name": "CRACKING TOWERS", "biome": "refinery", "job": "hold", "at": [300, 120], "links": ["r1", "r3"], "perk": "fuel"},
 		{"id": "r3", "name": "TANK FARM", "biome": "refinery", "job": "escort", "at": [450, 140], "links": ["r2", "boss"], "hold": {"scrip": 30}},
 		{"id": "f1", "name": "MARKET STREET", "biome": "fortress", "job": "rescue", "at": [220, 390], "links": ["lz", "r1", "f2"], "perk": "supply"},
-		{"id": "f2", "name": "OLD CITADEL", "biome": "fortress", "job": "hunt", "at": [370, 330], "links": ["f1", "f3"], "hold": {"bio": 2}},
+		{"id": "f2", "name": "OLD CITADEL", "biome": "fortress", "job": "hunt", "at": [370, 330], "links": ["f1", "f3"], "hold": {"salvage": 6}},
 		{"id": "f3", "name": "GARRISON GATE", "biome": "fortress", "job": "push", "varga": true, "at": [500, 400], "links": ["f2", "boss"], "perk": "aid"},
 		{"id": "boss", "name": "THE INFESTED WORKS", "biome": "refinery", "at": [590, 270], "links": ["r3", "f3"], "stronghold": true}]},
 	{"id": "hive", "name": "HIVE TIDE", "roman": "IV", "tier": 2, "hp_mul": 1.45, "boss_hp": 240, "plate": 66, "need": 3, "breach": 0.5,
@@ -2149,19 +2146,19 @@ const ACTS := [
 	 "lz": {"name": "CLIFF ROAD", "at": [70, 170]},
 	 "sectors": [
 		{"id": "p1", "name": "LANTERN GARDENS", "biome": "palace", "job": "hunt", "at": [190, 130], "links": ["lz", "p2", "p3"], "perk": "lookout"},
-		{"id": "p2", "name": "SHOGUN'S HALL", "biome": "palace", "job": "rescue", "at": [320, 210], "links": ["p1", "h1"], "hold": {"bio": 2}},
+		{"id": "p2", "name": "SHOGUN'S HALL", "biome": "palace", "job": "rescue", "at": [320, 210], "links": ["p1", "h1"], "hold": {"salvage": 6}},
 		{"id": "p3", "name": "PAPER BRIDGE", "biome": "palace", "job": "escort", "at": [200, 300], "links": ["lz", "p1", "h2"], "hold": {"scrip": 30}},
 		{"id": "h1", "name": "LIGHTHOUSE", "biome": "harbor", "job": "hold", "at": [470, 140], "links": ["p2", "boss"], "perk": "airfield"},
 		{"id": "h2", "name": "FISH MARKET", "biome": "harbor", "job": "push", "at": [330, 400], "links": ["p3", "h3"], "hold": {"salvage": 3}},
 		{"id": "h3", "name": "DRY DOCK", "biome": "harbor", "job": "demolish", "at": [490, 350], "links": ["h2", "boss"], "perk": "supply"},
-		{"id": "v1", "name": "VARGA'S FORT", "biome": "fortress", "job": "rescue", "story": "varga", "varga": true, "at": [96, 410], "links": ["p3"], "hold": {"bio": 2}},
+		{"id": "v1", "name": "VARGA'S FORT", "biome": "fortress", "job": "rescue", "story": "varga", "varga": true, "at": [96, 410], "links": ["p3"], "hold": {"salvage": 6}},
 		{"id": "boss", "name": "UNDER THE HIVE SHIP", "biome": "harbor", "at": [600, 240], "links": ["h1", "h3"], "stronghold": true}]},
 	{"id": "gate", "name": "SHUT THE GATE", "roman": "V", "tier": 2, "hp_mul": 1.6, "boss_hp": 270, "plate": 74, "need": 2, "breach": 0.3,
 	 "text": "Iron Harbor, where the Jackals keep the captured gate. Two big ops, then the flagship and the gate itself.",
 	 "lz": {"name": "LANDING CRAFT", "at": [80, 280]},
 	 "sectors": [
 		{"id": "g1", "name": "SEA WALL", "biome": "harbor", "job": "hold", "at": [260, 180], "links": ["lz", "boss"], "hold": {"scrip": 40}},
-		{"id": "g2", "name": "GATE BARRACKS", "biome": "fortress", "job": "rescue", "at": [270, 390], "links": ["lz", "boss"], "hold": {"bio": 2}},
+		{"id": "g2", "name": "GATE BARRACKS", "biome": "fortress", "job": "rescue", "at": [270, 390], "links": ["lz", "boss"], "hold": {"salvage": 6}},
 		{"id": "boss", "name": "IRON HARBOR", "biome": "harbor", "at": [520, 280], "links": ["g1", "g2"], "stronghold": true, "finale": true}]},
 ]
 
@@ -2182,7 +2179,7 @@ const ALT_ACTS := {
 		{"id": "o3", "name": "LOADING JETTY", "biome": "harbor", "job": "demolish", "at": [340, 410], "links": ["o1", "q2"], "hold": {"salvage": 2}},
 		{"id": "q1", "name": "RADAR DUNE", "biome": "desert", "job": "hold", "at": [230, 160], "links": ["o2", "q3"], "perk": "lookout"},
 		{"id": "q2", "name": "FLARE STACKS", "biome": "refinery", "job": "demolish", "at": [440, 300], "links": ["o2", "o3", "boss"], "hold": {"scrip": 20}},
-		{"id": "q3", "name": "CARAVAN ROAD", "biome": "desert", "job": "hunt", "at": [400, 150], "links": ["q1", "boss"], "hold": {"bio": 1}},
+		{"id": "q3", "name": "CARAVAN ROAD", "biome": "desert", "job": "hunt", "at": [400, 150], "links": ["q1", "boss"], "hold": {"salvage": 3}},
 		{"id": "boss", "name": "BOAR'S DEPOT", "biome": "refinery", "at": [580, 220], "links": ["q2", "q3"], "stronghold": true}]},
 	1: {"id": "whitepass", "name": "WHITE PASS", "roman": "II", "tier": 1, "hp_mul": 1.15, "boss_hp": 160, "plate": 46, "need": 3, "breach": 0.4,
 	 "text": "The frozen lakes and the old mine under the pass. The Jackals dug too deep and something dug back.",
@@ -2194,7 +2191,7 @@ const ALT_ACTS := {
 	 "sectors": [
 		{"id": "k1", "name": "BLACK ICE", "biome": "lake", "job": "push", "at": [200, 160], "links": ["lz", "k2", "k3"], "hold": {"scrip": 25}},
 		{"id": "k2", "name": "FISHING HUTS", "biome": "lake", "job": "rescue", "at": [210, 360], "links": ["lz", "k1", "n1"], "perk": "aid"},
-		{"id": "k3", "name": "FROZEN FERRY", "biome": "lake", "job": "hunt", "at": [340, 130], "links": ["k1", "n2"], "hold": {"bio": 1}},
+		{"id": "k3", "name": "FROZEN FERRY", "biome": "lake", "job": "hunt", "at": [340, 130], "links": ["k1", "n2"], "hold": {"salvage": 3}},
 		{"id": "n1", "name": "MINE HEAD", "biome": "mine", "job": "demolish", "at": [360, 360], "links": ["k2", "n2", "n3"], "hold": {"salvage": 3}},
 		{"id": "n2", "name": "LOWER DRIFT", "biome": "mine", "job": "hold", "at": [470, 200], "links": ["k3", "n1", "boss"], "perk": "lookout"},
 		{"id": "n3", "name": "ORE CARTS", "biome": "mine", "job": "rescue", "at": [500, 390], "links": ["n1", "boss"], "perk": "fuel"},
@@ -2207,7 +2204,7 @@ const ALT_ACTS := {
 		{"id": "t2", "name": "GUN CARRIAGE", "biome": "train", "job": "demolish", "at": [320, 110], "links": ["t1", "t3"], "perk": "fuel"},
 		{"id": "t3", "name": "PRISON CARS", "biome": "train", "job": "rescue", "at": [460, 150], "links": ["t2", "boss"], "hold": {"scrip": 30}},
 		{"id": "c1", "name": "TRAM DEPOT", "biome": "city", "job": "escort", "at": [200, 350], "links": ["lz", "t1", "c2"], "perk": "supply"},
-		{"id": "c2", "name": "HIGHRISE ROW", "biome": "city", "job": "hunt", "at": [350, 300], "links": ["c1", "c3"], "hold": {"bio": 2}},
+		{"id": "c2", "name": "HIGHRISE ROW", "biome": "city", "job": "hunt", "at": [350, 300], "links": ["c1", "c3"], "hold": {"salvage": 6}},
 		{"id": "c3", "name": "CITY GARRISON", "biome": "city", "job": "push", "varga": true, "at": [490, 390], "links": ["c2", "boss"], "perk": "aid"},
 		{"id": "boss", "name": "THE INFESTED YARDS", "biome": "city", "at": [590, 260], "links": ["t3", "c3"], "stronghold": true}]},
 	3: {"id": "firecoast", "name": "FIRE COAST", "roman": "IV", "tier": 2, "hp_mul": 1.45, "boss_hp": 240, "plate": 66, "need": 3, "breach": 0.5,
@@ -2215,12 +2212,12 @@ const ALT_ACTS := {
 	 "lz": {"name": "LAVA BEACH", "at": [70, 260]},
 	 "sectors": [
 		{"id": "x1", "name": "ASH FIELDS", "biome": "volcano", "job": "push", "at": [190, 150], "links": ["lz", "x2", "x3"], "perk": "lookout"},
-		{"id": "x2", "name": "OBSIDIAN STEPS", "biome": "volcano", "job": "rescue", "at": [320, 120], "links": ["x1", "y1"], "hold": {"bio": 2}},
+		{"id": "x2", "name": "OBSIDIAN STEPS", "biome": "volcano", "job": "rescue", "at": [320, 120], "links": ["x1", "y1"], "hold": {"salvage": 6}},
 		{"id": "x3", "name": "MAGMA BRIDGE", "biome": "volcano", "job": "demolish", "at": [210, 340], "links": ["lz", "x1", "y2"], "hold": {"scrip": 30}},
 		{"id": "y1", "name": "FLIGHT DECK", "biome": "carrier", "job": "hunt", "at": [470, 140], "links": ["x2", "boss"], "perk": "airfield"},
 		{"id": "y2", "name": "HANGAR BAY", "biome": "carrier", "job": "hold", "at": [340, 400], "links": ["x3", "y3"], "hold": {"salvage": 3}},
 		{"id": "y3", "name": "ISLAND TOWER", "biome": "carrier", "job": "demolish", "at": [490, 350], "links": ["y2", "boss"], "perk": "supply"},
-		{"id": "v1", "name": "VARGA'S FORT", "biome": "fortress", "job": "rescue", "story": "varga", "varga": true, "at": [96, 410], "links": ["x3"], "hold": {"bio": 2}},
+		{"id": "v1", "name": "VARGA'S FORT", "biome": "fortress", "job": "rescue", "story": "varga", "varga": true, "at": [96, 410], "links": ["x3"], "hold": {"salvage": 6}},
 		{"id": "boss", "name": "UNDER THE HIVE SHIP", "biome": "harbor", "at": [600, 250], "links": ["y1", "y3"], "stronghold": true}]},
 }
 const NO_TRUCK := ["lake", "train", "carrier"]   # W14: biomes a patrol never rolls an escort in (ice, tunnels, jets)
@@ -2468,6 +2465,9 @@ func item_stats(it: Dictionary) -> Dictionary:
 	if it.get("named", "") != "":
 		for k in LEGEND_BONUS[slot_group(d.slot)]:
 			out[k] = out.get(k, 0) + LEGEND_BONUS[slot_group(d.slot)][k]
+	if t >= TIER_MAX and d.has("set"):
+		for k in SETS[d.set].bonus:  # S4: the old set bonus, as a Legendary affix
+			out[k] = out.get(k, 0) + SETS[d.set].bonus[k]
 	for a in it.get("affixes", []):
 		var A: Dictionary = AFFIXES[a]
 		var v = A.v * AFFIX_MUL[t]
