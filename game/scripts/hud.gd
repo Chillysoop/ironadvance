@@ -1748,6 +1748,7 @@ class WaterRail extends Control:
 		var c0: Color = Color("ff5a1e") if lava else Color(b.th.water[1])
 		var c1: Color = Color("ffd23a") if lava else c0.lightened(0.45)
 		var word := "LAVA" if lava else "DROWN"
+		var tagged := false
 		for r in runs(b):
 			var x0: float = r[0]
 			var x1: float = r[1]
@@ -1763,15 +1764,17 @@ class WaterRail extends Control:
 				if int((x + b.cam_x) / 4) % 3 == 0:
 					draw_rect(Rect2(x, yy - 1, minf(2, x1 - x), 1), Color(c1, a2))
 				x += 4
-			# the tag goes on the part of the run that's over the hand, never over a roster tag
-			var lx0 := maxf(x0, LO)
-			var lx1 := minf(x1, HI)
-			if lx1 - lx0 >= 30:
-				var mx := (lx0 + lx1) / 2.0
-				var bob := 1.0 if b.t % 40 < 20 else 0.0
-				var tw := Art.text_width(word, 8) + 8
-				draw_rect(Rect2(mx - tw / 2, Y - 15 + bob, tw, 11), Color(0.03, 0.03, 0.05, 0.85 * al))
-				Art.text(self, word, Vector2(mx, Y - 7 + bob), 8, Color(c1, al), HORIZONTAL_ALIGNMENT_CENTER)
+			if minf(x1, HI) - maxf(x0, LO) >= 30:
+				tagged = true
+		if tagged:
+			# Q4: one tag at the strip's left end, above the ENERGY box (and above JET when it shows),
+			# so it never sits on the hand and hides a card's PUMPED tab
+			var mx: float = maxf(160.0, hud.hand_x0 - 52) + 23.0
+			var ty := 397.0 if hud.jet_btn.visible else 427.0
+			var bob := 1.0 if b.t % 40 < 20 else 0.0
+			var tw := Art.text_width(word, 8) + 8
+			draw_rect(Rect2(mx - tw / 2, ty + bob, tw, 11), Color(0.03, 0.03, 0.05, 0.85 * al))
+			Art.text(self, word, Vector2(mx, ty + 8 + bob), 8, Color(c1, al), HORIZONTAL_ALIGNMENT_CENTER)
 
 # ---------------------------------------------------------------- the boarding card
 class VehiclePop extends Control:

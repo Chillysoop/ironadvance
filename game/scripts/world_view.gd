@@ -23,9 +23,29 @@ const C_ALIEN := Color("c47bff")  # Vharr markers and labels
 const C_OOZE := Color("9df25c")
 const SUNK_Y := 452.0  # world y where a soldier disappears behind the card tray
 
+var tag_rects: Array = []   # Q3: where this frame's enemy name tags already sit, so the next one steps up
+
+func tag_y(cx: float, w: float, y: float) -> float:
+	## Q3: the baseline for a world tag centered on cx: y, or a row up (and up again) until it clears
+	## every tag already placed this frame. Claims the spot it returns.
+	var yy := y
+	for k in 6:
+		var r := Rect2(cx - w / 2.0 - 1, yy - 8, w + 2, 9)
+		if not tag_rects.any(func(o: Rect2): return o.intersects(r)):
+			break
+		yy -= 11.0
+	tag_rects.append(Rect2(cx - w / 2.0 - 1, yy - 8, w + 2, 9))
+	return yy
+
+func put_tag(text: String, p: Vector2, c: Color) -> void:
+	## A centered enemy tag, pulled in from the view edges and stepped clear of the others.
+	var q := in_view(p, text)
+	Art.text(self, text, Vector2(q.x, tag_y(q.x, Art.text_width(text, 8), q.y)), 8, c, HORIZONTAL_ALIGNMENT_CENTER)
+
 func _draw() -> void:
 	if b.T == null:
 		return
+	tag_rects.clear()
 	Art.big_heads = Run.toggle_on("bigheads")  # D3, for this draw only
 	var cx := b.cam_x
 	draw_ladders(cx)
@@ -66,7 +86,11 @@ func _draw() -> void:
 	draw_parts()
 	draw_fx()
 	if not cine:
-		for u in b.units:
+		# Q3: the higher tags go down first, so where two would overlap the lower one steps up
+		var pl := b.units.duplicate()
+		# the selected soldier's name tag goes first: it bobs, so the enemy tags step around it
+		pl.sort_custom(func(a, c): return (a == b.sel) if (a == b.sel) != (c == b.sel) else a.y - a.h < c.y - c.h)
+		for u in pl:
 			draw_plate(u)
 	Art.big_heads = false
 	draw_targeting()
@@ -562,7 +586,7 @@ func draw_pad(u: Unit, pos: Vector2) -> void:
 		var cd: String = "%s IN %d" % [B.name, L.t]
 		# wider than the pad itself, so it clears a Jackal's tags across its whole width
 		if word_ok(pos, false, Art.text_width(cd, 8) / 2.0 + 16) and not stood_on(pos):
-			Art.text(self, cd, in_view(Vector2(pos.x, pos.y - 30), cd), 8, Color(B.c, 0.85), HORIZONTAL_ALIGNMENT_CENTER)
+			put_tag(cd, Vector2(pos.x, pos.y - 30), Color(B.c, 0.85))
 
 func draw_drill(u: Unit, d: Vector2, spin: bool) -> void:
 	## A drill bit held out in front: a steel cone along the bore line, its threads turning.
@@ -820,7 +844,7 @@ func draw_relay(u: Unit, pos: Vector2) -> void:
 		# (measured from where it lands once pulled in from the view edge, not from the relay)
 		var rp := in_view(pos + Vector2(0, -44), rl)
 		if word_ok(Vector2(rp.x, pos.y), false, Art.text_width(rl, 8) / 2.0 + 24):
-			Art.text(self, rl, rp, 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
+			put_tag(rl, rp, Color("53d4e2"))
 
 func draw_sentry(u: Unit, pos: Vector2, white: bool) -> void:
 	## N2: a squat tripod turret in Bolt's orange, with its laser on whatever it will shoot.
@@ -1018,7 +1042,7 @@ func draw_plate(u: Unit) -> void:
 		var tw := Art.text_width(wt, 8) + 4
 		# and it gives way to an elite's name right beside it (BROOD over LIGHT read as BRLIGHT)
 		if not b.units.any(func(o): return o != u and o.kind == "enemy" and not o.dead and not o.gone and absf(o.y - o.h - u.y + u.h) < 12 and ((o.id < u.id and o.weight == u.weight and o.elite == "" and absf(o.x - u.x) < tw) or (o.elite != "" and absf(o.x - u.x) < (tw + Art.text_width(Data.ELITES[o.elite].name, 8)) / 2.0 + 4))):
-			Art.text(self, wt, in_view(Vector2(x, y - 4), wt), 8, C_ALIEN, HORIZONTAL_ALIGNMENT_CENTER)
+			put_tag(wt, Vector2(x, y - 4), C_ALIEN)
 	var lift := 0.0
 	if u.elite != "":
 		draw_rect(Rect2(x - w / 2 - 2, y - 2, w + 4, 7), Color("ffd23a"), false, 1.0)
@@ -1030,10 +1054,10 @@ func draw_plate(u: Unit) -> void:
 		var ny := y - 4 - lift
 		if b.units.any(func(o): return o != u and o.kind == "enemy" and not o.dead and not o.gone and absf(o.x - u.x) < ew / 2 + 12 and o.y - o.h - 7 > ny - 8 and o.y - o.h - 10 < ny):
 			lift += 10.0
-		Art.text(self, en, in_view(Vector2(x, y - 4 - lift), en), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		put_tag(en, Vector2(x, y - 4 - lift), Color("ffd23a"))
 		if u.fl.has("quarry"):
 			var wn: String = ("NEMESIS: " if u.fl.has("nemesis") else "WANTED: ") + u.fl.quarry
-			Art.text(self, wn, in_view(Vector2(x, y - 14 - lift), wn), 8, Color("ff4d3d") if b.t % 40 < 28 else Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			put_tag(wn, Vector2(x, y - 14 - lift), Color("ff4d3d") if b.t % 40 < 28 else Color("ffd23a"))
 	var st_y: float = y - lift - (24 if u.fl.has("quarry") else (14 if u.elite != "" else 4))
 	var has_st := draw_statuses(u, x, st_y)
 	if u.type == "radio" and b.radio_t != null and u.active:
@@ -1043,6 +1067,7 @@ func draw_plate(u: Unit) -> void:
 		var col := Color("ff4d3d") if b.radio_t <= 1 else Color("ffd23a")
 		var rx := clampf(x, b.cam_x + 44, b.cam_x + 916)
 		var rs := "BACKUP %d" % b.radio_t
+		y = tag_y(rx - 35 + (Art.text_width(rs, 8) + 26) / 2.0, Art.text_width(rs, 8) + 26, y - 4) + 4
 		# a dark plate under the icon and the word, so a status letter beside it can't read as part of it (MBACKUP)
 		draw_rect(Rect2(rx - 35, y - 16, Art.text_width(rs, 8) + 26, 17), Color(C_DARK, 0.75))
 		draw_texture_rect(Art.tex.ic_radio, Rect2(rx - 34, y - 16, 16, 16), false)
@@ -1104,7 +1129,9 @@ func draw_squad_plate(u: Unit, x: float) -> void:
 		if not b.inspect:
 			var tag := "%s LV%d" % [u.def.name, u.s.lvl]
 			var hw := Art.text_width(tag, 8) / 2.0 + 2
-			Art.text(self, tag, Vector2(clampf(x, b.cam_x + hw, b.cam_x + Battle.W - hw), by - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+			var tx := clampf(x, b.cam_x + hw, b.cam_x + Battle.W - hw)
+			tag_rects.append(Rect2(tx - hw, by - 14, hw * 2, 11))  # Q3: claimed, so enemy tags step clear of it
+			Art.text(self, tag, Vector2(tx, by - 4), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_statuses(u: Unit, x: float, y: float) -> bool:
 	## Short colored tags for C5 statuses, plus AIR for a body a squadmate launched (SKEET bait).
@@ -1126,6 +1153,8 @@ func draw_statuses(u: Unit, x: float, y: float) -> bool:
 		tw += Art.text_width(tg[0], 8) + 4
 	# pulled in from the view edges like the other world labels
 	var cx := clampf(x - tw / 2, b.cam_x + 4, b.cam_x + Battle.W - tw - 2)
+	if u.team == "enemy":
+		y = tag_y(cx - 2 + (tw + 2) / 2.0, tw + 2, y)  # Q3
 	draw_rect(Rect2(cx - 2, y - 9, tw + 2, 11), Color(C_DARK, 0.8))
 	for tg in tags:
 		Art.text(self, tg[0], Vector2(cx, y), 8, tg[1])

@@ -938,6 +938,8 @@ func run() -> void:
 			await xcalls()
 		"runsave":
 			await runsave()
+		"vpicks2":
+			await vpicks2()
 		"vpicks":
 			await vpicks()
 		"settings":
@@ -10435,7 +10437,7 @@ func bp3_test() -> void:
 		var f1: float = top_at.call(b.T, fx)
 		check(f1 - f0 > g1 - g0 + 20, "beyond it the same blasts dig much deeper (%d vs %d px)" % [f1 - f0, g1 - g0])
 	var lv2 := Run.make_level("desert", 0)
-	check(not lv2.rules.has("firm_lz"), "only the Delta has it")
+	check(not lv2.rules.has("firm_lz"), "a dry biome has no bedrock landing zone")
 	# F3: an enemy shot that cuts the ground away gets named when the soldier drowns
 	var sq: Array = b.squad()
 	var u: Unit = sq[0]
@@ -10896,6 +10898,98 @@ func orders_test() -> void:
 	main.show_title()
 	await frames_wait(5)
 
+
+func vpicks2() -> void:
+	## Q1-Q4 from the second run-variety playtest page.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	# Q2: every water biome lands on bedrock that blasts only dent
+	var top_at := func(T: Terrain, x: float) -> float:
+		var yy := 4.0
+		while yy < Data.WATER_Y and not T.solid(x, yy):
+			yy += 4.0
+		return yy
+	var b: Battle = null
+	for bio in ["jungle", "harbor", "lake", "city"]:
+		Run.seed_val = 900
+		var lvl := Run.make_level(bio, 0)
+		check(lvl.rules.get("firm_lz", 0.0) == 1200.0, "Q2: %s has a bedrock landing zone" % bio)
+		lvl["event"] = ""
+		lvl["encounter"] = ""
+		lvl.erase("remix"); lvl.erase("rare"); lvl.erase("road")
+		Run.level = lvl
+		b = main.start_battle(0, lvl)
+		await until(func(): return b.state == "player" and not b.busy)
+		var tx := 0.0
+		for x in range(300, 1100, 8):
+			if top_at.call(b.T, x) < Data.WATER_Y - 60 and not b.T.pits.any(func(p): return x > p[0] - 30 and x < p[1] + 30) and not b.units.any(func(o): return not o.dead and absf(o.x - x) < 40):
+				tx = x
+				break
+		if tx == 0.0:
+			check(false, "Q2: found dry ground in the %s landing zone" % bio)
+			continue
+		var g0: float = top_at.call(b.T, tx)
+		for k in 4:
+			b.T.carve(tx, top_at.call(b.T, tx), 30, null)
+		b.T.flush()
+		var g1: float = top_at.call(b.T, tx)
+		check(g1 < Data.WATER_Y - 4, "Q2: four big blasts in one crater still leave ground over the water in the %s (%d -> %d)" % [bio, g0, g1])
+		# control: the same blasts next door with the bedrock switched off dig deeper
+		var cx := tx + 70.0
+		var c0: float = top_at.call(b.T, cx)
+		b.T.firm_x1 = 0.0
+		for k in 4:
+			b.T.carve(cx, top_at.call(b.T, cx), 30, null)
+		b.T.flush()
+		var c1: float = top_at.call(b.T, cx)
+		check(c1 - c0 > g1 - g0, "Q2: without the bedrock the same blasts dig deeper in the %s (%d vs %d px)" % [bio, c1 - c0, g1 - g0])
+	b.speed = 2.0
+	var sq: Array = b.squad_alive()
+	var u: Unit = sq[0]
+	# Q1: the Drill Rig's bolt hits for its base damage at any alert
+	var bo := j2_enemy(b, "grunt", u.x + 200)
+	var hits: Array = []
+	for al in [0, 12]:
+		b.alert = al
+		var h0 := 0
+		for o in b.squad_alive():
+			o.hp = o.max_hp
+			h0 += o.hp
+		await b.vharr_ai.drill_bolt(bo)
+		var h1 := 0
+		for o in b.squad():
+			h1 += maxi(0, o.hp)
+		hits.append(h0 - h1)
+	check(hits[0] == hits[1] and hits[1] <= Data.DRILL_DMG and hits[1] > 0, "Q1: the drill bolt hits the same at alert 0 and 12 (%s)" % [hits])
+	b.alert = 0
+	u.hp = u.max_hp
+	# Q3: two bunched enemies with statuses and an elite: no two tags overlap
+	var e1 := j2_enemy(b, "grunt", u.x + 120)
+	var e2 := j2_enemy(b, "grunt", u.x + 132)
+	b.make_elite(e2, Data.ELITES.keys()[0])
+	e1.st["mark"] = 2
+	e2.st["mark"] = 2
+	e1.st["stun"] = 1
+	e1.active = true
+	e2.active = true
+	await frames_wait(4)
+	var rs: Array = b.view.tag_rects
+	var bad := 0
+	for i in rs.size():
+		for j in range(i + 1, rs.size()):
+			if rs[i].intersects(rs[j]):
+				bad += 1
+	check(rs.size() >= 3 and bad == 0, "Q3: %d enemy tags drawn, %d overlap" % [rs.size(), bad])
+	b.cam_x = clampf(u.x - 300, 0, b.world_w - Battle.W)
+	await frames_wait(4)
+	await shot("vpicks2_tags")
+	# Q4: the DROWN tag sits above the ENERGY box, off the hand
+	var rail = b.hud.water_rail
+	check(rail != null, "Q4: the water rail is up")
+	await shot("vpicks2_drown")
 
 func vpicks() -> void:
 	## P1-P4 from the run-variety playtest page.
