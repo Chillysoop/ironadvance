@@ -315,7 +315,7 @@ func setup(idx: int, custom := {}) -> void:
 				# D1: until a player has beaten one Boar, the level 1 Boar is a softer Rookie Boar
 				u.fl["rookie"] = true
 				u.hp = int(u.hp * ROOKIE_HP); u.max_hp = u.hp; u.plate = int(u.plate * ROOKIE_HP)
-		elif not tutorial() and not in_lesson() and randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
+		elif not tutorial() and not in_lesson() and not practice() and randf() < 0.12 + mission_idx * 0.06 + (0.25 if Run.intel == "veterans" else 0.0) + (0.15 if Run.threat_on(2) else 0.0) + (0.6 if mission.get("outpost", false) else 0.0) + rules.get("elite", 0.0):
 			make_elite(u, pick_elite(faction(u) == "vharr"))
 		units.append(u)
 		if opt.has("tut"):

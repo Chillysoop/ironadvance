@@ -1420,6 +1420,7 @@ func field() -> void:
 	await until(func(): return b.state == "player" and not b.busy)
 	check(b.squad().size() == 1 and b.squad()[0].s.key == moss.key, "only Moss goes to the range")
 	check(b.dummies.size() >= 4, "%d dummies stand on the range" % b.dummies.size())
+	check(not b.units.any(func(o): return o.team == "enemy" and o.elite != ""), "range dummies are never elites (a Thrall dummy left a Skitter that blocked the reset)")
 	await frames_wait(30)
 	await shot("field_range")
 	var me: Unit = b.squad()[0]
