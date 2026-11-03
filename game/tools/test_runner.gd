@@ -953,6 +953,12 @@ func run() -> void:
 			await operator_call()
 		"training", "lessons":
 			await lessons()
+		"guided":
+			await guided_test()
+		"tutfuzz":
+			await tutfuzz_test()
+		"nadeprobe":
+			await nadeprobe()
 		"survey":
 			await survey()
 		"clarity":
@@ -10670,19 +10676,22 @@ func variety_test() -> void:
 	check(diff > 10 or str(t1.sandbags) != str(t2.sandbags), "the same segments remix into different ground (%d columns differ)" % diff)
 	# V2 in a real battle: a Sniper Nest fills slots with snipers, a regular garrison doesn't
 	var counts := {}
+	# summed over three seeds: one level can have few slots a garrison may take
 	for g in ["regular", "snipers", "shields"]:
-		Run.new_run()
-		Run.first_run = false
-		Run.seed_val = 4242
-		var lv := Run.make_level("fortress", 0)
-		lv.garrison = g
-		Run.level = lv
-		var b: Battle = main.start_battle(0, lv)
-		await until(func(): return b.state == "player" and not b.busy)
 		var n := {}
-		for u in b.units:
-			if u.team == "enemy":
-				n[u.type] = int(n.get(u.type, 0)) + 1
+		var b: Battle
+		for sd in [4242, 4243, 4244]:
+			Run.new_run()
+			Run.first_run = false
+			Run.seed_val = sd
+			var lv := Run.make_level("fortress", 0)
+			lv.garrison = g
+			Run.level = lv
+			b = main.start_battle(0, lv)
+			await until(func(): return b.state == "player" and not b.busy)
+			for u in b.units:
+				if u.team == "enemy":
+					n[u.type] = int(n.get(u.type, 0)) + 1
 		counts[g] = n
 		if g == "snipers":
 			await shot("variety_snipers")
@@ -10690,7 +10699,7 @@ func variety_test() -> void:
 			await frames_wait(6)
 			await shot("variety_brief")
 	check(int(counts.snipers.get("jsniper", 0)) >= int(counts.regular.get("jsniper", 0)) + 2, "a Sniper Nest has more snipers (%s vs %s)" % [counts.snipers.get("jsniper", 0), counts.regular.get("jsniper", 0)])
-	check(int(counts.shields.get("shield", 0)) + int(counts.shields.get("wallshield", 0)) > int(counts.regular.get("shield", 0)) + int(counts.regular.get("wallshield", 0)), "a Shield Line has more riot shields")
+	check(int(counts.shields.get("shield", 0)) + int(counts.shields.get("wallshield", 0)) > int(counts.regular.get("shield", 0)) + int(counts.regular.get("wallshield", 0)), "a Shield Line has more riot shields (%s vs %s)" % [counts.shields, counts.regular])
 	# every biome still starts cleanly with its remix and garrison, and nobody starts in a pit
 	var fails: Array = []
 	for bid in Data.BIOMES:
@@ -11130,5 +11139,260 @@ func segments3_test() -> void:
 				await frames_wait(4)
 				await shot("seg_" + k)
 	check(bad.is_empty(), "every new segment is walkable and its enemies stand on ground %s" % str(bad))
+	main.show_title()
+	await frames_wait(5)
+
+
+var guide_hops := 0  # live fire: soldiers skipped in a row with nothing to shoot
+
+func guide_act(b: Battle) -> String:
+	## One move of a recruit who does nothing but what the highlight says. Returns what it did.
+	var tg: Dictionary = b.boot_camp.guide_target()
+	var G: Array = b.lesson().get("guide", [])
+	var step: Array = G[mini(b.guide_i, G.size() - 1)]
+	var u: Unit = b.sel
+	if tg.is_empty():
+		await frames_wait(15)
+		return "none"
+	if tg.has("w") and b.lesson().get("live", false):
+		if b.card_idx >= 0:
+			b.cancel_card()
+		tg = {"r": Rect2(), "hand": true}
+	if tg.has("r"):
+		var hi: Array = step[1]
+		var k := str(hi[0])
+		if tg.get("label", "") == "PICK A CARD" or tg.get("hand", false):
+			k = "hand"
+		if tg.get("btn", "") == "end":
+			b.end_turn(true)
+			await until(func(): return gone(b) or (b.state == "player" and not b.busy), 900)
+			return "end turn"
+		if tg.get("btn", "") == "jet":
+			b.toggle_jet()
+			await frames_wait(4)
+			return "jet on"
+		if k == "hand":
+			# any card that hurts, at the nearest Jackal
+			for i in u.hand.size():
+				var c := Data.card(u.hand[i])
+				if Data.is_attack(c) and c.type in ["AIM", "ARC"] and b.card_cost(u, u.hand[i]) <= u.energy:
+					var e = b.boot_camp.nearest_enemy()
+					var key := str(u.hand[i].key)
+					b.aim_hold = true
+					await aim_card(b, i, Vector2(e.x, e.y - e.h * 0.6))
+					return "attack " + key
+			guide_hops += 1
+			if guide_hops <= b.squad_alive().size() and b.squad_alive().any(func(o): return o != u and o.energy > 0):
+				b.next_unit()
+				await frames_wait(6)
+				if b.sel != u:
+					return "next soldier"
+			guide_hops = 0
+			b.end_turn(true)
+			await until(func(): return gone(b) or (b.state == "player" and not b.busy), 1500)
+			return "end turn (nothing to shoot)"
+		# a card: click it
+		for i in hud_cards().size():
+			if Rect2(hud_cards()[i].position, Vector2(hud_cards()[i].size.x, 70)).encloses(tg.r):
+				b.select_card(i)
+				await frames_wait(4)
+				return "card %d" % i
+		return "card?"
+	var p: Vector2 = tg.w
+	if step[2] == "above" or b.jet_hold:
+		# jet: hold toward the ring, then over the flag and let go
+		b.mouse = p
+		if not b.jet_hold:
+			b.start_jet(u)
+		if step[2] == "above":
+			await until(func(): return gone(b) or u.fuel <= 0 or b.guide_i > 2, 600)
+			print("[guided] jet up: at %s fuel %d flag %s ring %s hold %s" % [px(b), u.fuel, b.lesson_flag(), p, b.jet_hold])
+			return "jet up"
+		await until(func(): return gone(b) or u.fuel <= 0 or (absf(u.x - p.x) < 30 and absf(u.vx) < 1.5), 600)
+		if is_instance_valid(b):
+			b.jet_hold = false
+		await until(func(): return gone(b) or (not b.busy and not u.air), 600)
+		return "jet over"
+	if b.card_idx >= 0:
+		b.aim_hold = true
+		b.mouse = p
+		await frames_wait(3)
+		b.world_click(p)
+		await frames_wait(2)
+		await until(func(): return gone(b) or (not b.busy and b.settled()), 1500)
+		await frames_wait(6)
+		return "aim %d,%d" % [p.x, p.y]
+	await walk(b, p.x)
+	return "walk %d" % p.x
+
+func hud_cards() -> Array:
+	return main.battle.hud.cards if main.battle != null and main.battle.hud != null else []
+
+func guided_test() -> void:
+	## A recruit who only ever clicks what the tutorial highlights gets through every lesson on the
+	## first try: proof that each step points at the right card, button and spot.
+	Run.meta["tips_off"] = false
+	main.start_training()
+	for i in range(start_arg, Data.LESSONS.size()):
+		if i == start_arg and start_arg > 0:
+			main.start_lesson(i)
+		var b: Battle = await lesson_battle(i)
+		var L: Dictionary = Data.LESSONS[i]
+		await frames_wait(20)
+		await shot("guided_%02d_%s" % [i + 1, L.key])
+		var did: Array = []
+		var tries := 1
+		for n in 40:
+			if gone(b):
+				break
+			if L.get("live", false) and n == 0:
+				check(b.boot_camp.guide_target().get("label", "") == "PICK A CARD", "live fire: the guide points at the hand first")
+			did.append(await guide_act(b))
+			if n == 0 and not gone(b):
+				await shot("guided_%02d_%s_b" % [i + 1, L.key])
+		var r := await lesson_left(b)
+		print("[guided] lesson %d %s: %s after %s" % [i + 1, L.key, r, did])
+		check(r == "pass", "lesson %d (%s): following only the highlights passes first try (%s, %s)" % [i + 1, L.title, r, did])
+		if r != "pass" and r != "":
+			# keep going: skip ahead to the next lesson
+			await lesson_battle(i)
+			main.battle.boot_camp.lesson_skip()
+		elif r == "":
+			main.battle.boot_camp.lesson_skip()
+	await until(func(): return Run.meta.get("trained", false), 600)
+	check(Run.meta.get("trained", false), "the guided recruit finishes boot camp")
+	main.show_title()
+	await frames_wait(5)
+
+func tutfuzz_test() -> void:
+	## Nothing in boot camp can lock up: random clicks, cards, keys, jets, turn ends, pauses and retries
+	## on every lesson, and after each one the game is back to the player within the jam watchdog's time.
+	main.start_training()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var worst := 0
+	var stuck: Array = []
+	for i in Data.LESSONS.size():
+		main.start_lesson(i)
+		var b: Battle = await lesson_battle(i)
+		for n in 30:
+			if not is_instance_valid(b) or b.lesson_over:
+				await until(func(): return lesson_res != "", 600)
+				if lesson_res in ["pass", "skip"]:
+					main.start_lesson(i)  # the fuzzer passed it by accident: back to this lesson
+				b = await lesson_battle(i)
+			var u: Unit = b.sel
+			var roll := rng.randi() % 10
+			var what := ""
+			match roll:
+				0, 1, 2:
+					var p := Vector2(b.cam_x + rng.randf_range(20, 940), rng.randf_range(80, 480))
+					b.mouse = p
+					b.world_click(p)
+					what = "click"
+				3, 4:
+					if u != null and u.hand.size():
+						b.select_card(rng.randi() % u.hand.size())
+						var p2 := Vector2(b.cam_x + rng.randf_range(20, 940), rng.randf_range(60, 480))
+						b.mouse = p2
+						await frames_wait(3)
+						b.world_click(p2)
+					what = "card"
+				5:
+					b.cancel_card()
+					what = "cancel"
+				6:
+					if u != null and u.fuel_max > 0:
+						b.toggle_jet()
+						b.mouse = Vector2(b.cam_x + rng.randf_range(20, 940), rng.randf_range(60, 480))
+						b.start_jet(u)
+						await frames_wait(rng.randi_range(10, 90))
+						if is_instance_valid(b):
+							b.jet_hold = false
+					what = "jet"
+				7:
+					await press_key(KEY_ENTER)
+					await press_key(KEY_ENTER)
+					what = "end"
+				8:
+					b.cancel_card()
+					b.jet_armed = false
+					await press_key(KEY_ESCAPE)
+					await frames_wait(10)
+					if get_tree().paused:
+						await press_key(KEY_ESCAPE)
+					what = "pause"
+				9:
+					await press_key(KEY_SPACE if rng.randi() % 2 else KEY_1)
+					what = "key"
+			# back to the player within the watchdog's time, or the lesson ended (pass, fail or jam)
+			var t0 := Time.get_ticks_msec()
+			await until(func(): return not is_instance_valid(b) or b.lesson_over or (b.state == "player" and not b.busy and b.settled()), 3000)
+			var waited := Time.get_ticks_msec() - t0
+			worst = maxi(worst, waited)
+			if get_tree().paused:
+				stuck.append("lesson %d: still paused after %s" % [i + 1, what])
+				get_tree().paused = false
+			if is_instance_valid(b) and not b.lesson_over and not (b.state == "player" and not b.busy):
+				stuck.append("lesson %d after %s" % [i + 1, what])
+				b.boot_camp.lesson_fail("retry")
+		# and RETRY still works at the end of all that
+		if is_instance_valid(b) and not b.lesson_over:
+			b.boot_camp.lesson_fail("retry")
+		else:
+			main.start_lesson(i)
+		b = await lesson_battle(i)
+		check(b.state == "player" and not b.lesson_over, "lesson %d: RETRY brings back a fresh try after the fuzzing" % (i + 1))
+		print("[fuzz] lesson %d done, worst wait %d ms" % [i + 1, worst])
+	check(stuck.is_empty(), "no lesson ever got stuck: %s" % str(stuck))
+	# the watchdog: a lesson frozen mid-move (busy for good) starts over on its own
+	main.start_lesson(0)
+	var jb: Battle = await lesson_battle(0)
+	jb.busy = true
+	var r := await lesson_left(jb)
+	check(r == "fail:jam", "a lesson frozen for 20 seconds starts over by itself (%s)" % r)
+	main.show_title()
+	await frames_wait(5)
+
+
+func nadeprobe() -> void:
+	## Maps which aim points win the grenade lesson in one throw, to place its ring in the middle.
+	main.start_training()
+	var li := 9 if start_arg == 0 else start_arg
+	main.start_lesson(li)
+	for x in (range(110, 171, 15) if li == 9 else range(250, 351, 20)):
+		for up in (range(120, 181, 15) if li == 9 else range(60, 181, 30)):
+			var b: Battle = await lesson_battle(li)
+			if li == 3:
+				await walk(b, 236)
+			var p: Vector2 = b.boot_camp.guide_pt(x, up)
+			b.select_card(0)
+			b.mouse = p
+			await frames_wait(3)
+			b.world_click(p)
+			var last := Vector2.ZERO
+			var sx: float = b.sel.x
+			for f in 600:
+				await frames_wait(1)
+				if not is_instance_valid(b) or b.lesson_over:
+					break
+				if b.projs.size():
+					last = Vector2(b.projs[0].x, b.projs[0].y)
+				elif f > 20 and b.settled() and not b.busy:
+					break
+			print("[probe] from %d: blew at %s" % [sx, last])
+			await frames_wait(30)
+			if not is_instance_valid(b) or b.lesson_over:
+				await until(func(): return lesson_res != "", 300)
+			var dead: int = b.units.filter(func(e): return e.team == "enemy" and e.dead).size() if is_instance_valid(b) else -1
+			print("[probe] x %d up %d: %d dead %s" % [x, up, dead, lesson_res])
+			if li == 3 and is_instance_valid(b) and not b.lesson_over:
+				await frames_wait(20)
+				print("[probe] hop landed at ", px(b))
+			if is_instance_valid(b) and not b.lesson_over:
+				b.boot_camp.lesson_fail("retry")
+			else:
+				main.start_lesson(li)
+	check(true, "probe done")
 	main.show_title()
 	await frames_wait(5)
