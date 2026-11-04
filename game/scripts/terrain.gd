@@ -38,10 +38,12 @@ var arena_x := 0
 var yard: Array = []     # [x0, x1] of the clearing after the mid camp, where a detour plays out
 var stretches: Array = []  # [x0, x1] of each fighting stretch, in order
 var firm_x1 := 0.0        # F2: left of this the rock under the topsoil is bedrock that blasts only dent
+var firm_spans: Array = []  # [x0, x1] spans with bedrock: the landing zone (F2) and a water level's boss arena (R2)
 var camps: Array = []    # safe camps inside the level: {x0, x1, used}
 var ice_runs: Array = []  # [x0, x1] of each sheet of ice on the ground
 var tarps: Array = []     # [x0, x1] of each rubber tarp on the ground
 var pins := {}            # N2: cell index -> rivet unit id; a bolted girder hangs from these
+var open_pits: Array = []  # pits with no planks over them: bridge, dock, crust and lift gaps, open drops
 var lakes: Array = []     # M1: [x0, x1] of each frozen crust over open water
 var cars: Array = []      # M2: train car structs, with "roof" set once built
 var lifts: Array = []     # M7: carrier deck elevators
@@ -179,12 +181,13 @@ func build(mission: Dictionary) -> void:
 	# lay segments end to end
 	var x := 0
 	var shapes: Array = []
-	var open_pits: Array = []
+	open_pits = []
 	pins.clear(); pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear(); camps.clear(); yard = []
 	lakes = []; cars = []; lifts = []; runways = []; props = []; orig = PackedByteArray()
 	arena_x = 1 << 20  # outposts have no arena
 	var rules: Dictionary = mission.get("rules", {})
 	firm_x1 = float(rules.get("firm_lz", 0.0))
+	firm_spans = [[0.0, firm_x1]] if firm_x1 > 0.0 else []
 	stretches = []   # fighting stretches, where a biome's extra fuel and mines and encounters go
 	# V1: a quick-run level remixes each fighting segment it lays down (heights, cover, enemy spots)
 	var rmx := RandomNumberGenerator.new()
@@ -199,6 +202,9 @@ func build(mission: Dictionary) -> void:
 			stretches.append([x + 60, x + s.w - 60])
 		if s.get("flat", false):
 			arena_x = x
+			if firm_x1 > 0.0 or mission.get("finale", false):
+				# R2: a water level's boss fight runs long; its floor is bedrock so it can't be blasted to the sea
+				firm_spans.append([float(x), float(x + s.w)])
 		if s.get("camp", false):
 			camps.append({"x0": x, "x1": x + s.w, "fire": x + s.w / 2, "used": false})
 		for p in s.pits:
@@ -322,7 +328,7 @@ func build(mission: Dictionary) -> void:
 			continue
 		var top := int(round(heights[cx] / CELL))
 		var deep := top + 16 + int(hash2(cx, 7) * 4)
-		if cxx < firm_x1:
+		if is_firm(cxx):
 			deep = top + 8 + int(hash2(cx, 7) * 2)  # F2: a thinner topsoil over the landing zone's bedrock
 		# the ground stops at the waterline like Worms: dig through it and there is only water
 		for cy in range(top, WATER_ROW):
@@ -339,6 +345,17 @@ func build(mission: Dictionary) -> void:
 			continue
 		var y := ground_at(p[0] - 12)
 		fill_r(p[0] - 8, y, p[1] - p[0] + 16, 8, 3)
+		if p[0] < firm_x1:
+			# R1: no open water in the landing zone: a pit that starts there has a bedrock floor
+			# a short drop under its planks, so a soldier knocked off the stilts can walk out
+			var fy := int(round(minf(y + 44.0, Data.WATER_Y - 16.0) / CELL))
+			for cx in range(int(p[0] / CELL), int(ceil(p[1] / CELL))):
+				if cx < 0 or cx >= cols:
+					continue
+				for cy in range(fy, WATER_ROW):
+					set_cell(cx, cy, 1 if cy < fy + 2 else 4)
+			if not firm_spans.is_empty():
+				firm_spans[0][1] = maxf(firm_spans[0][1], p[1])
 	ceiling = rules.get("ceiling", false)
 	if ceiling:
 		# M4: solid rock overhead, so nothing is lobbed high and nothing falls from the sky
@@ -432,6 +449,12 @@ func shape_ground(g: Dictionary) -> void:
 	if g.dh > 0 and ramp <= 8:
 		var top := ground_at(g.x0 + 8)
 		ladders.append({"x": g.x0 - 10, "top": top, "bot": ground_at(g.x0 - 20), "offx": g.x0 + 10})
+
+func is_firm(x: float) -> bool:
+	for sp in firm_spans:
+		if x >= sp[0] and x < sp[1]:
+			return true
+	return false
 
 func flatten(a: float, bb: float, margin: float) -> void:
 	var ref := heights[clampi(int(floor((a - margin) / CELL)), 0, cols - 1)]
@@ -661,7 +684,7 @@ func carve(x: float, y: float, r: float, cause, who = null) -> void:
 			var d2 := dx * dx + dy * dy
 			if d2 > R2:
 				continue
-			var bedrock := m == 4 and cx * CELL < firm_x1  # F2: the landing zone's bedrock: only a blast's core cuts it
+			var bedrock := m == 4 and is_firm(cx * CELL)  # F2: the landing zone's bedrock: only a blast's core cuts it
 			if d2 <= r2 and not (m == 2 and d2 > r2 * 0.45 and r > 6) and not (bedrock and d2 > r2 * 0.25 and r > 6) and not (m == STEEL and d2 > r2 * 0.2):
 				set_cell(cx, cy, 0)
 				any = true

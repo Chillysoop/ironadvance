@@ -942,6 +942,8 @@ func run() -> void:
 			await runsave()
 		"vpicks2":
 			await vpicks2()
+		"vpicks3":
+			await vpicks3()
 		"vpicks":
 			await vpicks()
 		"settings":
@@ -11035,6 +11037,82 @@ func orders_test() -> void:
 	await frames_wait(5)
 
 
+func vpicks3() -> void:
+	## R1-R3 from the water playtest page.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	var b: Battle = null
+	# R1: a Delta pit that starts in the landing zone has a bedrock floor above the water
+	var found := false
+	for sd in range(900, 960):
+		Run.seed_val = sd
+		var lvl := Run.make_level("delta", 0)
+		var T := Terrain.new(null)
+		T.build(lvl)
+		var lz: Array = T.pits.filter(func(p): return p[0] < T.firm_x1 and not T.open_pits.has(p))
+		if lz.is_empty():
+			continue
+		found = true
+		var all_floored := true
+		for p in lz:
+			var mx: float = (p[0] + p[1]) / 2.0
+			if not T.solid(mx, Data.WATER_Y - 6) or not T.is_firm(mx):
+				all_floored = false
+		check(all_floored, "R1: every Delta pit in the landing zone has a bedrock floor (seed %d, %s)" % [sd, lz])
+		var far: Array = T.pits.filter(func(p): return p[0] > T.firm_x1 + 200 and not T.open_pits.has(p))
+		if far.size():
+			var fx: float = (far[0][0] + far[0][1]) / 2.0
+			check(not T.solid(fx, Data.WATER_Y - 6), "R1: pits further in still open on the water")
+		lvl["event"] = ""
+		lvl["encounter"] = ""
+		lvl.erase("remix"); lvl.erase("rare"); lvl.erase("road")
+		Run.level = lvl
+		b = main.start_battle(0, lvl)
+		await until(func(): return b.state == "player" and not b.busy)
+		b.cam_x = clampf(lz[0][0] - 200, 0, b.world_w - Battle.W)
+		await frames_wait(4)
+		await shot("vpicks3_pit")
+		break
+	check(found, "R1: found a Delta level with a pit in its landing zone")
+	# R2: water boss arenas (and the harbor finale) sit on bedrock; a dry biome's arena doesn't
+	for bio in ["harbor", "lake", "desert"]:
+		Run.seed_val = 900
+		var lvl := Run.make_level(bio, 0)
+		var T := Terrain.new(null)
+		T.build(lvl)
+		var ax: float = T.arena_x + 600.0
+		check(T.is_firm(ax) == (bio != "desert"), "R2: the %s boss arena %s bedrock" % [bio, "is on" if bio != "desert" else "has no"])
+	var fin: Dictionary = Data.FINALE.duplicate(true)
+	var TF := Terrain.new(null)
+	TF.build(fin)
+	check(TF.is_firm(TF.arena_x + 600.0), "R2: the Iron Harbor finale's pier is on bedrock")
+	# R3: the Clacker shows the ring of the charge it will set off, grown in gas, with who is in it
+	var sq: Array = b.squad_alive()
+	var u: Unit = sq[0]
+	var gy: float = b.T.ground_at(u.x + 60)
+	var sk: Unit = b.spec_kits.plant_sticky(u.x + 60, gy, u, 20, 40.0)
+	var r0: Array = b.spec_kits.clacker_rings(u)
+	check(r0.size() == 1 and is_equal_approx(r0[0].r, 40.0 * b.blast_scale(u)), "R3: the Clacker ring is the charge's blast (%s)" % [r0])
+	b.gases.append({"x": sk.x, "y": sk.y - 4, "r": 70.0, "turns": 1, "seed": 0.0, "owner": u})
+	var r1: Array = b.spec_kits.clacker_rings(u)
+	check(r1.size() == 1 and r1[0].r > r0[0].r * 1.4, "R3: inside gas the ring grows like the FUEL-AIR blast (%d -> %d)" % [r0[0].r if r0.size() else 0, r1[0].r if r1.size() else 0])
+	var ci := -1
+	for i in u.hand.size():
+		if u.hand[i].key == "clacker":
+			ci = i
+	if ci < 0:
+		u.hand.append({"id": -9, "key": "clacker", "tier": Data.base_tier("clacker"), "temp": true})
+		ci = u.hand.size() - 1
+	b.sel = u
+	b.card_idx = ci
+	b.cam_x = clampf(u.x - 300, 0, b.world_w - Battle.W)
+	await frames_wait(4)
+	await shot("vpicks3_clacker")
+	b.gases.clear()
+
 func vpicks2() -> void:
 	## Q1-Q4 from the second run-variety playtest page.
 	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
@@ -11077,6 +11155,7 @@ func vpicks2() -> void:
 		var cx := tx + 70.0
 		var c0: float = top_at.call(b.T, cx)
 		b.T.firm_x1 = 0.0
+		b.T.firm_spans = []
 		for k in 4:
 			b.T.carve(cx, top_at.call(b.T, cx), 30, null)
 		b.T.flush()

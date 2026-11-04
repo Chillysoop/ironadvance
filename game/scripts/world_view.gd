@@ -1679,6 +1679,20 @@ func draw_targeting() -> void:
 						Art.text(self, "YOU ARE IN THE BLAST" if al.has(u) else "ALLY IN BLAST", Vector2(end.x, end.y - R - 8), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 				draw_reticle(m, Color("ff7a3d"))
 				draw_recoil(u, c, a)
+		"SELF":
+			if c.get("clacker", false):
+				# R3: the charge it sets off shows its ring, FUEL-AIR growth included, and who is in it
+				var rings: Array = b.spec_kits.clacker_rings(u)
+				if rings.is_empty():
+					Art.text(self, "NO CHARGES OUT", Vector2(u.x, u.y + 30), 8, Color("9aa2ae"), HORIZONTAL_ALIGNMENT_CENTER)
+				for rg in rings:
+					var cp := Vector2(rg.x, rg.y)
+					draw_arc(cp, rg.r, 0, TAU, 32, Color("ff7a3d"), 2.0)
+					var al := b.squad_alive().filter(func(s): return Vector2(s.x - rg.x, s.y - s.h / 2.0 - rg.y).length() < rg.r + s.w / 2.0)
+					for s in al:
+						draw_brackets(Rect2(s.x - s.w / 2 - 4, s.y - s.h - 4, s.w + 8, s.h + 8), Color("ff4d3d"))
+					if al.size():
+						Art.text(self, "YOU ARE IN THE BLAST" if al.has(u) else "ALLY IN BLAST", cp + Vector2(0, -rg.r - 8), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
 		"MELEE", "ALLY":
 			var lst: Array
 			if c.type == "MELEE":
