@@ -1121,6 +1121,19 @@ func blow_sticky(sk: Unit, bonus := 0, mul := 1.0) -> void:
 	bt.stickies.erase(sk)
 	bt.explode(sk.x, sk.y - 4, sk.loot.r * mul * bt.blast_scale(sk.loot.by), sk.loot.dmg + bonus, sk.loot.by)
 
+func clacker_rings(u: Unit) -> Array:
+	## R3: the blasts the Clacker will set off right now, as [{x, y, r}], grown the way explode() grows them
+	var mine := bt.stickies.filter(func(o): return o.loot.by == u and not o.gone)
+	mine.sort_custom(func(a, b2): return a.loot.n < b2.loot.n)
+	if not u.perk("chainreact"):
+		mine = mine.slice(0, 1)
+	var mul := 1.5 if u.fl.get("setforget", false) else 1.0
+	var out: Array = []
+	for sk in mine:
+		var y: float = sk.y - 4
+		out.append({"x": sk.x, "y": y, "r": sk.loot.r * mul * bt.blast_scale(sk.loot.by) * bt.blast_grow(sk.loot.by, sk.x, y)})
+	return out
+
 func clacker(u: Unit) -> void:
 	## Clacker: the oldest Sticky Charge blows (Chain Reaction: all of them).
 	var mine := bt.stickies.filter(func(o): return o.loot.by == u and not o.gone)
