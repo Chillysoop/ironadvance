@@ -992,6 +992,15 @@ func part(d: Dictionary) -> void:
 	parts.append(d)
 
 func splash(x: float) -> void:
+	if rules.get("train", false):
+		# TR1: there is no water under the train, only the track: a bang and a spray of sparks
+		Sfx.play("ricochet")
+		Sfx.play("thud", -4)
+		var ry := Terrain.TRAIN_DECK + Terrain.DECK_ROWS * Terrain.CELL + 37
+		for i in 16:
+			part({"x": x + (randf() - .5) * 10, "y": ry, "vx": -randf() * 6 - 1, "vy": -randf() * 3, "life": 24, "max": 24, "c": Color("ffd27a"), "s": 2.0, "g": 0.25, "fire": true})
+		dust(x, ry, Color("6a5a48"), 8)
+		return
 	Sfx.play("splash")
 	for i in 18:
 		part({"x": x + (randf() - .5) * 10, "y": WATER_Y, "vx": (randf() - .5) * 3, "vy": -randf() * 5 - 1, "life": 40, "max": 40, "c": Color("9fe3f0"), "s": 3.0, "g": 0.2})
@@ -1941,7 +1950,7 @@ func who_did(tg: Unit, src) -> String:
 	## N3: a plain name for whatever downed a soldier, for the mission-failed screen.
 	## X2: own fire names the card, terrain names how (drowned, fall, bonk, burn).
 	if tg.sunk:
-		return "DROWNED"
+		return "UNDER THE WHEELS" if rules.get("train", false) else "DROWNED"
 	if src is Unit and src.team == "enemy":
 		if src.type == "boss":
 			return "THE VHARR BOAR" if src.fl.get("vharr", false) else "THE IRON BOAR"
@@ -5455,25 +5464,28 @@ func undercut_by(u: Unit):
 	return uc[0]
 
 func drown(u: Unit) -> void:
-	## Worms rules: anything that ends up in the water goes under for good.
-	Sfx.play("bubble")
+	## Worms rules: anything that ends up in the water goes under for good (on the train: under the wheels).
+	var train: bool = rules.get("train", false)
+	if not train:
+		Sfx.play("bubble")
 	if u.team == "squad" and not u.dead and u.s.get("trait", "") == "lifeguard" and lifeguard_swim(u):
 		return
 	splash(u.x)
-	if vfx != null:
+	if vfx != null and not train:
 		vfx.add(SfBubbles.new(u.x, WATER_Y, H + 16, 1.2))
 	u.sunk = true
+	var fy := (Terrain.TRAIN_DECK - 50.0) if train else WATER_Y - 30.0  # TR1: the track is hidden by the hand: say it over the deck
 	var cutter = undercut_by(u) if u.team == "squad" and not u.dead else null
 	if cutter != null:
 		# F3: say what sank them, so the player learns where not to stand
 		var nm := String(Data.ETYPES.get(cutter.type, {}).get("name", "the enemy")).to_upper()
-		float_at(u.x, WATER_Y - 30, "%s DROWNED: GROUND SHOT AWAY" % u.def.name, Color("9fe3f0"), true)
-		log_msg("%s drowned: the %s shot the ground out from under them." % [u.def.name, nm.to_lower() if nm != "THE ENEMY" else "enemy"])
+		float_at(u.x, fy, ("%s UNDER THE WHEELS: DECK SHOT AWAY" if train else "%s DROWNED: GROUND SHOT AWAY") % u.def.name, Color("ff7a3d") if train else Color("9fe3f0"), true)
+		log_msg(("%s went under the wheels: the %s shot the deck out from under them." if train else "%s drowned: the %s shot the ground out from under them.") % [u.def.name, nm.to_lower() if nm != "THE ENEMY" else "enemy"])
 		kill(u, null)
 		return
 	if not u.dead:
 		var hw := biome_rules.hazard_word()
-		float_at(u.x, WATER_Y - 30, ((u.def.name + " DROWNED") if u.team == "squad" else "SPLASH!") if hw == "" else ((u.def.name + " ") if u.team == "squad" else "") + hw, Color("9fe3f0") if hw == "" else Color("ff7a3d"), true)
+		float_at(u.x, fy, ((u.def.name + " DROWNED") if u.team == "squad" else "SPLASH!") if hw == "" else ((u.def.name + " ") if u.team == "squad" else "") + hw, Color("9fe3f0") if hw == "" else Color("ff7a3d"), true)
 		kill(u, u.last_hit_by if u.last_hit_by != null and u.last_hit_by is Unit and u.last_hit_by.team == "squad" else null)
 
 func lifeguard_swim(u: Unit) -> bool:

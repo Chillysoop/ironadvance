@@ -9,7 +9,7 @@ extends Node
 ## sfvfx (Sprite Fusion pixel effects: blasts, strikes, muzzle flashes, timing), sfvfx2 (burning, stun crackle, Tesla arcs, PUMPED burst), sfvfx3 (dome, dash, blink, black hole, energy bolts and beams), sfvfx4 (blood, slash, acid, gas, toxic, heal, pickup, ice, beacon, bubbles), sfvfx5 (biome weather and Smoke Can fog), bakefog (rewrites the fog PNGs),
 ## crumble (falling structures tip, spin, splinter and crush), detours2 (Doc's field tent, Strange Signal, the Lab's rank 3 surgeries),
 ## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), polish1 (overnight polish round 1: log wrap, label overlaps, dial rows), polish2 (round 2: card titles, shelf text, memorial, boss bar), polish3 (round 3: campaign War Room and brief), dcalls (D1-D12 from the full-build playtest page), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
-## clarity (DROWN/LAVA strip over the hand, terrain ink, dimmed backdrop), survey (a screenshot of three screens of each biome; --biome=a,b picks some),
+## clarity (DROWN/LAVA strip over the hand, terrain ink, dimmed backdrop), survey (a screenshot of three screens of each biome; --biome=a,b picks some), movingtrain (the train level rides a moving train: thin deck, wheels, falling off is under the wheels),
 ## keywords (keyword bubbles beside hovered cards, highlighted terms, cut-off hand text, belt/stash tips),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
@@ -813,6 +813,8 @@ func run() -> void:
 			await lights_test()
 		"biomes2":
 			await biomes2_test()
+		"movingtrain":
+			await movingtrain_test()
 		"variety":
 			await variety_test()
 		"boarkits":
@@ -11977,3 +11979,63 @@ func keywords_test() -> void:
 		check(cv.keys.size() > 0 and (cv.keys[0].name.contains("SLOT") or cv.keys[0].name.contains("BELT")), "%s says where it goes (%s)" % [items[i].id, cv.keys[0].name if cv.keys.size() else "none"])
 		await shot("kw_item_%s" % items[i].id)
 		cv.queue_free()
+func movingtrain_test() -> void:
+	## TR1 (Conner, 2026-11-24): the train level is fought on top of a moving train. The whole level
+	## is a steel deck with air under it, the backdrop and track rush past, and falling off the
+	## train (between the cars or through the deck) puts you under the wheels instead of drowning.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	var b: Battle = await m_battle("train", ["traincars", "flatcars"])
+	m_clear(b)
+	var T: Terrain = b.T
+	var deck := Terrain.TRAIN_DECK
+	check(T.train and absf(T.ground_at(60) - deck) < 1 and absf(T.ground_at(T.world_w - 100) - deck) < 1, "the whole level, start to boss, is one level train deck")
+	var under := deck + Terrain.DECK_ROWS * Terrain.CELL + 12
+	check(T.solid(60, deck + 2) and not T.solid(60, under) and not T.solid(T.world_w - 100, under), "the deck is thin steel with open air under it")
+	var car: Dictionary = T.cars[0]
+	check(not T.solid(car.x + car.w / 2.0, under), "the cars sit on the deck too: nothing solid under them")
+	var gap: Array = T.open_pits[0]
+	var gx: float = (gap[0] + gap[1]) / 2.0
+	check(not T.solid(gx, deck + 8) and not T.solid(gx, under), "the gaps between the cars drop to the track")
+	check(T.solid(gx, deck + 1) and not T.solid(gap[0] + 5, deck + 1) and not T.solid(gap[1] - 5, deck + 1), "only a coupling bar crosses a gap: open slits either side of it")
+	# a walk across steps over the slits and the bar, and never stops in the gap
+	var wk: Unit = b.squad()[1]
+	ground_unit(b, wk, gap[0] - 30, deck - 10)
+	var sim: Dictionary = b.phys.sim_walk(wk, gap[1] + 30, 400.0)
+	check(sim.size() and absf(sim.x - (gap[1] + 30)) < 3 and absf(sim.y - deck) < 1, "a walk steps across the gap on the coupling (%s)" % [sim.get("x", -1)])
+	# the backdrop and the track move on their own
+	var r0: float = b.get_node("Backdrop").run
+	await frames_wait(10)
+	check(b.get_node("Backdrop").run > r0 + 20, "the backdrop scrolls past by itself (%.0f -> %.0f)" % [r0, b.get_node("Backdrop").run])
+	cam_on(b, gx)
+	await frames_wait(8)
+	await shot("train_gap")
+	for i in 8:
+		await frames_wait(3)
+		await shot("train_motion_%d" % i)
+	var runs: Array = b.hud.water_rail.runs(b)
+	check(runs.size() >= 1, "the gap gets the hazard strip over the hand")
+	# a steel deck shrugs off a grenade: no hole to the track, no slab breaking loose
+	var sx: float = car.x - 60 if car.x > 120 else 200.0
+	var cells0 := 0
+	for xx in range(int(sx - 30), int(sx + 30), 4):
+		if T.solid(xx, deck + Terrain.DECK_ROWS * Terrain.CELL - 2):
+			cells0 += 1
+	b.explode(sx, deck - 4, 30, 10, null)
+	await until(b.settled, 600)
+	var cells1 := 0
+	for xx in range(int(sx - 30), int(sx + 30), 4):
+		if T.solid(xx, deck + Terrain.DECK_ROWS * Terrain.CELL - 2):
+			cells1 += 1
+	check(cells1 >= cells0 - 2, "a grenade on the deck doesn't punch through to the track (%d -> %d)" % [cells0, cells1])
+	# off the train: under the wheels, not drowned
+	var mo: Unit = b.squad()[0]
+	mo.x = gap[0] + 5; mo.y = deck - 40; mo.air = true; mo.vx = 0; mo.vy = 0; mo.walk = null
+	await until(func(): return mo.sunk or mo.dead, 600)
+	check(mo.sunk, "a soldier who drops into the gap goes under the wheels")
+	check(b.who_did(mo, null) == "UNDER THE WHEELS", "the fail screen says UNDER THE WHEELS, not DROWNED (%s)" % b.who_did(mo, null))
+	await frames_wait(6)
+	await shot("train_under_wheels")
+	# other biomes keep their water
+	var d: Battle = await m_battle("harbor", ["docks"])
+	check(not d.T.train and d.T.solid(300, Battle.WATER_Y - 20) and d.who_did(d.squad()[0], null) != "UNDER THE WHEELS", "other levels still have ground to the water")
