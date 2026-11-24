@@ -10,6 +10,7 @@ extends Node
 ## crumble (falling structures tip, spin, splinter and crush), detours2 (Doc's field tent, Strange Signal, the Lab's rank 3 surgeries),
 ## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), polish1 (overnight polish round 1: log wrap, label overlaps, dial rows), polish2 (round 2: card titles, shelf text, memorial, boss bar), polish3 (round 3: campaign War Room and brief), dcalls (D1-D12 from the full-build playtest page), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
 ## clarity (DROWN/LAVA strip over the hand, terrain ink, dimmed backdrop), survey (a screenshot of three screens of each biome; --biome=a,b picks some),
+## keywords (keyword bubbles beside hovered cards, highlighted terms, cut-off hand text, belt/stash tips),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -195,6 +196,8 @@ func run() -> void:
 			main.hud.show_deck()
 			await frames_wait(10)
 			await shot("deck")
+		"keywords":
+			await keywords_test()
 		"intel":
 			Run.new_run()
 			var b: Battle = main.start_battle(0)
@@ -11918,3 +11921,128 @@ func nadeprobe() -> void:
 	check(true, "probe done")
 	main.show_title()
 	await frames_wait(5)
+
+
+func keywords_test() -> void:
+	## Keyword bubbles: every hovered card explains the terms it uses, a hand card that had to cut its
+	## text shows all of it, and the belt and stash explain themselves on hover.
+	check("stun" in Data.keywords_in("Stuns the target and heals you.").map(func(k): return k.k), "Stuns finds STUNNED")
+	check(Data.keywords_in("Ricochets once.").map(func(k): return k.k) == ["bounce"], "Ricochets finds only RICOCHET")
+	check(not ("mark" in Data.keywords_in("Moss throws a marker.").map(func(k): return k.k)), "marker is not MARKED")
+	var sp: Array = Data.keyword_spans("Lights up every Jackal: FLARED, they burn")
+	check(sp.size() == 2 and sp[0][0] == 24 and sp[0][1] == 6, "spans mark FLARED and burn (%s)" % [sp])
+	# every card in the game, at hand size: how many cut their text, and do they all get a bubble now
+	var holder := Control.new()
+	main.add_child(holder)
+	var cut := 0
+	var cut_tipped := 0
+	var with_kw := 0
+	for key in Data.CARDS:
+		var cv := CardView.new()
+		cv.opt = {"kind": "card", "key": key}
+		cv.hand_mode = true
+		cv.size = Vector2(90, 138)
+		cv.position = Vector2(300, 300)
+		holder.add_child(cv)
+		await frames_wait(2)
+		cv.hover = true
+		await frames_wait(2)
+		if cv.cropped != "":
+			cut += 1
+			if cv.tip != null:
+				cut_tipped += 1
+		if cv.keys.size():
+			with_kw += 1
+		cv.queue_free()
+	print("[keywords] %d cards, %d cut at hand size, %d use keywords" % [Data.CARDS.size(), cut, with_kw])
+	check(cut == cut_tipped, "every hand card that cuts its text shows the rest on hover (%d/%d)" % [cut_tipped, cut])
+	check(with_kw > Data.CARDS.size() / 3, "keywords show on a good share of cards (%d)" % with_kw)
+	holder.queue_free()
+	# the field: a hand with keyword cards, one hovered
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	var u: Unit = b.sel
+	u.hand.clear()
+	for k in ["flare", "defib", "tagshot", "snipe", "overwatch", "frag"]:
+		u.hand.append(Run.new_card(k))
+	b.ui_dirty = true
+	await frames_wait(8)
+	var cards: Array = main.hud.cards
+	cards[0].hover = true
+	await frames_wait(20)
+	check(cards[0].tip != null and cards[0].keys.any(func(k): return k.k == "flared"), "hovering Flare in hand shows the FLARED bubble")
+	await shot("kw_hand_flare")
+	cards[0].hover = false
+	cards[1].hover = true
+	await frames_wait(20)
+	check(cards[1].tip != null and cards[1].keys.any(func(k): return k.k == "stun"), "hovering Defib Paddles shows STUNNED")
+	await shot("kw_hand_defib")
+	cards[1].hover = false
+	cards[3].hover = true
+	await frames_wait(20)
+	await shot("kw_hand_snipe")
+	cards[3].hover = false
+	# a long card in a crowded hand: its whole text plus bubbles
+	u.hand.clear()
+	for k in ["ridealong", "hop", "jumppad", "rifle", "pistol", "drill", "girder", "medkit", "smoke", "frag"]:
+		if Data.CARDS.has(k):
+			u.hand.append(Run.new_card(k))
+	b.ui_dirty = true
+	await frames_wait(8)
+	cards = main.hud.cards
+	cards[1].hover = true
+	await frames_wait(24)
+	check(cards[1].tip != null, "Hop in a crowded hand shows its full text on hover")
+	await shot("kw_hand_crowded")
+	cards[1].hover = false
+	# the settings switch turns the bubbles off
+	var st: Dictionary = Run.meta.get("settings", {})
+	st["keywords"] = false
+	Run.meta["settings"] = st
+	cards[3].hover = true
+	await frames_wait(6)
+	check(cards[3].tip == null, "KEYWORD BUBBLES off hides them")
+	st["keywords"] = true
+	cards[3].hover = false
+	await frames_wait(4)
+	# the empty belt slot explains the belt
+	Run.belt.clear()
+	b.ui_dirty = true
+	await frames_wait(4)
+	var slot: Control = null
+	for c in main.hud.find_children("*", "", true, false):
+		if c is HudScript.BeltSlot and c.idx == 0:
+			slot = c
+			break
+	if slot != null:
+		Tip.cur = {}
+		var mv := InputEventMouseMotion.new()
+		mv.position = slot.get_global_rect().get_center()
+		mv.global_position = mv.position
+		get_viewport().warp_mouse(mv.position)
+		Input.parse_input_event(mv)
+		await frames_wait(8)
+		check(Tip.cur.get("title", "") == "EMPTY BELT SLOT", "an empty belt slot explains the belt on hover (%s)" % Tip.cur.get("title", "none"))
+		await shot("kw_belt_slot")
+	else:
+		check(false, "found a belt slot")
+	# item cards in the shop say which slot they go in
+	main.show_hq(false)
+	await frames_wait(10)
+	var hq: Control = main.screen
+	hq.go("qm")
+	await frames_wait(10)
+	var items := [{"id": "b_medkit", "tier": 0}, {"id": "carbine", "tier": 1}, {"id": "tungsten", "tier": 2}]
+	for i in items.size():
+		var cv := CardView.new()
+		cv.opt = {"kind": "item", "item": items[i]}
+		cv.size = Vector2(100, 138)
+		cv.position = Vector2(120 + i * 260, 160)
+		hq.sub.add_child(cv)
+		await frames_wait(2)
+		cv.hover = true
+		await frames_wait(4)
+		check(cv.keys.size() > 0 and (cv.keys[0].name.contains("SLOT") or cv.keys[0].name.contains("BELT")), "%s says where it goes (%s)" % [items[i].id, cv.keys[0].name if cv.keys.size() else "none"])
+		await shot("kw_item_%s" % items[i].id)
+		cv.queue_free()

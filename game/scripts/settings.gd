@@ -5,7 +5,7 @@ extends Control
 signal closed
 
 const PixButton := preload("res://scripts/hud.gd").PixButton
-const DEFAULTS := {"master": 8, "music": 7, "sfx": 8, "fullscreen": false, "shake": 100, "slowmo": true}
+const DEFAULTS := {"master": 8, "music": 7, "sfx": 8, "fullscreen": false, "shake": 100, "keywords": true, "slowmo": true}
 const SHAKES := [0, 50, 100]
 
 # [key, label, kind]; blood and tips keep the meta keys they always had
@@ -17,10 +17,11 @@ const ROWS := [
 	["shake", "SCREEN SHAKE", "shake"],
 	["slowmo", "OVERWATCH SLOW-MO", "toggle"],
 	["tips", "NEW-PLAYER TIPS", "toggle"],
+	["keywords", "KEYWORD BUBBLES", "toggle"],
 	["blood", "BLOOD AND ICHOR", "toggle"],
 ]
-const ROW_Y := 150.0
-const ROW_H := 40.0
+const ROW_Y := 146.0
+const ROW_H := 35.0
 
 static func get_value(k: String):
 	if k == "tips":

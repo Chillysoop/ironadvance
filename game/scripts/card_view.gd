@@ -28,6 +28,8 @@ var peek := 0.0              # hand only: how much of the card shows when the ne
 var cropped := ""            # the full text when the body didn't fit; hovering shows it (outside battle)
 var fit_body := false        # O6 (shop): a body that would be cut steps down to a smaller font first
 var tip: Control = null
+var keys: Array = []          # keyword definitions for the bubbles beside this card while hovered
+const KW_INK := Color("1d4f9a")   # keywords in the rules text
 
 const PAPER := Color("e4d6b0")
 const PAPER_D := Color("bba57c")
@@ -47,10 +49,16 @@ func _gui_input(ev: InputEvent) -> void:
 		accept_event()
 
 func _process(_d: float) -> void:
-	var want_tip := hover and cropped != "" and not hand_mode and is_visible_in_tree()
+	# the cut-off text in full plus a bubble for each keyword, beside the hovered card (hand too)
+	var want_tip: bool = hover and (cropped != "" or keys.size() > 0) and not ghost and not compact() and is_visible_in_tree() and Run.meta.get("settings", {}).get("keywords", true)
+	if want_tip and tip != null and tip.sig != tip_sig():
+		tip.queue_free()
+		tip = null
 	if want_tip and tip == null:
 		tip = CardTip.new()
 		tip.text = cropped
+		tip.keys = keys
+		tip.sig = tip_sig()
 		add_child(tip)
 	elif not want_tip and tip != null:
 		tip.queue_free()
@@ -189,6 +197,7 @@ func _draw() -> void:
 				body += " " + evo
 		"service":
 			title = opt.get("title", "SERVICE"); name_ = opt.name; body = opt.text
+	keys = card_keywords(kind, stat, body)
 	if compact():
 		draw_compact(kind, title, name_, dim)
 		return
@@ -264,7 +273,7 @@ func _draw() -> void:
 			while Art.text_width(line, bfs, true) > w - 6 and line.length() > 4:
 				line = line.substr(0, line.length() - 4) + "..."
 			cut = true
-		Art.text(self, line, Vector2(w / 2.0, y + 2), bfs, Color("3a3024") if not dim else Color("4a4030"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
+		draw_rules_line(line, w / 2.0, y + 2, bfs, Color("3a3024") if not dim else Color("4a4030"), KW_INK if not dim else Color("3a4660"))
 		y += lh
 	cropped = (name_ + "\n" + (stat + "\n" if stat != "" else "") + body) if cut else ""
 	if supercharged and not dim:
@@ -327,6 +336,51 @@ func _draw() -> void:
 		var sw := Art.text_width(sh, 8) + 10
 		draw_rect(Rect2(w / 2.0 - sw / 2.0, h - 30, sw, 13), INK)
 		Art.text(self, sh, Vector2(w / 2.0, h - 20), 8, Color("ff7a5c"), HORIZONTAL_ALIGNMENT_CENTER, 0)
+
+func tip_sig() -> String:
+	return cropped + "|" + ",".join(keys.map(func(k): return k.name))
+
+func card_keywords(kind: String, stat: String, body: String) -> Array:
+	## The terms this card uses, for the hover bubbles: its slot or tag first, then the words in its text.
+	var out: Array = []
+	match kind:
+		"item":
+			var sk: Dictionary = Data.SLOT_KEYWORDS.get(Data.slot_group(Data.ITEMS[opt.item.id].slot), {})
+			if not sk.is_empty():
+				out.append(sk)
+		"card":
+			var c := Data.card(opt)
+			for k in [["veh", c.get("mech", false)], ["overdrive", c.get("od", false) or opt.get("od", false)], ["sidearm", c.get("sidearm", false)],
+					["overwatch", c.get("overwatch", false)], ["pierce", c.get("pierce", false)], ["stun", c.get("stun", false)], ["mark", c.get("mark", false)]]:
+				if k[1]:
+					out.append(Data.keyword(k[0]))
+	if supercharged:
+		out.append(Data.keyword("pumped"))
+	for kw in Data.keywords_in(stat + " / " + body):
+		if not out.any(func(o): return o.name == kw.name):
+			out.append(kw)
+	return out.slice(0, 6)
+
+func draw_rules_line(line: String, cx: float, y: float, fs: int, col: Color, kcol: Color) -> void:
+	## One centered line of rules text with its keywords tinted, drawn in pieces so nothing is drawn twice.
+	var spans: Array = Data.keyword_spans(line)
+	if spans.is_empty():
+		Art.text(self, line, Vector2(cx, y), fs, col, HORIZONTAL_ALIGNMENT_CENTER, 0, true)
+		return
+	var x := roundf(cx - Art.text_width(line, fs, true) / 2.0)
+	var at := 0
+	for sp in spans:
+		if sp[0] > at:
+			var pre := line.substr(at, sp[0] - at)
+			Art.text(self, pre, Vector2(x, y), fs, col, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			x += Art.text_width(pre, fs, true)
+		var word := line.substr(sp[0], sp[1])
+		Art.text(self, word, Vector2(x, y), fs, kcol, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		draw_rect(Rect2(roundf(x), y + 2, Art.text_width(word, fs, true), 1), Color(kcol, 0.35))
+		x += Art.text_width(word, fs, true)
+		at = sp[0] + sp[1]
+	if at < line.length():
+		Art.text(self, line.substr(at), Vector2(x, y), fs, col, HORIZONTAL_ALIGNMENT_LEFT, 0, true)
 
 func compact() -> bool:
 	## A crowded hand overlaps its cards; each one shows only its left strip until it's hovered.
@@ -501,23 +555,47 @@ static func wrap_text(s: String, width: float, size: int) -> Array:
 	return out
 
 class CardTip extends Control:
-	## The whole text of a card whose body was cut short, beside the card while it's hovered.
+	## Beside a hovered card: its whole text when the card had to cut it short, then one small bubble
+	## per keyword it uses (Slay the Spire style), stacked top to bottom.
 	var text := ""
-	var lines: Array = []
-	const W := 240.0
+	var keys: Array = []
+	var sig := ""
+	var boxes: Array = []   # {y, h, title, lines, c}
+	const W := 210.0
+	const GAP := 6.0
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		top_level = true
 		z_index = 100
-		for para in text.split("\n"):
-			lines.append_array(CardView.wrap_text(para, W - 16, 16))
-		size = Vector2(W, lines.size() * 14 + 14)
+		var y := 0.0
+		if text != "":
+			var lines: Array = []
+			for para in text.split("\n"):
+				lines.append_array(CardView.wrap_text(para, W - 16, 16))
+			var h := lines.size() * 13 + 14.0
+			boxes.append({"y": y, "h": h, "title": "", "lines": lines, "c": Color("ffd23a")})
+			y += h + GAP
+		for kw in keys:
+			var lines := CardView.wrap_text(kw.text, W - 14, 16)
+			var h := 22.0 + lines.size() * 12
+			boxes.append({"y": y, "h": h, "title": kw.name, "lines": lines, "c": Color("7fb2ff")})
+			y += h + GAP
+		size = Vector2(W, maxf(1.0, y - GAP))
 	func place(card: Rect2) -> void:
 		var x := card.end.x + 6 if card.end.x + 6 + W <= 956 else card.position.x - 6 - W
-		position = Vector2(clampf(x, 4, 956 - W), clampf(card.position.y, 4, 536 - size.y))
+		position = Vector2(clampf(x, 4, 956 - W), clampf(card.position.y, 4, maxf(4.0, 536 - size.y)))
 	func _draw() -> void:
-		draw_rect(Rect2(Vector2(-1, -1), size + Vector2(2, 2)), Color(0.05, 0.035, 0.03))
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.1, 0.11, 0.13, 0.97))
-		draw_rect(Rect2(0, 0, size.x, 2), Color("ffd23a"))
-		for i in lines.size():
-			Art.text(self, lines[i], Vector2(8, 16 + i * 14), 16, Color("ffd23a") if i == 0 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+		for b in boxes:
+			var r := Rect2(0, b.y, W, b.h)
+			draw_rect(r.grow(1), Color(0.05, 0.035, 0.03, 0.96))
+			draw_rect(r, Color(0.1, 0.11, 0.13, 0.97))
+			draw_rect(Rect2(0, b.y, W, 2), b.c)
+			var ly: float = b.y + 16
+			if b.title != "":
+				Art.text(self, b.title, Vector2(7, b.y + 13), 8, b.c, HORIZONTAL_ALIGNMENT_LEFT, 1)
+				ly = b.y + 27
+				for i in b.lines.size():
+					Art.text(self, b.lines[i], Vector2(7, ly + i * 12), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
+			else:
+				for i in b.lines.size():
+					Art.text(self, b.lines[i], Vector2(8, ly + i * 13), 16, Color("ffd23a") if i == 0 else Color("e8dcc2"), HORIZONTAL_ALIGNMENT_LEFT, 0, true)
