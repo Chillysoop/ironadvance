@@ -10,6 +10,7 @@ extends Node
 ## crumble (falling structures tip, spin, splinter and crush), detours2 (Doc's field tent, Strange Signal, the Lab's rank 3 surgeries),
 ## newplayer3 (fixes from the 2026-10-29 combined-build new-player playtest), newplayer4 (fixes from the playtest after #94), polish1 (overnight polish round 1: log wrap, label overlaps, dial rows), polish2 (round 2: card titles, shelf text, memorial, boss bar), polish3 (round 3: campaign War Room and brief), dcalls (D1-D12 from the full-build playtest page), fieldfix (bounty board on the field, big hands, vehicle cards on foot, push zone lock and fall in),
 ## clarity (DROWN/LAVA strip over the hand, terrain ink, dimmed backdrop), survey (a screenshot of three screens of each biome; --biome=a,b picks some),
+## gearpick (the mid-level gear panel: who gets a find, what it swaps, class auto-equip, the belt column),
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
@@ -958,6 +959,8 @@ func run() -> void:
 			await polish3()
 		"fieldfix":
 			await fieldfix()
+		"gearpick":
+			await gearpick()
 		"synergies":
 			await synergies()
 		"operator":
@@ -7726,6 +7729,153 @@ func bossloot() -> void:
 	check(sq.all(func(s): return s.energy >= 4), "Overclock Core: +1 energy on round 1 %s" % [sq.map(func(s): return s.energy)])
 	check(Run.gear_bonus(sq[0].s).get("regen", 0) >= 2, "Nanite Swarm: everyone regenerates")
 	await shot("bossloot_late_gear")
+
+func gear_panel(b: Battle):
+	for c in b.hud.modal.get_children():
+		if c.get_script() == HudScript.GearPickScript and not c.is_queued_for_deletion():
+			return c
+	return null
+
+func gearpick() -> void:
+	## Mid-level gear choices (2026-11-24): the gear panel shows who gets a find, what they wear,
+	## what's new and what it swaps with; class-tuned auto-equip; the belt stays in its column.
+	var keep: Dictionary = Run.meta.duplicate(true)
+	Run.leave_campaign()
+	Run.new_run()
+	Run.cmd.append("supply")
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	var sq: Array = b.squad()
+	var byk := {}
+	for o in sq:
+		byk[o.def.key] = o
+	var rook: Unit = byk.rook
+	var vee: Unit = byk.vee
+	b.select_unit(rook)
+	Run.equip(rook.s, Run.new_item("carbine", 1), "weapon")
+	Run.equip(rook.s, Run.new_item("flak", 1), "armor")
+	Run.equip(rook.s, Run.new_item("sparemag", 0), "kit1")
+	Run.equip(rook.s, Run.new_item("scope", 2), "kit2")
+	b.refresh_unit_gear(rook)
+	Run.belt = [Run.new_item("b_stim"), Run.new_item("b_adr"), Run.new_item("b_medkit"), Run.new_item("b_ammo")]
+	await frames_wait(20)
+	# --- the belt: four slots stay in the button column, clear of the hand
+	var belts: Array = b.hud.find_children("*", "", true, false).filter(func(c): return c is HudScript.BeltSlot)
+	check(belts.size() == 4 and belts.all(func(c): return c.position.x >= 830 and c.position.x + c.size.x <= 953), "four belt slots fit the button column (%s)" % [belts.map(func(c): return [c.position.x, c.size.x])])
+	var hand_r := 0.0
+	for c in b.hud.cards:
+		hand_r = maxf(hand_r, c.position.x + c.size.x)
+	check(hand_r <= 826.5, "the hand ends left of the belt (%d)" % hand_r)
+	warp(belts[0].get_global_rect().get_center())
+	await frames_wait(8)
+	await shot("gp_field_belt_tip")
+	var bz: Array = Tip.zones.get(belts[0].get_instance_id(), [])
+	check(bz.size() == 1 and String(bz[0].title).begins_with("BELT") and String(bz[0].text).contains("no card, no energy"), "each belt slot has a hover tip saying what the belt is (%s)" % [bz.map(func(z): return z.title)])
+	warp(Vector2(480, 200))
+	# --- a kit find with both kit slots full: two swap rows and the stash, the swap drawn on the slot
+	var det := Run.new_item("detcord", 3)
+	b.offer_item(rook, det)
+	await frames_wait(20)
+	var gp = gear_panel(b)
+	check(gp != null and modal_title(b) == "ROOK FOUND DET CORD", "a find opens the gear panel (%s)" % modal_title(b))
+	check(gp.rows.size() == 3 and gp.rows[0].slot == "kit1" and gp.rows[1].slot == "kit2" and gp.rows[2].slot == "", "rows: kit 1, kit 2, send to stash")
+	check(gp.rows[0].old == rook.s.equip.kit1 and gp.rows[1].old == rook.s.equip.kit2, "each row names what it swaps out")
+	check(gp.units.size() == sq.size() and gp.cur_u() == rook, "the finder's tab is picked, every squadmate has a tab")
+	check(not gp.best.is_empty() and gp.best.u == vee, "Det Cord's best fit is Vee, the demolitions expert (%s)" % (gp.best.u.def.name if not gp.best.is_empty() else "nobody"))
+	await shot("gp_kit")
+	gp.hover_row = 1
+	await frames_wait(4)
+	await shot("gp_kit_hover2")
+	gp.hover_row = -1
+	# AUTO-EQUIP hands it to Vee
+	var vkit = vee.s.equip.kit1
+	gp.press_auto()
+	await frames_wait(10)
+	check(gear_panel(b) == null, "the panel closes after a pick")
+	check(vee.s.equip.kit1 == det or vee.s.equip.kit2 == det, "AUTO-EQUIP put the Det Cord on Vee")
+	check(vkit == null or Run.stash.has(vkit), "whatever Vee wore there went to the stash")
+	check(rook.s.equip.kit1.id == "sparemag" and rook.s.equip.kit2.id == "scope", "Rook's kits are untouched")
+	# --- a weapon find: equip it on the finder, the old gun goes to the stash and its cards leave
+	var riot := Run.new_item("riotgun", 2)
+	var carb = rook.s.equip.weapon
+	b.offer_item(rook, riot)
+	await frames_wait(20)
+	gp = gear_panel(b)
+	check(gp.rows.size() == 2 and gp.rows[0].slot == "weapon" and gp.rows[0].old == carb, "a weapon find: one swap row and the stash")
+	await shot("gp_weapon")
+	b.hud.picked.emit(0)
+	await frames_wait(10)
+	var shot_n := 0
+	for pile in [rook.draw, rook.hand, rook.disc]:
+		shot_n += pile.filter(func(c): return c.key == "shotgun" and c.has("src")).size()
+	check(rook.s.equip.weapon == riot and Run.stash.has(carb) and shot_n == 2, "the Riot Shotgun is on Rook, the carbine in the stash, 2 Shotguns in the piles (%d)" % shot_n)
+	# --- give a find to someone else with the tabs, or send it to the stash
+	var plate := Run.new_item("ghillie", 1)
+	b.offer_item(rook, plate)
+	await frames_wait(20)
+	gp = gear_panel(b)
+	var hex: Unit = byk.hex
+	await click_at(gp.tab_rect(gp.units.find(hex)).get_center())
+	await frames_wait(6)
+	check(gp.cur_u() == hex and gp.rows[0].slot == "armor", "clicking Hex's tab shows Hex's armor slot")
+	await shot("gp_tab_hex")
+	b.hud.picked.emit(0)
+	await frames_wait(10)
+	check(hex.s.equip.armor == plate, "the Ghillie Suit went on Hex")
+	var lucky := Run.new_item("luckycoin", 0)
+	b.offer_item(rook, lucky)
+	await frames_wait(20)
+	b.hud.picked.emit(-1)
+	await frames_wait(10)
+	check(Run.stash.has(lucky) and rook.s.equip.kit1.id == "sparemag", "skipping sends the find to the stash")
+	# --- a level-up shows the soldier's loadout beside the options
+	b.level_up(rook)
+	await frames_wait(20)
+	var opt_cards: Array = b.hud.modal.get_children().filter(func(c): return c is CardView and not c.is_queued_for_deletion())
+	if opt_cards.size():
+		warp(opt_cards[0].get_global_rect().get_center())
+	await frames_wait(8)
+	await shot("gp_level")
+	b.hud.picked.emit(-1)
+	await frames_wait(10)
+	main.clear()
+	await frames_wait(5)
+	# --- class-tuned auto-equip from the stash
+	Run.new_run()
+	var S := {}
+	for s in Run.soldiers:
+		S[s.def.key] = s
+		for sl in ["weapon", "armor", "kit1", "kit2"]:
+			Run.unequip(s, sl)
+	Run.stash = []
+	var med := Run.new_item("medbag", 1)
+	var dc := Run.new_item("detcord", 1)
+	var sc := Run.new_item("scope", 1)
+	var tube := Run.new_item("tube", 1)
+	var mark := Run.new_item("marksman", 1)
+	for it in [med, dc, sc, tube, mark]:
+		Run.stash.append(it)
+	Run.auto_equip(Run.soldiers)
+	var on := func(s, it): return s.equip.values().has(it)
+	check(on.call(S.hex, med), "auto-equip: Hex gets the Medic Bag")
+	check(on.call(S.vee, dc) and on.call(S.vee, tube), "auto-equip: Vee gets the Det Cord and the Bazooka Tube")
+	check(on.call(S.moss, sc) and on.call(S.moss, mark), "auto-equip: Moss gets the scope and the Marksman Rifle")
+	main.show_hq(false)
+	await frames_wait(20)
+	var hq: Control = main.screen
+	hq.go("armory")
+	await frames_wait(20)
+	var a: Control = hq.sub
+	for s in Run.soldiers:
+		Run.unequip(s, "kit1")
+	a.build()
+	await frames_wait(4)
+	a.auto_equip_all()
+	await frames_wait(10)
+	check(on.call(S.vee, dc) and on.call(S.moss, sc), "the Armory AUTO-EQUIP button puts the kits back where they suit")
+	await shot("gp_armory_auto")
+	main.clear()
+	Run.meta = keep
 
 func settle_picking(b: Battle) -> bool:
 	## Waits for an action to finish, taking the first option on any level-up or loot prompt it opens.

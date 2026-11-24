@@ -1437,6 +1437,82 @@ func slot_for(s: Dictionary, it: Dictionary) -> String:
 		return "kit1"
 	return sl
 
+# ---------------------------------------------------------------- auto-equip (class-tuned)
+# How big one "step" of each stat is (a Common item's worth), so stats can be added up.
+const GEAR_UNIT := {"hp": 4.0, "move": 25.0, "dodge": 6.0, "armor_turn": 2.0, "kill_draw": 1.0, "head_adr": 15.0,
+	"energy1": 1.0, "luck": 1.0, "laser_step": 1.0, "sway": 0.2, "regen": 2.0, "blast": 0.12, "push_draw": 1.0,
+	"kill_adr": 10.0, "laser_pct": 0.2, "heal": 1.0, "fall_half": 1.0, "aim_dmg": 1.0, "light": 15.0, "heavy": -15.0,
+	"jet": 20.0, "sa": 1.0}
+# What each class cares about (missing stats count 1). Vee wants bigger blasts, Hex healing, Moss aim...
+const CLASS_GEAR := {
+	"moss": {"laser_step": 3.0, "laser_pct": 3.0, "aim_dmg": 3.0, "head_adr": 2.5, "sway": 2.5, "kill_draw": 1.5},
+	"hex": {"heal": 3.5, "regen": 3.0, "hp": 1.5, "dodge": 1.5, "move": 1.5, "light": 1.2},
+	"vee": {"blast": 3.5, "armor_turn": 1.5, "hp": 1.5, "fall_half": 1.5, "kill_adr": 1.5, "heavy": 0.3},
+	"rook": {"hp": 2.5, "armor_turn": 3.0, "push_draw": 2.0, "kill_adr": 1.5, "sa": 2.0, "fall_half": 0.3},
+	"bolt": {"armor_turn": 2.0, "hp": 2.0, "blast": 1.5, "energy1": 1.5},
+	"track": {"kill_draw": 2.0, "move": 1.5, "aim_dmg": 1.5, "head_adr": 1.5},
+	"gears": {"hp": 2.0, "armor_turn": 2.0, "energy1": 2.0},
+	"finch": {"move": 3.0, "light": 2.5, "dodge": 2.5, "laser_step": 1.5},
+	"kage": {"dodge": 3.0, "move": 2.5, "light": 2.0, "sa": 2.5, "kill_adr": 2.0, "fall_half": 0.0},
+	"volta": {"blast": 2.5, "energy1": 2.0, "laser_pct": 1.5},
+	"brass": {"luck": 2.0, "energy1": 2.5, "push_draw": 2.0, "laser_pct": 1.5},
+	"sable": {"regen": 2.5, "dodge": 2.0, "hp": 1.5, "kill_adr": 1.5},
+}
+const CLASS_FOCUS := {"moss": "aim and headshots", "hex": "healing", "vee": "explosives", "rook": "armor and HP",
+	"bolt": "armor and building", "track": "kills and draw", "gears": "toughness", "finch": "speed and dodge",
+	"kage": "dodge and blades", "volta": "blasts and energy", "brass": "energy and squad perks", "sable": "regen and dodge"}
+
+func gear_score(s: Dictionary, it) -> float:
+	## How much this soldier's class gets out of an item. Stats are weighted by what the class
+	## cares about (CLASS_GEAR), and a gun counts double when its cards are the class's own.
+	if it == null:
+		return 0.0
+	var key: String = s.def.key
+	var w: Dictionary = CLASS_GEAR.get(key, {})
+	var out := 0.25 * float(it.get("tier", 0))
+	var st := Data.item_stats(it)
+	for k in st:
+		out += float(w.get(k, 1.0)) * float(st[k]) / float(GEAR_UNIT.get(k, 1.0))
+	var own: Array = s.def.deck + s.def.pool
+	for c in Data.ITEMS[it.id].get("cards", []):
+		out += 1.6 if own.has(c) else 0.6
+	var ks: String = Data.ITEMS[it.id].get("keystone", "")
+	if ks != "":
+		out += 4.0 if ks == key else -2.0
+	return out
+
+func best_slot(s: Dictionary, it: Dictionary) -> Dictionary:
+	## The slot where this item helps this soldier most: {slot, gain}. gain <= 0 means keep what they wear.
+	var group: String = Data.ITEMS[it.id].slot
+	var best := {"slot": "", "gain": 0.0}
+	if group == "belt" or not s.has("equip"):
+		return best
+	var mine := gear_score(s, it)
+	for slot in (["kit1", "kit2"] if group == "kit" else [group]):
+		var g := mine - gear_score(s, s.equip[slot])
+		if best.slot == "" or g > best.gain:
+			best = {"slot": slot, "gain": g}
+	return best
+
+func auto_equip(who: Array) -> Array:
+	## Fills these soldiers' slots from the stash with what suits each class best, swapping when a
+	## stash item beats what someone wears. Returns [[soldier, item, slot]] for each move made.
+	var moves: Array = []
+	for n in 40:
+		var best := {}
+		for it in stash:
+			if Data.ITEMS[it.id].slot == "belt":
+				continue
+			for s in who:
+				var b := best_slot(s, it)
+				if b.slot != "" and b.gain > 0.05 and (best.is_empty() or b.gain > best.gain):
+					best = {"s": s, "it": it, "slot": b.slot, "gain": b.gain}
+		if best.is_empty():
+			break
+		equip(best.s, best.it, best.slot)
+		moves.append([best.s, best.it, best.slot])
+	return moves
+
 func equip(s: Dictionary, it: Dictionary, slot := "") -> Dictionary:
 	## Puts an item on a soldier and returns whatever it replaced (or {}). Weapon cards
 	## follow the weapon in and out of the deck.
