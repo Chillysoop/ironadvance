@@ -690,8 +690,10 @@ class BeltSlot extends Control:
 		var ink := Color(0.05, 0.035, 0.03)
 		draw_rect(Rect2(0, 0, size.x, size.y), ink)
 		draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color("2a2e34") if not hover else Color("3a4048"))
+		Tip.clear(self)
 		if idx >= Run.belt.size():
 			Art.text(self, "BELT", Vector2(size.x / 2, 19), 8, Color("4a505a"), HORIZONTAL_ALIGNMENT_CENTER)
+			Tip.zone(self, Rect2(Vector2.ZERO, size), "EMPTY BELT SLOT", Data.keyword("belt").text, Color("62d26f"))
 			return
 		var it: Dictionary = Run.belt[idx]
 		var icon: String = Data.BELT_ICONS.get(Data.ITEMS[it.id].use, "ic_card")

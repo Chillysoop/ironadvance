@@ -896,6 +896,11 @@ func draw_gear(me: Dictionary) -> void:
 	head("%s'S SLOTS" % me.def.name, Vector2(x, MID.position.y + 46))
 	head("STASH %d/%d  (SHARED)" % [Run.stash.size(), Data.STASH_MAX], Vector2(x, MID.position.y + 182), Color("ffb23e"))
 	head("BELT  (SHARED, USE ANY TIME)", Vector2(x, MID.position.y + 308), Color("62d26f"))
+	# each heading explains its slots on hover
+	var slots_t := "Weapon (1): its cards go in this soldier's deck. Armor (1): passive stats like HP or dodge. Kit (2): gadgets with stats or ON ... triggers; keystone kits are class-only."
+	Tip.zone(self, Rect2(x - 2, MID.position.y + 35, Art.text_width("%s'S SLOTS" % me.def.name, 8) + 4, 14), "GEAR SLOTS", slots_t, Color("ffd23a"))
+	Tip.zone(self, Rect2(x - 2, MID.position.y + 171, Art.text_width("STASH %d/%d  (SHARED)" % [Run.stash.size(), Data.STASH_MAX], 8) + 4, 14), "STASH", Data.keyword("stash").text, Color("ffb23e"))
+	Tip.zone(self, Rect2(x - 2, MID.position.y + 297, Art.text_width("BELT  (SHARED, USE ANY TIME)", 8) + 4, 14), "BELT", Data.keyword("belt").text, Color("62d26f"))
 	var it = gear_item()
 	# gear sets and kit evolutions, each one hoverable
 	Tip.chips(self, Run.synergies(me).filter(func(sy): return sy.kind != "duo"), Vector2(x + 280, MID.position.y + 46), MID.size.x - 280)
