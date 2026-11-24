@@ -5,7 +5,7 @@ extends Control
 signal closed
 
 const PixButton := preload("res://scripts/hud.gd").PixButton
-const DEFAULTS := {"master": 8, "music": 7, "sfx": 8, "fullscreen": false, "shake": 100}
+const DEFAULTS := {"master": 8, "music": 7, "sfx": 8, "fullscreen": false, "shake": 100, "keywords": true}
 const SHAKES := [0, 50, 100]
 
 # [key, label, kind]; blood and tips keep the meta keys they always had
@@ -16,6 +16,7 @@ const ROWS := [
 	["fullscreen", "FULLSCREEN", "toggle"],
 	["shake", "SCREEN SHAKE", "shake"],
 	["tips", "NEW-PLAYER TIPS", "toggle"],
+	["keywords", "KEYWORD BUBBLES", "toggle"],
 	["blood", "BLOOD AND ICHOR", "toggle"],
 ]
 const ROW_Y := 150.0

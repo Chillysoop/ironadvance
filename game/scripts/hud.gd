@@ -726,7 +726,7 @@ class BeltSlot extends Control:
 		draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color("2a2e34") if not hover else Color("3a4048"))
 		if idx >= Run.belt.size():
 			Art.text(self, "BELT" if size.x >= 34 else "-", Vector2(size.x / 2, 19), 8, Color("4a505a"), HORIZONTAL_ALIGNMENT_CENTER)
-			Tip.zone(self, Rect2(Vector2.ZERO, size), "BELT SLOT (EMPTY)", "The squad belt holds consumables (Med Kit, Stim, Smoke...). Belt items you find land here on their own. Click a full slot to use it on the selected soldier: no card, no energy.", Color("62d26f"))
+			Tip.zone(self, Rect2(Vector2.ZERO, size), "EMPTY BELT SLOT", Data.keyword("belt").text + " Belt items you find land here on their own.", Color("62d26f"))
 			return
 		var it: Dictionary = Run.belt[idx]
 		var icon: String = Data.BELT_ICONS.get(Data.ITEMS[it.id].use, "ic_card")
