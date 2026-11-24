@@ -85,6 +85,7 @@ func _draw() -> void:
 		draw_line(Vector2(tr.x1, tr.y1), Vector2(tr.x2, tr.y2), c, 2.0)
 	draw_parts()
 	draw_fx()
+	b.owcam.draw_world(self)
 	if not cine:
 		# Q3: the higher tags go down first, so where two would overlap the lower one steps up
 		var pl := b.units.duplicate()

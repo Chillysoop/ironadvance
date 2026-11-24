@@ -770,8 +770,13 @@ func kb(u: Unit) -> float:
 	## Knockback multiplier for a weight class: light aliens fly twice as far.
 	return 2.0 if u.weight == "light" else 1.0
 
+var owcam: OwCam  # overwatch slow-mo cinematic
+
 func _ready() -> void:
 	set_process_unhandled_input(true)
+	owcam = OwCam.new()
+	owcam.b = self
+	add_child(owcam)
 
 func begin() -> void:
 	Sfx.play("start")
@@ -5019,17 +5024,21 @@ func fast_forward() -> bool:
 	return state == "enemy" and (Input.is_key_pressed(KEY_SPACE) or bool(Run.meta.get("ff", false)))
 
 func _process(delta: float) -> void:
-	var sp := speed * (FAST_ENEMY if fast_forward() else 1.0)
-	acc += minf(0.1, delta) * 60.0 * sp
+	var real := minf(0.1, delta)
+	owcam.step(real)
+	var sp := speed * (FAST_ENEMY if fast_forward() else 1.0) * owcam.slow
+	if owcam.hitstop <= 0.0:
+		acc += real * 60.0 * sp
 	var n := 0
-	while acc >= 1.0 and n < int(4 * sp):
+	while acc >= 1.0 and n < maxi(1, int(4 * sp)):
 		step()
 		acc -= 1.0
 		n += 1
 	T.flush()
 	sync_chunks()
 	var s := shake * SettingsScript.shake_mul() if shake > 0.6 else 0.0  # R5
-	cam.position = Vector2(cam_x + W / 2.0 + round((randf() - .5) * s), H / 2.0 + round((randf() - .5) * s))
+	cam.zoom = Vector2(owcam.zoom, owcam.zoom)
+	cam.position = owcam.center(Vector2(cam_x + W / 2.0, H / 2.0)) + Vector2(round((randf() - .5) * s), round((randf() - .5) * s))
 	view.queue_redraw()
 	if ui_dirty and hud != null:
 		ui_dirty = false

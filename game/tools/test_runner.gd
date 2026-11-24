@@ -15,6 +15,7 @@ extends Node
 ## trailer (--clip=NAME stages one cinematic shot for the movie writer, see trailer.gd).
 ## --mission=N picks the mission for bot.
 
+const SettingsScript := preload("res://scripts/settings.gd")
 const Services := preload("res://scripts/services.gd")
 const HubUI := preload("res://scripts/hub_ui.gd")
 const HudScript := preload("res://scripts/hud.gd")
@@ -772,6 +773,8 @@ func run() -> void:
 			await soldat()
 		"soldat2":
 			await soldat2()
+		"owcine":
+			await owcine()
 		"soldat3":
 			await soldat3()
 		"soldat4":
@@ -3845,6 +3848,72 @@ func drill() -> void:
 	await frames_wait(20)
 	await shot("drill_cliff_after")
 	check(dr.x > cx0 + 100, "a soldier drills into the ridge cliff (x %d -> %d)" % [cx0, dr.x])
+
+func owcine() -> void:
+	## Overwatch slow-mo: the clock slows, the camera frames shooter and target, the reticle locks,
+	## the shot lands in slow motion and everything eases back to normal.
+	Run.new_run()
+	var b: Battle = main.start_battle(0)
+	await until(func(): return b.state == "player" and not b.busy)
+	b.autopick = 0
+	b.wind = 0
+	for o in b.units:
+		if o.team == "enemy":
+			o.gone = true; o.dead = true
+	var s: Unit = b.squad()[0]
+	for o in b.squad():
+		if o != s:
+			ground_unit(b, o, 120 + b.squad().find(o) * 30)
+	ground_unit(b, s, 260)
+	cam_on(b, 420)
+	await until(func(): return b.settled(), 300)
+	var e := b.mk_enemy("grunt", 560, b.T.stand_y(560, 0)); e.active = true
+	b.units.append(e)
+	await frames_wait(150)  # let the mission banner clear
+	s.overwatch = 2
+	b.state = "enemy"
+	b.owcam.force = true
+	var done := [false]
+	var run_it := func():
+		await b.foe_ai.overwatch_check(e)
+		done[0] = true
+	run_it.call()
+	if OS.get_cmdline_user_args().has("--frames"):
+		# a frame strip for a GIF of the whole moment (run with --fixed-fps 30 so the easing keeps time)
+		var fi := [0]
+		var grab := func():
+			while not done[0] or b.owcam.amt > 0.0:
+				await RenderingServer.frame_post_draw
+				var img := get_viewport().get_texture().get_image()
+				img.save_png(out_dir.path_join("owf_%03d.png" % fi[0]))
+				fi[0] += 1
+				await get_tree().process_frame
+		grab.call()
+	await until(func(): return b.owcam.on, 60)
+	check(b.owcam.on and b.owcam.slow_to < 0.5, "overwatch starts the slow-mo")
+	await until(func(): return b.owcam.lock > 0.55, 200)
+	await shot("owcine_1_lineup")
+	await until(func(): return b.owcam.lock >= 1.0, 200)
+	await frames_wait(2)
+	check(b.owcam.zoom > 1.05 and b.owcam.slow < 0.6, "camera is in and the clock is slow at lock (zoom %.2f slow %.2f)" % [b.owcam.zoom, b.owcam.slow])
+	await shot("owcine_2_locked")
+	await until(func(): return b.owcam.fired, 200)
+	await frames_wait(3)
+	await shot("owcine_3_shot")
+	await until(func(): return done[0], 1200)
+	check(done[0], "the overwatch shots finish")
+	await until(func(): return b.owcam.amt == 0.0 and b.owcam.slow == 1.0 and b.owcam.zoom == 1.0, 400)
+	check(b.owcam.amt == 0.0 and b.owcam.slow == 1.0 and b.owcam.zoom == 1.0 and Sfx.pitch_mul == 1.0, "and it eases all the way back (amt %.3f slow %.3f zoom %.3f)" % [b.owcam.amt, b.owcam.slow, b.owcam.zoom])
+	check(s.overwatch < 2, "the soldier spent overwatch shots (%d left)" % s.overwatch)
+	await shot("owcine_4_after")
+	# with the setting off it is the old quick beat
+	SettingsScript.set_value("slowmo", false)
+	var e2 := b.mk_enemy("grunt", 540, b.T.stand_y(540, 0)); e2.active = true
+	b.units.append(e2)
+	s.overwatch = 1
+	await b.foe_ai.overwatch_check(e2)
+	check(not b.owcam.on and b.owcam.amt == 0.0, "OVERWATCH SLOW-MO off skips it")
+	SettingsScript.set_value("slowmo", true)
 
 func soldat2() -> void:
 	## The second round of Soldat borrowings: overkill pops, the kill feed, fuse choice,
