@@ -1441,7 +1441,7 @@ func slot_for(s: Dictionary, it: Dictionary) -> String:
 # How big one "step" of each stat is (a Common item's worth), so stats can be added up.
 const GEAR_UNIT := {"hp": 4.0, "move": 25.0, "dodge": 6.0, "armor_turn": 2.0, "kill_draw": 1.0, "head_adr": 15.0,
 	"energy1": 1.0, "luck": 1.0, "laser_step": 1.0, "sway": 0.2, "regen": 2.0, "blast": 0.12, "push_draw": 1.0,
-	"kill_adr": 10.0, "laser_pct": 0.2, "heal": 1.0, "fall_half": 1.0, "aim_dmg": 1.0, "light": 15.0, "heavy": -15.0,
+	"kill_adr": 10.0, "laser_pct": 0.2, "heal": 2.0, "fall_half": 1.0, "aim_dmg": 1.0, "light": 15.0, "heavy": -15.0,
 	"jet": 20.0, "sa": 1.0}
 # What each class cares about (missing stats count 1). Vee wants bigger blasts, Hex healing, Moss aim...
 const CLASS_GEAR := {

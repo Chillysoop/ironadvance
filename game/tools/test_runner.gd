@@ -7774,6 +7774,7 @@ func gearpick() -> void:
 	warp(Vector2(480, 200))
 	# --- a kit find with both kit slots full: two swap rows and the stash, the swap drawn on the slot
 	var det := Run.new_item("detcord", 3)
+	det["affixes"] = ["blast", "hp"]  # random affixes (a healing one) could make it Hex's
 	b.offer_item(rook, det)
 	await frames_wait(20)
 	var gp = gear_panel(b)
@@ -7854,6 +7855,7 @@ func gearpick() -> void:
 	var tube := Run.new_item("tube", 1)
 	var mark := Run.new_item("marksman", 1)
 	for it in [med, dc, sc, tube, mark]:
+		it.affixes = []  # random affixes would blur which class each one suits
 		Run.stash.append(it)
 	Run.auto_equip(Run.soldiers)
 	var on := func(s, it): return s.equip.values().has(it)
