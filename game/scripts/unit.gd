@@ -126,7 +126,7 @@ func is_pickup() -> bool:
 
 func is_body() -> bool:
 	## A dead Jackal left lying on the field: cover, and something to throw at its friends.
-	return dead and kind == "enemy" and type != "boss" and not gone and not sunk
+	return dead and kind == "enemy" and not Data.ETYPES.get(type, {}).get("boss", false) and not gone and not sunk
 
 func has_st(k: String) -> bool:
 	return st.get(k, 0) > 0

@@ -1283,6 +1283,35 @@ class Overlay extends Control:
 	var hud
 	func _process(_d: float) -> void:
 		queue_redraw()
+	func draw_cine(c: Dictionary) -> void:
+		## X1: the boss entrance. Black bars close in, the name slams down, the subtitle types out.
+		var t: float = c.t
+		var dur: float = c.dur
+		var inn := clampf(t / 18.0, 0, 1)
+		var out := clampf((dur - t) / 18.0, 0, 1)
+		if c.get("skip", false):
+			out = 0.0
+		var k := minf(inn, out)
+		var bar := 70.0 * k
+		draw_rect(Rect2(0, 0, 960, bar), Color(0, 0, 0, 0.96))
+		draw_rect(Rect2(0, 540 - bar, 960, bar), Color(0, 0, 0, 0.96))
+		draw_rect(Rect2(0, bar + 112, 960, 64 * k), Color(0, 0, 0, 0.45 * k))
+		var col: Color = c.c
+		if t > 24:
+			var nk := clampf((t - 24) / 8.0, 0, 1)
+			var sz := 32
+			var y := bar + 150.0
+			var sc := 1.0 + (1.0 - nk) * 1.5
+			var al := out * nk
+			draw_rect(Rect2(0, y - 26, 960, 2), Color(col, 0.8 * al))
+			Art.text(self, c.name, Vector2(480, y + (1.0 - nk) * -30), int(sz * sc) if sc < 1.6 else sz, col, HORIZONTAL_ALIGNMENT_CENTER, 3, false, al)
+			var sub: String = c.sub
+			var n := clampi(int((t - 40) / 1.5), 0, sub.length())
+			if n > 0:
+				Art.text(self, sub.substr(0, n), Vector2(480, y + 26), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 2, false, al)
+			if t > 60:
+				Art.text(self, "ANY KEY TO SKIP", Vector2(944, bar - 10), 8, Color(1, 1, 1, 0.35 * al), HORIZONTAL_ALIGNMENT_RIGHT)
+
 	func draw_action_panel(b: Battle) -> void:
 		## Big energy bolts and a movement gauge for the selected soldier, docked left of the hand.
 		var u: Unit = b.sel
@@ -1617,7 +1646,7 @@ class Overlay extends Control:
 		# boss bar
 		var boss = null
 		for u in b.units:
-			if u.type == "boss" or u.type == "hiveship":
+			if b.is_boss(u) and (boss == null or (boss.dead and not u.dead)):
 				boss = u
 		if boss == null or not b.boss_active:
 			for u in b.units:
@@ -1638,10 +1667,17 @@ class Overlay extends Control:
 			draw_rect(Rect2(bx - 2, 56, bw + 4, 12), ink)
 			draw_rect(Rect2(bx, 58, bw, 8), Color("2a0d3a"))
 			draw_rect(Rect2(bx, 58, bw * boss.hp / float(boss.max_hp), 8), Color("b06ae0"))
+		elif boss != null and boss.type != "boss" and b.boss_active and not boss.dead:
+			var bw := 360.0
+			var bx := 480 - bw / 2
+			Art.text(self, b.bosses.boss_name(boss) + "  " + b.bosses.bar_note(boss), Vector2(bx, 52), 8, b.bosses.boss_color(boss))
+			draw_rect(Rect2(bx - 2, 56, bw + 4, 12), ink)
+			draw_rect(Rect2(bx, 58, bw, 8), Color("3a0d0d"))
+			draw_rect(Rect2(bx, 58, bw * boss.hp / float(boss.max_hp), 8), b.bosses.boss_color(boss))
 		elif boss != null and b.boss_active and not boss.dead:
 			var bw := 360.0
 			var bx := 480 - bw / 2
-			var bname: String = "VHARR BOAR" if boss.fl.get("vharr", false) else ("ROOKIE BOAR" if boss.fl.get("rookie", false) else Data.BOAR_KITS.get(b.mission.get("boar_kit", ""), Data.BOAR_KITS.standard).name)
+			var bname: String = b.bosses.boss_name(boss)
 			if boss.dome > 0:
 				Art.text(self, bname + "  DOMED: CRUSH OR MELEE IT", Vector2(bx, 52), 8, Color("9df25c"))
 			else:
@@ -1651,6 +1687,10 @@ class Overlay extends Control:
 			draw_rect(Rect2(bx, 58, bw * boss.hp / float(boss.max_hp), 8), Color("ff4d3d"))
 			if boss.plate > 0:
 				draw_rect(Rect2(bx, 58, bw * minf(1, boss.plate / float(b.mission.plate)), 2), Color("9fb4c9"))
+		if boss != null and b.boss_active and not boss.dead and b.is_boss(boss):
+			# X2: a notch at half health, where the boss changes; it lights once it has
+			var nx := 480.0
+			draw_rect(Rect2(nx - 1, 54, 3, 16), Color("ffd23a") if boss.fl.get("phase2", false) else Color("e8dcc2"))
 		# log
 		var ly := 52.0 if boss == null or (not b.boss_active and boss.type != "queen") else 84.0
 		if jl != "":
@@ -1727,6 +1767,8 @@ class Overlay extends Control:
 		if b.state == "enemy":
 			var who: String = ("ENEMY: " + Data.ETYPES[b.acting.type].name.to_upper()) if b.acting != null else "ENEMY PHASE"
 			Art.text(self, who, Vector2(480, 402), 8, Color("ff4d3d"), HORIZONTAL_ALIGNMENT_CENTER)
+		if not b.cine.is_empty():
+			draw_cine(b.cine)
 		# banner: a stencil plate that slams in from the left
 		if b.banners.size():
 			var bn: Dictionary = b.banners[0]

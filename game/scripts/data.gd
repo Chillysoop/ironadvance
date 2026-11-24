@@ -1304,12 +1304,13 @@ const ETYPES := {
 	"burrow": {"name": "Skitter Tunnel", "faction": "vharr", "hp": 14, "static": true, "heavy": true, "waves": [3, 4, 3], "score": 150, "w": 30, "h": 14, "note": "Sends a wave of Skitters each enemy phase (the next wave's size is shown), then caves in. Blow it up to stop the swarm."},
 	# Q1: the level boss in the delta and the harbor from level 2. It floats over the arena on armor
 	# plates hung from tethers; it sweeps a ray across the ground and drops pods full of Vharr.
-	"hiveship": {"name": "HIVE SHIP", "faction": "vharr", "weight": "hover", "hp": 150, "alt": 230, "heavy": true, "speed": 150, "beam": 5, "sweep": 150, "beam_range": 420, "pod_dmg": 7, "score": 3000, "w": 150, "h": 44, "note": "Mothership. Floats over the arena, sweeps a ray across the ground and drops pods of Vharr on you. While its armor plates hang on, shots do 40%: shoot a plate off its tethers and it drops on whoever is under it. Blasts that reach its belly always do full damage."},
+	"hiveship": {"name": "HIVE SHIP", "boss": true, "sub": "THE SKY GOES DARK", "phase2": "TWO PODS A TURN NOW", "wreck": [[-0.5, 0.5, 0.0, 0.5], [-0.25, 0.25, 0.5, 1.0]], "faction": "vharr", "weight": "hover", "hp": 150, "alt": 230, "heavy": true, "speed": 150, "beam": 5, "sweep": 150, "beam_range": 420, "pod_dmg": 7, "score": 3000, "w": 150, "h": 44, "note": "Mothership. Floats over the arena, sweeps a ray across the ground and drops pods of Vharr on you. While its armor plates hang on, shots do 40%: shoot a plate off its tethers and it drops on whoever is under it. Blasts that reach its belly always do full damage."},
+	"bosspart": {"name": "Boss Part", "hp": 16, "static": true, "heavy": true, "score": 150, "w": 24, "h": 14, "note": "A piece of the boss you can shoot off. Each one takes an attack away."},
 	"shipplate": {"name": "Hull Plate", "faction": "vharr", "hp": 14, "static": true, "heavy": true, "score": 100, "w": 44, "h": 12, "note": "Armor hanging under the Hive Ship. Shoot it off its tethers: it falls like a girder and crushes whatever is under it. With every plate gone the ship takes +30% damage."},
 	"droppod": {"name": "Drop Pod", "faction": "vharr", "hp": 18, "static": true, "heavy": true, "score": 50, "w": 24, "h": 26, "note": "Crashed down full of Vharr. It opens on the next enemy phase and they come out swinging. Break it first and they die inside."},
 	# E6: a small Vharr gate that sends one alien through every enemy phase
 	"vgate": {"name": "Vharr Gate", "faction": "vharr", "hp": 40, "static": true, "heavy": true, "cap": 4, "score": 400, "w": 44, "h": 64, "note": "A small Vharr gate. Every enemy phase one alien comes through, up to four at a time. Blow it up, or drop something heavy on it: crushing does triple damage."},
-	"boss": {"name": "IRON BOAR", "hp": 150, "dmg": [3, 4], "shots": 4, "range": 660, "heavy": true, "score": 3000, "w": 120, "h": 64, "note": "Armored tank: shrugs off 60% of damage until its armor cracks. Crushing debris cracks it at once."},
+	"boss": {"name": "IRON BOAR", "boss": true, "parts_force": false, "phase2": "TWO SHELLS A TURN NOW", "wreck": [[-0.44, 0.46, 0.0, 0.42], [-0.12, 0.3, 0.42, 0.62]], "hp": 150, "dmg": [3, 4], "shots": 4, "range": 660, "heavy": true, "score": 3000, "w": 120, "h": 64, "note": "Armored tank: shrugs off 60% of damage until its armor cracks. Crushing debris cracks it at once."},
 }
 
 const POW_NAMES := ["Sgt. Bramble", "Pvt. Okonkwo", "Cpl. Teller", "Lt. Varga", "Pvt. Ishikawa", "Sgt. Duarte"]
@@ -1737,16 +1738,31 @@ const GARRISON_SLOTS := ["grunt", "nade", "shield", "brute", "sapper", "jetter"]
 
 # V5: Iron Boar loadouts. Each quick-run level's Boar rolls one; the briefing says which.
 const BOAR_KITS := {
-	"standard": {"name": "IRON BOAR", "short": "SHELLS AND A CHAIN GUN"},
-	"flame": {"name": "FLAME BOAR", "short": "HOSES FIRE AT ANYONE CLOSE AND BURNS WOODEN COVER"},
-	"mortar": {"name": "MORTAR BOAR", "short": "EACH SHELL SPLITS INTO THREE SMALLER ONES"},
-	"carrier": {"name": "CARRIER BOAR", "short": "CALLS PARATROOPERS EVERY THIRD TURN"},
+	"standard": {"name": "IRON BOAR", "sub": "IT HEARD YOU COMING", "short": "SHELLS AND A CHAIN GUN"},
+	"flame": {"name": "FLAME BOAR", "sub": "IT BURNS EVERYTHING IN FRONT OF IT", "short": "HOSES FIRE AT ANYONE CLOSE AND BURNS WOODEN COVER"},
+	"mortar": {"name": "MORTAR BOAR", "sub": "SHELLS THAT SPLIT IN THE AIR", "short": "EACH SHELL SPLITS INTO THREE SMALLER ONES"},
+	"carrier": {"name": "CARRIER BOAR", "sub": "IT NEVER FIGHTS ALONE", "short": "CALLS PARATROOPERS EVERY THIRD TURN"},
 	# V6: biome bosses, built on the Boar's hull; each biome's own from level 2 on
-	"engine": {"name": "ARMORED ENGINE", "short": "RAMS FORWARD EVERY TURN AND RUNS DOWN ANYONE IN FRONT", "biome": true},
-	"drill": {"name": "DRILL RIG", "short": "BORES STRAIGHT THROUGH ROCK AT WHOEVER HIDES BEHIND IT", "biome": true},
-	"magma": {"name": "MAGMA CRAWLER", "short": "ITS SHELLS SET THE GROUND AROUND THEM ON FIRE", "biome": true},
+	"engine": {"name": "ARMORED ENGINE", "sub": "FULL STEAM, NO BRAKES", "short": "RAMS FORWARD EVERY TURN AND RUNS DOWN ANYONE IN FRONT", "biome": true},
+	"drill": {"name": "DRILL RIG", "sub": "NO WALL IS THICK ENOUGH", "short": "BORES STRAIGHT THROUGH ROCK AT WHOEVER HIDES BEHIND IT", "biome": true},
+	"magma": {"name": "MAGMA CRAWLER", "sub": "THE GROUND BURNS WHERE IT SHOOTS", "short": "ITS SHELLS SET THE GROUND AROUND THEM ON FIRE", "biome": true},
 }
 const BIOME_BOSSES := {"train": "engine", "mine": "drill", "volcano": "magma"}
+# Epic bosses page (2026-11-24). R1: each boss's signature attack, wound up one turn and landing
+# at the start of its next. The shout floats over the boss; nothing is marked on the HUD.
+const WINDUPS := {
+	"bigshell": {"shout": "LOADING A HEAVY SHELL!", "hover": "HEAVY SHELL LOADED: it lands on the red flare at the start of the Boar's next turn. Blow the ammo rack off to stop it."},
+	"bellyray": {"shout": "THE BELLY IS CHARGING!", "hover": "BELLY RAY CHARGING: a column of light burns straight down under the ship at the start of its next turn."},
+}
+const BIGSHELL_R := 72.0
+const BIGSHELL_DMG := 18
+const BELLYRAY_DMG := 16
+const BOSS_CINE := 230  # X1: frames the entrance's name card stays up (any key skips)
+# X4: parts you can shoot off a boss. down/lose are the banner when it goes.
+const BOSS_PARTS := {
+	"rack": {"name": "Ammo Rack", "hp": 16, "w": 26, "h": 14, "boss_dmg": 12, "down": "AMMO RACK BLOWN!", "lose": "NO MORE HEAVY SHELLS",
+		"note": "The Boar's heavy shells. Shoot it off: it blows up in the Boar's face and the Boar can't load another heavy shell."},
+}
 const ENGINE_RAM := 90.0
 const ENGINE_RAM_DMG := 10
 const DRILL_DMG := 9

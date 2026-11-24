@@ -822,6 +822,8 @@ func run() -> void:
 			await fork_test()
 		"seeds":
 			await seeds_test()
+		"bossframe":
+			await bossframe_test()
 		"biomebosses":
 			await biomebosses_test()
 		"segments3":
@@ -3305,6 +3307,7 @@ func aliens6() -> void:
 		var out: Array = b.units.slice(n0).map(func(u): return u.type)
 		check(pods[0].gone and out.slice(0, cargo.size()) == cargo, "next phase it opens and the Vharr come out (%s)" % str(out))
 	b.kill(sh, s)
+	await until(func(): return sh.gone, 600)  # X5: it blows apart in slow motion first, then falls as a wreck
 	check(b.boss_dead and sh.gone, "killing the ship wins the level")
 	# Q3: the finale BOAR
 	Run.new_run()
@@ -11847,5 +11850,148 @@ func nadeprobe() -> void:
 			else:
 				main.start_lesson(li)
 	check(true, "probe done")
+	main.show_title()
+	await frames_wait(5)
+
+
+func boss_arena(kit := "standard", biome := "desert") -> Battle:
+	## A level 2 fight with the Boar (or the level's boss) on screen and everything else gone.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	Run.seed_val = 31
+	var lv := Run.make_level(biome, 1)
+	if kit != "":
+		lv.boar_kit = kit
+	Run.level = lv
+	var b: Battle = main.start_battle(1, lv)
+	await until(func(): return b.state == "player" and not b.busy)
+	return b
+
+func the_boss(b: Battle) -> Unit:
+	for u in b.units:
+		if b.is_boss(u):
+			return u
+	return null
+
+func bossframe_test() -> void:
+	## Epic bosses page R1, R2, X1, X2, X4, X5 on the Iron Boar and the Hive Ship.
+	var b: Battle = await boss_arena()
+	var bo: Unit = the_boss(b)
+	check(bo != null and bo.type == "boss", "the level ends on a Boar")
+	var racks: Array = b.bosses.parts_of(bo, "rack")
+	check(racks.size() == 1, "X4: the Boar carries an ammo rack you can shoot off")
+	for o in b.units:
+		if o.team == "enemy" and o != bo and o.type != "bosspart":
+			o.gone = true
+	# clear the arena's tower out of the sky, so the Boar's shells don't bring it down on itself
+	for x in range(int(bo.x) - 560, int(bo.x) - 70, 4):
+		for y in range(40, int(b.T.ground_at(x)) - 14, 4):
+			if b.T.solid(x, y):
+				b.T.set_cell(int(x / b.CELL), int(y / b.CELL), 0)
+	var sq: Array = b.squad()
+	for k in sq.size():
+		ground_unit(b, sq[k], bo.x - 300 - k * 40, bo.y - 60)
+	# X1: the entrance
+	b.cam_x = clampf(bo.x - 700, 0, b.world_w - Battle.W); b.cam_tx = b.cam_x
+	b.camp_ops.activate_enemies()
+	check(b.boss_active and not b.cine.is_empty(), "X1: walking into the arena starts the boss entrance")
+	check(not b.settled(), "X1: the turn waits while the entrance plays")
+	await frames_wait(50)
+	await shot("bossframe_entrance")
+	await until(func(): return b.cine.is_empty(), 900)
+	check(b.cine.is_empty() and b.settled(), "X1: the entrance ends on its own")
+	# R1: the wind-up on its second turn, the heavy shell on its third
+	var run_turn := func():
+		var fin := [false]
+		var go := func():
+			await b.vharr_ai.boss_act(bo)
+			fin[0] = true
+		go.call()
+		await until(func(): return fin[0], 3000)
+		await until(func(): return b.settled(), 900)
+	await run_turn.call()
+	check(not bo.fl.has("windup"), "R1: no wind-up on the Boar's first turn")
+	await run_turn.call()
+	check(bo.fl.has("windup") and b.boss_flares.size() == 1, "R1: on its second turn it loads a heavy shell and fires a red flare")
+	await shot("bossframe_windup")
+	var fl: Dictionary = b.boss_flares[0]
+	# whoever stands on the flare when the shell comes down gets hit; the others moved away
+	var tg: Unit = b.squad_alive()[0]
+	for s in b.squad_alive():
+		if s != tg:
+			ground_unit(b, s, fl.x - 400, fl.y - 60)
+	ground_unit(b, tg, fl.x, fl.y - 30)
+	var hp0: int = tg.hp
+	b.slow = {}
+	await run_turn.call()
+	check(not bo.fl.has("windup") and b.boss_flares.is_empty(), "R1: the heavy shell lands on its next turn")
+	check(tg.hp <= hp0 - 10 or tg.dead, "R1: a soldier left on the flare takes the heavy shell (%d -> %d)" % [hp0, tg.hp])
+	# X4: the rack
+	b.bosses.start_windup(bo, "bigshell", {"x": bo.x - 300, "y": bo.y})
+	var bhp: int = bo.hp
+	b.kill(racks[0], b.squad_alive()[0] if b.squad_alive().size() else null)
+	await until(func(): return b.settled(), 900)
+	check(bo.fl.get("rack_gone", false) and not bo.fl.has("windup"), "X4: blowing the ammo rack stops the heavy shell")
+	check(bo.hp < bhp, "X4: the rack blows up in the Boar's face (%d -> %d)" % [bhp, bo.hp])
+	bo.fl["bturns"] = 4
+	b.bosses.boar_windup(bo)
+	check(not bo.fl.has("windup"), "X4: with no rack it never loads another")
+	# X2: the second phase
+	check(not bo.fl.get("phase2", false), "X2: still phase 1 above half health")
+	b.crack_boss(bo)
+	bo.hp = bo.max_hp / 2 + 3
+	b.damage(bo, 8, null, {"blast": true})
+	await frames_wait(4)
+	check(bo.fl.get("phase2", false) and b.bosses.phase(bo) == 2, "X2: at half health the Boar enrages")
+	check(not b.slow.is_empty(), "R2: the change plays in slow motion")
+	await frames_wait(20)
+	await shot("bossframe_phase2")
+	# X5: the death
+	b.slow = {}
+	var n0: int = b.T.chunks.size()
+	b.kill(bo, b.squad_alive()[0] if b.squad_alive().size() else null)
+	check(b.boss_dead and not b.slow.is_empty(), "X5: the boss dies in slow motion")
+	await frames_wait(40)
+	await shot("bossframe_death")
+	await until(func(): return bo.fl.get("wrecked", false), 900)
+	await until(func(): return b.settled(), 900)
+	check(bo.fl.get("wrecked", false), "X5: the wreck stays on the field as steel")
+	var wx: float = bo.x
+	var top = b.T.stand_y(wx, bo.y - 120)
+	check(top != null and top < bo.y - 12, "X5: you can stand on the wreck (top at %s, ground was %d)" % [str(top), int(bo.y)])
+	await frames_wait(200)
+	await shot("bossframe_wreck")
+	# Hive Ship: the belly ray
+	var b2: Battle = await boss_arena("", "harbor")
+	var sh: Unit = the_boss(b2)
+	check(sh != null and sh.type == "hiveship", "the Harbor ends on a Hive Ship")
+	for o in b2.units:
+		if o.team == "enemy" and o != sh and o.type != "shipplate":
+			o.gone = true
+	var sq2: Array = b2.squad()
+	for k in sq2.size():
+		ground_unit(b2, sq2[k], sh.x - 60 - k * 30, 0)
+	cam_on(b2, sh.x)
+	await until(func(): return b2.cine.is_empty(), 900)
+	var ship_turn := func():
+		var fin := [false]
+		var go := func():
+			await b2.vharr_ai.hiveship_act(sh)
+			fin[0] = true
+		go.call()
+		await until(func(): return fin[0], 3000)
+		await until(func(): return b2.settled(), 900)
+	await ship_turn.call()
+	await ship_turn.call()
+	check(sh.fl.has("windup"), "R1: on its second turn the Hive Ship charges its belly")
+	await shot("bossframe_belly")
+	var under: Unit = b2.squad_alive()[0]
+	ground_unit(b2, under, sh.fl.windup.x, sh.y + 30)
+	var uh: int = under.hp
+	await ship_turn.call()
+	check(under.hp < uh or under.dead, "R1: the belly ray burns whoever stayed under it (%d -> %d)" % [uh, under.hp])
 	main.show_title()
 	await frames_wait(5)

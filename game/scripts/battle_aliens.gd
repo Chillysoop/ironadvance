@@ -797,8 +797,10 @@ func hiveship_act(e: Unit) -> void:
 	## Glide over the squad, sweep the ray across the ground under the nearest soldier, then drop
 	## a pod of Vharr (two when it's below half health).
 	var E: Dictionary = Data.ETYPES.hiveship
+	bt.bosses.tick_turn(e)
+	await bt.bosses.resolve_windup(e)  # R1: last turn's belly ray burns down first
 	var tg = bt.nearest_squad(e)
-	if tg == null:
+	if tg == null or e.dead:
 		return
 	var want: float = tg.x + (70.0 if e.x >= tg.x else -70.0)
 	if absf(want - e.x) > 20:
@@ -808,7 +810,8 @@ func hiveship_act(e: Unit) -> void:
 	tg = bt.nearest_squad(e)
 	if tg != null:
 		await ship_sweep(e, tg)
-	var n := 2 if e.hp < e.max_hp / 2 else 1
+	bt.bosses.ship_windup(e)  # R1: the belly glows over where it stops; next turn the ray comes down
+	var n := 2 if bt.bosses.phase(e) == 2 else 1
 	for k in n:
 		if e.dead or bt.squad_alive().is_empty():
 			return
@@ -1018,6 +1021,10 @@ func place_encounter(id: String) -> void:
 			b2.fl["wave"] = 1  # the far tunnel starts on its second wave: 4, then 3
 
 func boss_act(bo: Unit) -> void:
+	bt.bosses.tick_turn(bo)
+	await bt.bosses.resolve_windup(bo)  # R1: last turn's heavy shell lands first
+	if bo.dead or bt.squad_alive().is_empty():
+		return
 	if bo.x > bt.cam_x + bt.W - 170:
 		var pts: Array = []
 		var x := bo.x
@@ -1030,6 +1037,7 @@ func boss_act(bo: Unit) -> void:
 		await vboar_tricks(bo)
 		if bo.dead or bt.squad_alive().is_empty():
 			return
+	await bt.bosses.boar_windup(bo)  # R1: a red flare marks where next turn's heavy shell lands
 	# V5: the level's Boar loadout
 	var kit: String = bt.mission.get("boar_kit", "standard") if not bo.fl.get("vharr", false) else "standard"
 	if kit == "carrier":
@@ -1043,7 +1051,7 @@ func boss_act(bo: Unit) -> void:
 		await engine_ram(bo)
 		if bo.dead or bt.squad_alive().is_empty():
 			return
-	var shells := 2 if bo.hp < bo.max_hp / 2 else 1
+	var shells := 2 if bt.bosses.phase(bo) == 2 else 1  # X2: two shells a turn in its second phase
 	if kit == "drill":
 		for i in shells:
 			await drill_bolt(bo)
