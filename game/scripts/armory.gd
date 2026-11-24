@@ -576,6 +576,9 @@ func _draw() -> void:
 		Tip.chips(self, Run.synergies(s).filter(func(sy): return sy.kind != "duo"), Vector2(x, 194), w)
 	Art.text(self, "STASH %d/%d" % [Run.stash.size(), Data.STASH_MAX], Vector2(24, 214), 8, Color("ffb23e") if Run.stash.size() <= Data.STASH_MAX else Color("ff4d3d"))
 	Art.text(self, "BELT: USE MID-MISSION, NO CARD NEEDED", Vector2(470, 214), 8, Color("62d26f"))
+	var st_w := Art.text_width("STASH %d/%d" % [Run.stash.size(), Data.STASH_MAX], 8)
+	Tip.zone(self, Rect2(22, 203, st_w + 4, 14), "STASH", Data.keyword("stash").text, Color("ffb23e"))
+	Tip.zone(self, Rect2(468, 203, Art.text_width("BELT: USE MID-MISSION, NO CARD NEEDED", 8) + 4, 14), "BELT", Data.keyword("belt").text, Color("62d26f"))
 	if shop_mode and shelf.size():
 		Art.text(self, "ITEM SHELF" + ("  %d%% OFF" % int(Run.discount * 100) if Run.discount > 0 else ""), Vector2(470, 288), 8, Color("53d4e2"))
 	if Run.rerolls > 0:
