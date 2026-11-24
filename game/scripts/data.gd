@@ -348,7 +348,7 @@ const LETTER_FROM := {"D": 1, "T": 1, "Z": 2, "G": 2}
 # Four slots per soldier plus a squad stash and a 3-slot consumable belt.
 # "stats" scale with the item's rarity (TIER_MUL); weapons add their cards to the deck.
 # the icon a belt consumable shows everywhere: shop shelf, Armory, battle belt
-const BELT_ICONS := {"heal": "ic_heart", "ration": "ic_heart", "smoke": "ic_shield", "energy": "ic_bolt"}
+const BELT_ICONS := {"heal": "ic_heart", "ration": "ic_heart", "smoke": "ic_shield", "energy": "ic_bolt", "stim": "ic_cross", "adr": "ic_flame"}
 const SLOT_NAMES := {"weapon": "WEAPON", "armor": "ARMOR", "kit": "KIT", "belt": "BELT"}
 const TIER_MUL := [1.0, 1.25, 1.5, 2.0, 2.5]
 const STASH_MAX := 8

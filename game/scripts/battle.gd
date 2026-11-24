@@ -426,30 +426,30 @@ func collect(u: Unit, p: Unit) -> void:
 				loot_queue.append({"u": u, "item": L.item})
 	ui_dirty = true
 
-func offer_item(u: Unit, it: Dictionary) -> void:
-	## Quick-equip prompt (G5): equip on the soldier who found it, or send it to the stash.
-	var s: Dictionary = u.s
-	var sl: String = Data.ITEMS[it.id].slot
-	var title := "%s FOUND %s" % [u.def.name, Data.item_name(it).to_upper()]
-	var opts: Array = []
-	var slots: Array = []
-	if sl == "kit" and s.equip.kit1 != null and s.equip.kit2 != null:
-		opts = [Run.item_opt(it, "NEW: STASH IT"), Run.item_opt(s.equip.kit1, "SWAP THIS OUT"), Run.item_opt(s.equip.kit2, "SWAP THIS OUT")]
-		slots = ["", "kit1", "kit2"]
+func offer_item(u: Unit, it: Dictionary, title := "") -> void:
+	## Quick-equip prompt (G5): the gear panel shows who gets it, what they wear, what's new and what
+	## it swaps out, and lets you hand it to any squadmate or send it to the stash.
+	if title == "":
+		title = "%s FOUND %s" % [u.def.name, Data.item_name(it).to_upper()]
+	var to: Unit = u
+	var slot := ""
+	if autopick >= 0 or hud == null:
+		var ch := await ask("loot", title, "", [Run.item_opt(it)], u)
+		slot = Run.slot_for(u.s, it) if ch >= 0 else ""
 	else:
-		var slot := Run.slot_for(s, it)
-		opts = [Run.item_opt(it, "EQUIP ON %s" % u.def.name)]
-		slots = [slot]
-		if s.equip[slot] != null:
-			opts.append(Run.item_opt(s.equip[slot], "KEEP THIS"))
-			slots.append("")
-	var ch := await ask("loot", title, "Equip it now or send it to the stash. Gear can be swapped at the Armory between missions.", opts, u)
-	if ch >= 0 and slots[ch] != "":
+		var team: Array = squad_alive().filter(func(o): return o.s.has("equip") and not o.s.has("guest"))
+		if not team.has(u):
+			team.push_front(u)
+		var r: Dictionary = await hud.gear_pick(title, it, team, u)
+		to = r.u if r.u != null else u
+		slot = r.slot
+	if slot != "":
 		if not Run.stash.has(it):
 			Run.stash.append(it)
-		Run.equip(s, it, slots[ch])
-		refresh_unit_gear(u)
-		log_msg("%s equipped %s." % [u.def.name, Data.item_name(it)])
+		var old: Dictionary = Run.equip(to.s, it, slot)
+		refresh_unit_gear(to)
+		log_msg("%s equipped %s%s." % [to.def.name, Data.item_name(it), (" (%s to the stash)" % Data.item_name(old)) if not old.is_empty() else ""])
+		float_text(to, "EQUIPPED " + Data.item_name(it).to_upper(), Color("62d26f"))
 	else:
 		Run.add_loot(it)
 		log_msg("%s sent to the stash." % Data.item_name(it))
@@ -4197,6 +4197,12 @@ func supply_drop(title: String, for_unit) -> void:
 		opts.append(o)
 	var sub := ("%s freed them. Pick one card for %s's deck." % [for_unit.def.name, for_unit.def.name]) if for_unit != null else "Pick one, then pick who gets it."
 	var ch := await ask("supply", title, sub, opts)
+	if ch >= 0 and opts[ch].kind == "item" and not opts[ch].has("u") and autopick < 0 and hud != null:
+		# the gear panel has the squad tabs, so it picks who gets the item itself
+		var it0: Dictionary = opts[ch].item
+		await offer_item(sel if sel != null and not sel.dead else alive[0], it0, "SUPPLY DROP: %s" % Data.item_name(it0).to_upper())
+		ui_dirty = true
+		return
 	if ch >= 0 and not opts[ch].has("u"):
 		# you choose who gets it, never the dice
 		var o0: Dictionary = opts[ch]

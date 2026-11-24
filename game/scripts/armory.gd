@@ -101,6 +101,16 @@ func build() -> void:
 	detail.visible = false
 	add_child(detail)
 	build_actions(it)
+	# class-tuned auto-equip: Vee takes the blast gear, Hex the healing, Moss the scopes...
+	var ae := HudScript.PixButton.new()
+	ae.text = "AUTO-EQUIP"
+	ae.sub = "BEST FOR EACH CLASS"
+	ae.color = Color("62d26f")
+	ae.size = Vector2(164, 40)
+	ae.position = Vector2(574, 486)
+	ae.disabled = not merging.is_empty()
+	ae.pressed.connect(auto_equip_all)
+	add_child(ae)
 	if hub_room:
 		add_child(HudScript.back_to_hq(func(): done.emit()))
 		return
@@ -111,6 +121,18 @@ func build() -> void:
 	back.position = Vector2(786, 486)
 	back.pressed.connect(func(): Sfx.play("click"); done.emit())
 	add_child(back)
+
+func auto_equip_all() -> void:
+	var moves: Array = Run.auto_equip(Run.soldiers.filter(func(s): return s.alive))
+	if moves.is_empty():
+		Sfx.play("deny")
+		say("Everyone already wears the best fit for their class.")
+	else:
+		Sfx.play("coin")
+		var words: Array = moves.slice(0, 2).map(func(m): return "%s took %s" % [m[0].def.name, Data.item_name(m[1])])
+		say("Auto-equip: " + ", ".join(words) + (" and %d more." % (moves.size() - 2) if moves.size() > 2 else "."))
+	pick = {}
+	build()
 
 # ---------------------------------------------------------------- what fits where
 static func fits(it, slot: String) -> bool:
