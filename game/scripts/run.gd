@@ -236,6 +236,13 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	if bm.rules.get("aliens", false) or (tier == 0 and first_run and daily == "" and not campaign()):
 		garrison = "regular"  # nothing but Vharr in the Hive; the very first fight stays the plain one
 	var remix := vr.randi()
+	# B1, B2: from level 2 a biome with new bosses usually gets one of them over a Boar (own dice,
+	# so no other roll moves)
+	var brng := RandomNumberGenerator.new()
+	brng.seed = hash([id, tier, seed_val, mission, "boss"])
+	var nb: Array = Data.BOSS_POOLS.get(id, [])
+	if boss == "boar" and tier >= 1 and nb.size() and brng.randf() < Data.NEW_BOSS_CHANCE:
+		boss = nb[brng.randi() % nb.size()]
 	var kits: Array = Data.BOAR_KITS.keys().filter(func(k): return not Data.BOAR_KITS[k].get("biome", false))
 	var boar_kit: String = kits[vr.randi() % kits.size()] if boss == "boar" else ""
 	if boss == "boar" and tier >= 1 and Data.BIOME_BOSSES.has(id):
@@ -2009,8 +2016,8 @@ func op_roster(lv: Dictionary) -> String:
 	for sname in lv.get("segments", []):
 		for sp in Data.SEGMENTS[sname].spawns:
 			var ty: String = sp[0]
-			if ty == "boss" and lv.get("boss", "") == "hiveship":
-				ty = "hiveship"
+			if ty == "boss" and lv.get("boss", "") not in ["", "boar"] and Data.ETYPES.has(lv.boss):
+				ty = lv.boss
 			if Data.ETYPES.has(ty):
 				var nm: String = Data.ETYPES[ty].name.to_upper()
 				n[nm] = int(n.get(nm, 0)) + 1

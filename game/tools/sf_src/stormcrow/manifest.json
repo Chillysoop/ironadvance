@@ -1,0 +1,26 @@
+[
+ {
+  "op": "style",
+  "prompt": "A huge military heavy bomber airplane in flight, pure side view facing right, long olive-drab fuselage with rust patches, a glazed bomber nose, a shark mouth painted on the nose, one long straight wing seen edge-on with two engine nacelles hanging under it, a tall tail fin with a red skull insignia, closed bomb bay doors on the belly, a small tail gun turret at the very back. No propellers (drawn separately), no background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "en_grunt_f0.png",
+   "en_engineer_f0.png",
+   "en_flamer_f0.png",
+   "en_jetter_f0.png"
+  ],
+  "size": 96,
+  "outputs": [
+   "body_0.png",
+   "body_1.png",
+   "body_2.png",
+   "body_3.png"
+  ],
+  "asset_ids": [
+   "98b00f64-9202-4f21-b8a5-1649c37fadf5",
+   "3c64f731-563b-4cca-a30f-462cb9b07126",
+   "47ee2432-eaf1-4924-8744-1b0590bd7ce3",
+   "27f5bc62-290e-4522-afb0-3c0f49c7a2fc"
+  ],
+  "picked": "body_1 -> body.png (shark mouth, faces left; other options not kept)"
+ }
+]

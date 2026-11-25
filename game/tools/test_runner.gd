@@ -831,6 +831,8 @@ func run() -> void:
 			await fork_test()
 		"seeds":
 			await seeds_test()
+		"bosses2":
+			await bosses2_test()
 		"bossframe":
 			await bossframe_test()
 		"biomebosses":
@@ -11168,6 +11170,7 @@ func boarkits_test() -> void:
 		Run.seed_val = 31
 		var lv := Run.make_level("desert", 1)
 		lv.boar_kit = kit
+		lv.boss = "boar"  # the desert can roll a Stormcrow now
 		Run.level = lv
 		var b: Battle = main.start_battle(1, lv)
 		await until(func(): return b.state == "player" and not b.busy)
@@ -11722,13 +11725,14 @@ func biomebosses_test() -> void:
 	Run.first_run = false
 	check(Run.make_level("train", 1).boar_kit == "engine" and Run.make_level("mine", 2).boar_kit == "drill" and Run.make_level("volcano", 2).boar_kit == "magma", "the Train, Mine and Volcano have their own bosses from level 2")
 	check(range(20).all(func(i): Run.seed_val = 50 + i; return not Data.BOAR_KITS[Run.make_level("mine", 0).boar_kit].get("biome", false)), "a level 1 Mine keeps an ordinary Boar")
-	check(range(20).all(func(i): Run.seed_val = 90 + i; return not Data.BOAR_KITS[Run.make_level("desert", 2).boar_kit].get("biome", false)), "other biomes never roll a biome boss")
+	check(range(20).all(func(i): Run.seed_val = 90 + i; var lk: String = Run.make_level("desert", 2).boar_kit; return lk == "" or not Data.BOAR_KITS[lk].get("biome", false)), "other biomes never roll a biome boss")
 	for kit in ["engine", "drill", "magma"]:
 		Run.new_run()
 		Run.first_run = false
 		Run.seed_val = 31
 		var lv := Run.make_level("desert", 1)
 		lv.boar_kit = kit
+		lv.boss = "boar"  # the desert can roll a Stormcrow now
 		Run.level = lv
 		var b: Battle = main.start_battle(1, lv)
 		await until(func(): return b.state == "player" and not b.busy)
@@ -12091,6 +12095,7 @@ func boss_arena(kit := "standard", biome := "desert") -> Battle:
 	var lv := Run.make_level(biome, 1)
 	if kit != "":
 		lv.boar_kit = kit
+		lv.boss = "boar"  # the desert can roll a Stormcrow now
 	Run.level = lv
 	var b: Battle = main.start_battle(1, lv)
 	await until(func(): return b.state == "player" and not b.busy)
@@ -12346,6 +12351,154 @@ func keywords_test() -> void:
 		check(cv.keys.size() > 0 and (cv.keys[0].name.contains("SLOT") or cv.keys[0].name.contains("BELT")), "%s says where it goes (%s)" % [items[i].id, cv.keys[0].name if cv.keys.size() else "none"])
 		await shot("kw_item_%s" % items[i].id)
 		cv.queue_free()
+
+
+func boss_level(boss: String, biome := "desert") -> Battle:
+	## A level 2 fight against one of the epic bosses, everything else cleared, the boss on screen
+	## and its entrance played out.
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	Run.seed_val = 31
+	var lv := Run.make_level(biome, 1)
+	lv.boss = boss
+	Run.level = lv
+	var b: Battle = main.start_battle(1, lv)
+	await until(func(): return b.state == "player" and not b.busy)
+	return b
+
+func boss_turn(b: Battle, u: Unit) -> void:
+	var fin := [false]
+	var go := func():
+		await b.foe_ai.enemy_act(u)
+		fin[0] = true
+	go.call()
+	await until(func(): return fin[0], 4000)
+	await until(func(): return b.settled(), 900)
+
+func bosses2_test() -> void:
+	## Epic bosses B1 STORMCROW and B2 RAILBREAKER.
+	Run.new_run()
+	Run.first_run = false
+	var seen := {}
+	for i in 40:
+		Run.seed_val = 200 + i
+		seen[Run.make_level("mountain", 1).boss] = true
+		seen[Run.make_level("desert", 2).boss] = true
+	check(seen.has("railgun") and seen.has("stormcrow"), "the new bosses turn up from level 2 (%s)" % str(seen.keys()))
+	Run.seed_val = 7
+	check(Run.make_level("desert", 0).boss == "boar", "level 1 keeps the Boar")
+	# ---- STORMCROW
+	var b: Battle = await boss_level("stormcrow")
+	var sc: Unit = the_boss(b)
+	check(sc != null and sc.type == "stormcrow" and sc.weight == "hover", "the level ends on the Stormcrow, in the air")
+	check(b.bosses.parts_of(sc, "engine").size() == 4, "it has 4 engines to shoot off")
+	for o in b.units:
+		if o.team == "enemy" and o != sc and o.type != "bosspart":
+			o.gone = true
+	var sq: Array = b.squad()
+	for k in sq.size():
+		ground_unit(b, sq[k], sc.x - 140 - k * 60, 0)
+	cam_on(b, sc.x - 200)
+	await frames_wait(40)
+	await shot("b2_stormcrow_entrance")
+	await until(func(): return b.cine.is_empty(), 900)
+	await boss_turn(b, sc)
+	check(sc.fl.has("windup") and sc.fl.windup.kind == "bombrun", "turn 1: it banks and its searchlight picks a strip")
+	await shot("b2_stormcrow_searchlight")
+	var wu: Dictionary = sc.fl.windup
+	var inside: Unit = b.squad_alive()[0]
+	var outside: Unit = b.squad_alive()[1]
+	ground_unit(b, inside, wu.cx, 0)
+	ground_unit(b, outside, wu.x1 + 200 if wu.x1 + 200 < b.cam_x + Battle.W - 60 else wu.x0 - 200, 0)
+	var x_before: float = sc.x
+	var hi: int = inside.hp
+	var ho: int = outside.hp
+	await boss_turn(b, sc)
+	check(inside.hp < hi or inside.dead, "turn 2: the bombs come down on the lit strip (%d -> %d)" % [hi, inside.hp])
+	check(absf(sc.x - x_before) > 300, "it flies across the arena on the run (%d px)" % int(absf(sc.x - x_before)))
+	check(not sc.fl.has("windup"), "the run used the wind-up up")
+	await boss_turn(b, sc)
+	check(sc.fl.has("windup"), "turn 3: it banks and lights another strip")
+	var w4: float = b.boss_ai.strip_w(sc)
+	b.kill(b.bosses.parts_of(sc, "engine")[0], b.squad_alive()[0])
+	await until(func(): return b.settled(), 900)
+	check(b.boss_ai.strip_w(sc) < w4, "an engine shot off shortens the run (%d -> %d)" % [int(w4), int(b.boss_ai.strip_w(sc))])
+	for p in b.bosses.parts_of(sc):
+		b.kill(p, b.squad_alive()[0])
+	await until(func(): return sc.fl.get("crashed", false) and not sc.fl.has("falling"), 900)
+	await until(func(): return b.settled(), 900)
+	check(sc.fl.get("crashed", false) and sc.weight == "" and b.bosses.phase(sc) == 2, "all four engines gone: it crashes and enrages")
+	await shot("b2_stormcrow_crashed")
+	var sq_hp: int = b.squad_alive().reduce(func(a, x): return a + x.hp, 0)
+	await boss_turn(b, sc)
+	check(b.squad_alive().reduce(func(a, x): return a + x.hp, 0) <= sq_hp, "the wreck keeps fighting")
+	b.kill(sc, b.squad_alive()[0] if b.squad_alive().size() else null)
+	await until(func(): return sc.fl.get("wrecked", false), 900)
+	check(b.boss_dead, "killing the wreck wins the level")
+	await frames_wait(120)
+	await shot("b2_stormcrow_dead")
+	# ---- RAILBREAKER
+	b = await boss_level("railgun", "mountain")
+	var rg: Unit = the_boss(b)
+	check(rg != null and rg.type == "railgun", "the Mountain ends on the Railbreaker")
+	check(b.bosses.parts_of(rg, "coil").size() == 3, "it has 3 capacitor coils")
+	for o in b.units:
+		if o.team == "enemy" and o != rg and o.type != "bosspart":
+			o.gone = true
+	sq = b.squad()
+	for k in sq.size():
+		ground_unit(b, sq[k], rg.x - 260 - k * 70, 0)
+	cam_on(b, rg.x - 300)
+	await until(func(): return b.cine.is_empty(), 900)
+	await boss_turn(b, rg)
+	check(rg.fl.has("windup") and rg.fl.windup.kind == "rail", "turn 1: it swings onto a soldier and charges")
+	await shot("b2_rail_charging")
+	# who's on the line: the soldier it picked; everyone else steps well off it
+	var a: float = rg.fl.windup.a
+	var on_line: Unit = null
+	for s in b.squad_alive():
+		if absf(b.boss_ai.rail_angle(rg, s) - a) < 0.02:
+			on_line = s
+	check(on_line != null, "its laser points at a soldier")
+	var off_hp := {}
+	for s in b.squad_alive():
+		if s != on_line:
+			ground_unit(b, s, rg.x - 120 - b.squad_alive().find(s) * 26, 0)
+			off_hp[s.id] = s.hp
+	var oh: int = on_line.hp if on_line != null else 0
+	await boss_turn(b, rg)
+	check(on_line != null and (on_line.hp <= oh - 15 or on_line.dead), "turn 2: the rail goes through the soldier left on the line (%d -> %d)" % [oh, on_line.hp if on_line else 0])
+	check(not rg.fl.has("windup"), "and the charge is spent")
+	await shot("b2_rail_fired")
+	await boss_turn(b, rg)
+	check(not rg.fl.has("windup"), "turn 3: it vents instead of charging")
+	await boss_turn(b, rg)
+	if b.squad_alive().size() and not rg.fl.has("windup"):
+		ground_unit(b, b.squad_alive()[0], rg.x - 400, 0)
+		await boss_turn(b, rg)
+	check(rg.fl.has("windup"), "then it charges again")
+	var hp0: int = rg.hp
+	b.kill(b.bosses.parts_of(rg, "coil")[0], b.squad_alive()[0] if b.squad_alive().size() else null)
+	await until(func(): return b.settled(), 900)
+	check(not rg.fl.has("windup") and rg.hp <= hp0 - Data.RAIL_DMG, "a coil shot mid-charge backfires (%d -> %d)" % [hp0, rg.hp])
+	b.damage(rg, rg.hp - rg.max_hp / 2 + 2, null, {"blast": true})
+	await frames_wait(4)
+	check(b.bosses.phase(rg) == 2, "at half health it overclocks")
+	for p in b.bosses.parts_of(rg):
+		b.kill(p, null)
+	await until(func(): return b.settled(), 900)
+	await boss_turn(b, rg)
+	check(not rg.fl.has("windup"), "with every coil gone the rail is dead")
+	b.kill(rg, null)
+	await until(func(): return rg.fl.get("wrecked", false), 900)
+	await frames_wait(60)
+	await shot("b2_rail_dead")
+	main.show_title()
+	await frames_wait(5)
+
 func movingtrain_test() -> void:
 	## TR1 (Conner, 2026-11-24): the train level is fought on top of a moving train. The whole level
 	## is a steel deck with air under it, the backdrop and track rush past, and falling off the
