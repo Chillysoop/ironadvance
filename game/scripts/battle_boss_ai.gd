@@ -11,7 +11,7 @@ func _init(battle: Battle) -> void:
 	bt = battle
 
 func handles(u: Unit) -> bool:
-	return u.type in ["stormcrow", "railgun", "gravemother", "ironjaw", "serpent"]
+	return u.type in ["stormcrow", "railgun", "gravemother", "ironjaw", "serpent", "rocketship", "dropship", "bastion", "varga_suit"]
 
 func setup(u: Unit) -> void:
 	## Called once when the boss is placed in the level: its parts and starting state.
@@ -42,6 +42,27 @@ func setup(u: Unit) -> void:
 				var p = B.add_part(u, "seg", 0.0, 0.0)
 				p.fl["i"] = i
 			pin_segs(u)
+		"rocketship":
+			u.face = -1
+			for d in [[-16.0, -26.0], [8.0, -24.0]]:
+				B.add_part(u, "pod", d[0], d[1])
+			# its partner comes in with it: a dropship a little behind and lower
+			if not u.fl.has("partner"):
+				var E2: Dictionary = Data.ETYPES.dropship
+				var d2 := bt.mk_enemy("dropship", u.x + 150, u.y)
+				d2.hp = int(round(u.max_hp / Data.ETYPES.rocketship.hp_k * E2.hp_k)); d2.max_hp = d2.hp
+				d2.active = u.active
+				bt.units.append(d2)
+				bt.place_alien(d2)
+				d2.face = -1
+				u.fl["partner"] = d2
+				d2.fl["partner"] = u
+		"bastion":
+			u.face = -1
+			for d in [[-56.0, -146.0], [14.0, -186.0]]:
+				B.add_part(u, "rturret", d[0], d[1])
+		"varga_suit":
+			u.face = -1
 		"ironjaw":
 			u.face = -1
 			B.add_part(u, "winch", 30.0, -96.0)
@@ -64,6 +85,12 @@ func act(u: Unit) -> void:
 			await ironjaw_turn(u, fired)
 		"serpent":
 			await serpent_turn(u, fired)
+		"rocketship", "dropship":
+			await rotors_turn(u, fired)
+		"bastion":
+			await bastion_turn(u, fired)
+		"varga_suit":
+			await varga_turn(u, fired)
 
 func on_phase2(u: Unit) -> void:
 	match u.type:
@@ -90,6 +117,12 @@ func fire_windup(u: Unit, w: Dictionary) -> void:
 			await eruption(u, w)
 		"dive":
 			await serpent_dive(u, w)
+		"salvo":
+			await rocket_salvo(u, w)
+		"hangar":
+			await hangar_wave(u, w)
+		"slam":
+			await varga_slam(u, w)
 
 # ---------------------------------------------------------------- B1 STORMCROW
 func arena(u: Unit) -> Array:
@@ -877,3 +910,253 @@ func serpent_split(u: Unit) -> void:
 	pin_segs(tw)
 	bt.float_text(tw, "A SECOND HEAD!", Color("6ad0ff"), true)
 	Sfx.play("roar")
+
+# ---------------------------------------------------------------- B7 TWIN ROTORS
+func rotor_arena(u: Unit) -> Array:
+	return [bt.cam_x + 100.0, bt.cam_x + bt.W - 100.0]
+
+func rotor_reposition(u: Unit) -> void:
+	## Each turn it slides to a new spot near a soldier, then its rotor wash pushes whoever is under it.
+	var sq := bt.squad_alive()
+	if sq.is_empty():
+		return
+	var ar := rotor_arena(u)
+	var tg: Unit = bt.pick(sq)
+	var off: float = 140.0 if u.type == "rocketship" else -120.0
+	var tx: float = clampf(tg.x + off * (1.0 if randf() < 0.5 else -1.0), ar[0], ar[1])
+	var dir := signf(tx - u.x)
+	if dir != 0:
+		u.face = int(dir)
+	while absf(tx - u.x) > 2 and not u.dead:
+		u.x += dir * minf(5.0, absf(tx - u.x))
+		u.tread += 1
+		await bt.tick
+	u.face = -1 if tg.x < u.x else 1
+	rotor_wash(u)
+
+func rotor_wash(u: Unit) -> void:
+	## Rotor wash: soldiers right under it are shoved aside and smoke blows out sideways.
+	for o in bt.squad_alive():
+		if absf(o.x - u.x) < 70 and o.y > u.y and o.y - u.y < 260:
+			bt.spec_kits.fling(o, signf(o.x - u.x + 0.01), 3.0, u)
+			bt.float_text(o, "ROTOR WASH", Color("c9d1da"))
+	for s in bt.smokes:
+		if absf(s.x - u.x) < 140:
+			s.x += signf(s.x - u.x + 0.01) * 50.0
+	for i in 8:
+		var gx := u.x + randf_range(-70, 70)
+		var gy = bt.T.stand_y(gx, u.y)
+		if gy != null:
+			bt.dust(gx, gy, Color("a89a7a"), 1)
+
+func rotors_turn(u: Unit, fired: bool) -> void:
+	var times := 2 if u.fl.get("berserk", false) else 1
+	for k in times:
+		if u.dead or bt.squad_alive().is_empty():
+			return
+		if k == 0 or not fired:
+			await rotor_reposition(u)
+		var best = bt.foe_ai.best_shot(u, bt.squad_alive(), Data.ETYPES[u.type].range)
+		if best != null:
+			await bt.foe_ai.enemy_shoot(u, best.t, Data.ETYPES[u.type])
+		if u.dead or bt.squad_alive().is_empty():
+			return
+		if u.type == "rocketship":
+			if (not fired or bt.bosses.phase(u) == 2 or k > 0) and not bt.bosses.winding(u) and bt.bosses.parts_of(u, "pod").size():
+				var tg: Unit = bt.pick(bt.squad_alive())
+				bt.bosses.start_windup(u, "salvo", {"x": tg.x, "y": tg.y})
+				u.face = -1 if tg.x < u.x else 1
+		else:
+			var n: int = int(u.fl.get("turns", 0)) + 1
+			u.fl["turns"] = n
+			if n % 2 == 1 or bt.bosses.phase(u) == 2 or k > 0:
+				await rotor_drop(u)
+			else:
+				rotor_smoke(u)
+
+func rocket_salvo(u: Unit, w: Dictionary) -> void:
+	## Last turn the pods swung open toward a soldier; now they empty onto that spot.
+	var pods: int = bt.bosses.parts_of(u, "pod").size()
+	if pods == 0:
+		return
+	bt.float_text(u, "ROCKET SALVO!", Color("ff4d3d"), true)
+	bt.bosses.slowmo(Vector2(w.x, w.y - 40), 30, 0.4)
+	for i in Data.SALVO_PER_POD * pods:
+		var m := Vector2(u.x - u.face * -10, u.y - 8)
+		var tx: float = w.x + randf_range(-Data.SALVO_SPREAD, Data.SALVO_SPREAD)
+		var gy = bt.T.stand_y(tx, w.y - 60)
+		var ty: float = gy if gy != null else w.y
+		var d := (Vector2(tx, ty) - m).normalized()
+		Sfx.play("rocket", -6)
+		bt.projs.append(bt.phys.mk_proj({"kind": "rocket", "x": m.x, "y": m.y, "vx": d.x * 9.0, "vy": d.y * 9.0, "grav": 0.0, "r": 30.0, "dmg": Data.SALVO_DMG, "owner": u}))
+		await bt.wait(6)
+	await bt.until(bt.settled)
+
+func rotor_drop(u: Unit) -> void:
+	## The dropship's door: two troopers on chutes out of the side.
+	bt.float_text(u, "TROOPS OUT!", Color("ff7a3d"), true)
+	Sfx.play("alarm", -6)
+	for i in 2:
+		var e := bt.mk_enemy("grunt" if i == 0 else "shield", u.x + (i * 2 - 1) * 20, u.y + 10)
+		e.active = true; e.heavy = false; e.air = true; e.para = true; e.vy = 0.0
+		e.fl["chute"] = true
+		bt.units.append(e)
+		bt.puff(e.x, e.y, 1.6)
+		await bt.wait(10)
+
+func rotor_smoke(u: Unit) -> void:
+	## Smoke grenades down around the squad: cover for its troopers.
+	bt.float_text(u, "SMOKE!", Color("c9d1da"), true)
+	Sfx.play("toss", -4)
+	var sq := bt.squad_alive()
+	for i in mini(2, sq.size()):
+		var o: Unit = sq[i]
+		bt.smokes.append({"x": o.x + randf_range(-30, 30), "y": o.y - 24, "r": 64.0, "turns": 2, "seed": randf() * 10})
+
+func rotor_partner(u: Unit) -> Unit:
+	for o in bt.units:
+		if o != u and o.type in ["rocketship", "dropship"] and not o.dead and not o.gone:
+			return o
+	return null
+
+# ---------------------------------------------------------------- B8 BASTION
+func door_x(u: Unit) -> float:
+	return u.x + u.face * 51.0
+
+func bastion_turn(u: Unit, opened: bool) -> void:
+	if u.fl.get("door_open", false) and not opened:
+		u.fl.erase("door_open")  # the door winches shut again a turn after it dropped
+	# a step toward the squad, grinding what's under its front
+	var sq := bt.squad_alive()
+	if sq.is_empty():
+		return
+	var pts: Array = []
+	var x := u.x
+	var y := u.y
+	var lim: float = bt.cam_x + 140.0
+	for i in int(Data.BASTION_STEP / 2.0):
+		var nx := x - 2.0
+		if nx - u.w / 2.0 < lim:
+			break
+		var ny = bt.T.stand_y(nx, y - 60)
+		if ny == null or absf(ny - y) > 40:
+			break
+		x = nx; y = ny
+		pts.append([x, y, false])
+	if pts.size():
+		await bt.phys.walk_along(u, pts)
+		bt.shake += 4
+		Sfx.play("thud", -2)
+	if u.x < bt.cam_x + bt.W * Data.BASTION_CRUSH_AT:
+		# on your side of the arena its treads chew up the ground in front of it
+		for k in 5:
+			bt.T.carve(u.x - u.w / 2.0 - 6, u.y - 8 - k * 14, 12, null)
+		bt.dust(u.x - u.w / 2.0, u.y - 10, Color("8a7a6a"), 8)
+	# the roof turrets fire every turn
+	for p in bt.bosses.parts_of(u, "rturret"):
+		var best = bt.foe_ai.best_shot(p, bt.squad_alive(), Data.ETYPES.bastion.range)
+		if best != null:
+			await bt.foe_ai.enemy_shoot(p, best.t, Data.ETYPES.bastion)
+		if bt.squad_alive().is_empty():
+			return
+	# the hangar: every other turn (every turn in phase 2) its lights go red and the door lowers
+	if not opened or bt.bosses.phase(u) == 2:
+		bt.bosses.start_windup(u, "hangar", {})
+		Sfx.play("alarm", -6)
+
+func hangar_wave(u: Unit, w: Dictionary) -> void:
+	## The door drops and a wave rolls out. While it's open, blasts into the hangar do double.
+	u.fl["door_open"] = true
+	bt.float_text(u, "THE HANGAR DROPS!", Color("ff4d3d"), true)
+	Sfx.play("collapse")
+	bt.shake += 8
+	bt.bosses.slowmo(Vector2(door_x(u), u.y - 40), 24, 0.45)
+	var wave: Array = Data.BASTION_WAVE
+	for i in wave.size():
+		var x := door_x(u) - 10 - i * 18
+		var y = bt.T.stand_y(x, u.y - 40)
+		var e := bt.mk_enemy(wave[i], x, y if y != null else u.y)
+		e.active = true
+		e.face = -1
+		bt.units.append(e)
+		bt.dust(x, u.y - 4, Color("8a7a6a"), 4)
+		await bt.wait(10)
+	await bt.wait(10)
+
+# ---------------------------------------------------------------- B9 COLONEL VARGA
+func varga_turn(u: Unit, slammed: bool) -> void:
+	u.fl.erase("stepped")  # he sidesteps the first shot of each of your turns
+	var shots := 2 if bt.bosses.phase(u) == 2 else 1
+	if not slammed:
+		# jets to a new ledge
+		var dest = bt.foe_ai.jet_roost(u)
+		if dest != null and absf(dest.x - u.x) > 30:
+			await bt.foe_ai.jet_fly(u, dest)
+			await bt.until(bt.settled)
+	for i in shots:
+		if u.dead or bt.squad_alive().is_empty():
+			return
+		var best = bt.foe_ai.best_shot(u, bt.squad_alive(), Data.ETYPES.varga_suit.range)
+		if best != null:
+			await bt.foe_ai.enemy_shoot(u, best.t, Data.ETYPES.varga_suit)
+	if u.dead or bt.squad_alive().is_empty():
+		return
+	if not slammed or bt.bosses.phase(u) == 2:
+		await varga_launch(u)
+
+func varga_launch(u: Unit) -> void:
+	## Rockets straight up off the top of the screen. His shadow settles over a soldier: he comes
+	## down there next turn.
+	var tg: Unit = bt.pick(bt.squad_alive())
+	Sfx.play("rocket")
+	bt.float_text(u, "UP HE GOES!", Color("ff7a3d"), true)
+	u.fl["scripted"] = true
+	u.walk = null
+	u.air = false
+	var y0 := u.y
+	for i in 40:
+		u.y = y0 - (float(i + 1) / 40.0) ** 2 * 700.0
+		if i % 2 == 0:
+			bt.part({"x": u.x, "y": u.y, "vx": randf_range(-0.4, 0.4), "vy": 2.0, "life": 20, "max": 20, "c": bt.pick([Color("ffd23a"), Color("ff7a3d")]), "s": 3.0, "g": 0.0, "fire": true})
+		await bt.tick
+	u.fl["offscreen"] = true
+	var gy = bt.T.stand_y(tg.x, tg.y - 10)
+	bt.bosses.start_windup(u, "slam", {"x": tg.x, "y": gy if gy != null else tg.y})
+
+func varga_slam(u: Unit, w: Dictionary) -> void:
+	## Straight down where his shadow is.
+	u.x = w.x
+	u.fl.erase("offscreen")
+	var y0 := u.y
+	Sfx.play("whoosh")
+	for i in 24:
+		u.y = lerpf(y0, w.y, float(i + 1) / 24.0)
+		await bt.tick
+	u.y = w.y
+	u.fl.erase("scripted")
+	bt.shake += 12
+	Sfx.play("bigboom")
+	bt.bosses.slowmo(Vector2(w.x, w.y - 30), 30, 0.3)
+	bt.T.carve(w.x, w.y + 4, 22, null)
+	bt.dust(w.x, w.y, Color("8a7a6a"), 14)
+	for o in bt.units:
+		if o == u or o.dead or o.gone or o.team == "enemy" or o.is_pickup() or o.kind == "pow":
+			continue
+		if absf(o.x - w.x) < Data.SLAM_R + o.w / 2.0 and absf(o.y - w.y) < 60:
+			bt.damage(o, Data.SLAM_DMG, u, {"melee": true})
+			bt.spec_kits.fling(o, signf(o.x - w.x + 0.01), 6.0, u)
+	u.air = true
+	await bt.until(bt.settled)
+
+func varga_dodge(u: Unit, src) -> bool:
+	## True when the colonel sidesteps this hit: the first squad hit of each player turn.
+	if u.fl.get("stepped", false) or not (src is Unit and src.team == "squad") or bt.state != "player":
+		return false
+	u.fl["stepped"] = true
+	var dir: float = -signf(src.x - u.x + 0.01)
+	var nx: float = u.x + dir * 26.0
+	if not bt.T.solid(nx, u.y - u.h / 2.0) and bt.T.stand_y(nx, u.y - 10) != null:
+		u.x = nx
+	bt.float_text(u, "SIDESTEP!", Color("ffd23a"), true)
+	Sfx.play("whoosh", -6)
+	return true

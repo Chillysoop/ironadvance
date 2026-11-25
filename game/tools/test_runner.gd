@@ -831,6 +831,8 @@ func run() -> void:
 			await fork_test()
 		"seeds":
 			await seeds_test()
+		"bosses5":
+			await bosses5_test()
 		"bosses4":
 			await bosses4_test()
 		"bosses3":
@@ -12723,6 +12725,152 @@ func bosses4_test() -> void:
 		await frames_wait(10)
 		await shot("b6_turret_" + kit)
 		check(Art.tex.has("bs_turret_" + kit), "the %s Boar has its own turret" % kit)
+	main.show_title()
+	await frames_wait(5)
+
+func unit_of(b: Battle, type: String) -> Unit:
+	for u in b.units:
+		if u.type == type and not u.dead and not u.gone:
+			return u
+	return null
+
+func bosses5_test() -> void:
+	## Epic bosses B7 TWIN ROTORS, B8 BASTION, B9 COLONEL VARGA.
+	Run.new_run()
+	Run.first_run = false
+	var seen := {}
+	for i in 60:
+		Run.seed_val = 500 + i
+		seen[Run.make_level("fortress", 1).boss] = true
+		seen[Run.make_level("jungle", 2).boss] = true
+	check(seen.has("rocketship") and seen.has("bastion") and seen.has("varga_suit"), "the new bosses turn up from level 2 (%s)" % str(seen.keys()))
+	# ---- TWIN ROTORS
+	var b: Battle = await boss_level("rocketship", "desert")
+	var rs: Unit = unit_of(b, "rocketship")
+	var ds: Unit = unit_of(b, "dropship")
+	check(rs != null and ds != null and b.is_boss(rs) and b.is_boss(ds), "the level ends on a pair of helicopters, both bosses")
+	check(b.bosses.parts_of(rs, "pod").size() == 2, "the gunship carries 2 rocket pods")
+	for o in b.units:
+		if o.team == "enemy" and o != rs and o != ds and o.type != "bosspart":
+			o.gone = true
+	var sq: Array = b.squad()
+	for k in sq.size():
+		ground_unit(b, sq[k], rs.x - 260 - k * 70, 0)
+	cam_on(b, rs.x - 350)
+	await until(func(): return b.cine.is_empty(), 900)
+	await frames_wait(20)
+	await shot("b7_rotors_entrance")
+	await boss_turn(b, rs)
+	check(rs.fl.has("windup") and rs.fl.windup.kind == "salvo", "turn 1: the gunship swings its pods open toward a soldier")
+	await shot("b7_rotors_pods")
+	var w: Dictionary = rs.fl.windup
+	var vic: Unit = b.squad_alive()[0]
+	ground_unit(b, vic, w.x, 0)
+	for s2 in b.squad_alive():
+		if s2 != vic:
+			ground_unit(b, s2, w.x - 260 - b.squad_alive().find(s2) * 26 if w.x - 300 > b.cam_x + 60 else w.x + 260 + b.squad_alive().find(s2) * 26, 0)
+	var vh: int = vic.hp
+	await boss_turn(b, rs)
+	check(vic.hp < vh or vic.dead, "turn 2: the salvo comes down on that spot (%d -> %d)" % [vh, vic.hp])
+	await shot("b7_rotors_salvo")
+	var paras0: int = b.units.filter(func(o): return o.para and not o.dead and not o.gone).size()
+	await boss_turn(b, ds)
+	var paras1: int = b.units.filter(func(o): return o.para and not o.dead and not o.gone).size()
+	check(paras1 >= paras0 + 2, "the dropship drops troopers out of its door (%d -> %d)" % [paras0, paras1])
+	await shot("b7_rotors_drop")
+	for o in b.units:
+		if o.para:
+			o.gone = true
+	b.kill(ds, b.squad_alive()[0] if b.squad_alive().size() else null)
+	await frames_wait(20)
+	check(not b.boss_dead and rs.fl.get("berserk", false), "kill the dropship: the gunship goes berserk and the level isn't won yet")
+	var h0: int = rs.hp
+	b.damage(rs, 10, b.squad()[0], {})
+	check(h0 - rs.hp >= 15 or rs.dead, "berserk, it takes 50%% more damage (%d)" % (h0 - rs.hp))
+	b.kill(rs, null)
+	await frames_wait(30)
+	check(b.boss_dead, "kill both and the level is won")
+	await frames_wait(60)
+	await shot("b7_rotors_dead")
+	# ---- BASTION
+	b = await boss_level("bastion", "fortress")
+	var bs: Unit = unit_of(b, "bastion")
+	check(bs != null and b.bosses.parts_of(bs, "rturret").size() == 2, "the Fortress ends on Bastion, with 2 roof guns")
+	for o in b.units:
+		if o.team == "enemy" and o != bs and o.type != "bosspart":
+			o.gone = true
+	sq = b.squad()
+	for k in sq.size():
+		ground_unit(b, sq[k], bs.x - 420 - k * 50, 0)
+	cam_on(b, bs.x - 420)
+	await until(func(): return b.cine.is_empty(), 900)
+	await frames_wait(20)
+	await shot("b8_bastion_entrance")
+	var bx: float = bs.x
+	await boss_turn(b, bs)
+	check(bs.x < bx - 15, "turn 1: it crawls toward the squad (%d px)" % int(bx - bs.x))
+	check(bs.fl.has("windup") and bs.fl.windup.kind == "hangar", "and its hangar lights go red")
+	await shot("b8_bastion_redlights")
+	var n0: int = b.units.filter(func(o): return o.team == "enemy" and not o.dead and not o.gone and o.type in Data.BASTION_WAVE).size()
+	await boss_turn(b, bs)
+	var n1: int = b.units.filter(func(o): return o.team == "enemy" and not o.dead and not o.gone and o.type in Data.BASTION_WAVE).size()
+	check(n1 >= n0 + Data.BASTION_WAVE.size(), "turn 2: the door drops and a wave rolls out (%d -> %d)" % [n0, n1])
+	check(bs.fl.get("door_open", false), "the hangar stands open")
+	await shot("b8_bastion_hangar")
+	var bh: int = bs.hp
+	b.damage(bs, 10, b.squad()[0], {"blast": true})
+	check(bh - bs.hp >= 20, "a blast into the open hangar does double (%d)" % (bh - bs.hp))
+	b.kill(bs, null)
+	await until(func(): return bs.fl.get("wrecked", false), 900)
+	check(b.boss_dead, "killing it wins the level")
+	await frames_wait(60)
+	await shot("b8_bastion_dead")
+	# ---- COLONEL VARGA
+	b = await boss_level("varga_suit", "fortress")
+	var vg: Unit = unit_of(b, "varga_suit")
+	check(vg != null, "the Fortress can end on Colonel Varga")
+	for o in b.units:
+		if o.team == "enemy" and o != vg and o.type != "bosspart":
+			o.gone = true
+	sq = b.squad()
+	for k in sq.size():
+		ground_unit(b, sq[k], vg.x - 240 - k * 60, 0)
+	cam_on(b, vg.x - 300)
+	await until(func(): return b.cine.is_empty(), 900)
+	await frames_wait(20)
+	await shot("b9_varga_entrance")
+	await boss_turn(b, vg)
+	check(vg.fl.has("windup") and vg.fl.windup.kind == "slam" and vg.fl.get("offscreen", false), "turn 1: he rockets off the top of the screen")
+	var vhp: int = vg.hp
+	b.damage(vg, 10, b.squad()[0], {})
+	check(vg.hp == vhp, "he can't be hit up there")
+	await frames_wait(40)
+	await shot("b9_varga_shadow")
+	var sw: Dictionary = vg.fl.windup
+	var vv: Unit = b.squad_alive()[0]
+	ground_unit(b, vv, sw.x, 0)
+	for s2 in b.squad_alive():
+		if s2 != vv:
+			ground_unit(b, s2, sw.x - 200 - b.squad_alive().find(s2) * 30 if sw.x - 260 > b.cam_x + 60 else sw.x + 200 + b.squad_alive().find(s2) * 30, 0)
+	var vvh: int = vv.hp
+	await boss_turn(b, vg)
+	check(vv.hp <= vvh - 10 or vv.dead, "turn 2: he slams down on his shadow (%d -> %d)" % [vvh, vv.hp])
+	check(not vg.fl.get("offscreen", false), "and he's back on the field")
+	await shot("b9_varga_slam")
+	await until(func(): return b.settled(), 600)
+	var st0: String = b.state
+	b.state = "player"
+	vhp = vg.hp
+	b.damage(vg, 10, b.squad_alive()[0] if b.squad_alive().size() else b.squad()[0], {})
+	check(vg.hp == vhp, "he sidesteps the first hit of your turn")
+	b.damage(vg, 10, b.squad_alive()[0] if b.squad_alive().size() else b.squad()[0], {})
+	check(vg.hp < vhp, "but not the second")
+	b.state = st0
+	b.kill(vg, null)
+	await until(func(): return vg.fl.get("wrecked", false), 900)
+	check(b.boss_dead, "beating him wins the level")
+	await frames_wait(60)
+	await shot("b9_varga_dead")
 	main.show_title()
 	await frames_wait(5)
 

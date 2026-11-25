@@ -240,7 +240,7 @@ func make_level(id: String, tier: int, breach := false) -> Dictionary:
 	# so no other roll moves)
 	var brng := RandomNumberGenerator.new()
 	brng.seed = hash([id, tier, seed_val, mission, "boss"])
-	var nb: Array = Data.BOSS_POOLS.get(id, [])
+	var nb: Array = Data.BOSS_POOLS.get(id, []).filter(func(k): return k != "varga_suit" or not campaign())  # the campaign's Varga has his own story
 	if boss == "boar" and tier >= 1 and nb.size() and brng.randf() < Data.NEW_BOSS_CHANCE:
 		boss = nb[brng.randi() % nb.size()]
 	var kits: Array = Data.BOAR_KITS.keys().filter(func(k): return not Data.BOAR_KITS[k].get("biome", false))

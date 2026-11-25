@@ -1070,6 +1070,10 @@ func muzzle(u: Unit) -> Vector2:
 		return Vector2(u.x + 14, u.y - 70)  # the turret gun on the bunker's roof
 	if u.type == "ironjaw":
 		return Vector2(u.x + u.face * 14, u.y - 84)  # the gun on the cab roof
+	if u.type == "rocketship" or u.type == "dropship":
+		return Vector2(u.x + u.face * 50, u.y - 16)  # the chin or door gun
+	if u.type == "varga_suit":
+		return Vector2(u.x + u.face * 30, u.y - 40)  # his arm cannon
 	return Vector2(u.x + u.face * 14, u.y - u.h + 15)
 
 func boss_pivot(u: Unit) -> Vector2:
@@ -1663,6 +1667,14 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 		return
 	if tg.type == "bosspart" and not (src is Unit and (src.team == "squad" or src.team == "ally")):
 		return  # X4: only the squad breaks a boss's parts, not stray blasts or the boss's own side
+	if tg.type == "varga_suit":
+		if tg.fl.get("offscreen", false) or boss_ai.varga_dodge(tg, src):
+			return  # B9: off the top of the screen, or the first hit of your turn: he sidesteps it
+	if tg.type == "bastion" and tg.fl.get("door_open", false) and o.get("blast", false):
+		amt *= 2  # B8: a blast into the open hangar
+		float_text(tg, "INTO THE HANGAR!", Color("ffd23a"), true)
+	if tg.fl.get("berserk", false):
+		amt = int(ceil(amt * Data.BERSERK_DMG))  # B7: the surviving rotor flies reckless
 	var own = src if src != null and src is Unit and src.team == "squad" else null
 	if tg.kind == "crate":
 		open_crate(tg, false)
@@ -2231,8 +2243,15 @@ func kill(tg: Unit, src) -> void:
 					kill(o, src)  # its plates come down with it
 			banner("HIVE SHIP DOWN!", Color("9df25c"), "THE SKY IS CLEAR")
 		if is_boss(tg) and units.any(func(o): return o != tg and is_boss(o) and not o.dead and not o.gone):
-			bosses.death(tg)  # B5: one of two serpents down; the level waits for the other
-			banner("ONE HEAD DOWN!", Color("6ad0ff"), "KILL THE OTHER")
+			# B5, B7: one of two bosses down (a split serpent, a Twin Rotor); the level waits for the other
+			bosses.death(tg)
+			var left: Array = units.filter(func(o): return o != tg and is_boss(o) and not o.dead and not o.gone)
+			if tg.type in ["rocketship", "dropship"]:
+				for o in left:
+					o.fl["berserk"] = true
+				banner(Data.ETYPES[tg.type].pair, Color("ff4d3d"), "THE OTHER GOES BERSERK: TWICE THE TURNS, BUT IT TAKES MORE DAMAGE")
+			else:
+				banner(Data.ETYPES[tg.type].get("pair", "ONE HEAD DOWN!"), Color("6ad0ff"), "KILL THE OTHER")
 		elif is_boss(tg):
 			boss_dead = true
 			if tg.type == "boss":
