@@ -11,7 +11,7 @@ func _init(battle: Battle) -> void:
 	bt = battle
 
 func handles(u: Unit) -> bool:
-	return u.type in ["stormcrow", "railgun"]
+	return u.type in ["stormcrow", "railgun", "gravemother", "ironjaw"]
 
 func setup(u: Unit) -> void:
 	## Called once when the boss is placed in the level: its parts and starting state.
@@ -26,6 +26,15 @@ func setup(u: Unit) -> void:
 			for dx in [30.0, 41.0, 52.0]:
 				B.add_part(u, "coil", dx, -56.0)
 			u.aim_a = 0.12
+		"gravemother":
+			# three egg sacs hanging under her belly
+			for d in [[22.0, -82.0], [50.0, -84.0], [40.0, -54.0]]:
+				B.add_part(u, "sac", d[0], d[1])
+			u.face = -1
+		"ironjaw":
+			u.face = -1
+			B.add_part(u, "winch", 30.0, -96.0)
+			B.add_part(u, "magnet", -34.0, -64.0)
 
 func act(u: Unit) -> void:
 	bt.bosses.tick_turn(u)
@@ -38,6 +47,10 @@ func act(u: Unit) -> void:
 			await stormcrow_turn(u, fired)
 		"railgun":
 			await railgun_turn(u, fired)
+		"gravemother":
+			await gravemother_turn(u, fired)
+		"ironjaw":
+			await ironjaw_turn(u, fired)
 
 func on_phase2(u: Unit) -> void:
 	match u.type:
@@ -50,6 +63,10 @@ func fire_windup(u: Unit, w: Dictionary) -> void:
 			await bomb_run(u, w)
 		"rail":
 			await fire_rail(u, w)
+		"brood":
+			await brood_hatch(u, w)
+		"swing":
+			await ball_swing(u, w)
 
 # ---------------------------------------------------------------- B1 STORMCROW
 func arena(u: Unit) -> Array:
@@ -295,3 +312,262 @@ func coil_down(u: Unit) -> void:
 		bt.damage(u, Data.RAIL_DMG, null, {"blast": true})
 	if coils(u) == 0 and not u.dead:
 		bt.banner("THE RAIL IS DEAD", Color("ffd23a"), "ONLY ITS TURRET GUN LEFT")
+
+# ---------------------------------------------------------------- B3 GRAVEMOTHER
+func sacs(u: Unit) -> int:
+	return bt.bosses.parts_of(u, "sac").size()
+
+func stalk(u: Unit, reach: float, keep: float) -> void:
+	## A slow walk toward the nearest soldier on her long legs, stopping `keep` short of them.
+	var tg = bt.nearest_squad(u)
+	if tg == null:
+		return
+	var dir := signf(tg.x - u.x)
+	if dir == 0:
+		return
+	u.face = int(dir)
+	var go: float = clampf(absf(tg.x - u.x) - keep, 0.0, reach)
+	var pts: Array = []
+	var x := u.x
+	var y := u.y
+	var n := int(go / 2.0)
+	for i in n:
+		var nx := x + dir * 2.0
+		if nx < bt.cam_x + 80 or nx > bt.cam_x + bt.W - 60:
+			break
+		var ny = bt.T.stand_y(nx, y - 40)
+		if ny == null or absf(ny - y) > 30:
+			break
+		x = nx; y = ny
+		pts.append([x, y, false])
+	if pts.size():
+		await bt.phys.walk_along(u, pts)
+		# the legs come down on whoever is underfoot
+		for o in bt.squad_alive():
+			if absf(o.x - u.x) < u.w / 2.0 - 6 and absf(o.y - u.y) < 30:
+				bt.damage(o, Data.STOMP_DMG, u, {"melee": true})
+				if not o.dead:
+					bt.spec_kits.fling(o, signf(o.x - u.x + 0.01), 4.0, u)
+				bt.float_text(o, "STOMPED", Color("c47bff"))
+		bt.shake += 3
+
+func spit(u: Unit) -> void:
+	## Acid from the head: a hit and a pool that burns for two turns.
+	var tg = bt.nearest_squad(u)
+	if tg == null or absf(tg.x - u.x) > 520:
+		return
+	u.face = 1 if tg.x >= u.x else -1
+	u.pose = "throw"; u.pose_t = 18
+	Sfx.play("splash")
+	var h := Vector2(u.x + u.face * 70, u.y - 76)  # her mandibles
+	bt.tracers.append({"x1": h.x, "y1": h.y, "x2": tg.x, "y2": tg.y - 10, "c": Color("9df25c"), "t": 16})
+	await bt.wait(10)
+	bt.acids.append({"x": tg.x, "y": tg.y, "r": 36.0, "turns": 2})
+	bt.damage(tg, Data.SPIT_DMG, u, {})
+	bt.float_text(tg, "ACID!", Color("9df25c"), true)
+	await bt.wait(10)
+
+func gravemother_turn(u: Unit, hatched: bool) -> void:
+	await stalk(u, 70.0 if bt.bosses.phase(u) == 1 else 140.0, 50.0)
+	if u.dead or bt.squad_alive().is_empty():
+		return
+	await spit(u)
+	if u.dead or bt.squad_alive().is_empty():
+		return
+	# phase 1 broods every other turn; phase 2 every turn. No sacs left, no brood.
+	if sacs(u) == 0:
+		return
+	if hatched and bt.bosses.phase(u) == 1:
+		return
+	bt.bosses.start_windup(u, "brood", {})
+	Sfx.play("chitter", -2)
+	bt.shake += 2
+
+func brood_hatch(u: Unit, w: Dictionary) -> void:
+	## Last turn's swelling sacs burst: a Skitter from every sac still hanging, and they act now.
+	var live: Array = bt.bosses.parts_of(u, "sac")
+	if live.is_empty():
+		return
+	bt.float_text(u, "THE BROOD HATCHES!", Color("9df25c"), true)
+	Sfx.play("splash")
+	bt.bosses.slowmo(Vector2(u.x, u.y - 40), 26, 0.4)
+	var full: int = bt.units.filter(func(o): return o.type == "skitter" and not o.dead and not o.gone).size()
+	for p in live:
+		if full >= Data.BROOD_CAP:
+			break
+		for k in Data.BROOD_PER_SAC:
+			bt.vharr_ai.spawn_skitter(p.x + (k * 2 - 1) * 10, u.y)
+			full += 1
+		bt.part({"x": p.x, "y": p.y - 6, "vx": 0.0, "vy": -1.0, "life": 26, "max": 26, "c": Color("9df25c"), "s": 4.0, "g": 0.05})
+	await bt.wait(24)
+
+func sac_down(u: Unit) -> void:
+	## A sac shot off: mid-swell the brood dies inside and the acid burns her.
+	if bt.bosses.winding(u):
+		bt.bosses.cancel_windup(u)
+		bt.banner("STILLBORN!", Color("9df25c"), "THE BROOD DIED IN THE SAC")
+		bt.acids.append({"x": u.x, "y": u.y, "r": 50.0, "turns": 2})
+		bt.damage(u, Data.SAC_BURST_DMG, null, {"blast": true})
+	if sacs(u) == 0 and not u.dead:
+		bt.banner("NO MORE BROOD", Color("9df25c"), "SHE CAN ONLY BITE AND SPIT NOW")
+
+# ---------------------------------------------------------------- B4 IRONJAW
+func boom_tip(u: Unit) -> Vector2:
+	## The end of the crane's boom, out in front of the cab.
+	return Vector2(u.x + u.face * 82, u.y - 162)
+
+func ball_pos(u: Unit) -> Vector2:
+	var a: float = u.fl.get("swing", 0.0)
+	return boom_tip(u) + Vector2(sin(a), cos(a)) * Data.CABLE_LEN
+
+func ironjaw_turn(u: Unit, swung: bool) -> void:
+	# the cab gun every turn
+	var best = bt.foe_ai.best_shot(u, bt.squad_alive(), Data.ETYPES.ironjaw.range)
+	if best != null:
+		await bt.foe_ai.enemy_shoot(u, best.t, Data.ETYPES.ironjaw)
+	if u.dead or bt.squad_alive().is_empty():
+		return
+	var ball: bool = not u.fl.get("ball_gone", false)
+	var has_magnet: bool = bt.bosses.parts_of(u, "magnet").size() > 0
+	if not ball:
+		if has_magnet:
+			await magnet(u)
+		return
+	# phase 1: hoist, swing, magnet, and round again. Phase 2: the brake is shot and it hoists
+	# again the turn it swings.
+	if swung and bt.bosses.phase(u) == 1:
+		u.fl["rest"] = true
+		return
+	if u.fl.get("rest", false):
+		u.fl.erase("rest")
+		if has_magnet:
+			await magnet(u)
+			return
+	await hoist(u)
+
+func hoist(u: Unit) -> void:
+	## The crane rolls up until its boom is over a soldier and winches the ball back, high and held.
+	var opts := bt.squad_alive()
+	if opts.is_empty():
+		return
+	var tg: Unit = bt.pick(opts)
+	var want: float = tg.x - u.face * 82.0
+	var dir := signf(want - u.x)
+	var pts: Array = []
+	var x := u.x
+	var y := u.y
+	for i in int(minf(absf(want - u.x), Data.CRANE_ROLL) / 2.0):
+		var nx := x + dir * 2.0
+		if nx > bt.cam_x + bt.W - 60 or nx < bt.cam_x + 120:
+			break
+		var ny = bt.T.stand_y(nx, y - 30)
+		if ny == null or absf(ny - y) > 16:
+			break
+		x = nx; y = ny
+		pts.append([x, y, false])
+	if pts.size():
+		var keep := u.face
+		await bt.phys.walk_along(u, pts)
+		u.face = keep  # crawler tracks: it reverses, it doesn't turn round
+	var back := float(u.face) * Data.SWING_BACK  # hauled out in front, high over the soldier
+	var a0: float = u.fl.get("swing", 0.0)
+	Sfx.play("engine", -4)
+	for i in 30:
+		u.fl["swing"] = lerpf(a0, back, float(i + 1) / 30.0)
+		await bt.tick
+	bt.bosses.start_windup(u, "swing", {"a": back})
+
+func ball_swing(u: Unit, w: Dictionary) -> void:
+	## The brake comes off: a real pendulum through everything in its arc, walls and soldiers.
+	var a: float = w.a
+	var om := 0.0
+	var L: float = Data.CABLE_LEN
+	var hit := {}
+	bt.float_text(u, "BRAKE OFF!", Color("ffd23a"), true)
+	Sfx.play("whoosh")
+	var low := boom_tip(u) + Vector2(0, L)
+	bt.bosses.slowmo(low, 40, 0.35)
+	for i in 110:
+		om += -Data.SWING_G / L * sin(a)
+		om *= 0.993
+		a += om
+		u.fl["swing"] = a
+		var p := ball_pos(u)
+		var spd := absf(om) * L
+		if spd > 2.0:
+			if bt.T.solid(p.x, p.y + 4):
+				bt.T.carve(p.x, p.y, Data.BALL_R + 2, null)
+				bt.dust(p.x, p.y, Color("8a7a6a"), 2)
+				if i % 4 == 0:
+					bt.shake += 2
+					Sfx.play("thud", -6)
+			for o in bt.units:
+				if o == u or o.dead or o.gone or o.sunk or o.is_pickup() or o.kind == "pow" or hit.has(o.id) or o.fl.get("boss") == u:
+					continue
+				if absf(p.x - o.x) < o.w / 2.0 + Data.BALL_R and p.y + Data.BALL_R > o.y - o.h and p.y - Data.BALL_R < o.y:
+					hit[o.id] = true
+					bt.damage(o, Data.SWING_DMG, u, {"melee": true})
+					Sfx.play("bonk")
+					bt.shake += 8
+					if not o.dead:
+						bt.spec_kits.fling(o, signf(om), 7.0, u)
+		await bt.tick
+	# it settles back under the boom
+	var a1: float = u.fl.swing
+	for i in 20:
+		u.fl["swing"] = lerpf(a1, 0.0, float(i + 1) / 20.0)
+		await bt.tick
+
+func magnet(u: Unit) -> void:
+	## The magnet on the second line: drags the nearest soldier off their feet toward the crane.
+	var tg = bt.nearest_squad(u)
+	if tg == null or absf(tg.x - u.x) > Data.MAGNET_RANGE:
+		return
+	bt.float_text(tg, "MAGNET!", Color("ff4d3d"), true)
+	Sfx.play("power", -4)
+	u.fl["magnet_t"] = 30
+	await bt.wait(14)
+	if tg.dead:
+		return
+	var dir: float = signf(u.x - tg.x)
+	bt.damage(tg, Data.MAGNET_DMG, u, {})
+	if tg.dead or tg.heavy or tg.immovable:
+		await bt.wait(20)
+		return
+	# up off their feet and across toward the crane on an arc, until something solid is in the way
+	var x0: float = tg.x
+	var y0: float = tg.y
+	var go: float = clampf(absf(u.x - tg.x) - u.w / 2.0 - 30.0, 0.0, Data.MAGNET_PULL)
+	tg.walk = null
+	tg.fl["carried"] = true
+	for i in 30:
+		var k := float(i + 1) / 30.0
+		var nx: float = x0 + dir * go * k
+		var ny: float = y0 - sin(k * PI) * 50.0 - 6.0 * k
+		if bt.T.solid(nx + dir * 6, ny - tg.h / 2.0) or bt.T.solid(nx, ny - tg.h):
+			break
+		tg.x = nx
+		tg.y = ny
+		await bt.tick
+	tg.fl.erase("carried")
+	tg.vx = dir * 1.0; tg.vy = 0.0; tg.air = true
+	await bt.wait(24)
+
+func winch_down(u: Unit) -> void:
+	## The winch shot off: the cable runs out and the ball drops on whatever is under it.
+	if u.fl.get("ball_gone", false):
+		return
+	u.fl["ball_gone"] = true
+	bt.bosses.cancel_windup(u)
+	var p := ball_pos(u)
+	var cells: Array = []
+	var c0 := Vector2i(int(p.x / bt.CELL), int(p.y / bt.CELL))
+	for cx in range(-3, 4):
+		for cy in range(-3, 4):
+			if cx * cx + cy * cy <= 10 and not bt.T.solid((c0.x + cx) * bt.CELL + 2, (c0.y + cy) * bt.CELL + 2):
+				cells.append([c0.x + cx, c0.y + cy, bt.T.STEEL, 0])
+	var c = bt.T.chunk_from_cells(cells, null)
+	if c != null:
+		c.hit[u.id] = true
+	bt.shake += 10
+	Sfx.play("collapse")

@@ -307,6 +307,10 @@ func part_down(p: Unit, src) -> void:
 		match p.fl.part:
 			"coil":
 				bt.boss_ai.coil_down(bo)
+			"sac":
+				bt.boss_ai.sac_down(bo)
+			"winch":
+				bt.boss_ai.winch_down(bo)
 			"rack":
 				bo.fl["rack_gone"] = true
 				cancel_windup(bo, "NO SHELLS!")

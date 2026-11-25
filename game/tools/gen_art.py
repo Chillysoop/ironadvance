@@ -829,7 +829,7 @@ def sf_vharr():
         im.save(os.path.join(OUT, 'sprites', 'vh_%s.png' % k))
         flash_white(im).save(os.path.join(OUT, 'sprites', 'vh_%s_w.png' % k))
 
-BOSS_ART = {'stormcrow': 'body', 'railbreaker': 'bunker'}
+BOSS_ART = {'stormcrow': 'body', 'railbreaker': 'bunker', 'gravemother': 'walker', 'ironjaw': 'crane'}
 
 def sf_bosses():
     """Epic bosses page X3: each boss's body from Sprite Fusion (tools/sf_src/<boss>/), snapped to a
