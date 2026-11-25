@@ -46,6 +46,12 @@ var pins := {}            # N2: cell index -> rivet unit id; a bolted girder han
 var open_pits: Array = []  # pits with no planks over them: bridge, dock, crust and lift gaps, open drops
 var lakes: Array = []     # M1: [x0, x1] of each frozen crust over open water
 var cars: Array = []      # M2: train car structs, with "roof" set once built
+var train := false       # TR1: the level is a moving train: a thin deck over the track
+const TRAIN_DECK := 376.0 # TR1: the deck's top, high enough that the wheels show over the hand
+const DECK_ROWS := 4      # TR1: how thick the deck is, in cells; under it is air and then the wheels
+const COUPLER_W := 16.0   # TR1: the coupling bar between two cars; the rest of the gap is open
+const SLIT_STEP := 14     # TR1: a walk steps over an open slit this wide or narrower
+const TRAIN_ROW := int(TRAIN_DECK / CELL) + DECK_ROWS - 1  # TR1: the deck's bottom row, bolted to the chassis
 var lifts: Array = []     # M7: carrier deck elevators
 var runways: Array = []   # M7: taxi lanes a jet rolls down
 var ceiling := false      # M4: the level is underground
@@ -318,6 +324,9 @@ func build(mission: Dictionary) -> void:
 			flatten(s.x0 - 10, s.x1 + 10, 10)
 		if s.t == "fence":
 			flatten(s.x - 20, s.x + 24, 10)
+	train = rules.get("train", false)
+	if train:
+		heights.fill(TRAIN_DECK)  # TR1: the whole level is one long train: a level deck end to end
 	for cx in cols:
 		var cxx := cx * CELL + 2
 		var in_pit := false
@@ -331,8 +340,9 @@ func build(mission: Dictionary) -> void:
 		if is_firm(cxx):
 			deep = top + 8 + int(hash2(cx, 7) * 2)  # F2: a thinner topsoil over the landing zone's bedrock
 		# the ground stops at the waterline like Worms: dig through it and there is only water
-		for cy in range(top, WATER_ROW):
-			set_cell(cx, cy, STEEL if rules.get("deck", false) else (4 if cy > deep else 1))
+		# TR1: on the train it is a steel deck with open air under it, down to the rushing track
+		for cy in range(top, mini(WATER_ROW, top + DECK_ROWS) if train else WATER_ROW):
+			set_cell(cx, cy, STEEL if rules.get("deck", false) or train else (4 if cy > deep else 1))
 		for r in ice_runs:
 			if cxx >= r[0] and cxx < r[1]:
 				set_cell(cx, top, ICE)
@@ -482,7 +492,7 @@ func build_struct(s: Dictionary) -> void:
 			var g := ground_at(s.x + s.w / 2.0)
 			var roof: float = g - s.h
 			s["roof"] = roof
-			fill_r(s.x, roof, s.w, Data.WATER_Y + 8 - roof, STEEL)
+			fill_r(s.x, roof, s.w, (g + DECK_ROWS * CELL if train else Data.WATER_Y + 8) - roof, STEEL)
 			if s.h >= 40:
 				fill_r(s.x + 8, roof + 8, s.w - 16, s.h - 8, 0)
 				fill_r(s.x, g - 36, 8, 36, 0)
@@ -493,7 +503,13 @@ func build_struct(s: Dictionary) -> void:
 		"coupler":
 			# M2: the walkway between two cars, a plate at floor level
 			var g := ground_at(s.x0 - 12)
-			fill_r(s.x0 - 4, g, s.x1 - s.x0 + 8, 4, STEEL)
+			if train:
+				# TR1: just the coupling bar: open slits either side drop to the track. A walk steps
+				# over them, but anyone knocked or dropped in goes under the wheels
+				var m: float = (s.x0 + s.x1) / 2.0
+				fill_r(m - COUPLER_W / 2.0, g, COUPLER_W, 4, STEEL)
+			else:
+				fill_r(s.x0 - 4, g, s.x1 - s.x0 + 8, 4, STEEL)
 		"prop":
 			# M4: a rock slab hanging just under the ceiling on one wooden beam. Cut the beam and it drops
 			var top := 0.0
@@ -798,7 +814,7 @@ func flood(start: int, cause) -> void:
 		head += 1
 		var cy := i / cols
 		var cx := i - cy * cols
-		if cy >= WATER_ROW - 1 or pins.has(i):
+		if cy >= WATER_ROW - 1 or pins.has(i) or (train and cy >= TRAIN_ROW):  # TR1: the chassis holds the deck up
 			anchored = true  # the seabed holds up anything still joined to the bottom row of ground
 			break
 		for k in 4:

@@ -95,7 +95,7 @@ func place_props() -> void:
 				continue
 		x += 40
 	# reeds along the banks of every pit
-	if b.theme != "night":
+	if b.theme != "night" and not b.rules.get("train", false):  # TR1: no reeds on a train
 		for p in T.pits:
 			for ex in [p[0] - 14.0, p[1] + 14.0, p[0] + 10.0, p[1] - 10.0]:
 				var y := surface(ex)

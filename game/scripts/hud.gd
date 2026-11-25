@@ -1928,7 +1928,7 @@ class WaterRail extends Control:
 			al = 0.35  # a lifted card is being read: stay out of its way
 		var c0: Color = Color("ff5a1e") if lava else Color(b.th.water[1])
 		var c1: Color = Color("ffd23a") if lava else c0.lightened(0.45)
-		var word := "LAVA" if lava else "DROWN"
+		var word := "LAVA" if lava else ("WHEELS" if b.rules.get("train", false) else "DROWN")
 		var tagged := false
 		for r in runs(b):
 			var x0: float = r[0]

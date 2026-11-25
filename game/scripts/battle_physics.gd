@@ -57,10 +57,22 @@ func sim_walk(u: Unit, tx: float, budget: float) -> Dictionary:
 			if blocks(nx, ny - 1, dir):
 				break
 		elif not bt.T.solid(nx, ny):
+			var ox := nx
 			while not bt.T.solid(nx, ny) and ny < bt.WATER_Y:
 				ny += bt.CELL
 			if ny >= bt.WATER_Y:
-				break
+				# TR1: on the train a walk steps over a narrow slit between the cars and the coupling
+				var over := -1.0
+				if bt.T.train:
+					for k in range(2, Terrain.SLIT_STEP + 2, 2):
+						if bt.T.solid(ox + dir * k, y) and not bt.T.solid(ox + dir * k, y - 1):
+							over = ox + dir * k
+							break
+				if over < 0:
+					break
+				nx = over
+				ny = y
+				st = absf(nx - x)
 		var blocked := false
 		var inside := false
 		var hy := ny - u.h + 2

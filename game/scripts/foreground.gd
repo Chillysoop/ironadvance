@@ -38,7 +38,7 @@ func _draw() -> void:
 	# close foreground silhouettes along the bottom edge
 	var w := fore.get_width() * Art.PX
 	var hgt := fore.get_height() * Art.PX
-	var off := fposmod(cx * FORE_PAR, w)
+	var off := fposmod((cx + (b.t * 8.0 if b.rules.get("train", false) else 0.0)) * FORE_PAR, w)  # TR1: on the train they rush past
 	var x := cx - off - 8
 	while x < cx + Battle.W + 8:
 		draw_texture_rect(fore, Rect2(roundf(x), Battle.H - hgt + 10, w, hgt), false)

@@ -1692,7 +1692,7 @@ const BIOMES := {
 		"rules": {"train": true, "tunnel": 3, "amp": 0.0, "wind": 2.0},
 		"look": {"tint": Color(1.02, 0.96, 0.9), "grass": Color("8a7a5a"), "sky": Color(1.0, 0.86, 0.74), "water": [Color("2e2824"), Color("6a5a48")]},
 		"segments": ["traincars", "flatcars", "guncar", "boxcars", "caboose"],
-		"text": "Fight car to car along a moving train. Every 3 rounds a tunnel sweeps the roofs: the count is over every car. Anyone up there takes 12 and gets thrown back. Fall between the cars and you go under the wheels."},
+		"text": "Fight car to car on top of a train at full speed. There is no water here: fall between the cars, or through a hole blown in the deck, and you go under the wheels. Every 3 rounds a tunnel sweeps the roofs: the count is over every car. Anyone up there takes 12 and gets thrown back."},
 	"city": {"name": "RUINED CITY", "theme": "dusk", "favor": "long", "rough": "close",
 		"rules": {"sight": 1.2, "sway": 0.8, "amp": 0.3, "wind": 1.2, "firm_lz": 1200.0},
 		"look": {"tint": Color(0.94, 0.92, 0.9), "grass": Color("8a8a7a"), "sky": Color(0.9, 0.86, 0.84)},
