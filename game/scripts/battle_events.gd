@@ -84,7 +84,7 @@ func setup_road() -> void:
 						u.kind = "wreck"; u.w = 40; u.h = 18
 					"prison":
 						u.kind = "pow"; u.face = -1
-						u.pow_name = Data.POW_NAMES[randi() % Data.POW_NAMES.size()]
+						u.pow_name = Data.POW_NAMES[int(u.x) % Data.POW_NAMES.size()]  # not randi(): the road must not reshuffle the map loot rolled after it
 						bt.stats.pows_total += 1
 				bt.units.append(u)
 		"quiet":

@@ -1661,6 +1661,8 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 	last_hit_o = o
 	if tg.kind == "pow":
 		return
+	if tg.type == "bosspart" and not (src is Unit and (src.team == "squad" or src.team == "ally")):
+		return  # X4: only the squad breaks a boss's parts, not stray blasts or the boss's own side
 	var own = src if src != null and src is Unit and src.team == "squad" else null
 	if tg.kind == "crate":
 		open_crate(tg, false)
@@ -1978,7 +1980,9 @@ func who_did(tg: Unit, src) -> String:
 		return "UNDER THE WHEELS" if rules.get("train", false) else "DROWNED"
 	if src is Unit and src.team == "enemy":
 		if src.type == "boss":
-			return "THE VHARR BOAR" if src.fl.get("vharr", false) else "THE IRON BOAR"
+			return "THE VHARR BOAR" if src.fl.get("vharr", false) else "THE " + str(Data.BOAR_KITS.get(mission.get("boar_kit", "standard"), Data.BOAR_KITS.standard).name)
+		if is_boss(src):
+			return "THE " + str(Data.ETYPES[src.type].name).to_upper()
 		return "A " + str(Data.ETYPES[src.type].name).to_upper()
 	var card := (" (%s)" % act_card.to_upper()) if act_card != "" and act_unit == src else ""
 	if src is Unit and src == tg:
@@ -2226,7 +2230,10 @@ func kill(tg: Unit, src) -> void:
 				if o.type == "shipplate" and o.fl.get("ship") == tg and not o.dead:
 					kill(o, src)  # its plates come down with it
 			banner("HIVE SHIP DOWN!", Color("9df25c"), "THE SKY IS CLEAR")
-		if is_boss(tg):
+		if is_boss(tg) and units.any(func(o): return o != tg and is_boss(o) and not o.dead and not o.gone):
+			bosses.death(tg)  # B5: one of two serpents down; the level waits for the other
+			banner("ONE HEAD DOWN!", Color("6ad0ff"), "KILL THE OTHER")
+		elif is_boss(tg):
 			boss_dead = true
 			if tg.type == "boss":
 				Run.meta["boar_down"] = true  # D1: no more Rookie Boars once one is beaten
@@ -5376,7 +5383,7 @@ func physics(u: Unit) -> void:
 		u.vx = 0
 		u.vy = 0
 		return
-	if u.walk != null or (u.kind == "pow" and u.freed) or u.fl.has("carried") or u.fl.has("falling"):
+	if u.walk != null or (u.kind == "pow" and u.freed) or u.fl.has("carried") or u.fl.has("falling") or u.fl.has("scripted"):
 		return
 	if u.type == "bosspart" and not u.dead:
 		bosses.pin_part(u)  # X4: a boss part goes where the boss goes

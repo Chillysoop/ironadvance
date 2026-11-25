@@ -1,0 +1,104 @@
+[
+ {
+  "op": "style",
+  "prompt": "A troop carrier superstructure for a heavy military tank, pure side view facing left, olive armor with rust, a boxy armored troop compartment with a hatch on top, a radio antenna, and a small machine gun. Only the superstructure, flat bottom. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_engineer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_flamer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_jetter_f0.png"
+  ],
+  "size": 48,
+  "outputs": [
+   "carrier_0.png",
+   "carrier_1.png",
+   "carrier_2.png",
+   "carrier_3.png",
+   "carrier_4.png",
+   "carrier_5.png",
+   "carrier_6.png",
+   "carrier_7.png",
+   "carrier_8.png"
+  ],
+  "asset_ids": [
+   "1058eca6-b821-4403-9248-173da52a24bf",
+   "0978041d-aacf-42b7-949b-24babd4a97ce",
+   "0e5d8669-f0d2-477f-ba90-b5a8b10db202",
+   "8e813dde-c70e-42cb-81f2-ea1ed57226a0",
+   "7a7bb80c-e4f1-4bd7-a71a-4d7c0f89cc11",
+   "1a5ffb84-bdcb-4619-9382-2037ab97943a",
+   "bda24738-e379-47f5-aacb-f90a1264ce73",
+   "2813f5be-7006-46fd-a3e2-e3280c4a00bd",
+   "148ab020-b77c-4bc8-be11-f043a70be527"
+  ],
+  "picked": "carrier_6 -> carrier.png (troop box with MG; other options not kept)"
+ },
+ {
+  "op": "style",
+  "prompt": "A tank turret for a heavy military tank, pure side view facing left, olive armor with rust, a short fat flamethrower nozzle with a pilot flame, two fuel tanks strapped to the side of the turret. Only the turret, flat bottom. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_engineer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_flamer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_jetter_f0.png"
+  ],
+  "size": 48,
+  "outputs": [
+   "flame_0.png",
+   "flame_1.png",
+   "flame_2.png",
+   "flame_3.png",
+   "flame_4.png",
+   "flame_5.png",
+   "flame_6.png",
+   "flame_7.png",
+   "flame_8.png"
+  ],
+  "asset_ids": [
+   "9967a2a5-51be-4650-9e42-dc5051960fbe",
+   "388fb282-9280-4851-bafa-c3dbab33f641",
+   "d403d221-6c69-4915-9ab3-c6a9ee363574",
+   "75d18ed6-596d-42fd-8a58-ec987c01fb67",
+   "18d271d8-d9bf-4c40-85b5-108eef0b5952",
+   "934e0b1a-8a2d-480e-acaa-3045d25a091d",
+   "c90ae4f0-63c7-4644-be2c-cda8c87c44f9",
+   "50dfa2d3-8b1a-4673-a29b-ecd984e24239",
+   "bcb598ef-7f5d-493a-93e8-4fab256dba81"
+  ],
+  "picked": "flame_1 -> flame.png (fat nozzle, red fuel tanks; other options not kept)"
+ },
+ {
+  "op": "style",
+  "prompt": "A tank turret for a heavy military tank, pure side view facing left, olive armor with rust, a short thick mortar tube pointing steeply up and forward, ammo crates on the back of the turret. Only the turret, flat bottom. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_engineer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_flamer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_jetter_f0.png"
+  ],
+  "size": 48,
+  "outputs": [
+   "mortar_0.png",
+   "mortar_1.png",
+   "mortar_2.png",
+   "mortar_3.png",
+   "mortar_4.png",
+   "mortar_5.png",
+   "mortar_6.png",
+   "mortar_7.png",
+   "mortar_8.png"
+  ],
+  "asset_ids": [
+   "b8d6cc47-585d-499e-97fa-b0fe8eef8f42",
+   "dcb66b56-fc06-4496-b54e-586cbe733ffe",
+   "be41826e-4311-4c38-abb0-8f6cb59515f9",
+   "729c42d2-08ef-4e66-930a-6def21714c5c",
+   "9bb5020c-516f-4412-8e3e-fa32cdbcd6aa",
+   "d8409302-be68-4bbe-a553-cc7586f3507f",
+   "c0004107-e1fb-482c-bf86-5b90f0bbedb4",
+   "f5e7c7d1-9259-47e3-8593-f03eae7c49f8",
+   "d1681676-b805-4a4b-8f58-ed34cc3eaecc"
+  ],
+  "picked": "mortar_4 -> mortar.png (steep tube; other options not kept)"
+ }
+]

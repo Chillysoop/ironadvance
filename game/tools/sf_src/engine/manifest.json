@@ -1,0 +1,26 @@
+[
+ {
+  "op": "style",
+  "prompt": "A heavy armored steam locomotive, pure side view facing left, black and rust iron boiler with riveted armor plates, a tall smokestack, a cow catcher plow with spikes on the front, big red driving wheels with connecting rods, a small cab at the back with a skull painted on it. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_engineer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_flamer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_jetter_f0.png"
+  ],
+  "size": 96,
+  "outputs": [
+   "loco_0.png",
+   "loco_1.png",
+   "loco_2.png",
+   "loco_3.png"
+  ],
+  "asset_ids": [
+   "1e42f580-4592-4279-98ec-b9cf08080b75",
+   "722cd496-093d-4e86-aa59-b7028ef29ccd",
+   "cbe435a6-d707-47d2-bfc2-3802f448a659",
+   "ded31d61-e408-4195-9c58-a21e9b65fd4f"
+  ],
+  "picked": "loco_2 -> loco.png (smoking stack, spiked plow, skull cab; other options not kept)"
+ }
+]

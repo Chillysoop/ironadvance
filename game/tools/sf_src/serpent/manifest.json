@@ -1,0 +1,70 @@
+[
+ {
+  "op": "style",
+  "prompt": "The head of a huge alien void eel, pure side view facing left, armored dark violet chitin plates, a wide jaw full of needle teeth slightly open, three glowing cyan eyes, swept back fins behind the head. Only the head, cut off cleanly at the neck on the right. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_squid_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_overseer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_skitter_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_brute_f0.png"
+  ],
+  "size": 48,
+  "outputs": [
+   "head_0.png",
+   "head_1.png",
+   "head_2.png",
+   "head_3.png",
+   "head_4.png",
+   "head_5.png",
+   "head_6.png",
+   "head_7.png",
+   "head_8.png"
+  ],
+  "asset_ids": [
+   "09f527fd-b31e-41d1-8b10-f30e4b8db42c",
+   "f8b4b215-4da1-4826-8e61-e2d583b027af",
+   "295d889b-86f3-4ef7-9a27-5922c85a17d4",
+   "32b2bf74-8b5c-4a69-9a56-1112441f28dc",
+   "0b6c418c-46f8-4dda-8a7b-f9ef7cd3b40b",
+   "d8de64a9-c453-4722-a3ab-e3a83a9057e7",
+   "30500b3b-1f73-4344-b730-271539c956a3",
+   "59f7e7ac-c75c-41a6-8deb-f990308f4c37",
+   "3da6fc93-9daf-4ee5-98d4-79aef7ccd29e"
+  ],
+  "picked": "head_2 -> head.png (three cyan eyes, swept fins; other options not kept)"
+ },
+ {
+  "op": "style",
+  "prompt": "One body segment of a huge alien void eel, pure side view, a round armored ring of dark violet chitin with a glowing cyan seam down the middle and small fins on top and bottom. Only one segment, symmetric. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_squid_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_overseer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_skitter_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_brute_f0.png"
+  ],
+  "size": 32,
+  "outputs": [
+   "seg_0.png",
+   "seg_1.png",
+   "seg_2.png",
+   "seg_3.png",
+   "seg_4.png",
+   "seg_5.png",
+   "seg_6.png",
+   "seg_7.png",
+   "seg_8.png"
+  ],
+  "asset_ids": [
+   "f7056ed2-20a1-4cd7-b07f-b6c9fb67b51e",
+   "9961d41e-146b-4c67-8907-3128e5a78de3",
+   "9f8c7f04-3394-4713-afd4-71132ee3740b",
+   "9f4247ee-c6b6-4618-a2a1-b0de2f095d68",
+   "41f9c72a-479a-4ff6-ad1b-520b93c7c685",
+   "187f1c17-5564-4af9-b24a-a06eda208d5f",
+   "240acb72-60c7-45fd-9c86-b3d8c11f8b72",
+   "b29241f0-1bd1-456e-be3e-6ab712ff6b2a",
+   "845ca69f-ebd1-4cb4-8dad-f96001af36e7"
+  ],
+  "picked": "seg_2 -> seg.png (wavy cyan seam, fins; other options not kept)"
+ }
+]

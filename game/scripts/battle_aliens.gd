@@ -1022,9 +1022,13 @@ func place_encounter(id: String) -> void:
 
 func boss_act(bo: Unit) -> void:
 	bt.bosses.tick_turn(bo)
-	await bt.bosses.resolve_windup(bo)  # R1: last turn's heavy shell lands first
+	var fired: bool = bt.bosses.winding(bo)
+	await bt.bosses.resolve_windup(bo)  # R1: last turn's heavy shell (or ram, bore, eruption) lands first
 	if bo.dead or bt.squad_alive().is_empty():
 		return
+	# B6: the biome bosses wind up their own attack in place of the heavy shell; phase 2 winds it
+	# again the turn it lands
+	var again: bool = not fired or bt.bosses.phase(bo) == 2
 	if bo.x > bt.cam_x + bt.W - 170:
 		var pts: Array = []
 		var x := bo.x
@@ -1037,9 +1041,10 @@ func boss_act(bo: Unit) -> void:
 		await vboar_tricks(bo)
 		if bo.dead or bt.squad_alive().is_empty():
 			return
-	await bt.bosses.boar_windup(bo)  # R1: a red flare marks where next turn's heavy shell lands
 	# V5: the level's Boar loadout
 	var kit: String = bt.mission.get("boar_kit", "standard") if not bo.fl.get("vharr", false) else "standard"
+	if not Data.BOAR_KITS.get(kit, {}).get("biome", false):
+		await bt.bosses.boar_windup(bo)  # R1: a red flare marks where next turn's heavy shell lands
 	if kit == "carrier":
 		var n: int = int(bo.fl.get("turns", 0)) + 1
 		bo.fl["turns"] = n
@@ -1047,14 +1052,12 @@ func boss_act(bo: Unit) -> void:
 			bt.float_text(bo, "CALLING IN TROOPS!", Color("ff7a3d"), true)
 			await bt.foe_ai.plane_drop(2)
 			await bt.wait(12)
-	if kit == "engine":
-		await engine_ram(bo)
-		if bo.dead or bt.squad_alive().is_empty():
-			return
+	if kit == "engine" and again:
+		bt.boss_ai.engine_steam(bo)  # B6: it builds steam this turn and rams on its next
 	var shells := 2 if bt.bosses.phase(bo) == 2 else 1  # X2: two shells a turn in its second phase
 	if kit == "drill":
-		for i in shells:
-			await drill_bolt(bo)
+		if again:
+			await bt.boss_ai.drill_rev(bo)  # B6: it revs at a soldier this turn and bores on its next
 		var b2 = bt.foe_ai.best_shot(bo, bt.squad_alive(), Data.ETYPES.boss.range)
 		if b2 != null:
 			await bt.foe_ai.enemy_shoot(bo, b2.t, Data.ETYPES.boss)
@@ -1087,6 +1090,8 @@ func boss_act(bo: Unit) -> void:
 			if kit == "magma":
 				magma_burn(tg.x, tg.y)
 			await bt.wait(12)
+	if kit == "magma" and again and not bo.dead and bt.squad_alive().size():
+		bt.boss_ai.magma_crack(bo)  # B6: its shell cracks open; next turn the ground erupts
 	if kit == "flame" and await boar_flame(bo):
 		return
 	var best = bt.foe_ai.best_shot(bo, bt.squad_alive(), Data.ETYPES.boss.range)

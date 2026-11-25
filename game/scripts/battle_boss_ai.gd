@@ -11,7 +11,7 @@ func _init(battle: Battle) -> void:
 	bt = battle
 
 func handles(u: Unit) -> bool:
-	return u.type in ["stormcrow", "railgun", "gravemother", "ironjaw"]
+	return u.type in ["stormcrow", "railgun", "gravemother", "ironjaw", "serpent"]
 
 func setup(u: Unit) -> void:
 	## Called once when the boss is placed in the level: its parts and starting state.
@@ -31,6 +31,17 @@ func setup(u: Unit) -> void:
 			for d in [[22.0, -82.0], [50.0, -84.0], [40.0, -54.0]]:
 				B.add_part(u, "sac", d[0], d[1])
 			u.face = -1
+		"serpent":
+			u.face = -1
+			u.fl["cruise_y"] = u.y
+			u.fl["scripted"] = true  # B5: it swims where its turn says; no hover physics
+			u.fl["trail"] = []
+			for i in Data.SERPENT_SEGS + 2:
+				u.fl.trail.append(Vector2(u.x + i * Data.SEG_GAP, u.y + sin(i * 0.7) * 14))
+			for i in Data.SERPENT_SEGS:
+				var p = B.add_part(u, "seg", 0.0, 0.0)
+				p.fl["i"] = i
+			pin_segs(u)
 		"ironjaw":
 			u.face = -1
 			B.add_part(u, "winch", 30.0, -96.0)
@@ -51,11 +62,15 @@ func act(u: Unit) -> void:
 			await gravemother_turn(u, fired)
 		"ironjaw":
 			await ironjaw_turn(u, fired)
+		"serpent":
+			await serpent_turn(u, fired)
 
 func on_phase2(u: Unit) -> void:
 	match u.type:
 		"stormcrow":
 			crash(u)
+		"serpent":
+			serpent_split(u)
 
 func fire_windup(u: Unit, w: Dictionary) -> void:
 	match w.kind:
@@ -67,6 +82,14 @@ func fire_windup(u: Unit, w: Dictionary) -> void:
 			await brood_hatch(u, w)
 		"swing":
 			await ball_swing(u, w)
+		"steam":
+			await bt.vharr_ai.engine_ram(u)
+		"rev":
+			await drill_bore(u, w)
+		"erupt":
+			await eruption(u, w)
+		"dive":
+			await serpent_dive(u, w)
 
 # ---------------------------------------------------------------- B1 STORMCROW
 func arena(u: Unit) -> Array:
@@ -571,3 +594,286 @@ func winch_down(u: Unit) -> void:
 		c.hit[u.id] = true
 	bt.shake += 10
 	Sfx.play("collapse")
+
+# ---------------------------------------------------------------- B6 the biome bosses' wind-ups
+func engine_steam(u: Unit) -> void:
+	## The Armored Engine builds a head of steam: the whistle, steam pouring off the boiler. It rams next turn.
+	bt.bosses.start_windup(u, "steam", {})
+	Sfx.play("engine", -2)
+
+func drill_rev(u: Unit) -> void:
+	## The Drill Rig picks the nearest soldier in front, revs, and the rock trembles where it will
+	## come through. Next turn it bores straight there.
+	var tg = null
+	for o in bt.squad_alive():
+		if o.x < u.x and (tg == null or absf(o.x - u.x) < absf(tg.x - u.x)):
+			tg = o
+	if tg == null:
+		return
+	Sfx.play("drill", -6)
+	bt.bosses.start_windup(u, "rev", {"x": tg.x, "y": tg.y - tg.h / 2.0})
+
+func drill_bore(u: Unit, w: Dictionary) -> void:
+	## Through the rock to last turn's spot: anyone on the line or still standing there is hit.
+	var from := Vector2(u.x - u.w / 2.0, u.y - 18)
+	var to := Vector2(w.x, w.y)
+	bt.float_text(u, "DRILLING!", Color("ffb23e"), true)
+	Sfx.play("drill")
+	bt.bosses.slowmo(to, 26, 0.4)
+	var hit := {}
+	var steps := int(from.distance_to(to) / 8.0)
+	for k in steps + 1:
+		var p := from.lerp(to, float(k) / maxf(1, steps))
+		bt.T.carve(p.x, p.y, 12, null)
+		for o in bt.squad_alive():
+			if not hit.has(o.id) and absf(o.x - p.x) < o.w / 2.0 + 8 and p.y > o.y - o.h - 8 and p.y < o.y + 6:
+				hit[o.id] = true
+				bt.damage(o, Data.DRILL_DMG + 4, u, {"melee": true})
+		if k % 3 == 0:
+			bt.dust(p.x, p.y, Color("8a7a6a"), 1)
+			bt.shake += 0.6
+			await bt.wait(1)
+	await bt.until(bt.settled)
+	await bt.wait(8)
+
+func magma_crack(u: Unit) -> void:
+	## The Magma Crawler's shell splits and glows; cracks in the ground under the squad start to glow
+	## and smoke. Next turn lava erupts out of each one.
+	var spots: Array = []
+	for o in bt.squad_alive():
+		if spots.size() >= 3:
+			break
+		var gy = bt.T.stand_y(o.x, o.y - 10)
+		spots.append([o.x, gy if gy != null else o.y])
+	bt.bosses.start_windup(u, "erupt", {"spots": spots})
+	Sfx.play("collapse", -8)
+
+func eruption(u: Unit, w: Dictionary) -> void:
+	bt.float_text(u, "ERUPTION!", Color("ff7a3d"), true)
+	Sfx.play("bigboom")
+	if w.spots.size():
+		bt.bosses.slowmo(Vector2(w.spots[0][0], w.spots[0][1] - 40), 30, 0.35)
+	for sp in w.spots:
+		var x: float = sp[0]
+		var y: float = sp[1]
+		bt.shake += 6
+		for k in 24:
+			bt.part({"x": x + randf_range(-10, 10), "y": y - 2, "vx": randf_range(-1.2, 1.2), "vy": -randf_range(4.0, 8.0), "life": 40, "max": 40, "c": bt.pick([Color("ff7a3d"), Color("ffb23e"), Color("ffd23a")]), "s": 4.0, "g": 0.15, "fire": true})
+		for o in bt.units:
+			if o.dead or o.gone or o.team == "enemy" or o.is_pickup() or o.kind == "pow":
+				continue
+			if absf(o.x - x) < Data.ERUPT_R + o.w / 2.0 and o.y > y - 80 and o.y < y + 10:
+				bt.damage(o, Data.ERUPT_DMG, u, {"blast": true})
+				bt.add_status(o, "burn", 2, u)
+		bt.vharr_ai.magma_burn(x, y)
+		await bt.wait(10)
+	await bt.until(bt.settled)
+
+# ---------------------------------------------------------------- B5 SKY SERPENT
+func segs(u: Unit) -> Array:
+	var a: Array = bt.bosses.parts_of(u, "seg")
+	a.sort_custom(func(x, y): return x.fl.i < y.fl.i)
+	return a
+
+func serpent_speed(u: Unit) -> float:
+	var lost: int = int(u.fl.get("segs0", Data.SERPENT_SEGS)) - segs(u).size()
+	return Data.SERPENT_SPD + Data.SERPENT_SPD_SEG * maxi(0, lost)
+
+func trail_at(u: Unit, d: float) -> Array:
+	## The point d px back along the head's path, and the direction there.
+	var tr: Array = u.fl.trail
+	var prev := Vector2(u.x, u.y)
+	var acc := 0.0
+	for q in tr:
+		var L := prev.distance_to(q)
+		if acc + L >= d and L > 0.01:
+			var k := (d - acc) / L
+			return [prev.lerp(q, k), (prev - q).angle()]
+		acc += L
+		prev = q
+	return [prev, 0.0 if u.face < 0 else PI]
+
+func pin_segs(u: Unit) -> void:
+	## Each surviving segment rides its slot along the head's path; shot-off ones close up the gap.
+	var n := 0
+	for p in segs(u):
+		n += 1
+		var t := trail_at(u, n * Data.SEG_GAP)
+		p.x = t[0].x
+		p.y = t[0].y + p.h / 2.0
+		p.fl["ang"] = t[1]
+		p.active = u.active
+
+func move_head(u: Unit, to: Vector2) -> void:
+	## One frame of motion: the head moves, its path grows, the body follows.
+	var from := Vector2(u.x, u.y)
+	if from.distance_to(to) < 0.01:
+		return
+	u.fl["heading"] = (to - from).angle()
+	u.face = -1 if to.x < from.x else 1
+	u.x = to.x
+	u.y = to.y
+	var tr: Array = u.fl.trail
+	if tr.is_empty() or tr[0].distance_to(from) >= 4.0:
+		tr.push_front(from)
+	var keep := (Data.SERPENT_SEGS + 3) * Data.SEG_GAP
+	var acc := 0.0
+	var prev := to
+	for i in tr.size():
+		acc += prev.distance_to(tr[i])
+		prev = tr[i]
+		if acc > keep:
+			tr.resize(i + 1)
+			break
+	pin_segs(u)
+
+func swim(u: Unit, path: Callable, n: int, whip := false) -> void:
+	## Follows path(t) for t in 0..1 over n frames; the tail stinger whips whoever it passes over.
+	var hit := {}
+	for i in n:
+		if u.dead:
+			return
+		var t := float(i + 1) / n
+		move_head(u, path.call(t))
+		if whip:
+			var body := segs(u)
+			var tail: Unit = body[-1] if body.size() else u
+			for o in bt.squad_alive():
+				if not hit.has(o.id) and absf(o.x - tail.x) < 30 and absf(o.y - o.h / 2.0 - tail.y) < 40:
+					hit[o.id] = true
+					bt.damage(o, Data.TAIL_DMG, u, {"melee": true})
+					bt.float_text(o, "STUNG", Color("6ad0ff"))
+					bt.spec_kits.fling(o, signf(o.x - tail.x + 0.01), 4.0, u)
+					Sfx.play("slash")
+		await bt.tick
+
+func serpent_arena(u: Unit) -> Array:
+	return [bt.cam_x + 90.0, bt.cam_x + bt.W - 90.0]
+
+func serpent_turn(u: Unit, dove: bool) -> void:
+	if dove and bt.bosses.phase(u) == 1:
+		return  # the dive was its move this turn
+	var sq := bt.squad_alive()
+	if sq.is_empty():
+		return
+	var ar := serpent_arena(u)
+	var cy: float = u.fl.cruise_y
+	# the pass: a wide arc across the arena that dips low over the squad
+	var x0 := u.x
+	var y0 := u.y
+	var x1: float = ar[0] if u.x > (ar[0] + ar[1]) / 2.0 else ar[1]
+	var gmid: float = bt.T.ground_at((x0 + x1) / 2.0)
+	var low: float = minf(gmid, bt.WATER_Y) - 70.0
+	var n := int(absf(x1 - x0) / serpent_speed(u)) + 1
+	Sfx.play("whoosh")
+	await swim(u, func(t): return Vector2(lerpf(x0, x1, t), lerpf(y0, cy, t) + (low - cy) * sin(PI * t)), n, true)
+	if u.dead or bt.squad_alive().is_empty():
+		return
+	# then it coils high over a soldier, its head glowing: next turn it dives there
+	var tg: Unit = bt.pick(bt.squad_alive())
+	var tx: float = clampf(tg.x, ar[0], ar[1])
+	var hx := u.x
+	var hy := u.y
+	var top: float = cy - 40.0
+	await swim(u, func(t): return Vector2(lerpf(hx, tx, t) + sin(t * TAU) * 40.0 * (1.0 - t), lerpf(hy, top, t) - sin(t * PI) * 30.0), 50)
+	bt.bosses.start_windup(u, "dive", {"x": tx})
+	Sfx.play("roar", -6)
+
+func serpent_dive(u: Unit, w: Dictionary) -> void:
+	## Straight down on last turn's spot, through the ground, along a tunnel and out again.
+	var x: float = w.x
+	var gy = bt.T.stand_y(x, u.y)
+	var ground: float = gy if gy != null else bt.WATER_Y
+	var hy := u.y
+	var hx := u.x
+	bt.float_text(u, "IT DIVES!", Color("6ad0ff"), true)
+	Sfx.play("whoosh")
+	var nd := int(maxf(10.0, (ground - hy) / 11.0))
+	await swim(u, func(t): return Vector2(lerpf(hx, x, minf(1.0, t * 3.0)), lerpf(hy, ground, t * t)), nd)
+	if u.dead:
+		return
+	# impact: a crater and everyone near it
+	bt.shake += 14
+	Sfx.play("bigboom")
+	bt.bosses.slowmo(Vector2(x, ground - 30), 36, 0.3)
+	bt.T.carve(x, ground, 34, null)
+	bt.dust(x, ground, Color("8a7a6a"), 18)
+	for o in bt.units:
+		if o.dead or o.gone or o.team == "enemy" or o.is_pickup() or o.kind == "pow":
+			continue
+		if Vector2(o.x, o.y - o.h / 2.0).distance_to(Vector2(x, ground)) < Data.DIVE_R + o.w / 2.0:
+			bt.damage(o, Data.DIVE_DMG, u, {"melee": true})
+			bt.spec_kits.fling(o, signf(o.x - x + 0.01), 6.0, u)
+	# the tunnel: down and along, away from the squad, then out
+	var sx := 0.0
+	for o in bt.squad_alive():
+		sx += o.x
+	sx /= maxf(1, bt.squad_alive().size())
+	var ar := serpent_arena(u)
+	var dir := 1.0 if x >= sx else -1.0
+	var ex: float = clampf(x + dir * 200.0, ar[0], ar[1])
+	if absf(ex - x) < 100:
+		ex = clampf(x - dir * 200.0, ar[0], ar[1])
+	var deep := ground + 46.0
+	var cy: float = u.fl.cruise_y
+	var steps := int(absf(ex - x) / 5.0) + 20
+	var tunnel := func(t: float) -> Vector2:
+		var ty: float = deep - sin(t * PI) * 10.0 if t < 0.85 else lerpf(deep, ground - 10.0, (t - 0.85) / 0.15)
+		var p := Vector2(lerpf(x, ex, t), ty)
+		if int(t * steps) % 2 == 0:
+			bt.T.carve(p.x, p.y, 16, null)
+		return p
+	await swim(u, tunnel, steps)
+	if u.dead:
+		return
+	# it bursts out of the ground
+	var oy = bt.T.stand_y(ex, ground - 60)
+	var out_y: float = oy if oy != null else ground
+	bt.T.carve(ex, out_y, 26, null)
+	for i in 10:
+		bt.debris(ex + randf_range(-20, 20), out_y - randf_range(0, 10), 9)
+	bt.shake += 8
+	Sfx.play("collapse")
+	var bx := u.x
+	var by := u.y
+	await swim(u, func(t): return Vector2(bx, lerpf(by, cy, t)), 40)
+	await bt.until(bt.settled)
+
+func serpent_split(u: Unit) -> void:
+	## Phase 2: the back half of the body tears off and grows a head of its own.
+	if u.fl.get("twin_of") != null:
+		return
+	var body := segs(u)
+	if body.size() < 2:
+		return
+	bt.bosses.cancel_windup(u)
+	var half := body.size() / 2
+	var cut: Unit = body[half]
+	var tw := bt.mk_enemy("serpent", cut.x, cut.y - cut.h / 2.0)
+	tw.active = true
+	tw.weight = "hover"
+	tw.heavy = true
+	tw.hp = maxi(1, u.hp / 2)
+	tw.max_hp = u.max_hp / 2
+	u.hp = maxi(1, u.hp - tw.hp)
+	tw.face = -u.face
+	tw.fl["phase2"] = true
+	tw.fl["twin_of"] = u
+	tw.fl["scripted"] = true
+	tw.fl["cruise_y"] = u.fl.cruise_y + 30.0
+	tw.fl["segs0"] = body.size() - half
+	tw.fl["trail"] = []
+	u.fl["segs0"] = half
+	bt.units.append(tw)
+	var k := 0
+	for i in range(half + 1, body.size()):
+		var p: Unit = body[i]
+		p.fl["boss"] = tw
+		p.fl["i"] = k
+		tw.fl.trail.append(Vector2(p.x, p.y - p.h / 2.0))
+		k += 1
+	bt.kill(cut, null)  # the torn segment
+	pin_segs(u)
+	pin_segs(tw)
+	bt.float_text(tw, "A SECOND HEAD!", Color("6ad0ff"), true)
+	Sfx.play("roar")
