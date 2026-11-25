@@ -829,14 +829,25 @@ def sf_vharr():
         im.save(os.path.join(OUT, 'sprites', 'vh_%s.png' % k))
         flash_white(im).save(os.path.join(OUT, 'sprites', 'vh_%s_w.png' % k))
 
-BOSS_ART = {'stormcrow': 'body', 'railbreaker': 'bunker', 'gravemother': 'walker', 'ironjaw': 'crane'}
+BOSS_ART = {'stormcrow': 'body', 'railbreaker': 'bunker', 'gravemother': 'walker', 'ironjaw': 'crane',
+    # B5 the Sky Serpent's head and one body segment; B6 the biome bosses' own bodies and the
+    # Flame, Mortar and Carrier Boars' turrets (sat on the Boar hull). (folder, file, crop box)
+    'serpent_head': ('serpent', 'head'), 'serpent_seg': ('serpent', 'seg'),
+    'engine': ('engine', 'loco'), 'drillrig': ('drillrig', 'rig'), 'magmacrab': ('magmacrab', 'crab'),
+    'turret_flame': ('boarturrets', 'flame'), 'turret_mortar': ('boarturrets', 'mortar'),
+    'turret_carrier': ('boarturrets', 'carrier', (0, 0, 48, 27))}
 
 def sf_bosses():
     """Epic bosses page X3: each boss's body from Sprite Fusion (tools/sf_src/<boss>/), snapped to a
     small palette and cropped, plus a white hit flash. world_view draws the moving parts (props,
     barrels, legs, chains) on top in code so they can animate."""
     for k, f in BOSS_ART.items():
-        im = sf_clean([Image.open(os.path.join(SF_SRC, k, f + '.png')).convert('RGBA')], 24)[0]
+        d, crop = (k, None) if isinstance(f, str) else (f[0], f[2] if len(f) > 2 else None)
+        f = f if isinstance(f, str) else f[1]
+        im = Image.open(os.path.join(SF_SRC, d, f + '.png')).convert('RGBA')
+        if crop:
+            im = im.crop(crop)
+        im = sf_clean([im], 24)[0]
         im = im.crop(im.getbbox())
         im.save(os.path.join(OUT, 'sprites', 'bs_%s.png' % k))
         flash_white(im).save(os.path.join(OUT, 'sprites', 'bs_%s_w.png' % k))

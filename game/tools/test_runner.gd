@@ -831,6 +831,8 @@ func run() -> void:
 			await fork_test()
 		"seeds":
 			await seeds_test()
+		"bosses4":
+			await bosses4_test()
 		"bosses3":
 			await bosses3_test()
 		"bosses2":
@@ -11753,13 +11755,22 @@ func biomebosses_test() -> void:
 		cam_on(b, bo.x - 200)
 		var hp0: int = sq[0].hp
 		var bx0: float = bo.x
-		var fin := [false]
-		var go := func():
-			await b.vharr_ai.boss_act(bo)
-			fin[0] = true
-		go.call()
-		await until(func(): return fin[0], 3000)
-		await until(func(): return b.settled(), 600)
+		# B6: turn 1 winds its attack up (on the machine and in the world), turn 2 lands it
+		var wkind: String = {"engine": "steam", "drill": "rev", "magma": "erupt"}[kit]
+		for turn in 2:
+			var fin := [false]
+			var go := func():
+				await b.vharr_ai.boss_act(bo)
+				fin[0] = true
+			go.call()
+			await until(func(): return fin[0], 3000)
+			await until(func(): return b.settled(), 600)
+			if turn == 0:
+				check(bo.fl.has("windup") and bo.fl.windup.kind == wkind and bo.x > bx0 - 20, "B6: the %s winds up its attack first (%s)" % [kit, wkind])
+				await shot("biomeboss_%s_windup" % kit)
+				if kit == "engine":
+					ground_unit(b, sq[0], bo.x - bo.w / 2.0 - 60, bo.y - 60)  # still standing in front of it
+		check(not bo.fl.has("windup"), "B6: the %s's attack lands on its next turn" % kit)
 		await shot("biomeboss_" + kit)
 		match kit:
 			"engine":
@@ -12626,6 +12637,92 @@ func bosses3_test() -> void:
 	await until(func(): return ij.fl.get("wrecked", false), 900)
 	await frames_wait(60)
 	await shot("b4_ironjaw_dead")
+	main.show_title()
+	await frames_wait(5)
+
+func bosses4_test() -> void:
+	## Epic bosses B5 SKY SERPENT and B6 (the Boar loadouts' own turrets; the biome bosses' bodies
+	## and wind-ups are in biomebosses).
+	Run.new_run()
+	Run.first_run = false
+	var seen := {}
+	for i in 60:
+		Run.seed_val = 400 + i
+		seen[Run.make_level("lake", 1).boss] = true
+	check(seen.has("serpent"), "the Sky Serpent turns up from level 2 (%s)" % str(seen.keys()))
+	var b: Battle = await boss_level("serpent", "lake")
+	var sp: Unit = the_boss(b)
+	check(sp != null and sp.type == "serpent", "the Lake ends on the Sky Serpent")
+	check(b.boss_ai.segs(sp).size() == Data.SERPENT_SEGS, "it has %d body segments" % Data.SERPENT_SEGS)
+	for o in b.units:
+		if o.team == "enemy" and o != sp and o.type != "bosspart":
+			o.gone = true
+	var sq: Array = b.squad()
+	cam_on(b, sp.x - 400)
+	await until(func(): return b.cine.is_empty(), 900)
+	var ar: Array = b.boss_ai.serpent_arena(sp)
+	for k in sq.size():
+		ground_unit(b, sq[k], lerpf(ar[0], ar[1], 0.3 + k * 0.12), 0)
+	await frames_wait(20)
+	await shot("b5_serpent_entrance")
+	var x0: float = sp.x
+	var hp_sq: int = b.squad_alive().reduce(func(a, x): return a + x.hp, 0)
+	await boss_turn(b, sp)
+	check(absf(sp.x - x0) > 200, "turn 1: it swims across the arena (%d px)" % int(absf(sp.x - x0)))
+	check(sp.fl.has("windup") and sp.fl.windup.kind == "dive", "and coils high over a soldier to dive")
+	var body := b.boss_ai.segs(sp)
+	var follow: bool = body.size() > 0 and Vector2(body[0].x, body[0].y).distance_to(Vector2(sp.x, sp.y)) < Data.SEG_GAP * 2.5
+	check(follow, "its body follows the head")
+	await shot("b5_serpent_coiled")
+	# a soldier stays under it, the rest step away
+	var dx: float = sp.fl.windup.x
+	var vic: Unit = b.squad_alive()[0]
+	ground_unit(b, vic, dx, 0)
+	for s2 in b.squad_alive():
+		if s2 != vic:
+			ground_unit(b, s2, dx + (160 if dx < (ar[0] + ar[1]) / 2.0 else -160) + b.squad_alive().find(s2) * 24, 0)
+	var vh: int = vic.hp
+	var gy0: float = b.T.ground_at(dx)
+	await boss_turn(b, sp)
+	check(vic.hp <= vh - 12 or vic.dead, "turn 2: it dives on the soldier under it (%d -> %d)" % [vh, vic.hp])
+	check(not b.T.solid(dx, gy0 + 10), "and leaves a crater")
+	check(not sp.fl.has("windup") and sp.y < b.T.ground_at(sp.x) - 60, "it bursts out and is back in the air")
+	await shot("b5_serpent_dove")
+	# segments soak up shots and make it faster when they go
+	var v0: float = b.boss_ai.serpent_speed(sp)
+	var hp0: int = sp.hp
+	for i in 3:
+		b.kill(b.boss_ai.segs(sp)[-1], b.squad_alive()[0] if b.squad_alive().size() else null)
+	await until(func(): return b.settled(), 600)
+	check(b.boss_ai.segs(sp).size() == Data.SERPENT_SEGS - 3 and b.boss_ai.serpent_speed(sp) > v0 and sp.hp == hp0, "shooting segments off makes it shorter and faster, not hurt (%d segs, %.1f -> %.1f, hp %d -> %d)" % [b.boss_ai.segs(sp).size(), v0, b.boss_ai.serpent_speed(sp), hp0, sp.hp])
+	# phase 2: it splits
+	b.damage(sp, sp.hp - sp.max_hp / 2 + 2, null, {"blast": true})
+	await frames_wait(6)
+	var heads: Array = b.units.filter(func(o): return o.type == "serpent" and not o.dead and not o.gone)
+	check(heads.size() == 2, "at half health it splits into two serpents")
+	if heads.size() == 2:
+		check(b.boss_ai.segs(heads[0]).size() > 0 and b.boss_ai.segs(heads[1]).size() > 0, "each half has a body")
+		await frames_wait(30)
+		await shot("b5_serpent_split")
+		await boss_turn(b, heads[1])
+		check(true, "the second head takes a turn")
+		b.kill(heads[0], null)
+		await frames_wait(20)
+		check(not b.boss_dead, "killing one head doesn't end the level")
+		b.kill(heads[1], null)
+		await frames_wait(20)
+		check(b.boss_dead, "killing both does")
+	await frames_wait(90)
+	await shot("b5_serpent_dead")
+	# B6: the loadout Boars get their own turrets
+	for kit in ["flame", "mortar", "carrier"]:
+		var bb: Battle = await boss_arena(kit)
+		var bo: Unit = the_boss(bb)
+		cam_on(bb, bo.x - 300)
+		await until(func(): return bb.cine.is_empty(), 900)
+		await frames_wait(10)
+		await shot("b6_turret_" + kit)
+		check(Art.tex.has("bs_turret_" + kit), "the %s Boar has its own turret" % kit)
 	main.show_title()
 	await frames_wait(5)
 

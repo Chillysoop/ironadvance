@@ -1,0 +1,26 @@
+[
+ {
+  "op": "style",
+  "prompt": "A huge armored mining machine on tracks, pure side view facing left, a giant conical spiral drill bit on the front, a boxy yellow and rust body with hazard stripes, exhaust pipes and a small armored cab window, hydraulic arms holding the drill. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_engineer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_flamer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_jetter_f0.png"
+  ],
+  "size": 96,
+  "outputs": [
+   "rig_0.png",
+   "rig_1.png",
+   "rig_2.png",
+   "rig_3.png"
+  ],
+  "asset_ids": [
+   "0b1850d1-b1f6-47c9-87a7-3b013765a897",
+   "e15d3de5-9631-4f13-9709-3e1502e62923",
+   "69d03396-56af-4068-b9e8-cfd429c97d20",
+   "03e2cda1-a1b7-4c56-8d90-89d7727bb8cb"
+  ],
+  "picked": "rig_0 -> rig.png (big drill bit, hazard stripes; other options not kept)"
+ }
+]

@@ -448,6 +448,9 @@ func draw_unit(u: Unit) -> void:
 	if u.type == "ironjaw":
 		draw_ironjaw(u, pos, white)
 		return
+	if u.type == "serpent":
+		draw_serpent(u, pos, white)
+		return
 	if u.type == "droppod":
 		draw_droppod(pos, white, false)
 		return
@@ -797,6 +800,11 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 			"engine": mod = Color(0.62, 0.66, 0.78, u.alpha)  # V6: gunmetal
 			"drill": mod = Color(1.1, 0.92, 0.55, u.alpha)  # V6: mining yellow
 			"magma": mod = Color(1.15, 0.6, 0.45, u.alpha)  # V6: glowing red
+	# B6: the biome bosses have their own bodies; the other loadouts their own turret on the hull
+	var body: String = {"engine": "bs_engine", "drill": "bs_drillrig", "magma": "bs_magmacrab"}.get(kit, "")
+	if body != "":
+		draw_kit_body(u, pos, white, kit, body)
+		return
 	# barrel behind the turret
 	var pv := b.boss_pivot(u)
 	var bt: Texture2D = Art.tex.boss_barrel
@@ -805,6 +813,12 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_set_transform(pos, 0, Vector2(Art.PX, Art.PX))
 	draw_texture_rect_region(tx, Rect2(-32, -40, 64, 40), Rect2(ph * 64, row * 40, 64, 40), mod)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
+	if kit in ["flame", "mortar", "carrier"]:
+		var tt: Texture2D = Art.tex["bs_turret_%s%s" % [kit, "_w" if white else ""]]
+		var ts := Art.PX * (3.0 if kit == "mortar" else 2.0) * 0.8
+		draw_set_transform(pos + Vector2(12, -42), 0, Vector2(ts, ts))
+		draw_texture(tt, Vector2(-tt.get_width() / 2.0, -tt.get_height()), mod)
+		draw_set_transform_matrix(Transform2D.IDENTITY)
 	if u.muzzle > 0 and not u.dead:
 		draw_muzzle(b.muzzle(u), -1, -u.aim_a)
 	if not u.dead:
@@ -849,6 +863,65 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 		draw_circle(m, 5 + beat * 2, Color(1.0, 0.8, 0.4, 0.7))
 		if b.t % 6 == 0:
 			b.part({"x": m.x + randf_range(-6, 6), "y": m.y, "vx": randf_range(-0.3, 0.3), "vy": -1.2, "life": 26, "max": 26, "c": Color("d8d0c8"), "s": 3.0, "g": -0.02})
+
+func draw_kit_body(u: Unit, pos: Vector2, white: bool, kit: String, body: String) -> void:
+	## B6: the Armored Engine, the Drill Rig and the Magma Crawler in their own Sprite Fusion bodies,
+	## each with its wind-up shown on the machine and in the world, never on the HUD.
+	var tx: Texture2D = Art.tex[body + ("_w" if white else "")]
+	var k := 170.0 / tx.get_width()
+	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
+	var hurt := 1.0 - float(u.hp) / maxf(1, u.max_hp)
+	var wu = u.fl.get("windup") if not u.dead else null
+	var jit := Vector2.ZERO
+	if wu != null and wu.kind == "steam":
+		jit = Vector2(randf_range(-1, 1), 0)  # straining against the brakes
+	if kit == "magma" and not u.dead:
+		mod = Color(1.0 + 0.4 * hurt, 1.0, 1.0 - 0.2 * hurt, u.alpha)  # the cracks glow brighter as it's hurt
+	draw_set_transform(pos + jit, 0, Vector2(k, k))
+	draw_texture(tx, Vector2(-tx.get_width() / 2.0, -tx.get_height()), mod)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	var top := pos.y - tx.get_height() * k
+	if u.muzzle > 0 and not u.dead:
+		draw_muzzle(b.muzzle(u), -1, -u.aim_a)
+	if u.dead:
+		if b.t % 6 == 0:
+			b.puff(u.x + randf_range(-40, 40), u.y - 60, 1.8)
+		return
+	match kit:
+		"engine":
+			var stack := Vector2(pos.x - 30 * k / 1.85, top + 6)
+			if b.t % (3 if wu != null else 10) == 0:
+				b.puff(stack.x, stack.y, 2.2 if wu != null else 1.2)
+			if wu != null:
+				# steam blasting out of the cylinders by the wheels, and the whistle
+				if b.t % 4 == 0:
+					b.part({"x": pos.x - 60 + randf_range(-10, 30), "y": pos.y - 14, "vx": -randf_range(1.0, 2.5), "vy": -0.4, "life": 30, "max": 30, "c": Color("e8e4dc"), "s": 5.0, "g": -0.02})
+				draw_circle(Vector2(pos.x + 40, top + 20), 3 + 2 * sin(b.t / 2.0), Color(1, 1, 1, 0.6))
+		"drill":
+			var tip := Vector2(pos.x - 80, pos.y - 34)
+			var spin := 0.6 if wu != null else 0.08
+			for i in 4:
+				var ph := fmod(b.t * spin + i * 0.25, 1.0)
+				draw_line(tip + Vector2(ph * 40, -12 + ph * 6), tip + Vector2(ph * 40 + 4, 12 - ph * 6), Color(0.15, 0.15, 0.17, 0.5), 2.0)
+			if wu != null:
+				# the rock shakes loose where it will come through
+				if b.t % 3 == 0:
+					b.part({"x": wu.x + randf_range(-12, 12), "y": wu.y + randf_range(-14, 6), "vx": randf_range(-0.4, 0.4), "vy": 0.6, "life": 26, "max": 26, "c": Color("a08a6a"), "s": 2.0, "g": 0.08})
+				if b.t % 4 == 0:
+					b.sparks(tip.x, tip.y, 1)
+		"magma":
+			if b.t % maxi(3, 12 - int(hurt * 9)) == 0:
+				b.part({"x": u.x + randf_range(-50, 50), "y": top + 20, "vx": 0.0, "vy": -1.2, "life": 24, "max": 24, "c": Color("ffb23e"), "s": 2.0, "g": -0.02, "fire": true})
+			if wu != null:
+				# the shell split open, and a glowing crack in the ground under each soldier
+				var q := 0.5 + 0.5 * sin(b.t / 3.0)
+				draw_circle(Vector2(pos.x, top + 30), 30 + q * 8, Color(1.0, 0.5, 0.1, 0.18 + 0.12 * q))
+				for sp in wu.spots:
+					var c := Vector2(sp[0], sp[1])
+					for j in 3:
+						draw_line(c + Vector2(-14 + j * 10, 0), c + Vector2(-8 + j * 10, -3 + (j % 2) * 3), Color(1.0, 0.45 + 0.3 * q, 0.1, 0.9), 2.0)
+					if b.t % 6 == 0:
+						b.part({"x": sp[0] + randf_range(-10, 10), "y": sp[1] - 2, "vx": 0.0, "vy": -0.8, "life": 40, "max": 40, "c": Color("5a4a44"), "s": 4.0, "g": -0.01, "smoke": true})
 
 func draw_bosspart(u: Unit, pos: Vector2, white: bool) -> void:
 	## X4: a breakable piece of a boss. Each part draws in its own shape.
@@ -915,6 +988,22 @@ func draw_bosspart(u: Unit, pos: Vector2, white: bool) -> void:
 			if swell:
 				# something moves inside
 				draw_circle(c + Vector2(sin(b.t / 5.0 + u.fl.dx) * rr * 0.4, cos(b.t / 7.0) * rr * 0.3), rr * 0.3, Color(Color("1f3a12"), 0.7 * a))
+		"seg":
+			# B5: one ring of the Sky Serpent, turned along its path
+			var st: Texture2D = Art.tex["bs_serpent_seg_w" if white else "bs_serpent_seg"]
+			var bo = u.fl.get("boss")
+			var c: Vector2 = Vector2(pos.x, pos.y - u.h / 2.0) + (bo.fl.get("enter_off", Vector2.ZERO) if bo != null else Vector2.ZERO)
+			var under: bool = b.T.solid(c.x, c.y)
+			var ma := a * (0.35 if under else 1.0)
+			var tint := Color(1, 1, 1, ma)
+			if bo != null and bo.fl.has("windup"):
+				tint = Color(1.0, 1.0 + 0.2 * sin(b.t / 4.0 + u.fl.get("i", 0)), 1.2, ma)
+			var sc := Art.PX * 0.9 * (1.0 - 0.03 * float(u.fl.get("i", 0)))
+			draw_set_transform(c, u.fl.get("ang", 0.0), Vector2(sc, sc))
+			draw_texture(st, -Vector2(st.get_width(), st.get_height()) / 2.0, tint)
+			draw_set_transform_matrix(Transform2D.IDENTITY)
+			if under and b.t % 8 == 0:
+				b.dust(c.x, c.y, Color("8a7a6a"), 1)
 		"winch":
 			# B4: the cable drum on the crane's deck
 			var r := Rect2(pos.x - u.w / 2.0, pos.y - u.h, u.w, u.h)
@@ -1102,6 +1191,35 @@ func draw_ironjaw(u: Unit, pos: Vector2, white: bool) -> void:
 				draw_arc(Vector2(m.x, m.y - m.h / 2.0) + o, rr, 0, TAU, 18, Color(1.0, 0.3, 0.25, 0.5 * (1.0 - rr / 40.0)), 2.0)
 	if u.muzzle > 0:
 		draw_circle(b.muzzle(u), 5, Color(1, 0.85, 0.4, 0.8))
+
+func draw_serpent(u: Unit, pos: Vector2, white: bool) -> void:
+	## B5: the Sky Serpent's head, turned along its heading. The body is its "seg" parts. A trail of
+	## light follows it; while it's coiled to dive, the head glows over the spot it will hit.
+	var tx: Texture2D = Art.tex["bs_serpent_head_w" if white else "bs_serpent_head"]
+	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
+	var c := Vector2(pos.x, pos.y - u.h / 2.0)
+	var tr: Array = u.fl.get("trail", [])
+	if not u.dead and tr.size() > 2:
+		var off := pos - Vector2(u.x, u.y)
+		for i in range(mini(tr.size() - 1, 14)):
+			draw_line(tr[i] + off, tr[i + 1] + off, Color(0.42, 0.82, 1.0, 0.18 * (1.0 - i / 14.0)), 4.0)
+	var hd: float = u.fl.get("heading", PI if u.face < 0 else 0.0)
+	# the art faces left: point it along the heading, never upside down
+	var flip := cos(hd) > 0.0
+	var rot: float = hd - PI if not flip else hd
+	var sc := Art.PX * 1.1
+	var wu = u.fl.get("windup") if not u.dead else null
+	if wu != null:
+		var q := 0.5 + 0.5 * sin(b.t / 3.0)
+		draw_circle(c, 26 + q * 10, Color(0.42, 0.82, 1.0, 0.18 + 0.15 * q))
+		# a thin glow straight down to where it will hit
+		var gy: float = b.T.ground_at(wu.x)
+		draw_line(Vector2(wu.x, c.y + 20), Vector2(wu.x, gy), Color(0.42, 0.82, 1.0, 0.08 + 0.06 * q), 10.0)
+	draw_set_transform(c, rot, Vector2(-sc if flip else sc, sc))
+	draw_texture(tx, -Vector2(tx.get_width(), tx.get_height()) / 2.0, mod)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	if b.T.solid(c.x, c.y) and b.t % 4 == 0 and not u.dead:
+		b.dust(c.x, c.y - 10, Color("8a7a6a"), 2)
 
 func draw_boss_flares() -> void:
 	## R1: red smoke pouring up where a boss's heavy shell will land next turn. It's in the world,

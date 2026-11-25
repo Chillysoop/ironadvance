@@ -1323,6 +1323,11 @@ const ETYPES := {
 		"hp": 150, "heavy": true, "dmg": [2, 3], "shots": 3, "range": 620, "w": 130, "h": 100, "score": 3000, "enter": [300, 0],
 		"wreck": [[-0.5, 0.5, 0.0, 0.5], [-0.1, 0.4, 0.5, 0.9]],
 		"note": "Demolition crane. It rolls its boom over a soldier and winches its wrecking ball back; next turn the brake comes off and the ball swings through everything in its arc, walls too. Every other turn its magnet yanks the nearest soldier off their feet. Shoot the winch and the ball drops for good."},
+	# Epic bosses page B5. The unit is the head (its only weak spot); the body is a chain of "seg" parts.
+	"serpent": {"name": "SKY SERPENT", "boss": true, "faction": "vharr", "sub": "IT SWIMS THROUGH THE AIR", "phase2": "IT SPLITS IN TWO", "hp_k": 1.1, "parts_force": false,
+		"weight": "hover", "alt": 230, "heavy": true, "hp": 150, "w": 44, "h": 36, "score": 3000, "enter": [0, -320],
+		"wreck": [[-0.5, 0.5, 0.0, 1.0]],
+		"note": "Vharr void eel. It swims over you in wide arcs and its tail stinger whips whoever it passes over. Every other turn it coils high over a soldier with its head glowing; next turn it dives straight down there, tunnels and bursts out somewhere else. Its body blocks shots: the head is the only weak spot. Each segment shot off makes it shorter and faster. At half health it splits in two."},
 	"bosspart": {"name": "Boss Part", "hp": 16, "static": true, "heavy": true, "score": 150, "w": 24, "h": 14, "note": "A piece of the boss you can shoot off. Each one takes an attack away."},
 	"shipplate": {"name": "Hull Plate", "faction": "vharr", "hp": 14, "static": true, "heavy": true, "score": 100, "w": 44, "h": 12, "note": "Armor hanging under the Hive Ship. Shoot it off its tethers: it falls like a girder and crushes whatever is under it. With every plate gone the ship takes +30% damage."},
 	"droppod": {"name": "Drop Pod", "faction": "vharr", "hp": 18, "static": true, "heavy": true, "score": 50, "w": 24, "h": 26, "note": "Crashed down full of Vharr. It opens on the next enemy phase and they come out swinging. Break it first and they die inside."},
@@ -1774,6 +1779,10 @@ const WINDUPS := {
 	"rail": {"shout": "RAIL CHARGING!", "hover": "RAIL CHARGING: next turn it fires along its laser, through every wall. Step off the line, or break a coil."},
 	"brood": {"shout": "THE SACS ARE SWELLING!", "hover": "BROOD SWELLING: next turn every sac still on her hatches a Skitter. Burst a sac now and the brood dies inside."},
 	"swing": {"shout": "WINCHING IT BACK!", "hover": "BALL HOISTED: next turn the brake comes off and it swings through everything under the boom."},
+	"steam": {"shout": "BUILDING STEAM!", "hover": "FULL HEAD OF STEAM: next turn it rams forward and runs down anyone in front of it."},
+	"rev": {"shout": "THE DRILL REVS UP!", "hover": "DRILL REVVING: next turn it bores straight through the rock to where the dust is shaking loose."},
+	"erupt": {"shout": "ITS SHELL IS CRACKING OPEN!", "hover": "SHELL CRACKING: next turn lava erupts out of every glowing crack in the ground."},
+	"dive": {"shout": "IT COILS TO STRIKE!", "hover": "COILED: next turn it dives straight down under its glowing head, tunnels, and bursts out somewhere else."},
 	"bellyray": {"shout": "THE BELLY IS CHARGING!", "hover": "BELLY RAY CHARGING: a column of light burns straight down under the ship at the start of its next turn."},
 }
 const BIGSHELL_R := 72.0
@@ -1781,7 +1790,7 @@ const BIGSHELL_DMG := 18
 const BELLYRAY_DMG := 16
 const BOSS_CINE := 230  # X1: frames the entrance's name card stays up (any key skips)
 # X4: parts you can shoot off a boss. down/lose are the banner when it goes.
-const BOSS_POOLS := {"desert": ["stormcrow"], "city": ["stormcrow", "railgun", "ironjaw"], "fortress": ["railgun", "stormcrow", "ironjaw"], "mountain": ["railgun"], "refinery": ["railgun", "ironjaw"], "palace": ["stormcrow", "gravemother"], "jungle": ["gravemother"], "lake": ["gravemother"]}
+const BOSS_POOLS := {"desert": ["stormcrow"], "city": ["stormcrow", "railgun", "ironjaw"], "fortress": ["railgun", "stormcrow", "ironjaw"], "mountain": ["railgun", "serpent"], "refinery": ["railgun", "ironjaw"], "palace": ["stormcrow", "gravemother", "serpent"], "jungle": ["gravemother"], "lake": ["gravemother", "serpent"]}
 const NEW_BOSS_CHANCE := 0.75   # from level 2, how often a biome with a pool gets one of its new bosses over a Boar
 const BOMB_STRIP := [70.0, 45.0]  # B1: the bombing strip is 70 px plus 45 per engine still turning
 const BOMB_DMG := 10
@@ -1813,6 +1822,8 @@ const BOSS_PARTS := {
 		"note": "Holds Ironjaw's wrecking ball. Shoot it and the ball drops on whatever is under it and never swings again."},
 	"magnet": {"name": "Magnet", "hp": 14, "w": 22, "h": 10, "boss_dmg": 6, "fall": false, "down": "MAGNET CUT LOOSE!", "lose": "NO MORE YANKING",
 		"note": "Ironjaw's magnet. Every other turn it yanks the nearest soldier off their feet. Shoot it off."},
+	"seg": {"name": "Serpent Segment", "hp": 12, "w": 26, "h": 26, "boss_dmg": 0, "fall": false, "silent": true, "down": "SEGMENT DOWN!", "lose": "SHORTER AND FASTER",
+		"note": "A ring of the Sky Serpent's body. It soaks up shots meant for the head. Each one shot off makes the serpent shorter and faster."},
 	"rack": {"name": "Ammo Rack", "hp": 16, "w": 26, "h": 14, "boss_dmg": 12, "down": "AMMO RACK BLOWN!", "lose": "NO MORE HEAVY SHELLS",
 		"note": "The Boar's heavy shells. Shoot it off: it blows up in the Boar's face and the Boar can't load another heavy shell."},
 }
@@ -1820,6 +1831,15 @@ const ENGINE_RAM := 90.0
 const ENGINE_RAM_DMG := 10
 const DRILL_DMG := 9
 const MAGMA_BURN_R := 70.0
+const ERUPT_R := 26.0   # B6: a lava geyser from a glowing crack
+const ERUPT_DMG := 10
+const SERPENT_SEGS := 10     # B5: body segments behind the head
+const SEG_GAP := 22.0        # how far apart they ride along its path
+const SERPENT_SPD := 5.0     # px a frame, plus SERPENT_SPD_SEG for every segment shot off
+const SERPENT_SPD_SEG := 0.6
+const TAIL_DMG := 8
+const DIVE_DMG := 18
+const DIVE_R := 44.0
 const BOAR_FLAME_RANGE := 200.0
 const BOAR_FLAME_DMG := 8
 

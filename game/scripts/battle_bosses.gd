@@ -265,6 +265,9 @@ func parts_of(bo: Unit, key := "") -> Array:
 
 func pin_part(p: Unit) -> void:
 	var bo = p.fl.get("boss")
+	if bo != null and bo.type == "serpent":
+		p.air = false; p.vx = 0; p.vy = 0
+		return  # B5: its segments ride its path (boss_ai.pin_segs)
 	if bo != null and not bo.gone:
 		var off: Vector2 = bo.fl.get("enter_off", Vector2.ZERO)
 		# offsets are for a boss facing left; a boss that turns round takes its parts with it
@@ -285,7 +288,9 @@ func part_down(p: Unit, src) -> void:
 	p.gone = true
 	Sfx.play("bigboom")
 	bt.shake += 6
-	if not p.fl.get("silent", false):
+	if P.get("silent", false):
+		bt.float_text(p, P.down, Color("ffd23a"), true)  # B5: ten serpent segments, ten banners would be too many
+	elif not p.fl.get("silent", false):
 		bt.banner(P.down, Color("ffd23a"), P.lose)
 	bt.booms.append({"t": 2, "x": p.x, "y": p.y - p.h / 2.0, "r": 30.0, "dmg": 0, "owner": null, "show": true})
 	for i in 8:

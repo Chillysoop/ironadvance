@@ -1,0 +1,26 @@
+[
+ {
+  "op": "style",
+  "prompt": "A giant lava crab monster, pure side view facing left, a thick black volcanic rock shell with glowing orange cracks, two huge claws held up in front, six thick armored legs, small glowing eyes on stalks. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_squid_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_overseer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_skitter_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_brute_f0.png"
+  ],
+  "size": 96,
+  "outputs": [
+   "crab_0.png",
+   "crab_1.png",
+   "crab_2.png",
+   "crab_3.png"
+  ],
+  "asset_ids": [
+   "6a573d45-47cd-480e-b7a3-f4e38b9de3a1",
+   "a435ea6b-0cbb-494c-b96f-b95859aefbd3",
+   "7a144ce0-c1fc-4fd2-b270-e6d2da485187",
+   "a6575d03-5921-410e-b52a-e86de0da2ae0"
+  ],
+  "picked": "crab_1 -> crab.png (glowing cracks, claws up; other options not kept)"
+ }
+]
