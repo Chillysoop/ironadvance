@@ -1,0 +1,26 @@
+[
+ {
+  "op": "style",
+  "prompt": "A huge alien brood mother walker creature, pure side view facing left, a bloated purple-grey chitin body carried on four tall jointed insect legs, glowing green egg sacs hanging under the belly, a small armored head with many glowing eyes and mandibles at the front, bony spines on the back. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_squid_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_overseer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_skitter_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_brute_f0.png"
+  ],
+  "size": 96,
+  "outputs": [
+   "walker_0.png",
+   "walker_1.png",
+   "walker_2.png",
+   "walker_3.png"
+  ],
+  "asset_ids": [
+   "412ce60d-fc16-4198-8468-3f7e830b3c5c",
+   "7f575cb3-e49b-45af-a885-1505640e6eaa",
+   "8a816515-e207-4a2e-bfb6-f5891d89d6c1",
+   "30cd517b-0874-4de5-8a5b-1abd5fa42b00"
+  ],
+  "picked": "walker_1 -> walker.png (big green egg sacs, faces left; other options not kept)"
+ }
+]

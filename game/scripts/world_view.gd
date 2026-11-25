@@ -442,6 +442,12 @@ func draw_unit(u: Unit) -> void:
 	if u.type == "railgun":
 		draw_railgun(u, pos, white)
 		return
+	if u.type == "gravemother":
+		draw_gravemother(u, pos, white)
+		return
+	if u.type == "ironjaw":
+		draw_ironjaw(u, pos, white)
+		return
 	if u.type == "droppod":
 		draw_droppod(pos, white, false)
 		return
@@ -896,6 +902,37 @@ func draw_bosspart(u: Unit, pos: Vector2, white: bool) -> void:
 				if b.t % 4 == 0:
 					var z := Vector2(pos.x, r.position.y - 3)
 					draw_line(z, z + Vector2(randf_range(-10, 10), randf_range(-12, -4)), Color(0.8, 0.95, 1.0, 0.9), 1.0)
+		"sac":
+			# B3: a glowing egg sac; it swells and pulses while the brood is coming
+			var bo = u.fl.get("boss")
+			var swell: bool = bo != null and bo.fl.has("windup")
+			var q := 0.5 + 0.5 * sin(b.t / (3.0 if swell else 12.0) + u.fl.dx)
+			var rr := u.w / 2.0 * (1.0 + (0.25 * q if swell else 0.06 * q))
+			var c := Vector2(pos.x, pos.y - u.h / 2.0)
+			draw_circle(c, rr + 1.5, Color(C_DARK, a))
+			draw_circle(c, rr, Color(Color.WHITE if white else Color("5fd13a"), a))
+			draw_circle(c + Vector2(-rr * 0.3, -rr * 0.3), rr * 0.4, Color(Color("c8ff9a"), a))
+			if swell:
+				# something moves inside
+				draw_circle(c + Vector2(sin(b.t / 5.0 + u.fl.dx) * rr * 0.4, cos(b.t / 7.0) * rr * 0.3), rr * 0.3, Color(Color("1f3a12"), 0.7 * a))
+		"winch":
+			# B4: the cable drum on the crane's deck
+			var r := Rect2(pos.x - u.w / 2.0, pos.y - u.h, u.w, u.h)
+			draw_rect(r.grow(1), Color(C_DARK, a))
+			draw_rect(r, Color(Color.WHITE if white else Color("4a4f57"), a))
+			var bo = u.fl.get("boss")
+			var spin: float = float(b.t) * (0.4 if bo != null and bo.fl.has("windup") else 0.0)
+			for k in 3:
+				var yy := r.position.y + 3 + fmod(k * 4.0 + spin, 12.0)
+				draw_line(Vector2(r.position.x + 2, yy), Vector2(r.end.x - 2, yy), Color(Color("8a8f96"), a), 1.0)
+			draw_rect(Rect2(r.position.x - 2, r.position.y + 4, 3, u.h - 8), Color(Color("d0a020"), a))
+			draw_rect(Rect2(r.end.x - 1, r.position.y + 4, 3, u.h - 8), Color(Color("d0a020"), a))
+		"magnet":
+			# B4: the lifting magnet, a fat red disc with a steel rim
+			var r := Rect2(pos.x - u.w / 2.0, pos.y - u.h, u.w, u.h)
+			draw_rect(r.grow(1), Color(C_DARK, a))
+			draw_rect(r, Color(Color.WHITE if white else Color("b03a2e"), a))
+			draw_rect(Rect2(r.position.x, r.end.y - 3, r.size.x, 3), Color(Color("9aa4b0"), a))
 		_:
 			var r := Rect2(pos.x - u.w / 2.0, pos.y - u.h, u.w, u.h)
 			draw_rect(r.grow(1), Color(C_DARK, a))
@@ -992,6 +1029,79 @@ func draw_railgun(u: Unit, pos: Vector2, white: bool) -> void:
 		draw_line(sc.a, sc.b, Color(1, 1, 1, 0.7 * k), 2.0)
 	if u.dead and b.t % 6 == 0:
 		b.puff(u.x + randf_range(-30, 30), u.y - 60, 1.6)
+
+func draw_gravemother(u: Unit, pos: Vector2, white: bool) -> void:
+	## B3: the brood walker. The body is Sprite Fusion art facing left; it rocks on its legs as it
+	## walks, and while the brood swells its whole body heaves and the sacs pulse.
+	var tx: Texture2D = Art.tex["bs_gravemother_w" if white else "bs_gravemother"]
+	var f := float(u.face)
+	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
+	if b.bosses.phase(u) == 2 and not u.dead:
+		mod = Color(1.0, 0.82 + 0.1 * sin(b.t / 5.0), 1.0, u.alpha)
+	var swell := u.fl.has("windup") and not u.dead
+	var walk := u.walk != null
+	var rock := sin(u.tread * 0.25) * 0.04 if walk else 0.0
+	var heave := (1.0 + 0.04 * sin(b.t / 4.0)) if swell else (1.0 + 0.012 * sin(b.t / 22.0))
+	draw_set_transform(pos, rock, Vector2(-f * Art.PX, Art.PX * heave))
+	draw_texture(tx, Vector2(-tx.get_width() / 2.0, -tx.get_height()), mod)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	for p in b.units:
+		if p.type == "bosspart" and p.dead and p.fl.get("boss") == u and p.fl.get("part") == "sac":
+			# a burst sac: a torn, dripping pouch over the art's glowing one
+			var c := Vector2(u.x - f * p.fl.dx, u.y + p.fl.dy) + (pos - Vector2(u.x, u.y))
+			draw_circle(c, 11, Color("2a1f2e"))
+			draw_circle(c + Vector2(2, 2), 7, Color("4a6a2a"))
+			if b.t % 14 == 0 and not u.dead:
+				b.part({"x": c.x, "y": c.y + 6, "vx": 0.0, "vy": 0.5, "life": 24, "max": 24, "c": Color("9df25c"), "s": 2.0, "g": 0.08})
+	if swell:
+		var q := 0.5 + 0.5 * sin(b.t / 3.0)
+		draw_circle(pos + Vector2(f * 6, -54), 26 + q * 8, Color(0.6, 1.0, 0.35, 0.12 + 0.1 * q))
+		if b.t % 6 == 0:
+			b.part({"x": u.x + randf_range(-24, 24), "y": u.y - 40, "vx": 0.0, "vy": 0.6, "life": 30, "max": 30, "c": Color("9df25c"), "s": 2.0, "g": 0.05})
+	if u.dead and b.t % 7 == 0:
+		b.puff(u.x + randf_range(-30, 30), u.y - 30, 1.2)
+
+func draw_ironjaw(u: Unit, pos: Vector2, white: bool) -> void:
+	## B4: the crane. The body is Sprite Fusion art facing left; the cable, the wrecking ball and the
+	## magnet line are drawn here so the ball can swing for real.
+	var tx: Texture2D = Art.tex["bs_ironjaw_w" if white else "bs_ironjaw"]
+	var f := float(u.face)
+	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
+	var shake := Vector2(randf_range(-1, 1), 0) if u.walk != null else Vector2.ZERO
+	draw_set_transform(pos + shake, 0, Vector2(-f * Art.PX, Art.PX))
+	draw_texture(tx, Vector2(-tx.get_width() / 2.0, -tx.get_height()), mod)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	if u.dead:
+		if b.t % 6 == 0:
+			b.puff(u.x + randf_range(-30, 30), u.y - 50, 1.4)
+		return
+	var o := pos - Vector2(u.x, u.y)  # the entrance slides the drawing, not the unit
+	var tip: Vector2 = b.boss_ai.boom_tip(u) + o
+	var mg := b.bosses.parts_of(u, "magnet")
+	if not u.fl.get("ball_gone", false):
+		var bp: Vector2 = b.boss_ai.ball_pos(u) + o
+		var held := u.fl.has("windup")
+		draw_line(tip, bp, Color(C_DARK), 3.0)
+		draw_line(tip, bp, Color("8a8f96") if not held else Color("c9ccd0"), 1.0)
+		var r: float = Data.BALL_R
+		draw_circle(bp, r + 1, C_DARK)
+		draw_circle(bp, r, Color.WHITE if white else Color("3c4048"))
+		draw_circle(bp + Vector2(-r * 0.35, -r * 0.35), r * 0.35, Color("6b7079"))
+		draw_rect(Rect2(bp.x - 3, bp.y - r - 5, 6, 6), Color("2a2d33"))
+		if held and b.t % 9 == 0:
+			# the cable creaks: flakes of rust off the drum
+			b.part({"x": tip.x, "y": tip.y, "vx": randf_range(-0.4, 0.4), "vy": 0.4, "life": 30, "max": 30, "c": Color("8a4a2a"), "s": 2.0, "g": 0.04})
+	if mg.size():
+		var m: Unit = mg[0]
+		var top := Vector2(tip.x - f * 40, tip.y + 30)
+		draw_line(top, Vector2(m.x, m.y - m.h) + o, Color(C_DARK), 2.0)
+		if u.fl.get("magnet_t", 0) > 0:
+			u.fl.magnet_t -= 1
+			for k in 3:
+				var rr := 10.0 + float((b.t * 2 + k * 10) % 30)
+				draw_arc(Vector2(m.x, m.y - m.h / 2.0) + o, rr, 0, TAU, 18, Color(1.0, 0.3, 0.25, 0.5 * (1.0 - rr / 40.0)), 2.0)
+	if u.muzzle > 0:
+		draw_circle(b.muzzle(u), 5, Color(1, 0.85, 0.4, 0.8))
 
 func draw_boss_flares() -> void:
 	## R1: red smoke pouring up where a boss's heavy shell will land next turn. It's in the world,

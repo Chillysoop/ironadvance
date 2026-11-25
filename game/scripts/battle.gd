@@ -1068,6 +1068,8 @@ func muzzle(u: Unit) -> Vector2:
 		return Vector2(u.x - u.face * 92, u.y - 34 + (u.fl.get("tilt", 0.0) * -u.face * 92))  # the tail gunner
 	if u.type == "railgun":
 		return Vector2(u.x + 14, u.y - 70)  # the turret gun on the bunker's roof
+	if u.type == "ironjaw":
+		return Vector2(u.x + u.face * 14, u.y - 84)  # the gun on the cab roof
 	return Vector2(u.x + u.face * 14, u.y - u.h + 15)
 
 func boss_pivot(u: Unit) -> Vector2:
@@ -2403,6 +2405,8 @@ func crush(u: Unit, d: int, cause, kvx: float, kvy: float) -> void:
 		return  # rubble settles right through a phased Stalker (and buries it)
 	if debug:
 		print("[crush r%d] %s %s d=%d" % [round_n, u.team, u.type, d])
+	if (u.type == "bosspart" or is_boss(u)) and not (cause is Unit and cause.team == "squad"):
+		return  # only the squad's rubble hurts a boss or breaks its parts, not what the boss knocks down itself
 	if u.team == "squad" and u.def.key == "rook":
 		d = int(ceil(d / 2.0))
 	if cause is Unit and cause.team == "squad" and cause.perk("democrew"):

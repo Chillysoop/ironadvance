@@ -831,6 +831,8 @@ func run() -> void:
 			await fork_test()
 		"seeds":
 			await seeds_test()
+		"bosses3":
+			await bosses3_test()
 		"bosses2":
 			await bosses2_test()
 		"bossframe":
@@ -11160,7 +11162,7 @@ func boarkits_test() -> void:
 	var ks := {}
 	for i in 40:
 		Run.seed_val = 500 + i
-		ks[Run.make_level("jungle", 1).boar_kit] = true
+		ks[Run.make_level("jungle", 0).boar_kit] = true  # level 1: always a Boar (level 2 Jungles can roll the Gravemother)
 	var plain: int = Data.BOAR_KITS.keys().filter(func(k): return not Data.BOAR_KITS[k].get("biome", false)).size()
 	check(ks.size() == plain, "40 runs see all %d Boar loadouts" % ks.size())
 	check(range(10).all(func(i): Run.seed_val = 600 + i; return Run.make_level("hive", 2).boar_kit == ""), "a Hive Ship level has no Boar loadout")
@@ -12496,6 +12498,134 @@ func bosses2_test() -> void:
 	await until(func(): return rg.fl.get("wrecked", false), 900)
 	await frames_wait(60)
 	await shot("b2_rail_dead")
+	main.show_title()
+	await frames_wait(5)
+
+func bosses3_test() -> void:
+	## Epic bosses B3 GRAVEMOTHER and B4 IRONJAW.
+	Run.new_run()
+	Run.first_run = false
+	var seen := {}
+	for i in 40:
+		Run.seed_val = 300 + i
+		seen[Run.make_level("jungle", 1).boss] = true
+		seen[Run.make_level("refinery", 2).boss] = true
+	check(seen.has("gravemother") and seen.has("ironjaw"), "the new bosses turn up from level 2 (%s)" % str(seen.keys()))
+	# ---- GRAVEMOTHER
+	var b: Battle = await boss_level("gravemother", "jungle")
+	var gm: Unit = the_boss(b)
+	check(gm != null and gm.type == "gravemother", "the Jungle ends on the Gravemother")
+	check(b.bosses.parts_of(gm, "sac").size() == 3, "she carries 3 egg sacs")
+	for o in b.units:
+		if o.team == "enemy" and o != gm and o.type != "bosspart":
+			o.gone = true
+	var sq: Array = b.squad()
+	for k in sq.size():
+		ground_unit(b, sq[k], gm.x - 220 - k * 50, 0)
+	cam_on(b, gm.x - 260)
+	await frames_wait(40)
+	await shot("b3_gravemother_entrance")
+	await until(func(): return b.cine.is_empty(), 900)
+	var x0: float = gm.x
+	var hp_sq: int = b.squad_alive().reduce(func(a, x): return a + x.hp, 0)
+	await boss_turn(b, gm)
+	check(gm.x < x0 - 20, "turn 1: she stalks toward the squad (%d px)" % int(x0 - gm.x))
+	check(b.squad_alive().reduce(func(a, x): return a + x.hp, 0) < hp_sq, "and spits acid")
+	check(gm.fl.has("windup") and gm.fl.windup.kind == "brood", "and her sacs swell")
+	await shot("b3_gravemother_swelling")
+	var sk0: int = b.units.filter(func(o): return o.type == "skitter" and not o.dead and not o.gone).size()
+	await boss_turn(b, gm)
+	var sk1: int = b.units.filter(func(o): return o.type == "skitter" and not o.dead and not o.gone).size()
+	check(sk1 >= sk0 + 3, "turn 2: the brood hatches, a Skitter a sac (%d -> %d)" % [sk0, sk1])
+	await shot("b3_gravemother_hatched")
+	for o in b.units:
+		if o.type == "skitter":
+			o.gone = true
+	check(not gm.fl.has("windup"), "she rests a turn after hatching")
+	await boss_turn(b, gm)
+	if not gm.fl.has("windup"):
+		await boss_turn(b, gm)
+	check(gm.fl.has("windup"), "then she swells again")
+	var hp0: int = gm.hp
+	b.kill(b.bosses.parts_of(gm, "sac")[0], b.squad_alive()[0] if b.squad_alive().size() else null)
+	await until(func(): return b.settled(), 900)
+	check(not gm.fl.has("windup") and gm.hp <= hp0 - Data.SAC_BURST_DMG, "a sac burst mid-swell kills the brood and burns her (%d -> %d)" % [hp0, gm.hp])
+	await shot("b3_gravemother_stillborn")
+	# a soldier right under her gets stomped when she walks
+	if b.squad_alive().size():
+		var st: Unit = b.squad_alive()[0]
+		ground_unit(b, st, gm.x - 60, 0)
+		var sh: int = st.hp
+		b.damage(gm, gm.hp - gm.max_hp / 2 + 2, null, {"blast": true})
+		await frames_wait(4)
+		check(b.bosses.phase(gm) == 2, "at half health she enrages")
+		await boss_turn(b, gm)
+		check(st.hp < sh or st.dead, "she stomps the soldier under her legs (%d -> %d)" % [sh, st.hp])
+	b.kill(gm, null)
+	await until(func(): return gm.fl.get("wrecked", false), 900)
+	check(b.boss_dead, "killing her wins the level")
+	await frames_wait(60)
+	await shot("b3_gravemother_dead")
+	# ---- IRONJAW
+	b = await boss_level("ironjaw", "refinery")
+	var ij: Unit = the_boss(b)
+	check(ij != null and ij.type == "ironjaw", "the Refinery ends on Ironjaw")
+	check(b.bosses.parts_of(ij, "winch").size() == 1 and b.bosses.parts_of(ij, "magnet").size() == 1, "it has a winch and a magnet to shoot off")
+	for o in b.units:
+		if o.team == "enemy" and o != ij and o.type != "bosspart":
+			o.gone = true
+	sq = b.squad()
+	for k in sq.size():
+		ground_unit(b, sq[k], ij.x - 200 - k * 90, 0)
+	cam_on(b, ij.x - 300)
+	await until(func(): return b.cine.is_empty(), 900)
+	await frames_wait(20)
+	await shot("b4_ironjaw_entrance")
+	await boss_turn(b, ij)
+	check(ij.fl.has("windup") and ij.fl.windup.kind == "swing", "turn 1: it rolls up and winches the ball back")
+	var tip: Vector2 = b.boss_ai.boom_tip(ij)
+	var under: Unit = null
+	for s2 in b.squad_alive():
+		if absf(s2.x - tip.x) < 40:
+			under = s2
+	check(under != null, "its boom is over a soldier")
+	await shot("b4_ironjaw_hoisted")
+	# put one soldier under the boom, the rest well clear
+	var vic: Unit = under if under != null else b.squad_alive()[0]
+	ground_unit(b, vic, tip.x, 0)
+	for s2 in b.squad_alive():
+		if s2 != vic:
+			ground_unit(b, s2, tip.x - 220 - b.squad_alive().find(s2) * 30, 0)
+	var vh: int = vic.hp
+	var others := {}
+	for s2 in b.squad_alive():
+		others[s2.id] = s2.hp
+	await boss_turn(b, ij)
+	check(vic.hp <= vh - 15 or vic.dead, "turn 2: the ball swings through the soldier under the boom (%d -> %d)" % [vh, vic.hp])
+	check(not ij.fl.has("windup"), "the swing is spent")
+	await shot("b4_ironjaw_swung")
+	# turn 3: the magnet
+	var near = b.nearest_squad(ij)
+	var nx: float = near.x if near != null else 0.0
+	await boss_turn(b, ij)
+	await until(func(): return b.settled(), 600)
+	check(near != null and (near.dead or absf(near.x - ij.x) < absf(nx - ij.x) - 10), "turn 3: the magnet drags the nearest soldier in (%d -> %d)" % [int(absf(nx - ij.x)), int(absf(near.x - ij.x)) if near != null else 0])
+	await boss_turn(b, ij)
+	check(ij.fl.has("windup"), "turn 4: it hoists again")
+	b.kill(b.bosses.parts_of(ij, "winch")[0], null)
+	await until(func(): return b.settled(), 900)
+	check(ij.fl.get("ball_gone", false) and not ij.fl.has("windup"), "shoot the winch: the ball drops for good")
+	await frames_wait(40)
+	await shot("b4_ironjaw_balldown")
+	b.damage(ij, ij.hp - ij.max_hp / 2 + 2, null, {"blast": true})
+	await frames_wait(4)
+	check(b.bosses.phase(ij) == 2, "at half health its brake is shot")
+	await boss_turn(b, ij)
+	check(not ij.fl.has("windup"), "with no ball it can't hoist")
+	b.kill(ij, null)
+	await until(func(): return ij.fl.get("wrecked", false), 900)
+	await frames_wait(60)
+	await shot("b4_ironjaw_dead")
 	main.show_title()
 	await frames_wait(5)
 

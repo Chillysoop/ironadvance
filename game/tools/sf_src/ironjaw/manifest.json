@@ -1,0 +1,26 @@
+[
+ {
+  "op": "style",
+  "prompt": "A heavy military crawler crane vehicle, pure side view facing left, a rusty yellow and olive tracked base with a boxy armored cab, a tall lattice steel boom angled up and forward, a steel cable hanging from the boom tip, a skull painted on the cab door, warning stripes on the counterweight at the back. No wrecking ball (drawn separately), no background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_engineer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_flamer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_jetter_f0.png"
+  ],
+  "size": 96,
+  "outputs": [
+   "crane_0.png",
+   "crane_1.png",
+   "crane_2.png",
+   "crane_3.png"
+  ],
+  "asset_ids": [
+   "4118c40f-f737-4f4c-a653-0c5368817b63",
+   "0a92acee-6686-4181-9ac7-b71107cd4c28",
+   "15203176-1bdb-4e60-a8a0-c51bbf681e1b",
+   "78aa4d85-190e-4a41-97ae-103ed704d91a"
+  ],
+  "picked": "crane_2 -> crane.png (boom out to the left, striped counterweight; other options not kept)"
+ }
+]
