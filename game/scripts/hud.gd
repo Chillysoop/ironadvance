@@ -34,6 +34,7 @@ const LESSON_Y := 42.0
 const LESSON_W := 420.0
 const HubUI := preload("res://scripts/hub_ui.gd")
 const Diary := preload("res://scripts/diary.gd")
+const GearPickScript := preload("res://scripts/gear_pick.gd")
 
 func setup(battle: Battle) -> void:
 	b = battle
@@ -134,12 +135,16 @@ func setup(battle: Battle) -> void:
 	menu.size = Vector2(58, 20)
 	menu.pressed.connect(func(): Sfx.play("click"); toggle_pause())
 	root.add_child(menu)
-	for i in Run.belt_max():
+	# the belt always fits the button column (830..952), so a fourth slot never pokes out over the hand
+	var nb := Run.belt_max()
+	var bgap := 4.0 if nb <= 3 else 3.0
+	var bw := floorf((122.0 - bgap * (nb - 1)) / nb)
+	for i in nb:
 		var bs := BeltSlot.new()
 		bs.hud = self
 		bs.idx = i
-		bs.position = Vector2(830 + (i - (Run.belt_max() - 3)) * 41, 424)
-		bs.size = Vector2(38, 30)
+		bs.position = Vector2(830 + i * (bw + bgap), 424)
+		bs.size = Vector2(bw, 30)
 		root.add_child(bs)
 	if b.practice():
 		var lv := PixButton.new()
@@ -433,6 +438,7 @@ func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> 
 			Sfx.play("coin")
 			picked.emit(-100 - idx if bg.banish else idx))
 		modal.add_child(cv)
+		bg.views.append(cv)
 	var skip := PixButton.new()
 	skip.text = {"level": "SKIP +15$", "loot": "TO STASH", "dealer": "LEAVE"}.get(kind, "SKIP")
 	skip.color = Color("9aa2ae")
@@ -476,6 +482,33 @@ func pick(kind: String, title: String, sub: String, opts: Array, who = null) -> 
 	for c in modal.get_children():
 		c.queue_free()
 	return r
+
+func gear_pick(title: String, it: Dictionary, units: Array, finder) -> Dictionary:
+	## A find mid-level: who gets it, what they wear, what's new and what it swaps with (gear_pick.gd).
+	## Returns {u, slot}; slot "" sends it to the stash.
+	deck_open = false
+	for c in modal.get_children():
+		c.queue_free()
+	var bg := ModalBG.new()  # draws nothing for "gear"; tests read the title off it
+	bg.title = title
+	bg.kind = "gear"
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	modal.add_child(bg)
+	var gp = GearPickScript.new()
+	gp.title = title
+	gp.it = it
+	gp.units = units
+	gp.finder = finder
+	gp.chose.connect(func(i): picked.emit(i))
+	modal.add_child(gp)
+	modal.visible = true
+	Sfx.play("select")
+	var r: int = await picked
+	var out: Dictionary = gp.result(r)
+	modal.visible = false
+	for c in modal.get_children():
+		c.queue_free()
+	return out
 
 func pick_grid(kind: String, title: String, sub: String, opts: Array, who = null) -> int:
 	## A pick-one over many cards (a whole deck), in rows of eight.
@@ -687,11 +720,13 @@ class BeltSlot extends Control:
 	func _process(_d: float) -> void:
 		queue_redraw()
 	func _draw() -> void:
+		Tip.clear(self)
 		var ink := Color(0.05, 0.035, 0.03)
 		draw_rect(Rect2(0, 0, size.x, size.y), ink)
 		draw_rect(Rect2(1, 1, size.x - 2, size.y - 2), Color("2a2e34") if not hover else Color("3a4048"))
 		if idx >= Run.belt.size():
-			Art.text(self, "BELT", Vector2(size.x / 2, 19), 8, Color("4a505a"), HORIZONTAL_ALIGNMENT_CENTER)
+			Art.text(self, "BELT" if size.x >= 34 else "-", Vector2(size.x / 2, 19), 8, Color("4a505a"), HORIZONTAL_ALIGNMENT_CENTER)
+			Tip.zone(self, Rect2(Vector2.ZERO, size), "EMPTY BELT SLOT", Data.keyword("belt").text + " Belt items you find land here on their own.", Color("62d26f"))
 			return
 		var it: Dictionary = Run.belt[idx]
 		var icon: String = Data.BELT_ICONS.get(Data.ITEMS[it.id].use, "ic_card")
@@ -700,13 +735,11 @@ class BeltSlot extends Control:
 		var word: String = Data.item_name(it).split(" ")[0].to_upper()
 		if Art.text_width(word, 8) <= size.x - 4:
 			Art.text(self, word, Vector2(size.x / 2, 28), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
-		else:
+		elif Art.text_width(word, 16, true) <= size.x - 2:
 			Art.text(self, word, Vector2(size.x / 2, 28), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
-		if hover:
-			var tip := "%s: %s" % [Data.item_name(it), Data.ITEMS[it.id].text]
-			var tw := Art.text_width(tip, 16, true) + 12
-			draw_rect(Rect2(size.x - tw, -24, tw, 20), Color(ink, 0.9))
-			Art.text(self, tip, Vector2(size.x - 6, -9), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_RIGHT, 0, true)
+		else:
+			Art.text(self, word.substr(0, 4), Vector2(size.x / 2, 28), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0, true)
+		Tip.zone(self, Rect2(Vector2.ZERO, size), "BELT: " + Data.item_name(it).to_upper(), "%s Click to use it on the selected soldier: no card, no energy." % Data.ITEMS[it.id].text, Color("62d26f"))
 
 class Tag extends Control:
 	## A soldier's dog tag in the roster: portrait, name, level, HP and adrenaline.
@@ -1210,11 +1243,14 @@ class ModalBG extends Control:
 	var who = null
 	var kind := ""
 	var banish := false
+	var views: Array = []   # the option cards, so a level-up can say what the hovered one changes
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
 	func _process(_d: float) -> void:
 		queue_redraw()
 	func _draw() -> void:
+		if kind == "gear":
+			return  # the gear panel draws its own frame
 		draw_rect(Rect2(0, 0, 960, 540), Color(0.02, 0.02, 0.04, 0.78))
 		var r := Rect2(100, 120, 760, 310) if kind != "deck" else Rect2(60, 70, 840, 466)
 		draw_rect(r.grow(2), Color(0.05, 0.035, 0.03))
@@ -1240,11 +1276,51 @@ class ModalBG extends Control:
 			# the title names the level being picked for (it can trail the soldier's level when several queue up)
 			var lv: int = title.get_slice(" ", title.get_slice_count(" ") - 1).to_int() if kind == "level" else 0
 			Art.text(self, "LV %d" % (lv if lv > 0 else who.s.lvl), Vector2(170, 384), 16, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
+		if kind == "level" and who != null and who is Unit:
+			draw_now(who)
 		if kind == "level":
 			Art.text(self, "Abilities follow the soldier's two specialist paths (gold label): MINOR, then MAJOR, then CAPSTONE.", Vector2(480, 448), 16, Color("c9bfa8"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 			Art.text(self, "REROLL (one token, also good at the gunsmith) deals three new options.  BANISH removes one option from this soldier's pool for the run.", Vector2(480, 463), 16, Color("c9bfa8"), HORIZONTAL_ALIGNMENT_CENTER, 2, true)
 		elif who != null and kind == "deck":
 			Art.draw_char(self, who.sheet, "idle", (Time.get_ticks_msec() / 200) % 4, Vector2(100, 200), 1, false, 0, 1.0, 0, true, 2.0)
+
+	func draw_now(u: Unit) -> void:
+		## A level-up's mini loadout, right of the options: what the soldier has now, and what the
+		## hovered option changes (HP 32 > 36, DECK 11 > 12).
+		var o := {}
+		for v in views:
+			if is_instance_valid(v) and v.hover:
+				o = v.opt
+		var x := 750.0
+		var y := 196.0
+		var dim := Color("c9bfa8")
+		var up := Color("62d26f")
+		Art.text(self, "%s NOW" % u.def.name, Vector2(x, y), 8, Color("9aa2ae"))
+		y += 16
+		var st: String = o.get("id", "") if o.get("kind", "") == "stat" else ""
+		var tier: int = int(o.get("tier", 0))
+		var rows: Array = [
+			["HP %d" % u.max_hp, ("HP %d > %d" % [u.max_hp, u.max_hp + Run.STAT_TIERS.hp[tier]]) if st == "hp" else ""],
+			["DODGE %d" % u.dodge, ("DODGE %d > %d" % [u.dodge, u.dodge + Run.STAT_TIERS.dodge[tier]]) if st == "dodge" else ""],
+			["MOVE +%s" % Data.meters(u.s.bonus.get("move", 0)) if u.s.bonus.get("move", 0) else "MOVE base", ("MOVE +%s" % Data.meters(Run.STAT_TIERS.move[tier])) if st == "move" else ""],
+			["DECK %d cards" % u.s.deck.size(), ("DECK %d > %d" % [u.s.deck.size(), u.s.deck.size() + 1]) if o.get("kind", "") == "card" else ""],
+		]
+		for r in rows:
+			Art.text(self, r[1] if r[1] != "" else r[0], Vector2(x, y), 16, up if r[1] != "" else dim, HORIZONTAL_ALIGNMENT_LEFT, 1, true)
+			y += 12
+		if o.get("kind", "") == "perk":
+			Art.text(self, "+ new ability", Vector2(x, y), 16, up, HORIZONTAL_ALIGNMENT_LEFT, 1, true)
+			y += 12
+		y += 6
+		Art.text(self, "GEAR", Vector2(x, y), 8, Color("9aa2ae"))
+		y += 14
+		for slot in ["weapon", "armor", "kit1", "kit2"]:
+			var it = u.s.equip.get(slot) if u.s.has("equip") else null
+			var nm: String = Data.item_name(it) if it != null else "-"
+			while nm.length() > 3 and Art.text_width(nm, 16, true) > 100:
+				nm = nm.substr(0, nm.length() - 1)
+			Art.text(self, nm, Vector2(x, y), 16, Data.tier_color(int(it.tier)).lightened(0.2) if it != null else Color("6c7480"), HORIZONTAL_ALIGNMENT_LEFT, 1, true)
+			y += 12
 
 class GuideLayer extends Control:
 	## Boot camp: the frame and arrow on the card or button to click, drawn over the hand and buttons.

@@ -348,7 +348,7 @@ const LETTER_FROM := {"D": 1, "T": 1, "Z": 2, "G": 2}
 # Four slots per soldier plus a squad stash and a 3-slot consumable belt.
 # "stats" scale with the item's rarity (TIER_MUL); weapons add their cards to the deck.
 # the icon a belt consumable shows everywhere: shop shelf, Armory, battle belt
-const BELT_ICONS := {"heal": "ic_heart", "ration": "ic_heart", "smoke": "ic_shield", "energy": "ic_bolt"}
+const BELT_ICONS := {"heal": "ic_heart", "ration": "ic_heart", "smoke": "ic_shield", "energy": "ic_bolt", "stim": "ic_cross", "adr": "ic_flame"}
 const SLOT_NAMES := {"weapon": "WEAPON", "armor": "ARMOR", "kit": "KIT", "belt": "BELT"}
 const TIER_MUL := [1.0, 1.25, 1.5, 2.0, 2.5]
 const STASH_MAX := 8
@@ -2608,3 +2608,101 @@ func gear(id: String) -> Dictionary:
 func card_price(key: String, tier := -1) -> int:
 	var t: int = base_tier(key) if tier < 0 else tier
 	return SHOP_PRICE[clampi(base_tier(key), 0, 2)] + maxi(0, t - base_tier(key)) * 40
+
+# ---------------------------------------------------------------- keywords
+# Game terms that get a short definition bubble beside any hovered card (Slay the Spire style) and a
+# blue highlight in the card's rules text. "re" is matched case-insensitively on whole words; the
+# order here is the order bubbles stack in when a card has several.
+const KEYWORDS := [
+	{"k": "pumped", "name": "PUMPED", "re": "pumped", "text": "50+ adrenaline: this soldier's attacks are supercharged for 1.5x damage, and armor cards give double."},
+	{"k": "overdrive", "name": "OVERDRIVE", "re": "overdrives?", "text": "At 100 adrenaline a soldier gets their free, one-time super card. Two pumped squadmates can unlock a duo Overdrive."},
+	{"k": "adrenaline", "name": "ADRENALINE", "re": "adrenaline", "text": "Builds as a soldier deals and takes damage. 50 makes them PUMPED, 100 gives an Overdrive card."},
+	{"k": "veh", "name": "VEHICLE", "re": "vehicles?", "text": "VEH cards only play while this soldier is inside a vehicle, and leave the hand when they get out."},
+	{"k": "sidearm", "name": "SIDEARM", "re": "sidearms?", "text": "A backup weapon your gear puts in the hand. Free to play once a turn."},
+	{"k": "keystone", "name": "KEYSTONE", "re": "keystones?", "text": "A class-only kit that changes how one of that soldier's signature cards works."},
+	{"k": "evolve", "name": "EVOLVES", "re": "evolves?", "text": "Wear this kit on a soldier with the named card at Epic, and that card turns into a stronger one."},
+	{"k": "affix", "name": "SET AFFIX", "re": "affix", "text": "An extra power a gear-set item gains at Legendary. Wear the whole set for its set bonus too."},
+	{"k": "mark", "name": "MARKED", "re": "mark|marks|marked", "text": "The next hit on a Marked target is a crit."},
+	{"k": "crit", "name": "CRIT", "re": "crits?|headshots?|head hits?", "text": "1.5x damage. Bullets to the head always crit, and so does the next hit on a Marked target."},
+	{"k": "flared", "name": "FLARED", "re": "flared", "text": "Lit up: takes +3 damage from every hit for 2 turns."},
+	{"k": "stun", "name": "STUNNED", "re": "stuns?|stunned", "text": "Skips its next turn. Bosses shrug it off."},
+	{"k": "predator", "name": "PREDATOR", "re": "predator|untargetable|invisible", "text": "The Jackals can't see or target this soldier until they attack."},
+	{"k": "burn", "name": "BURNING", "re": "burns?|burning|on fire", "text": "3 damage each turn (1 in rain or water). Spreads to others standing on wood and sets off gas clouds."},
+	{"k": "toxic", "name": "TOXIC", "re": "toxic|gas|poison(ed)?", "text": "2 damage each turn that goes straight past armor. Fire or a blast inside a gas cloud blows it up."},
+	{"k": "smoke", "name": "SMOKE", "re": "smoke", "text": "A cloud the Jackals can't see through, so they can't aim at anyone inside or behind it."},
+	{"k": "overwatch", "name": "OVERWATCH", "re": "overwatch", "text": "Holds fire through the Jackals' turn and shoots the first enemies that move into view."},
+	{"k": "armor", "name": "ARMOR", "re": "armou?r", "text": "Soaks damage before HP does. Resets at the start of each of your turns."},
+	{"k": "blast", "name": "BLAST", "re": "blasts?|explodes?|explosive|radius", "text": "Hurts everything in the circle, knocks it away and blows a hole in the terrain."},
+	{"k": "bounce", "name": "RICOCHET", "re": "ricochets?|bounces?|bounce \\d+", "text": "Bullets bounce off stone, concrete and steel. The aim laser shows each bounce; wood and dirt soak the bullet."},
+	{"k": "pierce", "name": "PIERCE", "re": "pierces?|piercing", "text": "The round goes through bodies and hits everyone on its line."},
+	{"k": "knock", "name": "KNOCKBACK", "re": "knocks? (them |him |it )?back|knocked back|flying|knockback", "text": "Hits shove bodies. Slamming into a wall or falling far hurts, and a ledge is a long way down."},
+	{"k": "slam", "name": "SLAM / FALL", "re": "slams?|fall damage|takes the fall", "text": "Damage a body takes when it is thrown into terrain or drops a long way."},
+	{"k": "crush", "name": "CRUSH", "re": "crush(es|ed|ing)?|debris", "text": "Falling terrain, towers and debris hurt what they land on. Crushing cracks armored targets."},
+	{"k": "energy", "name": "ENERGY", "re": "energy", "text": "Spent to play cards: the gold number is the cost. Refills at the start of every turn."},
+	{"k": "move", "name": "MOVEMENT", "re": "movement|move \\+[\\d.]+m?|\\+[\\d.]+m move|move left", "text": "How far this soldier can still walk this turn. Hop and some cards work with none left."},
+	{"k": "legup", "name": "LEG-UP", "re": "leg-up", "text": "Jump while standing next to a squadmate and they boost you higher."},
+	{"k": "weight", "name": "WEAPON WEIGHT", "re": "light:|heavy:", "text": "LIGHT guns add walking distance. HEAVY ones cut it and make jet fuel burn faster."},
+	{"k": "jet", "name": "JET FUEL", "re": "jet fuel|jets", "text": "Fuel for flying with Jet Boots. Hold the jet button to fly; heavy weapons burn it faster."},
+	{"k": "sway", "name": "SWAY", "re": "sways?", "text": "How much the aim laser drifts. Hold Shift to freeze it, which ends your walking."},
+	{"k": "laser", "name": "AIM LASER", "re": "laser step|laser length", "text": "The red line that shows where your bullet goes. Steps show more of its ricochets; length lets it reach further."},
+	{"k": "dodge", "name": "DODGE", "re": "dodge", "text": "Makes Jackal shots at this soldier more likely to miss."},
+	{"k": "luck", "name": "LUCK", "re": "luck", "text": "Pushes every rarity roll up: better cards, gear and crate loot."},
+	{"k": "trigger", "name": "ON ... TRIGGER", "re": "on (kill|headshot|push):", "text": "Happens every time this soldier gets a kill, lands a headshot, or pushes the line forward."},
+	{"k": "belt", "name": "BELT", "re": "belt slots?", "text": "3 shared squad slots for consumables like Medkits. Click one bottom right in a mission to use it on the selected soldier: no card or energy needed."},
+	{"k": "stash", "name": "STASH", "re": "stash", "text": "Shared storage for items nobody is wearing (8 slots). Equip from it at the Armory or in a soldier's Dossier."},
+]
+# Gear slot terms, shown first on an item card (and on hover over slot labels) so a new item says where it goes.
+const SLOT_KEYWORDS := {
+	"weapon": {"name": "WEAPON SLOT", "text": "One per soldier. A weapon puts its cards into that soldier's deck while worn."},
+	"armor": {"name": "ARMOR SLOT", "text": "One per soldier. Armor gives passive stats like max HP, dodge or armor each turn."},
+	"kit": {"name": "KIT SLOTS", "text": "Two per soldier. Kits are gadgets with passive stats or ON ... triggers. Keystone kits are class-only."},
+	"belt": {"name": "BELT ITEM", "text": "A consumable for the squad's shared belt (3 slots). Use it from the bottom right in a mission: no card or energy needed. Gone once used."},
+}
+var _kw_res: Array = []
+var _kw_in := {}      # memo: text -> keywords_in(text); cards redraw every frame
+var _kw_spans := {}   # memo: line -> keyword_spans(line)
+
+func keyword_res() -> Array:
+	## One compiled whole-word, case-insensitive RegEx per keyword, built on first use.
+	if _kw_res.is_empty():
+		for kw in KEYWORDS:
+			var r := RegEx.new()
+			r.compile("(?i)(?<![A-Za-z])(" + kw.re + ")(?![A-Za-z])")
+			_kw_res.append(r)
+	return _kw_res
+
+func keywords_in(s: String) -> Array:
+	## The keywords that appear in s, in KEYWORDS order.
+	if _kw_in.has(s):
+		return _kw_in[s]
+	var out: Array = []
+	var res := keyword_res()
+	for i in KEYWORDS.size():
+		if res[i].search(s) != null:
+			out.append(KEYWORDS[i])
+	_kw_in[s] = out
+	return out
+
+func keyword_spans(s: String) -> Array:
+	## [start, length] of every keyword in s, sorted and never overlapping, so a card can tint those words.
+	if _kw_spans.has(s):
+		return _kw_spans[s]
+	var all: Array = []
+	for r in keyword_res():
+		for m in r.search_all(s):
+			all.append([m.get_start(1), m.get_end(1) - m.get_start(1)])
+	all.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] > b[1]))
+	var out: Array = []
+	var end := 0
+	for sp in all:
+		if sp[0] >= end:
+			out.append(sp)
+			end = sp[0] + sp[1]
+	_kw_spans[s] = out
+	return out
+
+func keyword(k: String) -> Dictionary:
+	for kw in KEYWORDS:
+		if kw.k == k:
+			return kw
+	return {}

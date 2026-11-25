@@ -101,6 +101,16 @@ func build() -> void:
 	detail.visible = false
 	add_child(detail)
 	build_actions(it)
+	# class-tuned auto-equip: Vee takes the blast gear, Hex the healing, Moss the scopes...
+	var ae := HudScript.PixButton.new()
+	ae.text = "AUTO-EQUIP"
+	ae.sub = "BEST FOR EACH CLASS"
+	ae.color = Color("62d26f")
+	ae.size = Vector2(164, 40)
+	ae.position = Vector2(574, 486)
+	ae.disabled = not merging.is_empty()
+	ae.pressed.connect(auto_equip_all)
+	add_child(ae)
 	if hub_room:
 		add_child(HudScript.back_to_hq(func(): done.emit()))
 		return
@@ -111,6 +121,18 @@ func build() -> void:
 	back.position = Vector2(786, 486)
 	back.pressed.connect(func(): Sfx.play("click"); done.emit())
 	add_child(back)
+
+func auto_equip_all() -> void:
+	var moves: Array = Run.auto_equip(Run.soldiers.filter(func(s): return s.alive))
+	if moves.is_empty():
+		Sfx.play("deny")
+		say("Everyone already wears the best fit for their class.")
+	else:
+		Sfx.play("coin")
+		var words: Array = moves.slice(0, 2).map(func(m): return "%s took %s" % [m[0].def.name, Data.item_name(m[1])])
+		say("Auto-equip: " + ", ".join(words) + (" and %d more." % (moves.size() - 2) if moves.size() > 2 else "."))
+	pick = {}
+	build()
 
 # ---------------------------------------------------------------- what fits where
 static func fits(it, slot: String) -> bool:
@@ -576,6 +598,9 @@ func _draw() -> void:
 		Tip.chips(self, Run.synergies(s).filter(func(sy): return sy.kind != "duo"), Vector2(x, 194), w)
 	Art.text(self, "STASH %d/%d" % [Run.stash.size(), Data.STASH_MAX], Vector2(24, 214), 8, Color("ffb23e") if Run.stash.size() <= Data.STASH_MAX else Color("ff4d3d"))
 	Art.text(self, "BELT: USE MID-MISSION, NO CARD NEEDED", Vector2(470, 214), 8, Color("62d26f"))
+	var st_w := Art.text_width("STASH %d/%d" % [Run.stash.size(), Data.STASH_MAX], 8)
+	Tip.zone(self, Rect2(22, 203, st_w + 4, 14), "STASH", Data.keyword("stash").text, Color("ffb23e"))
+	Tip.zone(self, Rect2(468, 203, Art.text_width("BELT: USE MID-MISSION, NO CARD NEEDED", 8) + 4, 14), "BELT", Data.keyword("belt").text, Color("62d26f"))
 	if shop_mode and shelf.size():
 		Art.text(self, "ITEM SHELF" + ("  %d%% OFF" % int(Run.discount * 100) if Run.discount > 0 else ""), Vector2(470, 288), 8, Color("53d4e2"))
 	if Run.rerolls > 0:
