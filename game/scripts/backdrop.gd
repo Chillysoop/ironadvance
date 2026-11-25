@@ -16,6 +16,9 @@ const SUN := Vector2(700, 240)
 const GRADE := {"dusk": Color(0.10, 0.04, 0.12, 0.40), "jungle": Color(0.02, 0.07, 0.05, 0.40), "night": Color(0.01, 0.02, 0.06, 0.35)}  # where the sky texture puts the sun / moon on screen
 
 var water_line: Node2D
+var run := 0.0  # TR1: how far the train has carried us; the backdrop scrolls past by it
+
+const TRAIN_SPEED := 8.0  # TR1: px per tick the ground under the train goes by (layers at their parallax)
 
 class WaterLine extends Node2D:
 	## The water stays at full color: it is drawn by a child that skips the backdrop's dimming.
@@ -24,7 +27,10 @@ class WaterLine extends Node2D:
 		queue_redraw()
 	func _draw() -> void:
 		if bd.sky != null:
-			bd.draw_water_on(self, bd.b.cam_x)
+			if bd.b.rules.get("train", false):
+				bd.draw_track_on(self, bd.b.cam_x)
+			else:
+				bd.draw_water_on(self, bd.b.cam_x)
 
 func setup(th: String) -> void:
 	theme = th
@@ -58,7 +64,7 @@ func tile(tx: Texture2D, par: float, bottom: float, drift := 0.0) -> void:
 	var cx := b.cam_x
 	var w := tx.get_width() * Art.PX
 	var hgt := tx.get_height() * Art.PX
-	var off := fposmod(cx * par + drift, w)
+	var off := fposmod(cx * par + drift + run * par, w)
 	var x := cx - off - 8
 	while x < cx + Battle.W + 8:
 		draw_texture_rect(tx, Rect2(roundf(x), bottom - hgt, w, hgt), false)
@@ -68,6 +74,7 @@ func _draw() -> void:
 	if sky == null:
 		return
 	var cx := b.cam_x
+	run = b.t * TRAIN_SPEED if b.rules.get("train", false) else 0.0
 	draw_texture_rect(sky, Rect2(cx - 8, -8, Battle.W + 16, Battle.H + 16), false)
 	draw_flock(cx, 0.04)
 	tile(clouds, 0.05, 40 + clouds.get_height() * Art.PX, b.t * 0.05)
@@ -109,7 +116,7 @@ func draw_flashes(cx: float) -> void:
 func draw_smoke_columns(cx: float) -> void:
 	## Burning ruins in the mid layer: a fire glow at the base and a leaning column of puffs.
 	var spacing := 420.0
-	var lx0 := cx * MID
+	var lx0 := (cx + run) * MID
 	var k0 := int(floor((lx0 - 200) / spacing))
 	var lean := 1.0 if b.wind >= 0 else -1.0
 	var smoke := Color("2a2026") if theme == "dusk" else Color("1a1c2c")
@@ -227,3 +234,94 @@ func draw_water_on(ci: CanvasItem, cx: float) -> void:
 		if Terrain.hash2(int(x2 / 8), b.t / 10) < (0.35 if near_sun else 0.04):
 			ci.draw_rect(Rect2(x2 + 2, yy + 4 + (int(x2) % 3) * 6, 4 if near_sun else 2, 1), Color(1, 0.95, 0.8, 0.8))
 		x2 += 8
+
+# ---------------------------------------------------------------- TR1: the moving train
+func train_spans() -> Array:
+	## [x0, x1] of each car's chassis: the deck split at the open gaps between the cars.
+	var gaps: Array = b.T.open_pits.duplicate()
+	gaps.sort_custom(func(a, c): return a[0] < c[0])
+	var out: Array = []
+	var x := 0.0
+	for g in gaps:
+		if g[0] > x + 8:
+			out.append([x, float(g[0])])
+		x = maxf(x, float(g[1]))
+	if x < b.world_w - 8:
+		out.append([x, float(b.world_w)])
+	return out
+
+func draw_track_on(ci: CanvasItem, cx: float) -> void:
+	## Under the deck: the chassis, the bogies with their wheels spinning, and the track bed
+	## streaming backwards. The gaps between the cars drop straight onto it.
+	var deck := Terrain.TRAIN_DECK + Terrain.DECK_ROWS * Terrain.CELL   # the deck's underside
+	var rail := deck + 40.0
+	var x0 := cx - 8
+	var w := Battle.W + 16
+	# the cutting the line runs through: dark banks, shadow under the cars
+	ci.draw_rect(Rect2(x0, deck - 2, w, rail - deck + 2), Color("1c1614"))
+	ci.draw_rect(Rect2(x0, rail - 10, w, 10), Color("2a211c"))
+	# ballast and sleepers rushing past
+	ci.draw_rect(Rect2(x0, rail, w, Battle.H - rail + 8), Color("3a2e26"))
+	var ground := run  # the ground goes by at the full speed of the train
+	var sp := 22.0
+	var sx := cx - fposmod(cx + ground, sp) - sp
+	while sx < cx + Battle.W + sp:
+		ci.draw_rect(Rect2(roundf(sx), rail + 3, 12, 5), Color("21170f"))
+		ci.draw_rect(Rect2(roundf(sx), rail + 3, 12, 1), Color("4e3a2a"))
+		sx += sp
+	# stones and weeds smeared into streaks by the speed
+	for i in 26:
+		var span := Battle.W + 120.0
+		var px := cx - 60 + fposmod(Terrain.hash2(i, 41) * span - cx - ground * (1.0 + Terrain.hash2(i, 42) * 0.3), span)
+		var py := rail + 10 + Terrain.hash2(i, 43) * 26
+		var ln := 10 + Terrain.hash2(i, 44) * 26
+		ci.draw_rect(Rect2(roundf(px), roundf(py), ln, 1), Color(0.55, 0.45, 0.35, 0.35))
+	for i in 10:
+		var span := Battle.W + 120.0
+		var px := cx - 60 + fposmod(Terrain.hash2(i, 51) * span - cx - ground, span)
+		ci.draw_rect(Rect2(roundf(px), rail - 12, 18, 2), Color(0.45, 0.42, 0.25, 0.5))
+	# the rails: steady, they go the same way we do
+	ci.draw_rect(Rect2(x0, rail - 3, w, 3), Color("5c5650"))
+	ci.draw_rect(Rect2(x0, rail - 3, w, 1), Color("b8b0a0"))
+	# the chassis and bogies of every car
+	var spin := run / 11.0  # wheel turns, radius 11
+	for s in train_spans():
+		var a: float = s[0]
+		var e: float = s[1]
+		if e < cx - 40 or a > cx + Battle.W + 40:
+			continue
+		ci.draw_rect(Rect2(a + 6, deck, e - a - 12, 6), Color("2c2a2e"))
+		ci.draw_rect(Rect2(a + 6, deck + 5, e - a - 12, 1), Color("141216"))
+		var n := maxi(2, int((e - a) / 150.0))
+		for k in n:
+			var bx := lerpf(a + 44, e - 44, k / float(n - 1))
+			if bx < cx - 40 or bx > cx + Battle.W + 40:
+				continue
+			draw_bogie(ci, bx, deck, rail, spin)
+	# couplings across each gap, under the walkway
+	for g in b.T.open_pits:
+		if g[1] < cx - 20 or g[0] > cx + Battle.W + 20:
+			continue
+		var my := deck + 4.0
+		ci.draw_rect(Rect2(g[0] - 6, my, g[1] - g[0] + 12, 4), Color("3a3634"))
+		ci.draw_rect(Rect2((g[0] + g[1]) / 2.0 - 5, my - 2, 10, 8), Color("4a4442"))
+		# sparks off the wheels at the coupling, now and then
+		if Terrain.hash2(int(g[0]), b.t / 3) < 0.4:
+			var fx: float = g[0] - 30 + Terrain.hash2(int(g[0]), b.t) * 8
+			ci.draw_rect(Rect2(fx, rail - 2, 2, 2), Color(1, 0.8, 0.3, 0.9))
+			ci.draw_rect(Rect2(fx - 6, rail - 4, 3, 1), Color(1, 0.6, 0.2, 0.7))
+
+func draw_bogie(ci: CanvasItem, bx: float, deck: float, rail: float, spin: float) -> void:
+	var r := 11.0
+	var wy := rail - 3 - r
+	ci.draw_rect(Rect2(bx - 30, deck + 4, 60, 8), Color("2a2628"))   # side frame
+	ci.draw_rect(Rect2(bx - 6, deck, 12, 6), Color("1e1a1c"))        # bolster
+	for side in [-1.0, 1.0]:
+		var c := Vector2(bx + side * 16, wy)
+		ci.draw_circle(c, r, Color("191617"))
+		ci.draw_circle(c, r - 2, Color("3c3638"))
+		ci.draw_circle(c, 2.5, Color("8a8078"))
+		for k in 3:
+			var ang := spin + k * TAU / 3.0
+			var d := Vector2(cos(ang), sin(ang))
+			ci.draw_line(c - d * (r - 3), c + d * (r - 3), Color("6a625c"), 2.0)
