@@ -69,6 +69,7 @@ func _draw() -> void:
 	draw_wells()
 	draw_biome()
 	draw_crumble()
+	draw_boss_flares()
 	for u in b.units:
 		if u.dead:
 			draw_unit(u)
@@ -86,7 +87,7 @@ func _draw() -> void:
 	draw_parts()
 	draw_fx()
 	b.owcam.draw_world(self)
-	if not cine:
+	if not cine and b.cine.is_empty():
 		# Q3: the higher tags go down first, so where two would overlap the lower one steps up
 		var pl := b.units.duplicate()
 		# the selected soldier's name tag goes first: it bobs, so the enemy tags step around it
@@ -217,6 +218,8 @@ func draw_unit(u: Unit) -> void:
 	if u.gone or u.sunk or not on_screen(u.x):
 		return
 	var pos := Vector2(roundf(u.x), roundf(u.y))
+	if u.fl.has("enter_off"):
+		pos += u.fl.enter_off  # X1: the boss still arriving
 	var white: bool = u.flash > 0 and u.flash % 4 < 2
 	match u.kind:
 		"fuel":
@@ -429,6 +432,9 @@ func draw_unit(u: Unit) -> void:
 		return
 	if u.type == "shipplate":
 		draw_shipplate(u, pos, white)
+		return
+	if u.type == "bosspart":
+		draw_bosspart(u, pos, white)
 		return
 	if u.type == "droppod":
 		draw_droppod(pos, white, false)
@@ -823,6 +829,50 @@ func draw_boss(u: Unit, pos: Vector2, white: bool) -> void:
 			draw_arc(c, 58, PI, TAU, 32, Color(C_OOZE, 0.75), 2.0)
 			draw_arc(c, 52, -2.4, -1.6, 8, Color(1, 1, 1, 0.5), 2.0)
 
+	if u.fl.has("windup") and not u.dead:
+		# R1: the main gun glows and steams while a heavy shell is loaded
+		var m := b.muzzle(u)
+		var beat := 0.5 + 0.5 * sin(b.t / 4.0)
+		draw_circle(m, 10 + beat * 6, Color(1.0, 0.35, 0.15, 0.25 + 0.2 * beat))
+		draw_circle(m, 5 + beat * 2, Color(1.0, 0.8, 0.4, 0.7))
+		if b.t % 6 == 0:
+			b.part({"x": m.x + randf_range(-6, 6), "y": m.y, "vx": randf_range(-0.3, 0.3), "vy": -1.2, "life": 26, "max": 26, "c": Color("d8d0c8"), "s": 3.0, "g": -0.02})
+
+func draw_bosspart(u: Unit, pos: Vector2, white: bool) -> void:
+	## X4: a breakable piece of a boss. Each part draws in its own shape.
+	var a := u.alpha
+	var hurt := 1.0 - float(u.hp) / maxf(1, u.max_hp)
+	match u.fl.get("part", ""):
+		"rack":
+			# a crate of heavy shells strapped to the Boar's rear deck, hazard stripes on the lid
+			var r := Rect2(pos.x - u.w / 2.0, pos.y - u.h, u.w, u.h)
+			draw_rect(r.grow(1), Color(C_DARK, a))
+			draw_rect(r, Color(Color.WHITE if white else Color("6b5a32"), a))
+			for k in 4:
+				var sx := r.position.x + 3 + k * 6
+				draw_rect(Rect2(sx, r.position.y - 5, 4, 7), Color(Color.WHITE if white else Color("c9a24a"), a))
+				draw_rect(Rect2(sx, r.position.y - 6, 4, 2), Color(Color("ff4d3d"), a))
+			for k in 4:
+				draw_line(Vector2(r.position.x + k * 7, r.end.y - 1), Vector2(r.position.x + 5 + k * 7, r.position.y + 4), Color(Color("ffd23a"), 0.8 * a), 2.0)
+			if hurt > 0.4 and b.t % 7 == 0:
+				b.part({"x": u.x + randf_range(-8, 8), "y": u.y - u.h, "vx": 0.0, "vy": -0.8, "life": 22, "max": 22, "c": Color("ffb23e"), "s": 2.0, "g": -0.02, "fire": true})
+		_:
+			var r := Rect2(pos.x - u.w / 2.0, pos.y - u.h, u.w, u.h)
+			draw_rect(r.grow(1), Color(C_DARK, a))
+			draw_rect(r, Color(Color.WHITE if white else Color("7a7f88"), a))
+
+func draw_boss_flares() -> void:
+	## R1: red smoke pouring up where a boss's heavy shell will land next turn. It's in the world,
+	## not on the HUD: a spotter flare, the way artillery calls its shot.
+	for f in b.boss_flares:
+		var p := Vector2(f.x, f.y)
+		draw_rect(Rect2(p.x - 2, p.y - 6, 4, 6), C_DARK)
+		draw_rect(Rect2(p.x - 1, p.y - 5, 2, 4), Color("ff4d3d"))
+		var beat := 0.5 + 0.5 * sin(b.t / 5.0)
+		draw_circle(p + Vector2(0, -6), 4 + beat * 2, Color(1, 0.3, 0.2, 0.5))
+		if b.t % 3 == 0:
+			b.part({"x": f.x + randf_range(-2, 2), "y": f.y - 8, "vx": randf_range(-0.25, 0.25) + b.wind * 0.04, "vy": -randf_range(0.7, 1.2), "life": 70, "max": 70, "c": Color("e0503c") if randf() < 0.7 else Color("ff8a6a"), "s": 4.0, "g": -0.005})
+
 func draw_relay(u: Unit, pos: Vector2) -> void:
 	## W3: a radio mast. Blinks red until a soldier ends a turn on it, then flies a green pennant.
 	var taken: bool = u.loot.taken
@@ -1209,7 +1259,7 @@ func draw_projs() -> void:
 					col = Color("6a4a2a")
 				elif p.kind == "beacon":
 					col = Color("62d26f") if b.t % 10 < 5 else Color("2a6a34")
-				var r := 5.0 if p.kind == "shell" else (3.0 if p.mini else 4.0)
+				var r := (9.0 if p.get("big", false) else 5.0) if p.kind == "shell" else (3.0 if p.mini else 4.0)
 				draw_rect(Rect2(pos.x - r - 1, pos.y - r - 1, r * 2 + 2, r * 2 + 2), C_DARK)
 				draw_rect(Rect2(pos.x - r, pos.y - r, r * 2, r * 2), col)
 				draw_rect(Rect2(pos.x - r, pos.y - r, 2, 2), Color(1, 1, 1, 0.5))
@@ -1748,6 +1798,13 @@ func draw_hiveship(u: Unit, pos: Vector2, white: bool) -> void:
 	var beat := 0.5 + 0.5 * sin(b.t / 8.0)
 	draw_circle(pos + Vector2(0, -4), 9, Color(C_DARK, a))
 	draw_circle(pos + Vector2(0, -4), 6 + beat * 2, Color(C_OOZE, (0.5 + 0.4 * beat) * a))
+	if u.fl.has("windup") and not u.dead:
+		# R1: the belly port swells and throws a thin pale light straight down: the ray comes there
+		var q := 0.5 + 0.5 * sin(b.t / 3.0)
+		draw_circle(pos + Vector2(0, -2), 14 + q * 8, Color(C_OOZE, 0.25 + 0.25 * q))
+		draw_circle(pos + Vector2(0, -2), 8, Color(1, 1, 1, 0.6 * a))
+		draw_line(pos, Vector2(pos.x, Battle.WATER_Y), Color(C_OOZE, 0.10 + 0.08 * q), 10.0)
+		draw_line(pos, Vector2(pos.x, Battle.WATER_Y), Color(1, 1, 1, 0.10 * q), 2.0)
 
 func draw_shipplate(u: Unit, pos: Vector2, white: bool) -> void:
 	## A riveted hull plate on two tethers up to the ship's belly.
@@ -1931,6 +1988,13 @@ func draw_hover(cv: CanvasItem) -> void:
 			lines.append("TURNED: this Jackal fights the Vharr now, and still you.")
 		if h.fl.has("mind"):
 			lines.append("LINKED BY SABLE: it fights its own side until the Jackal phase ends.")
+		if h.type == "bosspart":
+			var P: Dictionary = Data.BOSS_PARTS.get(h.fl.get("part", ""), {})
+			lines = [str(P.get("name", "Boss Part")).to_upper(), "HP %d/%d" % [h.hp, h.max_hp], P.get("note", E.note)]
+		if h.fl.has("windup"):
+			lines.append(Data.WINDUPS[h.fl.windup.kind].hover)
+		if b.is_boss(h) and not h.fl.get("phase2", false):
+			lines.append("At half health it changes: %s." % Data.ETYPES[h.type].get("phase2", "it gets angrier").to_lower())
 		if h.type == "hiveship":
 			lines.append("HULL PLATES UP: shots do 40%" if b.vharr_ai.ship_plated(h) else "HULL EXPOSED: TAKES +30%")
 		if h.elite != "":

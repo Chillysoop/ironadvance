@@ -154,6 +154,11 @@ var camp_ops: BattleCampaign  # Campaign-only pieces: op jobs, the pincer, camp 
 var boot_camp: BattleTutorial  # The training drill and the step-by-step boot camp.
 var phys: BattlePhysics  # Walking, falling and thrown things.
 var foe_ai: BattleEnemies  # The Jackals' side: the enemy phase, Jackal AI and the newer Jackal types.
+var bosses: BattleBosses  # Shared boss rules and spectacle: wind-ups, entrances, phases, parts, deaths.
+var cine := {}  # X1: the boss entrance playing now (name card, black bars); settled() waits for it
+var slow := {}  # R2: slow motion {t real frames left, k speed, focus}
+var boss_zoom := 1.0  # R2: the camera's lean-in toward that moment
+var boss_flares: Array = []  # R1: red smoke where a boss's heavy shell will land
 
 func _init() -> void:
 	vehicle_ops = BattleVehicles.new(self)
@@ -166,6 +171,7 @@ func _init() -> void:
 	boot_camp = BattleTutorial.new(self)
 	phys = BattlePhysics.new(self)
 	foe_ai = BattleEnemies.new(self)
+	bosses = BattleBosses.new(self)
 
 # ---------------------------------------------------------------- setup
 func setup(idx: int, custom := {}) -> void:
@@ -326,6 +332,8 @@ func setup(idx: int, custom := {}) -> void:
 		place_alien(u)
 		if type == "hiveship":
 			vharr_ai.hang_plates(u)
+		if type == "boss" and not tutorial() and not in_lesson() and mission.get("boss_hp", 0) > 1:
+			bosses.add_part(u, "rack", 36, -62)  # X4: the Boar's heavy shells ride on its rear deck
 		for k in range(1, E.get("pack", 1)):
 			var px := x + k * 18.0
 			var mate := mk_enemy(type, px, T.stand_y(px, (y if y != null else 0.0) - 40))
@@ -933,7 +941,7 @@ func until(cond: Callable) -> void:
 		await tick
 
 func settled() -> bool:
-	if projs.size() or booms.size() or T.chunks_falling() or absf(cam_x - cam_tx) >= 0.5:
+	if projs.size() or booms.size() or T.chunks_falling() or absf(cam_x - cam_tx) >= 0.5 or not cine.is_empty():
 		return false
 	for u in units:
 		if u.sunk or u.gone:
@@ -1891,6 +1899,8 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 		float_text(tg, str(amt), Color("ffb23e") if o.get("crit", false) else Color.WHITE, o.get("crit", false))
 		if own != null and tg.team == "enemy":
 			give_xp(own, maxi(1, int(amt / 3)))
+		if tg.hp > 0 and is_boss(tg):
+			bosses.check_phase(tg)  # X2
 		if tg.hp <= 0:
 			# R2: overkill by half its health or more and the Jackal bursts into helmet, boots and smoke
 			pop_next = tg.kind == "enemy" and not is_boss(tg) and not tg.type in ["shipplate", "droppod", "vgate"] and -tg.hp >= maxi(6, tg.max_hp / 2)
@@ -2014,6 +2024,8 @@ func kill(tg: Unit, src) -> void:
 		banner("NEMESIS DOWN!", Color("ffd23a"), "%s IS DEAD" % tg.fl.quarry)
 	if tg.type == "shipplate":
 		vharr_ai.drop_plate(tg, src)
+	elif tg.type == "bosspart":
+		bosses.part_down(tg, src)
 	elif tg.type == "jwalker":
 		vehicle_ops.walker_wreck(tg)
 	elif tg.type == "gunship":
@@ -2194,7 +2206,6 @@ func kill(tg: Unit, src) -> void:
 			for o in units:
 				if o.type == "shipplate" and o.fl.get("ship") == tg and not o.dead:
 					kill(o, src)  # its plates come down with it
-			tg.gone = true
 			banner("HIVE SHIP DOWN!", Color("9df25c"), "THE SKY IS CLEAR")
 		if is_boss(tg):
 			boss_dead = true
@@ -2207,8 +2218,7 @@ func kill(tg: Unit, src) -> void:
 			var part_name: String = Data.TROPHIES[mini(mission_idx, Data.TROPHIES.size() - 1)]
 			if not Run.trophies.has(part_name):
 				drop_loot(tg.x + 20, tg.y - 40, {"type": "trophy", "name": part_name}, 1.2)
-			for i in 7:
-				booms.append({"t": 10 + i * 14, "x": tg.x + (randf() - .5) * 90, "y": tg.y - 20 - randf() * 40, "r": 34.0, "dmg": 0, "owner": null})
+			bosses.death(tg)  # X5
 	elif tg.team == "squad":
 		stats.kia += 1
 		stats.downs += 1
@@ -2305,6 +2315,10 @@ func feed_kill(tg: Unit, src) -> void:
 			log_msg(fin)
 			float_text(src, Data.ORDERS[src.s.orders_done.back()].title + "!", Color("ffd23a"), true)
 	var victim: String = (Data.ETYPES[tg.type].name if tg.team == "enemy" else tg.def.name).to_upper()
+	if tg.type == "bosspart":
+		victim = str(Data.BOSS_PARTS.get(tg.fl.get("part", ""), {}).get("name", "BOSS PART")).to_upper()
+	elif is_boss(tg) and tg.type != "boss":
+		victim = bosses.boss_name(tg)
 	if tg.type == "boss" and tg.team == "enemy" and mission.get("boar_kit", "standard") not in ["standard", ""]:
 		victim = Data.BOAR_KITS[mission.boar_kit].name.to_upper()
 	var stamp := ""
@@ -2419,6 +2433,13 @@ func blast_grow(owner, x: float, y: float) -> float:
 		k *= 2.0 if g != null and g.owner is Unit and g.owner.def.key == "hex" else 1.5
 	return k
 
+func show_blast(x: float, y: float, r: float) -> void:
+	Sfx.play("bigboom" if r > 45 else "boom")
+	shake = minf(18, shake + r * 0.2)
+	if has_node("Lights"):
+		$Lights.flash(x, y, r * 2.2, Color("ffb45a"), 24)
+	fireball(x, y, r, false)
+
 func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> void:
 	if dmg > 0:
 		coach_hit("blast")
@@ -2484,6 +2505,8 @@ func explode(x: float, y: float, r: float, dmg: int, owner, burn := false) -> vo
 		var d := maxf(0, Vector2(cx - x, cy - y).length() - u.w / 2.0)
 		if d > r:
 			continue
+		if owner is Unit and is_boss(owner) and (u == owner or u.fl.get("boss") == owner):
+			continue  # a boss's own shells spare it and the parts bolted to it
 		var f := 1 - (d / r) * 0.6
 		var dm := maxi(1, int(round(dmg * f))) + bonus
 		if u == owner:
@@ -4516,6 +4539,7 @@ func hand_size(s: Unit) -> int:
 func start_player_turn() -> void:
 	Sfx.play("turn", -8)
 	Music.boss_check(self)
+	bosses.windup_reminder()  # R1
 	mid_events.troopers_follow()
 	camp_ops.free_varga()
 	round_n += 1
@@ -4867,7 +4891,7 @@ func nearest_squad(e: Unit):
 
 func is_boss(u: Unit) -> bool:
 	## The level's end boss: the Iron Boar, or the Hive Ship over the delta and the harbor.
-	return u.type == "boss" or u.type == "hiveship"
+	return Data.ETYPES.get(u.type, {}).get("boss", false)
 
 func faction(u: Unit) -> String:
 	return Data.ETYPES[u.type].get("faction", "jackal") if u.team == "enemy" else ""
@@ -5027,6 +5051,11 @@ func _process(delta: float) -> void:
 	var real := minf(0.1, delta)
 	owcam.step(real)
 	var sp := speed * (FAST_ENEMY if fast_forward() else 1.0) * owcam.slow
+	if not slow.is_empty():
+		sp *= slow.k  # R2: a boss's big moment plays in slow motion
+		slow.t -= 1
+		if slow.t <= 0:
+			slow = {}
 	if owcam.hitstop <= 0.0:
 		acc += real * 60.0 * sp
 	var n := 0
@@ -5037,8 +5066,18 @@ func _process(delta: float) -> void:
 	T.flush()
 	sync_chunks()
 	var s := shake * SettingsScript.shake_mul() if shake > 0.6 else 0.0  # R5
-	cam.zoom = Vector2(owcam.zoom, owcam.zoom)
-	cam.position = owcam.center(Vector2(cam_x + W / 2.0, H / 2.0)) + Vector2(round((randf() - .5) * s), round((randf() - .5) * s))
+	# R2: a boss's big moment leans the camera in a little toward it; overwatch has its own framing
+	boss_zoom = lerpf(boss_zoom, 1.08 if not slow.is_empty() else 1.0, 0.15)
+	var z := maxf(owcam.zoom, boss_zoom)
+	cam.zoom = Vector2(z, z)
+	var cc := owcam.center(Vector2(cam_x + W / 2.0, H / 2.0))
+	if boss_zoom > 1.001 and owcam.amt < 0.02:
+		var f: Vector2 = slow.get("focus", cc) if not slow.is_empty() else cc
+		var half := Vector2(W, H) / (2.0 * z)
+		cc += (f - cc) * 0.35 * (boss_zoom - 1.0) / 0.08
+		cc.x = clampf(cc.x, cam_x + half.x, cam_x + W - half.x)
+		cc.y = clampf(cc.y, half.y, H - half.y)
+	cam.position = cc + Vector2(round((randf() - .5) * s), round((randf() - .5) * s))
 	view.queue_redraw()
 	if ui_dirty and hud != null:
 		ui_dirty = false
@@ -5047,6 +5086,7 @@ func _process(delta: float) -> void:
 func step() -> void:
 	foe_ai.rotor_check()
 	t += 1
+	bosses.cine_tick()
 	spec_kits.hold_fast()
 	if stickies.size() and state == "enemy":
 		spec_kits.sticky_watch()
@@ -5095,7 +5135,7 @@ func step() -> void:
 			if u.is_body() and u.soak > 0 and u.x > cam_x - 80:
 				u.dead_t = mini(u.dead_t, 90)
 				u.rot = u.rot + u.vx * 0.09 if u.air else 0.0
-			elif u.team == "enemy" and u.dead_t > 90:
+			elif u.team == "enemy" and u.dead_t > 90 and not (is_boss(u) and u.weight != "hover"):
 				u.alpha = maxf(0, 1 - (u.dead_t - 90) / 30.0)
 				if u.alpha <= 0:
 					u.gone = true
@@ -5190,7 +5230,10 @@ func step() -> void:
 				b.barrel.gone = true
 			if debug:
 				print("[boom r%d] %s r%d dmg%d" % [round_n, (b.barrel.kind + ":" + b.barrel.type) if b.has("barrel") and b.barrel != null else ("owner:" + (b.owner.type if b.owner is Unit else "null")), int(b.r), b.dmg])
-			explode(b.x, b.y, b.r, b.dmg, b.owner, b.get("burn", b.r >= 80))
+			if b.get("show", false):
+				show_blast(b.x, b.y, b.r)  # X5: the fire and noise of a blast, no damage, no crater
+			else:
+				explode(b.x, b.y, b.r, b.dmg, b.owner, b.get("burn", b.r >= 80))
 	booms = booms.filter(func(b): return not b.get("done", false))
 	for p in parts:
 		p.life -= 1
@@ -5313,6 +5356,9 @@ func physics(u: Unit) -> void:
 		u.vy = 0
 		return
 	if u.walk != null or (u.kind == "pow" and u.freed) or u.fl.has("carried"):
+		return
+	if u.type == "bosspart" and not u.dead:
+		bosses.pin_part(u)  # X4: a boss part goes where the boss goes
 		return
 	if u.type == "shipplate" and not u.dead:
 		# a hull plate hangs on its tethers under the Hive Ship and goes where the ship goes
@@ -5785,6 +5831,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 		mouse = get_global_mouse_position()
 	elif ev is InputEventMouseButton and not ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 		jet_hold = false
+	elif ev is InputEventMouseButton and ev.pressed and not cine.is_empty():
+		bosses.skip_cine()  # X1: a click skips the boss entrance
+		return
 	elif ev is InputEventMouseButton and ev.pressed:
 		mouse = get_global_mouse_position()
 		if busy and stop_drill():
@@ -5802,6 +5851,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 		elif ev.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
 			dial_fuse(1 if ev.button_index == MOUSE_BUTTON_WHEEL_UP else -1)
 	elif ev is InputEventKey:
+		if ev.pressed and not cine.is_empty():
+			bosses.skip_cine()  # X1: any key skips the boss entrance
+			return
 		if ev.keycode == KEY_SHIFT:
 			aim_hold = ev.pressed
 			return

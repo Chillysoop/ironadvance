@@ -691,20 +691,11 @@ func activate_enemies() -> void:
 				bt.banner("WARNING!!", Color("c47bff"), "THE BURROW QUEEN STIRS")
 				Sfx.play("alarm")
 				bt.log_msg("Something huge is moving under the sand. Only blasts reach her down there: hit her when she surfaces, and bring the ruins down on her head.")
-			if e.type == "hiveship" and not bt.boss_active:
+			if bt.is_boss(e) and not bt.boss_active:
 				bt.boss_active = true
-				bt.banner("WARNING!!", Color("c47bff"), "HIVE SHIP OVERHEAD")
-				Sfx.play("alarm")
-				bt.log_msg("A Vharr HIVE SHIP blots out the sky. Shoot its hull plates off the tethers and drop them on whatever is under it. Blasts in its belly always hurt.")
-			if e.type == "boss" and not bt.boss_active:
-				bt.boss_active = true
+				bt.bosses.entrance(e)  # X1: black bars, the boss arrives, its name card slams in
 				if e.fl.get("vharr", false):
-					bt.banner("WARNING!!", Color("c47bff"), "VHARR BOAR APPROACHING")
 					bt.log_msg("The flagship BOAR rolls in refit with Vharr tech: a dome over the turret and a tongue. Crushing and melee go through the dome.")
-				else:
-					bt.banner("WARNING!!", Color("ff4d3d"), "ROOKIE BOAR APPROACHING" if e.fl.get("rookie", false) else "%s APPROACHING" % Data.BOAR_KITS.get(bt.mission.get("boar_kit", ""), Data.BOAR_KITS.standard).name)
-					bt.log_msg("The IRON BOAR rolls in. Something heavy is hanging over it...")
-				Sfx.play("alarm")
 	bt.mid_events.rare_check()  # P3
 
 # ---------------------------------------------------------------- O2-O6: campaign op jobs
