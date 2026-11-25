@@ -1324,10 +1324,27 @@ const ETYPES := {
 		"wreck": [[-0.5, 0.5, 0.0, 0.5], [-0.1, 0.4, 0.5, 0.9]],
 		"note": "Demolition crane. It rolls its boom over a soldier and winches its wrecking ball back; next turn the brake comes off and the ball swings through everything in its arc, walls too. Every other turn its magnet yanks the nearest soldier off their feet. Shoot the winch and the ball drops for good."},
 	# Epic bosses page B5. The unit is the head (its only weak spot); the body is a chain of "seg" parts.
-	"serpent": {"name": "SKY SERPENT", "boss": true, "faction": "vharr", "sub": "IT SWIMS THROUGH THE AIR", "phase2": "IT SPLITS IN TWO", "hp_k": 1.1, "parts_force": false,
+	"serpent": {"name": "SKY SERPENT", "boss": true, "pair": "ONE HEAD DOWN!", "faction": "vharr", "sub": "IT SWIMS THROUGH THE AIR", "phase2": "IT SPLITS IN TWO", "hp_k": 1.1, "parts_force": false,
 		"weight": "hover", "alt": 230, "heavy": true, "hp": 150, "w": 44, "h": 36, "score": 3000, "enter": [0, -320],
 		"wreck": [[-0.5, 0.5, 0.0, 1.0]],
 		"note": "Vharr void eel. It swims over you in wide arcs and its tail stinger whips whoever it passes over. Every other turn it coils high over a soldier with its head glowing; next turn it dives straight down there, tunnels and bursts out somewhere else. Its body blocks shots: the head is the only weak spot. Each segment shot off makes it shorter and faster. At half health it splits in two."},
+	# Epic bosses page B7 (two units, both bosses: the level waits for both), B8, B9.
+	"rocketship": {"name": "TWIN ROTORS", "boss": true, "sub": "THERE ARE ALWAYS TWO", "phase2": "ROCKETS EVERY TURN NOW", "hp_k": 0.7, "pair": "ONE ROTOR DOWN!",
+		"weight": "hover", "alt": 170, "heavy": true, "hp": 150, "dmg": [2, 3], "shots": 3, "range": 720, "w": 110, "h": 60, "score": 2000, "enter": [520, -60],
+		"wreck": [[-0.4, 0.4, 0.0, 0.6]],
+		"note": "Rocket gunship, one of a pair. Every other turn it hovers still and swings its rocket pods open toward a soldier; next turn it empties them on that spot. Shoot a pod off to halve the salvo. Its rotor wash shoves whoever is under it. Kill its partner and it goes berserk: twice the turns, but it takes 50% more damage."},
+	"dropship": {"name": "DROPSHIP", "boss": true, "sub": "THERE ARE ALWAYS TWO", "phase2": "TROOPS EVERY TURN NOW", "hp_k": 0.6, "pair": "ONE ROTOR DOWN!",
+		"weight": "hover", "alt": 130, "heavy": true, "hp": 150, "dmg": [2, 3], "shots": 3, "range": 640, "w": 110, "h": 60, "score": 2000,
+		"wreck": [[-0.4, 0.4, 0.0, 0.6]],
+		"note": "Transport helicopter, one of a pair. It drops troopers on chutes out of its door and smoke grenades around you on the turns between. Its door gun fires every turn. Kill its partner and it goes berserk: twice the turns, but it takes 50% more damage."},
+	"bastion": {"name": "BASTION", "boss": true, "sub": "A FORTRESS THAT WALKS", "phase2": "THE HANGAR NEVER CLOSES", "hp_k": 1.9,
+		"hp": 150, "heavy": true, "dmg": [2, 3], "shots": 2, "range": 700, "w": 230, "h": 200, "score": 4000, "enter": [380, 0],
+		"wreck": [[-0.5, 0.5, 0.0, 0.45], [-0.25, 0.3, 0.45, 0.8]],
+		"note": "Mobile fortress. It crawls a step toward you every turn and its roof guns fire on anyone in the open. Every other turn the lights over its hangar go red and the door lowers; next turn it drops and a wave rolls out. Blasts while the hangar is open do double damage. Once it's on your side of the arena its treads chew up the ground."},
+	"varga_suit": {"name": "COL. VARGA", "boss": true, "sub": "THE COLONEL COMES FOR YOU HIMSELF", "phase2": "NO MORE GAMES: TWO SHOTS A TURN", "hp_k": 0.75,
+		"hp": 150, "heavy": true, "dmg": [3, 4], "shots": 2, "range": 640, "jet": 300, "w": 34, "h": 70, "score": 4000, "enter": [0, -300],
+		"wreck": [[-0.5, 0.5, 0.0, 0.5]],
+		"note": "Colonel Varga in a jump-jet battle suit. Small, fast and smart: he jets between ledges and sidesteps the first hit of each of your turns. Every other turn he rockets off the top of the screen and his shadow settles over a soldier; next turn he slams down there."},
 	"bosspart": {"name": "Boss Part", "hp": 16, "static": true, "heavy": true, "score": 150, "w": 24, "h": 14, "note": "A piece of the boss you can shoot off. Each one takes an attack away."},
 	"shipplate": {"name": "Hull Plate", "faction": "vharr", "hp": 14, "static": true, "heavy": true, "score": 100, "w": 44, "h": 12, "note": "Armor hanging under the Hive Ship. Shoot it off its tethers: it falls like a girder and crushes whatever is under it. With every plate gone the ship takes +30% damage."},
 	"droppod": {"name": "Drop Pod", "faction": "vharr", "hp": 18, "static": true, "heavy": true, "score": 50, "w": 24, "h": 26, "note": "Crashed down full of Vharr. It opens on the next enemy phase and they come out swinging. Break it first and they die inside."},
@@ -1783,6 +1800,9 @@ const WINDUPS := {
 	"rev": {"shout": "THE DRILL REVS UP!", "hover": "DRILL REVVING: next turn it bores straight through the rock to where the dust is shaking loose."},
 	"erupt": {"shout": "ITS SHELL IS CRACKING OPEN!", "hover": "SHELL CRACKING: next turn lava erupts out of every glowing crack in the ground."},
 	"dive": {"shout": "IT COILS TO STRIKE!", "hover": "COILED: next turn it dives straight down under its glowing head, tunnels, and bursts out somewhere else."},
+	"salvo": {"shout": "PODS OPEN!", "hover": "PODS OPEN: next turn it empties both rocket pods on the soldier they point at. Shoot a pod off to halve it."},
+	"hangar": {"shout": "THE HANGAR LIGHTS GO RED!", "hover": "HANGAR OPENING: next turn the door drops and a wave rolls out. Blasts into the open hangar do double damage."},
+	"slam": {"shout": "", "hover": "OFF THE TOP OF THE SCREEN: next turn he slams down on his shadow."},
 	"bellyray": {"shout": "THE BELLY IS CHARGING!", "hover": "BELLY RAY CHARGING: a column of light burns straight down under the ship at the start of its next turn."},
 }
 const BIGSHELL_R := 72.0
@@ -1790,7 +1810,7 @@ const BIGSHELL_DMG := 18
 const BELLYRAY_DMG := 16
 const BOSS_CINE := 230  # X1: frames the entrance's name card stays up (any key skips)
 # X4: parts you can shoot off a boss. down/lose are the banner when it goes.
-const BOSS_POOLS := {"desert": ["stormcrow"], "city": ["stormcrow", "railgun", "ironjaw"], "fortress": ["railgun", "stormcrow", "ironjaw"], "mountain": ["railgun", "serpent"], "refinery": ["railgun", "ironjaw"], "palace": ["stormcrow", "gravemother", "serpent"], "jungle": ["gravemother"], "lake": ["gravemother", "serpent"]}
+const BOSS_POOLS := {"desert": ["stormcrow", "rocketship"], "city": ["stormcrow", "railgun", "ironjaw"], "fortress": ["railgun", "stormcrow", "ironjaw", "bastion", "varga_suit"], "mountain": ["railgun", "serpent"], "refinery": ["railgun", "ironjaw", "bastion"], "palace": ["stormcrow", "gravemother", "serpent", "varga_suit"], "jungle": ["gravemother", "rocketship"], "lake": ["gravemother", "serpent"]}
 const NEW_BOSS_CHANCE := 0.75   # from level 2, how often a biome with a pool gets one of its new bosses over a Boar
 const BOMB_STRIP := [70.0, 45.0]  # B1: the bombing strip is 70 px plus 45 per engine still turning
 const BOMB_DMG := 10
@@ -1824,6 +1844,10 @@ const BOSS_PARTS := {
 		"note": "Ironjaw's magnet. Every other turn it yanks the nearest soldier off their feet. Shoot it off."},
 	"seg": {"name": "Serpent Segment", "hp": 12, "w": 26, "h": 26, "boss_dmg": 0, "fall": false, "silent": true, "down": "SEGMENT DOWN!", "lose": "SHORTER AND FASTER",
 		"note": "A ring of the Sky Serpent's body. It soaks up shots meant for the head. Each one shot off makes the serpent shorter and faster."},
+	"pod": {"name": "Rocket Pod", "hp": 14, "w": 20, "h": 12, "boss_dmg": 6, "fall": true, "down": "ROCKET POD DOWN!", "lose": "HALF THE SALVO",
+		"note": "Holds half the gunship's rocket salvo. Shoot it off and the salvo halves; shoot both and no more rockets."},
+	"rturret": {"name": "Roof Gun", "hp": 22, "w": 30, "h": 18, "boss_dmg": 8, "down": "ROOF GUN DOWN!", "lose": "ONE LESS GUN ON THE ROOF",
+		"note": "One of Bastion's roof guns. It fires on anyone in the open every turn."},
 	"rack": {"name": "Ammo Rack", "hp": 16, "w": 26, "h": 14, "boss_dmg": 12, "down": "AMMO RACK BLOWN!", "lose": "NO MORE HEAVY SHELLS",
 		"note": "The Boar's heavy shells. Shoot it off: it blows up in the Boar's face and the Boar can't load another heavy shell."},
 }
@@ -1840,6 +1864,15 @@ const SERPENT_SPD_SEG := 0.6
 const TAIL_DMG := 8
 const DIVE_DMG := 18
 const DIVE_R := 44.0
+const SALVO_PER_POD := 3     # B7: rockets per pod still on the gunship
+const SALVO_SPREAD := 40.0
+const SALVO_DMG := 7
+const BERSERK_DMG := 1.5     # damage taken by a rotor whose partner is down
+const BASTION_STEP := 40.0   # B8: how far it crawls each turn
+const BASTION_CRUSH_AT := 0.55   # once its front is past this much of the screen, its treads chew the ground
+const BASTION_WAVE := ["grunt", "grunt", "jdog"]
+const SLAM_DMG := 16         # B9: Varga landing on you
+const SLAM_R := 48.0
 const BOAR_FLAME_RANGE := 200.0
 const BOAR_FLAME_DMG := 8
 

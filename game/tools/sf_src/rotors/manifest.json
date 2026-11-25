@@ -1,0 +1,104 @@
+[
+ {
+  "op": "style",
+  "prompt": "A military attack helicopter gunship, pure side view facing left, olive drab with rust, a narrow armored cockpit with tinted glass at the front, stub wings holding two big rocket pods, a long tail boom with a small tail rotor, a skid undercarriage. No main rotor blades (drawn separately), just the rotor hub on top. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_engineer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_flamer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_jetter_f0.png"
+  ],
+  "size": 64,
+  "outputs": [
+   "rocketship_0.png",
+   "rocketship_1.png",
+   "rocketship_2.png",
+   "rocketship_3.png",
+   "rocketship_4.png",
+   "rocketship_5.png",
+   "rocketship_6.png",
+   "rocketship_7.png",
+   "rocketship_8.png"
+  ],
+  "asset_ids": [
+   "e7202f76-30c4-440b-9f5e-13ff218bd854",
+   "bfb31ea6-5b44-4ef5-83a7-409b0527f546",
+   "390465b0-aa4c-4fb4-b7ac-864bb8c1b1fd",
+   "a0fc31f2-abce-406d-a89e-739267e198bc",
+   "1d1fb735-0ba6-4f96-801e-0a2fc6e663c3",
+   "96ce25e4-5bab-424d-81aa-40e482ae0802",
+   "06517c0f-7a5d-4b79-9e04-46bdc0b18964",
+   "16302863-4058-48e1-910d-a58316ff0bcb",
+   "06853d6a-7a11-48f0-8d8e-1eb012314029"
+  ],
+  "picked": "rocketship_6 -> rocketship.png (rocket pods under stub wings; other options not kept)"
+ },
+ {
+  "op": "style",
+  "prompt": "A heavy military transport helicopter, pure side view facing left, olive drab with rust, a big boxy fuselage with an open side door, a chin machine gun under the cockpit, smoke grenade launchers on the side, a thick tail boom with a tail rotor. No main rotor blades (drawn separately), just the rotor hub on top. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_engineer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_flamer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_jetter_f0.png"
+  ],
+  "size": 64,
+  "outputs": [
+   "dropship_0.png",
+   "dropship_1.png",
+   "dropship_2.png",
+   "dropship_3.png",
+   "dropship_4.png",
+   "dropship_5.png",
+   "dropship_6.png",
+   "dropship_7.png",
+   "dropship_8.png"
+  ],
+  "asset_ids": [
+   "e63ed8f3-da36-43bb-b996-63ec87ff85f0",
+   "e051fd06-d562-4257-8f76-af9bf62ca17c",
+   "c8212d4f-fec4-4d7d-901e-0ed21c6a1e5d",
+   "52243af6-c676-44e1-b5b6-b346b24947b2",
+   "dab7aa01-14a3-4804-9d55-3097ebc754c4",
+   "5c4ccc62-9bcf-4366-a4c6-1858b14cba58",
+   "14852aa9-aaf8-47b6-aeaa-30dab7896aa3",
+   "7d249f6f-08c6-480b-8b8f-06f37da42694",
+   "288653d9-26ed-4fec-af43-bceb70918eab"
+  ],
+  "picked": "dropship_0 -> dropship.png (open side door, skids; other options not kept)"
+ },
+ {
+  "op": "style",
+  "prompt": "A big military attack helicopter gunship that fills the whole image edge to edge, pure side view facing left, olive drab with rust, a narrow armored two-seat cockpit with tinted glass at the front, stub wings holding two big rocket pods full of rockets, a long tail boom with a tail rotor, skids underneath. Only the rotor hub on top, no blades. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_engineer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_flamer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_jetter_f0.png"
+  ],
+  "size": 64,
+  "outputs": [
+   "rocketship_0.png",
+   "rocketship_1.png",
+   "rocketship_2.png",
+   "rocketship_3.png",
+   "rocketship_4.png",
+   "rocketship_5.png",
+   "rocketship_6.png",
+   "rocketship_7.png",
+   "rocketship_8.png"
+  ],
+  "asset_ids": [
+   "64921fa5-f488-484a-8408-c3f9bb8d0fd2",
+   "dfc4c4d8-a4ef-4161-968e-9a2879ec5bfc",
+   "4a8518a7-bcb6-476e-ba1a-5f2964a4ff76",
+   "bfd5f667-5b0a-4846-bf49-20b588e62965",
+   "7ae2296e-cc0b-464f-a649-a434a076ff5a",
+   "9fd9cfc3-4ff4-4c1b-9c5e-59af6f3ffbd8",
+   "4df6eed2-ef93-4ced-ba32-68af9fc168eb",
+   "b935ec84-fc16-419d-9113-ec0669ba5838",
+   "cf42ba75-52fc-43fe-be42-56d4ef5abcd3"
+  ],
+  "picked": "rocketship_6 -> rocketship.png (rocket pods under stub wings; other options not kept)"
+ }
+]

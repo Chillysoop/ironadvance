@@ -112,7 +112,8 @@ func start_windup(u: Unit, kind: String, data := {}) -> void:
 	u.fl["windup"] = w
 	Sfx.play("power", -2)
 	bt.shake += 2
-	bt.float_text(u, Data.WINDUPS[kind].shout, boss_color(u), true)
+	if Data.WINDUPS[kind].shout != "":
+		bt.float_text(u, Data.WINDUPS[kind].shout, boss_color(u), true)
 
 func cancel_windup(u: Unit, why := "") -> void:
 	if not u.fl.has("windup"):
@@ -141,7 +142,8 @@ func windup_reminder() -> void:
 	for u in bt.units:
 		if bt.is_boss(u) and not u.dead and winding(u):
 			Sfx.play("power", -6)
-			bt.float_text(u, Data.WINDUPS[u.fl.windup.kind].shout, boss_color(u))
+			if Data.WINDUPS[u.fl.windup.kind].shout != "":
+				bt.float_text(u, Data.WINDUPS[u.fl.windup.kind].shout, boss_color(u))
 
 func boss_turns(u: Unit) -> int:
 	## How many of its turns this boss has started (counted by tick_turn).

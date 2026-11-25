@@ -78,6 +78,7 @@ func _draw() -> void:
 			draw_unit(u)
 			if u.drill != null:
 				draw_drill(u, Vector2(u.drill.dx, u.drill.dy), true)
+	draw_varga_shadow()
 	draw_smokes()
 	draw_projs()
 	for tr in b.tracers:
@@ -450,6 +451,15 @@ func draw_unit(u: Unit) -> void:
 		return
 	if u.type == "serpent":
 		draw_serpent(u, pos, white)
+		return
+	if u.type == "rocketship" or u.type == "dropship":
+		draw_rotor(u, pos, white)
+		return
+	if u.type == "bastion":
+		draw_bastion(u, pos, white)
+		return
+	if u.type == "varga_suit":
+		draw_varga(u, pos, white)
 		return
 	if u.type == "droppod":
 		draw_droppod(pos, white, false)
@@ -1004,6 +1014,24 @@ func draw_bosspart(u: Unit, pos: Vector2, white: bool) -> void:
 			draw_set_transform_matrix(Transform2D.IDENTITY)
 			if under and b.t % 8 == 0:
 				b.dust(c.x, c.y, Color("8a7a6a"), 1)
+		"pod":
+			# B7: a rocket pod under the gunship's stub wing, rocket noses showing
+			var r := Rect2(pos.x - u.w / 2.0, pos.y - u.h, u.w, u.h)
+			draw_rect(r.grow(1), Color(C_DARK, a))
+			draw_rect(r, Color(Color.WHITE if white else Color("55603f"), a))
+			var bo = u.fl.get("boss")
+			var fx: float = r.position.x if bo == null or bo.face < 0 else r.end.x - 3
+			for k in 3:
+				draw_rect(Rect2(fx, r.position.y + 2 + k * 3.5, 3, 2), Color(Color("d0503c"), a))
+		"rturret":
+			# B8: a roof gun: a squat dome and a twin barrel toward the squad
+			var bo = u.fl.get("boss")
+			var f: float = float(bo.face) if bo != null else -1.0
+			var c := Vector2(pos.x, pos.y - u.h / 2.0)
+			draw_circle(c, u.h / 2.0 + 1, Color(C_DARK, a))
+			draw_circle(c, u.h / 2.0, Color(Color.WHITE if white else Color("5c6640"), a))
+			draw_line(c, c + Vector2(f * 26, -4), Color(C_DARK, a), 5.0)
+			draw_line(c, c + Vector2(f * 26, -4), Color(Color("3a3f48"), a), 3.0)
 		"winch":
 			# B4: the cable drum on the crane's deck
 			var r := Rect2(pos.x - u.w / 2.0, pos.y - u.h, u.w, u.h)
@@ -1220,6 +1248,100 @@ func draw_serpent(u: Unit, pos: Vector2, white: bool) -> void:
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 	if b.T.solid(c.x, c.y) and b.t % 4 == 0 and not u.dead:
 		b.dust(c.x, c.y - 10, Color("8a7a6a"), 2)
+
+func draw_rotor(u: Unit, pos: Vector2, white: bool) -> void:
+	## B7: one of the Twin Rotors. Sprite Fusion body facing left; the main rotor is drawn spinning,
+	## and while the rocket ship winds up its pods swing open toward the soldier it picked.
+	var key := "bs_rocketship" if u.type == "rocketship" else "bs_dropship"
+	var tx: Texture2D = Art.tex[key + ("_w" if white else "")]
+	var f := float(u.face)
+	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
+	if u.fl.get("berserk", false) and not u.dead:
+		mod = Color(1.25, 0.8 + 0.15 * sin(b.t / 4.0), 0.75, u.alpha)
+	var bob := sin(b.t / 14.0 + (0.0 if u.type == "rocketship" else 2.0)) * 2.5
+	var tilt := 0.06 * f if u.tread > 0 and int(u.tread) % 2 == 0 else 0.0
+	draw_set_transform(pos + Vector2(0, bob), tilt, Vector2(-f * Art.PX, Art.PX))
+	draw_texture(tx, Vector2(-tx.get_width() / 2.0, -tx.get_height()), mod)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	if u.dead:
+		if b.t % 5 == 0:
+			b.puff(u.x + randf_range(-30, 30), u.y - 30, 1.4)
+		return
+	var top := pos + Vector2(0, bob - tx.get_height() * Art.PX + 2)
+	var span := tx.get_width() * Art.PX * 0.55
+	var ph := cos(b.t * 1.3)
+	draw_line(top + Vector2(-span, 0), top + Vector2(span, 0), Color(0.85, 0.85, 0.8, 0.18), 3.0)
+	draw_line(top + Vector2(-span * ph, 0), top + Vector2(span * ph, 0), Color(0.15, 0.15, 0.15, 0.7), 2.0)
+	draw_rect(Rect2(top.x - 3, top.y - 2, 6, 4), C_DARK)
+	var wu = u.fl.get("windup")
+	if wu != null and u.type == "rocketship":
+		# the pods swing open toward their target: their mouths glow
+		var q := 0.5 + 0.5 * sin(b.t / 3.0)
+		for p in b.bosses.parts_of(u, "pod"):
+			var c := Vector2(p.x, p.y - p.h / 2.0)
+			var d := (Vector2(wu.x, wu.y) - c).normalized()
+			draw_line(c, c + d * 16, C_DARK, 7.0)
+			draw_line(c, c + d * 16, Color("6b7350"), 5.0)
+			draw_circle(c + d * 16, 3 + q * 2, Color(1.0, 0.4, 0.2, 0.6 + 0.3 * q))
+	if u.muzzle > 0:
+		draw_circle(b.muzzle(u), 5, Color(1, 0.85, 0.4, 0.8))
+
+func draw_bastion(u: Unit, pos: Vector2, white: bool) -> void:
+	## B8: the walking fortress. While its hangar winds up the lights over the door go red and the
+	## door lowers; once it drops the hangar mouth stands open (blasts in there do double).
+	var tx: Texture2D = Art.tex["bs_bastion_w" if white else "bs_bastion"]
+	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
+	var shake := Vector2(randf_range(-1, 1), 0) if u.walk != null else Vector2.ZERO
+	draw_set_transform(pos + shake, 0, Vector2(Art.PX, Art.PX))
+	draw_texture(tx, Vector2(-tx.get_width() / 2.0, -tx.get_height()), mod)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	if u.dead:
+		if b.t % 4 == 0:
+			b.puff(u.x + randf_range(-80, 80), u.y - 120, 2.0)
+		return
+	var dx: float = b.boss_ai.door_x(u)
+	var door := Rect2(dx - 35 + (pos.x - u.x), pos.y - 84, 70, 60)
+	if u.fl.get("door_open", false):
+		draw_rect(door, Color(0.05, 0.04, 0.04, 0.92))
+		draw_rect(Rect2(door.position.x, door.end.y - 4, door.size.x, 4), Color("6b6250"))
+	elif u.fl.has("windup"):
+		var q := 0.5 + 0.5 * sin(b.t / 3.0)
+		var drop := 10.0 + 6.0 * q
+		draw_rect(Rect2(door.position.x, door.position.y, door.size.x, drop), Color(0.05, 0.04, 0.04, 0.9))
+		for k in 4:
+			var lp := Vector2(door.position.x + 8 + k * 18, door.position.y - 6)
+			draw_circle(lp, 9 + q * 4, Color(1.0, 0.15, 0.1, 0.18 + 0.15 * q))
+			draw_circle(lp, 4, Color(1.0, 0.25, 0.15, 0.6 + 0.4 * q))
+	if b.t % 9 == 0:
+		b.puff(u.x + 40, pos.y - tx.get_height() * Art.PX + 10, 1.4)
+
+func draw_varga(u: Unit, pos: Vector2, white: bool) -> void:
+	## B9: Colonel Varga's battle suit. Off the top of the screen he's only a shadow settling over
+	## the soldier he will land on.
+	if u.fl.get("offscreen", false):
+		return
+	var tx: Texture2D = Art.tex["bs_varga_w" if white else "bs_varga"]
+	var f := float(u.face)
+	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
+	draw_set_transform(pos, 0, Vector2(-f * Art.PX, Art.PX))
+	draw_texture(tx, Vector2(-tx.get_width() / 2.0, -tx.get_height()), mod)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	if (u.jetting or u.fl.get("scripted", false)) and not u.dead and b.t % 2 == 0:
+		b.part({"x": u.x - f * 8, "y": u.y - 20, "vx": randf_range(-0.3, 0.3), "vy": 1.8, "life": 14, "max": 14, "c": b.pick([Color("ffd23a"), Color("ff7a3d")]), "s": 2.0, "g": 0.0, "fire": true})
+	if u.muzzle > 0 and not u.dead:
+		draw_circle(b.muzzle(u), 4, Color(1, 0.85, 0.4, 0.8))
+
+func draw_varga_shadow() -> void:
+	for u in b.units:
+		if u.type == "varga_suit" and not u.dead and u.fl.get("windup", {}).get("kind", "") == "slam":
+			# B9: Colonel Varga's shadow on the ground, growing while he hangs off the top of the screen
+			var wu: Dictionary = u.fl.windup
+			var q := clampf(0.6 + float(b.t - int(wu.t0)) / 120.0, 0.6, 1.0) * (0.9 + 0.1 * sin(b.t / 6.0))
+			var sh := PackedVector2Array()
+			for i in 16:
+				var ang := TAU * i / 16.0
+				sh.append(Vector2(wu.x + cos(ang) * 46 * q, wu.y - 2 + sin(ang) * 8 * q))
+			draw_colored_polygon(sh, Color(0, 0, 0, 0.7 * q))
 
 func draw_boss_flares() -> void:
 	## R1: red smoke pouring up where a boss's heavy shell will land next turn. It's in the world,

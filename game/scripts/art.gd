@@ -22,7 +22,7 @@ func _ready() -> void:
 	for v in ["hive", "droppod", "vgate", "burrow"]:
 		tex["vh_" + v] = load("res://assets/sprites/vh_%s.png" % v)
 		tex["vh_" + v + "_w"] = load("res://assets/sprites/vh_%s_w.png" % v)
-	for v in ["stormcrow", "railbreaker", "gravemother", "ironjaw", "serpent_head", "serpent_seg", "engine", "drillrig", "magmacrab", "turret_flame", "turret_mortar", "turret_carrier"]:
+	for v in ["stormcrow", "railbreaker", "gravemother", "ironjaw", "serpent_head", "serpent_seg", "engine", "drillrig", "magmacrab", "turret_flame", "turret_mortar", "turret_carrier", "rocketship", "dropship", "bastion", "varga"]:
 		tex["bs_" + v] = load("res://assets/sprites/bs_%s.png" % v)
 		tex["bs_" + v + "_w"] = load("res://assets/sprites/bs_%s_w.png" % v)
 	for v in ["walker", "bike", "tank"]:

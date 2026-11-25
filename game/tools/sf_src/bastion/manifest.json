@@ -1,0 +1,26 @@
+[
+ {
+  "op": "style",
+  "prompt": "A gigantic armored mobile fortress on huge tank treads, pure side view facing left, the size of a building, olive and rust armor plates, a big hangar door on the front lower half, two gun turrets on the roof, a command tower with windows, smokestacks, red skull banners. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_grunt_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_engineer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_flamer_f0.png",
+   "../../../../../../../tmp/claude-0/-home-user/b0986a05-33af-5303-8a7b-f054cf12106a/scratchpad/refs/en_jetter_f0.png"
+  ],
+  "size": 128,
+  "outputs": [
+   "fortress_0.png",
+   "fortress_1.png",
+   "fortress_2.png",
+   "fortress_3.png"
+  ],
+  "asset_ids": [
+   "99413b43-4203-4a86-b63c-049c96a18cf6",
+   "291a8102-af83-486f-8846-e080c83abfc0",
+   "c6e52179-d497-46e6-a0e8-0a11550f01e6",
+   "404bef8d-76e3-41ac-99f8-de0d83d13104"
+  ],
+  "picked": "fortress_0 -> fortress.png (hangar door front-left, roof turrets, banners; other options not kept)"
+ }
+]

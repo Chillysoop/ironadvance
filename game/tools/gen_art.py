@@ -835,7 +835,10 @@ BOSS_ART = {'stormcrow': 'body', 'railbreaker': 'bunker', 'gravemother': 'walker
     'serpent_head': ('serpent', 'head'), 'serpent_seg': ('serpent', 'seg'),
     'engine': ('engine', 'loco'), 'drillrig': ('drillrig', 'rig'), 'magmacrab': ('magmacrab', 'crab'),
     'turret_flame': ('boarturrets', 'flame'), 'turret_mortar': ('boarturrets', 'mortar'),
-    'turret_carrier': ('boarturrets', 'carrier', (0, 0, 48, 27))}
+    'turret_carrier': ('boarturrets', 'carrier', (0, 0, 48, 27)),
+    # B7 the Twin Rotors, B8 Bastion, B9 Colonel Varga's battle suit
+    'rocketship': ('rotors', 'rocketship'), 'dropship': ('rotors', 'dropship'),
+    'bastion': ('bastion', 'fortress'), 'varga': ('varga', 'suit')}
 
 def sf_bosses():
     """Epic bosses page X3: each boss's body from Sprite Fusion (tools/sf_src/<boss>/), snapped to a
