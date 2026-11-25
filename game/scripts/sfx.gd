@@ -5,6 +5,7 @@ var streams := {}
 var players: Array[AudioStreamPlayer] = []
 var muted := false
 var next := 0
+var pitch_mul := 1.0  # the overwatch slow-mo drops every sound a little
 var last_played := {}
 var rng := RandomNumberGenerator.new()  # its own dice, so which sounds exist never shifts the game's RNG
 # Newer cues fall back to the closest older sound until their own file is generated.
@@ -62,5 +63,5 @@ func play(n: String, vol_db := 0.0, pitch := 1.0) -> void:
 	var pool: Array = streams[n]
 	p.stream = pool[rng.randi() % pool.size()]
 	p.volume_db = vol_db - 4.0
-	p.pitch_scale = pitch * rng.randf_range(0.96, 1.04)
+	p.pitch_scale = pitch * pitch_mul * rng.randf_range(0.96, 1.04)
 	p.play()

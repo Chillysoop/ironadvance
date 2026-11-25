@@ -157,6 +157,7 @@ var foe_ai: BattleEnemies  # The Jackals' side: the enemy phase, Jackal AI and t
 var bosses: BattleBosses  # Shared boss rules and spectacle: wind-ups, entrances, phases, parts, deaths.
 var cine := {}  # X1: the boss entrance playing now (name card, black bars); settled() waits for it
 var slow := {}  # R2: slow motion {t real frames left, k speed, focus}
+var boss_zoom := 1.0  # R2: the camera's lean-in toward that moment
 var boss_flares: Array = []  # R1: red smoke where a boss's heavy shell will land
 
 func _init() -> void:
@@ -777,8 +778,13 @@ func kb(u: Unit) -> float:
 	## Knockback multiplier for a weight class: light aliens fly twice as far.
 	return 2.0 if u.weight == "light" else 1.0
 
+var owcam: OwCam  # overwatch slow-mo cinematic
+
 func _ready() -> void:
 	set_process_unhandled_input(true)
+	owcam = OwCam.new()
+	owcam.b = self
+	add_child(owcam)
 
 func begin() -> void:
 	Sfx.play("start")
@@ -5042,30 +5048,36 @@ func fast_forward() -> bool:
 	return state == "enemy" and (Input.is_key_pressed(KEY_SPACE) or bool(Run.meta.get("ff", false)))
 
 func _process(delta: float) -> void:
-	var sp := speed * (FAST_ENEMY if fast_forward() else 1.0)
+	var real := minf(0.1, delta)
+	owcam.step(real)
+	var sp := speed * (FAST_ENEMY if fast_forward() else 1.0) * owcam.slow
 	if not slow.is_empty():
 		sp *= slow.k  # R2: a boss's big moment plays in slow motion
 		slow.t -= 1
 		if slow.t <= 0:
 			slow = {}
-	acc += minf(0.1, delta) * 60.0 * sp
+	if owcam.hitstop <= 0.0:
+		acc += real * 60.0 * sp
 	var n := 0
-	while acc >= 1.0 and n < int(4 * sp):
+	while acc >= 1.0 and n < maxi(1, int(4 * sp)):
 		step()
 		acc -= 1.0
 		n += 1
 	T.flush()
 	sync_chunks()
 	var s := shake * SettingsScript.shake_mul() if shake > 0.6 else 0.0  # R5
-	cam.position = Vector2(cam_x + W / 2.0 + round((randf() - .5) * s), H / 2.0 + round((randf() - .5) * s))
-	# R2: the camera leans in a little toward the boss's big moment, then eases back
-	var zt := 1.08 if not slow.is_empty() else 1.0
-	cam.zoom = cam.zoom.lerp(Vector2(zt, zt), 0.15)
-	if cam.zoom.x > 1.001:
-		var f: Vector2 = slow.get("focus", cam.position) if not slow.is_empty() else cam.position
-		var lean := (cam.zoom.x - 1.0) / 0.08
-		var half := Vector2(W, H) * (0.5 - 0.5 / cam.zoom.x)
-		cam.position += ((f - cam.position) * 0.35 * lean).clamp(-half, half)
+	# R2: a boss's big moment leans the camera in a little toward it; overwatch has its own framing
+	boss_zoom = lerpf(boss_zoom, 1.08 if not slow.is_empty() else 1.0, 0.15)
+	var z := maxf(owcam.zoom, boss_zoom)
+	cam.zoom = Vector2(z, z)
+	var cc := owcam.center(Vector2(cam_x + W / 2.0, H / 2.0))
+	if boss_zoom > 1.001 and owcam.amt < 0.02:
+		var f: Vector2 = slow.get("focus", cc) if not slow.is_empty() else cc
+		var half := Vector2(W, H) / (2.0 * z)
+		cc += (f - cc) * 0.35 * (boss_zoom - 1.0) / 0.08
+		cc.x = clampf(cc.x, cam_x + half.x, cam_x + W - half.x)
+		cc.y = clampf(cc.y, half.y, H - half.y)
+	cam.position = cc + Vector2(round((randf() - .5) * s), round((randf() - .5) * s))
 	view.queue_redraw()
 	if ui_dirty and hud != null:
 		ui_dirty = false

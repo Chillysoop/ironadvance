@@ -579,27 +579,40 @@ func enemy_shoot(e: Unit, tg: Unit, spec: Dictionary) -> void:
 func overwatch_check(e: Unit) -> void:
 	if e.fl.has("mind"):
 		return
+	var fired := false
 	for s in bt.squad_alive():
 		if s.overwatch <= 0 or e.dead:
 			continue
 		if bt.dist(s, e) <= 520 and bt.visibility(s, e) > 0:
 			s.overwatch -= 1
 			bt.float_text(s, "OVERWATCH!", Color("53d4e2"), true)
-			await bt.wait(10)
 			s.face = 1 if e.x >= s.x else -1
 			var m := bt.muzzle(s)
 			var pts := bt.visible_points(m.x, m.y, e)
 			var py: float = pts[0] if pts.size() else e.y - e.h / 2.0
+			await bt.owcam.lineup(s, e, Vector2(e.x, py))  # slow-mo line-up (or the old short beat)
+			fired = true
+			if s.dead or e.dead:
+				continue
+			s.face = 1 if e.x >= s.x else -1
+			m = bt.muzzle(s)
 			var ang := atan2(py - m.y, e.x - m.x) + bt.gauss() * 0.02
 			s.gun_target = atan2(sin(ang), cos(ang) * s.face)
-			Sfx.play("shot")
+			if bt.owcam.on:
+				Sfx.play("snipe", -2.0)  # the slow-mo shot cracks heavier
+			else:
+				Sfx.play("shot")
 			s.muzzle = 4
 			s.muzzle_kind = "shot"
 			var oc := Data.card("rifle")
 			oc["forcehead"] = s.fl.get("ow_crit", false)
 			oc["boomhit"] = bt.ks(s, "claymore")
+			var hp0 := e.hp
 			bt.fire_bullet(s, m.x, m.y, ang, oc, s.adr >= 50)
+			bt.owcam.shot(hp0)
 			await bt.wait(16)
+	if fired:
+		bt.owcam.finish()
 
 func enemy_advance(e: Unit, tx: float, budget: float, stop = null) -> void:
 	## walk toward tx; vault walls up to 64px, leap gaps over water, brutes smash through.
