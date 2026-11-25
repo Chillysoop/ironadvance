@@ -155,6 +155,7 @@ var boot_camp: BattleTutorial  # The training drill and the step-by-step boot ca
 var phys: BattlePhysics  # Walking, falling and thrown things.
 var foe_ai: BattleEnemies  # The Jackals' side: the enemy phase, Jackal AI and the newer Jackal types.
 var bosses: BattleBosses  # Shared boss rules and spectacle: wind-ups, entrances, phases, parts, deaths.
+var boss_ai: BattleBossAI  # The new bosses' turns: Stormcrow, Railbreaker and the rest.
 var cine := {}  # X1: the boss entrance playing now (name card, black bars); settled() waits for it
 var slow := {}  # R2: slow motion {t real frames left, k speed, focus}
 var boss_zoom := 1.0  # R2: the camera's lean-in toward that moment
@@ -172,6 +173,7 @@ func _init() -> void:
 	phys = BattlePhysics.new(self)
 	foe_ai = BattleEnemies.new(self)
 	bosses = BattleBosses.new(self)
+	boss_ai = BattleBossAI.new(self)
 
 # ---------------------------------------------------------------- setup
 func setup(idx: int, custom := {}) -> void:
@@ -299,8 +301,8 @@ func setup(idx: int, custom := {}) -> void:
 			var gp: Array = gar.get("high", []) if high else gar.pool
 			if gp.size():
 				type = gp[gar_rng.randi() % gp.size()]
-		if type == "boss" and mission.get("boss", "") == "hiveship":
-			type = "hiveship"
+		if type == "boss" and mission.get("boss", "") not in ["", "boar"] and Data.ETYPES.has(mission.boss):
+			type = mission.boss  # the Hive Ship, or one of the epic bosses
 		var E: Dictionary = Data.ETYPES[type]
 		var y = T.stand_y(x, 0) if (opt.has("hold") or opt.has("top")) and not opt.has("inside") else T.stand_y(x, T.ground_at(x) - 40)
 		if opt.has("up"):
@@ -312,9 +314,9 @@ func setup(idx: int, custom := {}) -> void:
 		u.hold = opt.has("hold")
 		if Data.ETYPES[type].get("wall", false):
 			u.fl["wall"] = u.id
-		if type == "boss" or type == "hiveship":
+		if Data.ETYPES[type].get("boss", false):
 			var bm := 1.4 if Run.threat_on(5) else 1.0
-			u.hp = int(mission.boss_hp * bm); u.max_hp = u.hp; u.plate = int(mission.plate * bm) if type == "boss" else 0
+			u.hp = int(mission.boss_hp * bm * Data.ETYPES[type].get("hp_k", 1.0)); u.max_hp = u.hp; u.plate = int(mission.plate * bm) if type == "boss" else 0
 			if type == "boss" and (mission.get("finale", false) or mission.get("vharr_boar", false)):
 				u.fl["vharr"] = true  # Q3: the flagship comes refit with Vharr tech
 			elif type == "boss" and rookie_boar():
@@ -332,6 +334,8 @@ func setup(idx: int, custom := {}) -> void:
 		place_alien(u)
 		if type == "hiveship":
 			vharr_ai.hang_plates(u)
+		if boss_ai.handles(u):
+			boss_ai.setup(u)
 		if type == "boss" and not tutorial() and not in_lesson() and mission.get("boss_hp", 0) > 1:
 			bosses.add_part(u, "rack", 36, -62)  # X4: the Boar's heavy shells ride on its rear deck
 		for k in range(1, E.get("pack", 1)):
@@ -1051,6 +1055,10 @@ func muzzle(u: Unit) -> Vector2:
 		return boss_pivot(u) + Vector2(-60, 0).rotated(u.aim_a)
 	if u.type == "mg":
 		return Vector2(u.x - 18, u.y - 16)
+	if u.type == "stormcrow":
+		return Vector2(u.x - u.face * 92, u.y - 34 + (u.fl.get("tilt", 0.0) * -u.face * 92))  # the tail gunner
+	if u.type == "railgun":
+		return Vector2(u.x + 14, u.y - 70)  # the turret gun on the bunker's roof
 	return Vector2(u.x + u.face * 14, u.y - u.h + 15)
 
 func boss_pivot(u: Unit) -> Vector2:
@@ -5355,7 +5363,7 @@ func physics(u: Unit) -> void:
 		u.vx = 0
 		u.vy = 0
 		return
-	if u.walk != null or (u.kind == "pow" and u.freed) or u.fl.has("carried"):
+	if u.walk != null or (u.kind == "pow" and u.freed) or u.fl.has("carried") or u.fl.has("falling"):
 		return
 	if u.type == "bosspart" and not u.dead:
 		bosses.pin_part(u)  # X4: a boss part goes where the boss goes

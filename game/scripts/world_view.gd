@@ -436,6 +436,12 @@ func draw_unit(u: Unit) -> void:
 	if u.type == "bosspart":
 		draw_bosspart(u, pos, white)
 		return
+	if u.type == "stormcrow":
+		draw_stormcrow(u, pos, white)
+		return
+	if u.type == "railgun":
+		draw_railgun(u, pos, white)
+		return
 	if u.type == "droppod":
 		draw_droppod(pos, white, false)
 		return
@@ -856,10 +862,136 @@ func draw_bosspart(u: Unit, pos: Vector2, white: bool) -> void:
 				draw_line(Vector2(r.position.x + k * 7, r.end.y - 1), Vector2(r.position.x + 5 + k * 7, r.position.y + 4), Color(Color("ffd23a"), 0.8 * a), 2.0)
 			if hurt > 0.4 and b.t % 7 == 0:
 				b.part({"x": u.x + randf_range(-8, 8), "y": u.y - u.h, "vx": 0.0, "vy": -0.8, "life": 22, "max": 22, "c": Color("ffb23e"), "s": 2.0, "g": -0.02, "fire": true})
+		"engine":
+			# B1: a nacelle with a spinning propeller disc on its front
+			var bo = u.fl.get("boss")
+			var f: float = float(bo.face) if bo != null else -1.0
+			var far := absf(u.fl.dx) > 20
+			var body := Color("4a5236") if far else Color("5c6640")
+			var r := Rect2(pos.x - u.w / 2.0, pos.y - u.h + 2, u.w, u.h - 4)
+			if far:
+				draw_rect(r.grow(1), Color(C_DARK, a))
+				draw_rect(r, Color(Color.WHITE if white else body, a))
+				draw_rect(Rect2(r.position.x, r.position.y + 2, r.size.x, 2), Color(Color("7a8458"), a))
+			var tip := Vector2(pos.x + f * (u.w / 2.0 + 2), pos.y - u.h / 2.0)
+			var ph := cos(b.t * 0.9 + u.fl.dx)
+			draw_line(tip + Vector2(0, -12), tip + Vector2(0, 12), Color(0.85, 0.85, 0.8, 0.22 * a), 3.0)
+			draw_line(tip + Vector2(0, -12 * ph), tip + Vector2(0, 12 * ph), Color(0.2, 0.2, 0.2, 0.6 * a), 2.0)
+			draw_rect(Rect2(tip.x - 2, tip.y - 2, 4, 4), Color(C_DARK, a))
+			if hurt > 0.5 and b.t % 5 == 0:
+				b.part({"x": u.x, "y": u.y - u.h / 2.0, "vx": -f * 0.8, "vy": -0.3, "life": 40, "max": 40, "c": Color("4a4a4a"), "s": 4.0, "g": -0.01, "smoke": true})
+		"coil":
+			# B2: a capacitor coil: copper windings on an insulator, glowing while the rail charges
+			var bo = u.fl.get("boss")
+			var hot: bool = bo != null and bo.fl.has("windup")
+			var r := Rect2(pos.x - u.w / 2.0, pos.y - u.h, u.w, u.h)
+			draw_rect(r.grow(1), Color(C_DARK, a))
+			draw_rect(r, Color(Color.WHITE if white else Color("3a3f48"), a))
+			for k in 5:
+				draw_rect(Rect2(r.position.x - 1, r.position.y + 3 + k * 4, r.size.x + 2, 2), Color(Color.WHITE if white else Color("c07a3a"), a))
+			draw_rect(Rect2(pos.x - 2, r.position.y - 4, 4, 4), Color(Color("9aa4b0"), a))
+			if hot:
+				var q := 0.5 + 0.5 * sin(b.t / 3.0 + u.fl.dx)
+				draw_circle(Vector2(pos.x, r.position.y - 3), 5 + q * 4, Color(0.42, 0.82, 1.0, 0.35 + 0.3 * q))
+				if b.t % 4 == 0:
+					var z := Vector2(pos.x, r.position.y - 3)
+					draw_line(z, z + Vector2(randf_range(-10, 10), randf_range(-12, -4)), Color(0.8, 0.95, 1.0, 0.9), 1.0)
 		_:
 			var r := Rect2(pos.x - u.w / 2.0, pos.y - u.h, u.w, u.h)
 			draw_rect(r.grow(1), Color(C_DARK, a))
 			draw_rect(r, Color(Color.WHITE if white else Color("7a7f88"), a))
+
+func draw_stormcrow(u: Unit, pos: Vector2, white: bool) -> void:
+	## B1: the bomber. The body is Sprite Fusion art facing left; it flips to fly right, tilts in a
+	## dive, and its searchlight and bomb doors show the next run.
+	var tx: Texture2D = Art.tex["bs_stormcrow_w" if white else "bs_stormcrow"]
+	var f := float(u.face)
+	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
+	if u.fl.get("crashed", false) and not u.dead:
+		mod = Color(0.72, 0.62, 0.55, u.alpha)
+	var bob := 0.0 if u.weight != "hover" else sin(b.t / 18.0) * 2.0
+	var tilt: float = u.fl.get("tilt", 0.0)
+	var w := tx.get_width() * Art.PX
+	var h := tx.get_height() * Art.PX
+	if u.fl.has("windup") and not u.dead:
+		# the searchlight: a pale cone from the belly to the strip it will bomb, a pool of light there
+		var wu: Dictionary = u.fl.windup
+		var gy: float = b.T.ground_at(wu.cx)
+		var src := pos + Vector2(0, -10)
+		var q := 0.75 + 0.25 * sin(b.t / 5.0)
+		draw_colored_polygon(PackedVector2Array([src + Vector2(-4, 0), src + Vector2(4, 0), Vector2(wu.x1, gy), Vector2(wu.x0, gy)]), Color(1.0, 0.95, 0.7, 0.09 * q))
+		var pool := PackedVector2Array()
+		for i in 20:
+			var ang := TAU * i / 20.0
+			pool.append(Vector2((wu.x0 + wu.x1) / 2.0 + cos(ang) * (wu.x1 - wu.x0) / 2.0, gy - 4 + sin(ang) * 7))
+		draw_colored_polygon(pool, Color(1.0, 0.95, 0.7, 0.22 * q))
+	draw_set_transform(pos + Vector2(0, bob), tilt, Vector2(-f * Art.PX, Art.PX))
+	draw_texture(tx, Vector2(-tx.get_width() / 2.0, -tx.get_height()), mod)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	if u.fl.has("windup") and not u.dead:
+		# bomb doors hanging open on the belly
+		var c := pos + Vector2(f * 6, -10 + bob)
+		draw_rect(Rect2(c.x - 18, c.y - 3, 36, 5), C_DARK)
+		draw_line(c + Vector2(-18, 2), c + Vector2(-24, 10), Color("5c6640"), 3.0)
+		draw_line(c + Vector2(18, 2), c + Vector2(24, 10), Color("5c6640"), 3.0)
+	if u.muzzle > 0 and not u.dead:
+		var m := b.muzzle(u)
+		draw_circle(m, 5, Color(1, 0.85, 0.4, 0.8))
+	if (u.fl.get("crashed", false) or u.dead) and b.t % 5 == 0:
+		b.part({"x": u.x + randf_range(-60, 60), "y": u.y - 30, "vx": 0.0, "vy": -1.2, "life": 26, "max": 26, "c": Color("ff9a3d"), "s": 3.0, "g": -0.02, "fire": true})
+		b.puff(u.x + randf_range(-40, 40), u.y - 50, 1.4)
+	if u.weight == "hover" and not u.dead:
+		# its shadow on the ground, so you always know what's overhead
+		var gy2: float = b.T.ground_at(u.x)
+		var sw := 70.0
+		draw_rect(Rect2(u.x - sw, gy2 - 3, sw * 2, 3), Color(0, 0, 0, 0.18))
+
+func draw_railgun(u: Unit, pos: Vector2, white: bool) -> void:
+	## B2: the bunker is Sprite Fusion art; the long barrel, its laser and the coils' glow are drawn here.
+	var tx: Texture2D = Art.tex["bs_railbreaker_w" if white else "bs_railbreaker"]
+	var mod := Color(0.45, 0.42, 0.4, u.alpha) if u.dead else Color(1, 1, 1, u.alpha)
+	var pv: Vector2 = b.boss_ai.pivot(u)
+	var d: Vector2 = b.boss_ai.rail_dir(u, u.aim_a)
+	var recoil := 10.0 if u.pose == "recoil" and u.pose_t > 18 else 0.0
+	var hot := u.fl.has("windup") and not u.dead
+	var over: bool = b.bosses.phase(u) == 2 and not u.dead
+	var start := pv - d * recoil
+	var tip := start + d * 150.0
+	var n := Vector2(-d.y, d.x)
+	var steel := Color("5d636c") if not white else Color.WHITE
+	if over:
+		steel = Color(0.62 + 0.15 * sin(b.t / 6.0), 0.3, 0.26)
+	if hot:
+		# the targeting laser down the line it will fire along: it's the gun's own sight, in the world
+		var q := 0.5 + 0.5 * sin(b.t / 2.0)
+		draw_line(tip, tip + d * Data.RAIL_LEN, Color(1.0, 0.2, 0.15, 0.25 + 0.25 * q), 1.0)
+	# the barrel: two rails with rings, under the dome
+	draw_colored_polygon(PackedVector2Array([start + n * 7, tip + n * 5, tip - n * 5, start - n * 7]), C_DARK)
+	draw_colored_polygon(PackedVector2Array([start + n * 6, tip + n * 4, tip - n * 4, start - n * 6]), Color(steel, u.alpha))
+	draw_line(start + n * 1.5, tip + n * 1.5, Color(Color("1a1d22"), u.alpha), 2.0)
+	for k in 6:
+		var c := start + d * (20 + k * 24)
+		var gl := Color(0.42, 0.82, 1.0) if hot and (b.t / 6 + k) % 6 < 3 else Color("8a929c")
+		draw_line(c + n * 8, c - n * 8, Color(C_DARK, u.alpha), 5.0)
+		draw_line(c + n * 7, c - n * 7, Color(gl, u.alpha), 3.0)
+	if hot:
+		var q2 := 0.5 + 0.5 * sin(b.t / 3.0)
+		draw_circle(tip, 6 + q2 * 5, Color(0.42, 0.82, 1.0, 0.4 + 0.3 * q2))
+		if b.t % 5 == 0:
+			b.part({"x": pv.x + randf_range(-6, 30), "y": pv.y - 6, "vx": randf_range(-0.3, 0.3), "vy": -1.0, "life": 30, "max": 30, "c": Color("d8d0c8"), "s": 3.0, "g": -0.02})
+	draw_set_transform(pos, 0, Vector2(Art.PX, Art.PX))
+	draw_texture(tx, Vector2(-tx.get_width() / 2.0, -tx.get_height()), mod)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	if u.muzzle > 0 and not u.dead:
+		draw_circle(b.muzzle(u), 5, Color(1, 0.85, 0.4, 0.8))
+	var sc = u.fl.get("rail_scar")
+	if sc != null and sc.t > 0:
+		sc.t -= 1
+		var k: float = sc.t / 90.0
+		draw_line(sc.a, sc.b, Color(0.6, 0.85, 1.0, 0.5 * k), 6.0 * k + 1.0)
+		draw_line(sc.a, sc.b, Color(1, 1, 1, 0.7 * k), 2.0)
+	if u.dead and b.t % 6 == 0:
+		b.puff(u.x + randf_range(-30, 30), u.y - 60, 1.6)
 
 func draw_boss_flares() -> void:
 	## R1: red smoke pouring up where a boss's heavy shell will land next turn. It's in the world,
@@ -1406,7 +1538,7 @@ func draw_targeting() -> void:
 		draw_rect(Rect2(pz, 40, Battle.W * 0.28, Battle.H - 40), Color(zc, 0.05))
 		# below the boss bar or the job line when the HUD has one across the top
 		var ty := 58.0
-		if b.units.any(func(e): return not e.dead and ((e.type in ["boss", "hiveship"] and b.boss_active) or (e.type == "queen" and e.active))):
+		if b.units.any(func(e): return not e.dead and ((b.is_boss(e) and b.boss_active) or (e.type == "queen" and e.active))):
 			ty = 92.0
 		elif b.camp_ops.job_left() != "":
 			ty = 72.0

@@ -861,6 +861,9 @@ func enemy_act(e: Unit) -> void:
 	if e.type == "hiveship":
 		await bt.vharr_ai.hiveship_act(e)
 		return
+	if bt.boss_ai.handles(e):
+		await bt.boss_ai.act(e)
+		return
 	if e.type == "shipplate" or e.type == "bosspart":
 		return
 	if e.type == "droppod":

@@ -1200,7 +1200,9 @@ class Screen extends Control:
 				var lv: Dictionary = Run.dial_levels[id]
 				var segs: Array = lv.segments.filter(func(sg): return not sg in ["start", "camp", "yard", "arena", "pier"])
 				Art.text(self, " ".join(segs.map(func(sg): return sg.to_upper())), Vector2(cx, 438), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
-				if lv.get("boss", "") == "hiveship":
+				if lv.get("boss", "") not in ["", "boar", "hiveship"] and Data.ETYPES.has(lv.boss):
+					Art.text(self, "%s HP %d" % [Data.ETYPES[lv.boss].name.to_upper(), lv.boss_hp], Vector2(cx, 452), 8, Color("ff9a5d"), HORIZONTAL_ALIGNMENT_CENTER)
+				elif lv.get("boss", "") == "hiveship":
 					Art.text(self, "HIVE SHIP HP %d   2 HULL PLATES" % lv.boss_hp, Vector2(cx, 452), 8, Color("c47bff"), HORIZONTAL_ALIGNMENT_CENTER)
 				else:
 					Art.text(self, "BOSS HP %d   ARMOR %d" % [lv.boss_hp, lv.plate], Vector2(cx, 452), 8, Color("53d4e2"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -1214,8 +1216,8 @@ class Screen extends Control:
 			var bk: String = Run.dial_levels[id].get("boar_kit", "") if Run.dial_levels.has(id) else ""
 			var bl: Dictionary = Run.dial_levels.get(id, {})
 			var bn := ""
-			if bl.get("boss", "") == "hiveship":
-				bn = "HIVE SHIP"
+			if bl.get("boss", "") not in ["", "boar"] and Data.ETYPES.has(bl.boss):
+				bn = Data.ETYPES[bl.boss].name.to_upper()
 			elif bk != "" and bk != "standard" and Data.BOAR_KITS.has(bk):
 				bn = Data.BOAR_KITS[bk].name
 			if bn != "":

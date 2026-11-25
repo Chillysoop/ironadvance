@@ -59,7 +59,8 @@ func _entrance_run(u: Unit) -> void:
 	Music.play("boss")
 	# the boss arrives: a flyer drops in from above, anything else rolls in from the right
 	var flyer: bool = u.weight == "hover"
-	var off := Vector2(0, -260) if flyer else Vector2(220, 0)
+	var ent: Array = Data.ETYPES[u.type].get("enter", [0, -260] if flyer else [220, 0])
+	var off := Vector2(ent[0], ent[1])
 	u.fl["enter_off"] = off
 	var n: int = 70
 	for i in n:
@@ -131,6 +132,8 @@ func resolve_windup(u: Unit) -> void:
 			await fire_bigshell(u, w)
 		"bellyray":
 			await fire_bellyray(u, w)
+		_:
+			await bt.boss_ai.fire_windup(u, w)
 	await bt.until(bt.settled)
 
 func windup_reminder() -> void:
@@ -239,6 +242,7 @@ func check_phase(u: Unit) -> void:
 	for i in 4:
 		bt.booms.append({"t": 4 + i * 8, "x": u.x + randf_range(-u.w / 3.0, u.w / 3.0), "y": u.y - randf_range(10, u.h), "r": 18.0, "dmg": 0, "owner": null, "show": true})
 	u.pose = "recoil"; u.pose_t = 40
+	bt.boss_ai.on_phase2(u)
 
 # ---------------------------------------------------------------- X4 parts
 func add_part(bo: Unit, key: String, dx: float, dy: float) -> Unit:
@@ -263,8 +267,12 @@ func pin_part(p: Unit) -> void:
 	var bo = p.fl.get("boss")
 	if bo != null and not bo.gone:
 		var off: Vector2 = bo.fl.get("enter_off", Vector2.ZERO)
-		p.x = bo.x + p.fl.dx + off.x
-		p.y = bo.y + p.fl.dy + off.y
+		# offsets are for a boss facing left; a boss that turns round takes its parts with it
+		var dx: float = p.fl.dx * (-1.0 if bo.face == 1 else 1.0)
+		var tilt: float = bo.fl.get("tilt", 0.0)
+		var dy: float = p.fl.dy + dx * tilt
+		p.x = bo.x + dx + off.x
+		p.y = bo.y + dy + off.y
 		p.active = bo.active
 	p.air = false
 	p.vx = 0
@@ -277,7 +285,8 @@ func part_down(p: Unit, src) -> void:
 	p.gone = true
 	Sfx.play("bigboom")
 	bt.shake += 6
-	bt.banner(P.down, Color("ffd23a"), P.lose)
+	if not p.fl.get("silent", false):
+		bt.banner(P.down, Color("ffd23a"), P.lose)
 	bt.booms.append({"t": 2, "x": p.x, "y": p.y - p.h / 2.0, "r": 30.0, "dmg": 0, "owner": null, "show": true})
 	for i in 8:
 		bt.debris(p.x + randf_range(-8, 8), p.y - randf_range(2, p.h), 9)
@@ -296,6 +305,8 @@ func part_down(p: Unit, src) -> void:
 		if P.get("boss_dmg", 0) > 0:
 			bt.damage(bo, P.boss_dmg, src, {"blast": true})
 		match p.fl.part:
+			"coil":
+				bt.boss_ai.coil_down(bo)
 			"rack":
 				bo.fl["rack_gone"] = true
 				cancel_windup(bo, "NO SHELLS!")

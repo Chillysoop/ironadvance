@@ -1305,6 +1305,15 @@ const ETYPES := {
 	# Q1: the level boss in the delta and the harbor from level 2. It floats over the arena on armor
 	# plates hung from tethers; it sweeps a ray across the ground and drops pods full of Vharr.
 	"hiveship": {"name": "HIVE SHIP", "boss": true, "sub": "THE SKY GOES DARK", "phase2": "TWO PODS A TURN NOW", "wreck": [[-0.5, 0.5, 0.0, 0.5], [-0.25, 0.25, 0.5, 1.0]], "faction": "vharr", "weight": "hover", "hp": 150, "alt": 230, "heavy": true, "speed": 150, "beam": 5, "sweep": 150, "beam_range": 420, "pod_dmg": 7, "score": 3000, "w": 150, "h": 44, "note": "Mothership. Floats over the arena, sweeps a ray across the ground and drops pods of Vharr on you. While its armor plates hang on, shots do 40%: shoot a plate off its tethers and it drops on whoever is under it. Blasts that reach its belly always do full damage."},
+	# Epic bosses page B1, B2 (2026-11-25). The level's boss slot rolls these from level 2 (Data.BOSS_POOLS).
+	"stormcrow": {"name": "STORMCROW", "boss": true, "sub": "HEAR THOSE ENGINES? RUN.", "phase2": "SHOT DOWN, AND STILL FIGHTING FROM THE WRECK", "parts_force": true, "hp_k": 1.3,
+		"weight": "hover", "alt": 250, "heavy": true, "hp": 150, "dmg": [2, 3], "shots": 4, "range": 760, "w": 176, "h": 58, "score": 3000,
+		"enter": [520, -60], "wreck": [[-0.46, 0.4, 0.0, 0.5], [0.2, 0.46, 0.5, 0.9]],
+		"note": "Heavy bomber. Every other turn it banks at the edge of the arena and its searchlight picks the strip it will carpet-bomb on its next pass: get out of the light. Its tail gunner fires every turn. Shoot its 4 engines off to shorten the bombing run; lose them all and it comes down."},
+	"railgun": {"name": "RAILBREAKER", "boss": true, "static": true, "sub": "ONE SHOT. ONE LINE. NOTHING STOPS IT.", "phase2": "OVERCLOCKED: IT CHARGES EVERY TURN NOW", "hp_k": 1.4,
+		"hp": 150, "heavy": true, "dmg": [2, 3], "shots": 3, "range": 680, "w": 100, "h": 88, "score": 3000, "enter": [260, 0],
+		"wreck": [[-0.5, 0.5, 0.0, 0.5], [-0.3, 0.2, 0.5, 0.85]],
+		"note": "Siege rail cannon. It turns its barrel on a soldier and charges for a turn, then fires a slug through every wall and body on that line. Step off the line. Shoot a capacitor coil while it charges and the shot backfires. Its turret gun fires every turn."},
 	"bosspart": {"name": "Boss Part", "hp": 16, "static": true, "heavy": true, "score": 150, "w": 24, "h": 14, "note": "A piece of the boss you can shoot off. Each one takes an attack away."},
 	"shipplate": {"name": "Hull Plate", "faction": "vharr", "hp": 14, "static": true, "heavy": true, "score": 100, "w": 44, "h": 12, "note": "Armor hanging under the Hive Ship. Shoot it off its tethers: it falls like a girder and crushes whatever is under it. With every plate gone the ship takes +30% damage."},
 	"droppod": {"name": "Drop Pod", "faction": "vharr", "hp": 18, "static": true, "heavy": true, "score": 50, "w": 24, "h": 26, "note": "Crashed down full of Vharr. It opens on the next enemy phase and they come out swinging. Break it first and they die inside."},
@@ -1752,6 +1761,8 @@ const BIOME_BOSSES := {"train": "engine", "mine": "drill", "volcano": "magma"}
 # at the start of its next. The shout floats over the boss; nothing is marked on the HUD.
 const WINDUPS := {
 	"bigshell": {"shout": "LOADING A HEAVY SHELL!", "hover": "HEAVY SHELL LOADED: it lands on the red flare at the start of the Boar's next turn. Blow the ammo rack off to stop it."},
+	"bombrun": {"shout": "BOMB DOORS OPEN!", "hover": "BOMB DOORS OPEN: next turn it flies over the lit strip and carpet-bombs it."},
+	"rail": {"shout": "RAIL CHARGING!", "hover": "RAIL CHARGING: next turn it fires along its laser, through every wall. Step off the line, or break a coil."},
 	"bellyray": {"shout": "THE BELLY IS CHARGING!", "hover": "BELLY RAY CHARGING: a column of light burns straight down under the ship at the start of its next turn."},
 }
 const BIGSHELL_R := 72.0
@@ -1759,7 +1770,18 @@ const BIGSHELL_DMG := 18
 const BELLYRAY_DMG := 16
 const BOSS_CINE := 230  # X1: frames the entrance's name card stays up (any key skips)
 # X4: parts you can shoot off a boss. down/lose are the banner when it goes.
+const BOSS_POOLS := {"desert": ["stormcrow"], "city": ["stormcrow", "railgun"], "fortress": ["railgun", "stormcrow"], "mountain": ["railgun"], "refinery": ["railgun"], "palace": ["stormcrow"]}
+const NEW_BOSS_CHANCE := 0.75   # from level 2, how often a biome with a pool gets one of its new bosses over a Boar
+const BOMB_STRIP := [70.0, 45.0]  # B1: the bombing strip is 70 px plus 45 per engine still turning
+const BOMB_DMG := 10
+const RAIL_DMG := 22
+const RAIL_LEN := 1500.0
+const RAIL_MIN := 0.32    # B2: the barrel can't dip lower than this below level (radians)
 const BOSS_PARTS := {
+	"engine": {"name": "Engine", "hp": 18, "w": 22, "h": 16, "boss_dmg": 8, "down": "ENGINE DOWN!", "lose": "A SHORTER BOMBING RUN",
+		"note": "One of the Stormcrow's engines. Each one shot off shortens its bombing run. Shoot all four and it crashes."},
+	"coil": {"name": "Capacitor Coil", "hp": 14, "w": 12, "h": 22, "boss_dmg": 6, "fall": false, "down": "COIL BLOWN!", "lose": "SHOOT ONE WHILE IT CHARGES: BACKFIRE",
+		"note": "Feeds the Railbreaker's rail. Break one while the barrel is charging and the shot backfires into the bunker. Break all three and the rail is dead."},
 	"rack": {"name": "Ammo Rack", "hp": 16, "w": 26, "h": 14, "boss_dmg": 12, "down": "AMMO RACK BLOWN!", "lose": "NO MORE HEAVY SHELLS",
 		"note": "The Boar's heavy shells. Shoot it off: it blows up in the Boar's face and the Boar can't load another heavy shell."},
 }

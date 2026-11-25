@@ -1,0 +1,36 @@
+[
+ {
+  "op": "style",
+  "prompt": "A massive fortified artillery emplacement, pure side view: a squat grey concrete bunker with sloped armored walls, sandbags piled at its base, hazard stripes, a big round rotating turret mount on top with an empty socket on its LEFT side where a long cannon barrel will attach (no barrel drawn), thick power cables running up the back, a small slit window with a faint yellow light. No background, no ground. Chunky black outline and the same palette and shading as the references.",
+  "refs": [
+   "en_grunt_f0.png",
+   "en_engineer_f0.png",
+   "en_flamer_f0.png",
+   "en_jetter_f0.png"
+  ],
+  "size": 80,
+  "outputs": [
+   "bunker_0.png",
+   "bunker_1.png",
+   "bunker_2.png",
+   "bunker_3.png",
+   "bunker_4.png",
+   "bunker_5.png",
+   "bunker_6.png",
+   "bunker_7.png",
+   "bunker_8.png"
+  ],
+  "asset_ids": [
+   "43958a43-8c8d-41a7-84bd-a0a12fc87660",
+   "f3d52326-5c25-44a1-b940-dca8cae3ef23",
+   "cecfa79b-ab5d-4958-be5e-71ab86d14253",
+   "a2d8ea2b-6afe-451c-a695-cdd23d74723a",
+   "abc9b354-b18c-4332-8e45-587d8d10ef72",
+   "dedbc569-b437-418d-90b1-f49f1cf15145",
+   "8e2004bf-1acd-48d3-bc92-66371d8aa4d6",
+   "6098e79a-6857-4901-af6a-5604ac01b5a2",
+   "1f070e90-ae69-40f8-bb8a-3b010150aace"
+  ],
+  "picked": "bunker_1 -> bunker.png (hazard stripes; other options not kept)"
+ }
+]
