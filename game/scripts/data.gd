@@ -7,6 +7,7 @@ const H := 540
 const CELL := 4
 const ROWS := 135  # H / CELL
 const WATER_Y := 500
+const FLOOR_H := 60.0  # K2/K3: a bedrock floor this far above the water (volcano, campaign Act III on)
 const GRAV := 0.22
 
 const TYPES := {
@@ -1306,7 +1307,7 @@ const ETYPES := {
 	# plates hung from tethers; it sweeps a ray across the ground and drops pods full of Vharr.
 	"hiveship": {"name": "HIVE SHIP", "boss": true, "sub": "THE SKY GOES DARK", "phase2": "TWO PODS A TURN NOW", "wreck": [[-0.5, 0.5, 0.0, 0.5], [-0.25, 0.25, 0.5, 1.0]], "faction": "vharr", "weight": "hover", "hp": 150, "alt": 230, "heavy": true, "speed": 150, "beam": 5, "sweep": 150, "beam_range": 420, "pod_dmg": 7, "score": 3000, "w": 150, "h": 44, "note": "Mothership. Floats over the arena, sweeps a ray across the ground and drops pods of Vharr on you. While its armor plates hang on, shots do 40%: shoot a plate off its tethers and it drops on whoever is under it. Blasts that reach its belly always do full damage."},
 	# Epic bosses page B1, B2 (2026-11-25). The level's boss slot rolls these from level 2 (Data.BOSS_POOLS).
-	"stormcrow": {"name": "STORMCROW", "boss": true, "sub": "HEAR THOSE ENGINES? RUN.", "phase2": "SHOT DOWN, AND STILL FIGHTING FROM THE WRECK", "parts_force": true, "hp_k": 1.3,
+	"stormcrow": {"name": "STORMCROW", "boss": true, "sub": "HEAR THOSE ENGINES? RUN.", "phase2": "SHOT DOWN, AND STILL FIGHTING FROM THE WRECK", "parts_force": true, "hp_k": 1.56,  # K4: +20%
 		"weight": "hover", "alt": 250, "heavy": true, "hp": 150, "dmg": [2, 3], "shots": 4, "range": 760, "w": 176, "h": 58, "score": 3000,
 		"enter": [520, -60], "wreck": [[-0.46, 0.4, 0.0, 0.5], [0.2, 0.46, 0.5, 0.9]],
 		"note": "Heavy bomber. Every other turn it banks at the edge of the arena and its searchlight picks the strip it will carpet-bomb on its next pass: get out of the light. Its tail gunner fires every turn. Shoot its 4 engines off to shorten the bombing run; lose them all and it comes down."},
@@ -1318,13 +1319,13 @@ const ETYPES := {
 	"gravemother": {"name": "GRAVEMOTHER", "boss": true, "faction": "vharr", "sub": "THE BROOD IS COMING", "phase2": "ENRAGED: SHE BROODS EVERY TURN AND RUNS", "hp_k": 1.3,
 		"hp": 150, "heavy": true, "w": 140, "h": 150, "score": 3000, "enter": [300, 0],
 		"wreck": [[-0.45, 0.45, 0.0, 0.45], [-0.2, 0.3, 0.45, 0.8]],
-		"note": "Vharr brood walker. She stalks you on long legs, stomps whoever is underfoot and spits acid every turn. Every other turn her egg sacs swell; next turn they hatch a Skitter each. Shoot a sac while it swells and the brood dies inside and burns her."},
+		"note": "Vharr brood walker. She stalks you on long legs, stomps whoever is underfoot and spits acid every turn. Every other turn her egg sacs swell; next turn one of them hatches a Skitter (every sac at once when she's enraged). Shoot a sac while it swells and the brood dies inside and burns her."},
 	"ironjaw": {"name": "IRONJAW", "boss": true, "sub": "NOTHING STANDS IN ITS WAY", "phase2": "THE BRAKE IS SHOT: IT SWINGS EVERY TURN", "hp_k": 1.4,
 		"hp": 150, "heavy": true, "dmg": [2, 3], "shots": 3, "range": 620, "w": 130, "h": 100, "score": 3000, "enter": [300, 0],
 		"wreck": [[-0.5, 0.5, 0.0, 0.5], [-0.1, 0.4, 0.5, 0.9]],
 		"note": "Demolition crane. It rolls its boom over a soldier and winches its wrecking ball back; next turn the brake comes off and the ball swings through everything in its arc, walls too. Every other turn its magnet yanks the nearest soldier off their feet. Shoot the winch and the ball drops for good."},
 	# Epic bosses page B5. The unit is the head (its only weak spot); the body is a chain of "seg" parts.
-	"serpent": {"name": "SKY SERPENT", "boss": true, "pair": "ONE HEAD DOWN!", "faction": "vharr", "sub": "IT SWIMS THROUGH THE AIR", "phase2": "IT SPLITS IN TWO", "hp_k": 1.1, "parts_force": false,
+	"serpent": {"name": "SKY SERPENT", "boss": true, "pair": "ONE HEAD DOWN!", "faction": "vharr", "sub": "IT SWIMS THROUGH THE AIR", "phase2": "IT SPLITS IN TWO", "hp_k": 1.32,  # K4: +20% "parts_force": false,
 		"weight": "hover", "alt": 230, "heavy": true, "hp": 150, "w": 44, "h": 36, "score": 3000, "enter": [0, -320],
 		"wreck": [[-0.5, 0.5, 0.0, 1.0]],
 		"note": "Vharr void eel. It swims over you in wide arcs and its tail stinger whips whoever it passes over. Every other turn it coils high over a soldier with its head glowing; next turn it dives straight down there, tunnels and bursts out somewhere else. Its body blocks shots: the head is the only weak spot. Each segment shot off makes it shorter and faster. At half health it splits in two."},
@@ -1744,7 +1745,7 @@ const BIOMES := {
 		"segments": ["shaft", "tunnels", "drift", "bunker", "cavern", "crossing", "gully"],
 		"text": "Underground under a rock ceiling, with no wind. Slabs of rock hang on single wooden beams: shoot the beam and the slab comes down on whoever is under it. Hit a mine cart and it rolls away from you along the floor, running over the first Jackal in its path."},
 	"volcano": {"name": "VOLCANO", "theme": "dusk", "favor": "long", "rough": "close",
-		"rules": {"lava": 10.0, "amp": 1.5, "fuel": 2, "wind": 0.6},
+		"rules": {"lava": 10.0, "amp": 1.5, "fuel": 2, "wind": 0.6, "bedrock_floor": true},
 		"look": {"tint": Color(1.1, 0.88, 0.8), "grass": Color("4a3a36"), "sky": Color(1.0, 0.7, 0.56), "water": [Color("8a1a08"), Color("ff7a1e")]},
 		"segments": ["caldera", "flows", "ridge", "boulder", "trenches", "vents", "obsidian", "pass"],
 		"text": "Lava sits low. Hold one screen for 3 rounds and it starts rising one marked step a round. Move the screen forward or make camp and it drains. Lava burns up anyone it reaches, Jackal or soldier, and eats wood."},
@@ -1814,13 +1815,14 @@ const BOSS_POOLS := {"desert": ["stormcrow", "rocketship"], "city": ["stormcrow"
 const NEW_BOSS_CHANCE := 0.75   # from level 2, how often a biome with a pool gets one of its new bosses over a Boar
 const BOMB_STRIP := [70.0, 45.0]  # B1: the bombing strip is 70 px plus 45 per engine still turning
 const BOMB_DMG := 10
-const RAIL_DMG := 22
+const RAIL_DMG := 18     # K4 (was 22): one shot through the line downed two soldiers
 const RAIL_LEN := 1500.0
 const RAIL_MIN := 0.32    # B2: the barrel can't dip lower than this below level (radians)
 const STOMP_DMG := 10       # B3: the Gravemother's legs coming down on you
 const SPIT_DMG := 6
 const SAC_BURST_DMG := 14  # a sac shot while it swells: the dead brood's acid burns her
 const BROOD_PER_SAC := 1
+const BROOD_PHASE1 := 1   # K4: sacs that hatch per brood in phase 1 (all of them once enraged)
 const BROOD_CAP := 8       # she stops hatching while this many Skitters are already out
 const CABLE_LEN := 128.0   # B4: Ironjaw's wrecking ball hangs this far under the boom tip
 const BALL_R := 14.0
@@ -2767,6 +2769,26 @@ const SLOT_KEYWORDS := {
 var _kw_res: Array = []
 var _kw_in := {}      # memo: text -> keywords_in(text); cards redraw every frame
 var _kw_spans := {}   # memo: line -> keyword_spans(line)
+
+# K7: the run-wide terms a new player meets first on the ORDERS FROM HQ cards, explained in bubbles there.
+const RUN_TERMS := [
+	{"k": "scrip", "name": "SCRIP", "re": "scrip", "text": "Money for this run. Kills, crates and bounties pay it; spend it at HQ on cards, dog tags and the hospital."},
+	{"k": "tag", "name": "DOG TAG", "re": "dog tags?", "text": "A soldier's spare lives. A downed soldier with a tag left gets back up at the next camp; with none left they're gone for the run."},
+	{"k": "camp", "name": "CAMP", "re": "camps?", "text": "A safe stop partway through each level: it heals the squad and brings downed soldiers back."},
+	{"k": "crate", "name": "SUPPLY CRATE", "re": "supply crates?|crates?", "text": "Boxes along the level. Walk into one for scrip, a card or gear."},
+	{"k": "gate", "name": "THE GATE", "re": "the gate|gate", "text": "How the squad reaches each level: you dial it at HQ and pick one of the biomes it shows."},
+	{"k": "biome", "name": "BIOME", "re": "biomes?", "text": "The kind of land a level is set in. Each has its own weather, hazards and rules."},
+]
+
+func run_terms_in(s: String) -> Array:
+	## K7: the run terms in s, plus any card keyword it uses.
+	var out: Array = []
+	for kw in RUN_TERMS:
+		var r := RegEx.new()
+		r.compile("(?i)(?<![A-Za-z])(" + kw.re + ")(?![A-Za-z])")
+		if r.search(s) != null:
+			out.append(kw)
+	return out + keywords_in(s)
 
 func keyword_res() -> Array:
 	## One compiled whole-word, case-insensitive RegEx per keyword, built on first use.

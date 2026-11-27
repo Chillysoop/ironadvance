@@ -43,6 +43,9 @@ var camps: Array = []    # safe camps inside the level: {x0, x1, used}
 var ice_runs: Array = []  # [x0, x1] of each sheet of ice on the ground
 var tarps: Array = []     # [x0, x1] of each rubber tarp on the ground
 var pins := {}            # N2: cell index -> rivet unit id; a bolted girder hangs from these
+var walks: Array = []      # K1: plank boardwalks over pits: {x0, x1, y0, y1, hp}; they crack, sag, then drop
+const WALK_HP := 3         # blasts a boardwalk takes; at 0 it shows FALLS NEXT ROUND and drops when the enemy moves
+var floor_row := 0         # K2/K3: rows from here down are bedrock no blast cuts (0 = none)
 var open_pits: Array = []  # pits with no planks over them: bridge, dock, crust and lift gaps, open drops
 var lakes: Array = []     # M1: [x0, x1] of each frozen crust over open water
 var cars: Array = []      # M2: train car structs, with "roof" set once built
@@ -188,6 +191,7 @@ func build(mission: Dictionary) -> void:
 	var x := 0
 	var shapes: Array = []
 	open_pits = []
+	walks = []
 	pins.clear(); pits.clear(); sandbags.clear(); structs.clear(); spawns.clear(); ladders.clear(); bridges.clear(); camps.clear(); yard = []
 	lakes = []; cars = []; lifts = []; runways = []; props = []; orig = PackedByteArray()
 	arena_x = 1 << 20  # outposts have no arena
@@ -325,6 +329,11 @@ func build(mission: Dictionary) -> void:
 		if s.t == "fence":
 			flatten(s.x - 20, s.x + 24, 10)
 	train = rules.get("train", false)
+	# K2/K3: the volcano, and every campaign level from Act III on, has a bedrock floor 60 px above the
+	# water: basins stay deep, but blasts can't dig a hole straight through to the bottom
+	floor_row = 0
+	if not train and (rules.get("bedrock_floor", false) or int(mission.get("act", -1)) >= 2):
+		floor_row = WATER_ROW - int(Data.FLOOR_H / CELL)
 	if train:
 		heights.fill(TRAIN_DECK)  # TR1: the whole level is one long train: a level deck end to end
 	for cx in cols:
@@ -342,7 +351,7 @@ func build(mission: Dictionary) -> void:
 		# the ground stops at the waterline like Worms: dig through it and there is only water
 		# TR1: on the train it is a steel deck with open air under it, down to the rushing track
 		for cy in range(top, mini(WATER_ROW, top + DECK_ROWS) if train else WATER_ROW):
-			set_cell(cx, cy, STEEL if rules.get("deck", false) or train else (4 if cy > deep else 1))
+			set_cell(cx, cy, STEEL if rules.get("deck", false) or train else (4 if cy > deep or (floor_row > 0 and cy >= floor_row) else 1))
 		for r in ice_runs:
 			if cxx >= r[0] and cxx < r[1]:
 				set_cell(cx, top, ICE)
@@ -355,6 +364,7 @@ func build(mission: Dictionary) -> void:
 			continue
 		var y := ground_at(p[0] - 12)
 		fill_r(p[0] - 8, y, p[1] - p[0] + 16, 8, 3)
+		walks.append({"x0": p[0] - 8.0, "x1": p[1] + 8.0, "y0": y, "y1": y + 8.0, "hp": WALK_HP})
 		if p[0] < firm_x1:
 			# R1: no open water in the landing zone: a pit that starts there has a bedrock floor
 			# a short drop under its planks, so a soldier knocked off the stilts can walk out
@@ -687,6 +697,8 @@ func carve(x: float, y: float, r: float, cause, who = null) -> void:
 	var y0 := int(floor((y - R) / CELL))
 	var y1 := int(floor((y + R) / CELL))
 	var any := false
+	# K1: a boardwalk the blast reaches holds its planks but takes a hit (bullets only chip it)
+	var hit_walks: Array = walks.filter(func(w): return w.hp > 0 and x + r > w.x0 and x - r < w.x1 and y + r > w.y0 - 2 and y - r < w.y1 + 2)
 	for cy in range(y0, y1 + 1):
 		for cx in range(c0, c1 + 1):
 			if cx < 0 or cy < 0 or cx >= cols or cy >= ROWS:
@@ -700,21 +712,50 @@ func carve(x: float, y: float, r: float, cause, who = null) -> void:
 			var d2 := dx * dx + dy * dy
 			if d2 > R2:
 				continue
+			if floor_row > 0 and cy >= floor_row and m == 4:
+				continue  # K2/K3: the bedrock floor
+			if m == 3 and not hit_walks.is_empty() and in_walk(cx * CELL + 2, cy * CELL + 2, hit_walks):
+				continue
 			var bedrock := m == 4 and is_firm(cx * CELL)  # F2: the landing zone's bedrock: only a blast's core cuts it
 			if d2 <= r2 and not (m == 2 and d2 > r2 * 0.45 and r > 6) and not (bedrock and d2 > r2 * 0.25 and r > 6) and not (m == STEEL and d2 > r2 * 0.2):
 				set_cell(cx, cy, 0)
 				any = true
-				if randf() < 0.1:
+				if b != null and randf() < 0.1:
 					b.debris(cx * CELL + 2, cy * CELL + 2, m)
 			elif r > 6:
 				data[i * 2 + 1] = mini(255, data[i * 2 + 1] + 70)
 				dirty = true
+	if r > 6:
+		for w in hit_walks:
+			w.hp = int(w.hp) - 1
+			if b != null and b.has_method("walk_hit"):
+				b.walk_hit(w)
 	if any:
 		check_props(cause)
 		if b != null and b.has_method("undercut"):
 			b.undercut(x, y, R, who if who != null else cause)  # F3
 		check_floating(x, y, r + 8, cause)
 		check_bridges(cause)
+
+func in_walk(px: float, py: float, list: Array) -> bool:
+	for w in list:
+		if px >= w.x0 and px < w.x1 and py >= w.y0 - 2 and py < w.y1 + 2:
+			return true
+	return false
+
+func drop_walk(w: Dictionary) -> void:
+	## K1: a boardwalk worn to nothing lets go: its planks fall away, and whoever stands on it goes in.
+	w.hp = -1
+	for cy in range(int(floor((w.y0 - 2) / CELL)), int(ceil((w.y1 + 2) / CELL))):
+		for cx in range(int(floor(w.x0 / CELL)), int(ceil(w.x1 / CELL))):
+			if cx < 0 or cy < 0 or cx >= cols or cy >= ROWS:
+				continue
+			var m := grid[cy * cols + cx]
+			if m == 3:
+				if b != null and (cx + cy) % 5 == 0:
+					b.debris(cx * CELL + 2, cy * CELL + 2, m)
+				set_cell(cx, cy, 0)
+	check_floating((w.x0 + w.x1) / 2.0, w.y0, (w.x1 - w.x0) / 2.0 + 12, null)
 
 func bore(x: float, y0: float, y1: float, r: float) -> bool:
 	## The Drill: clears every cell of any material inside an upright capsule from (x, y0) up to

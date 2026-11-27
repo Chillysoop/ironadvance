@@ -1837,7 +1837,9 @@ class Overlay extends Control:
 				al = 0.0
 			elif al > 0.35 and (foe_behind(b, strip) or squad_behind(b, strip)):
 				al = 0.35  # an enemy in a dip behind the strip stays visible (X10: and so does the squad)
-			draw_rect(strip, Color(0.05, 0.035, 0.03, 0.7 * al))
+			# K6: a solid plate with an edge, so the words read over grass, rain and the train's wheels
+			draw_rect(strip, Color(0.05, 0.035, 0.03, 0.93 * al))
+			draw_rect(strip, Color(0.91, 0.86, 0.76, 0.28 * al), false, 1.0)
 			for i in lines.size():
 				Art.text(self, lines[i], Vector2(480, top + 11 + i * 14), 16, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER, 0, true, al)
 		if b.state == "enemy":

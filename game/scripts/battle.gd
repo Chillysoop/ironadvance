@@ -5548,6 +5548,30 @@ func physics(u: Unit) -> void:
 	if u.y > WATER_Y + 2:
 		drown(u)
 
+func walk_hit(w: Dictionary) -> void:
+	## K1: a blast caught a boardwalk. It cracks, then sags, then shows FALLS NEXT ROUND and lets go
+	## when the enemy moves, so whoever stands on it gets a turn to step off.
+	var cx: float = (w.x0 + w.x1) / 2.0
+	match int(w.hp):
+		2: float_at(cx, w.y0 - 18, "BOARDWALK CRACKED", Color("ffd23a"))
+		1: float_at(cx, w.y0 - 18, "BOARDWALK SAGGING", Color("ffb23e"), true)
+		0:
+			float_at(cx, w.y0 - 18, "IT GIVES WAY NEXT ROUND", Color("ff4d3d"), true)
+			log_msg("A boardwalk is about to give way. It drops when the enemy moves: get off it.")
+
+func drop_walks() -> void:
+	## K1: boardwalks worn to nothing drop at the start of the enemy phase.
+	var any := false
+	for w in T.walks:
+		if int(w.hp) == 0:
+			T.drop_walk(w)
+			float_at((w.x0 + w.x1) / 2.0, w.y0 - 18, "THE BOARDWALK GIVES WAY!", Color("ff4d3d"), true)
+			Sfx.play("collapse")
+			shake += 4
+			any = true
+	if any:
+		await until(settled)
+
 func undercut(x: float, y: float, r: float, by) -> void:
 	## F3: an enemy shot just took ground out from under a soldier. Remembered for a round so a
 	## drowning that follows can name who did it.

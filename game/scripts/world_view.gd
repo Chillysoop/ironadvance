@@ -69,6 +69,7 @@ func _draw() -> void:
 	draw_wells()
 	draw_biome()
 	draw_crumble()
+	draw_walks()
 	draw_boss_flares()
 	for u in b.units:
 		if u.dead:
@@ -2689,6 +2690,40 @@ func draw_dealer(u: Unit, pos: Vector2) -> void:
 	Art.text(self, "ARMS DEALER" if left else "SOLD OUT", pos + Vector2(10, -44), 8, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER)
 	if left:
 		Art.text(self, "%d ITEMS  WALK UP TO TRADE" % left, pos + Vector2(10, -32), 8, Color("e8dcc2"), HORIZONTAL_ALIGNMENT_CENTER)
+
+func draw_walks() -> void:
+	## K1: a boardwalk shows its wear: cracks, then a sag, then the FALLS NEXT ROUND warning.
+	for w in b.T.walks:
+		var hp := int(w.hp)
+		if hp >= Terrain.WALK_HP or hp < 0:
+			continue
+		var x0: float = w.x0
+		var x1: float = w.x1
+		if not on_screen((x0 + x1) / 2.0, (x1 - x0) / 2.0 + 20):
+			continue
+		var y0: float = w.y0
+		var crack := Color("2a1a0e") if hp >= 1 else Color("5a1a10")
+		var n := int((x1 - x0) / 46.0) + (Terrain.WALK_HP - hp) * 2
+		for k in n:
+			var cx := lerpf(x0 + 10, x1 - 10, (k + 0.5) / maxf(1, n))
+			var jit := sin(k * 12.9898) * 6.0
+			draw_polyline(PackedVector2Array([Vector2(cx + jit, y0), Vector2(cx + jit + 3, y0 + 3), Vector2(cx + jit - 2, y0 + 5), Vector2(cx + jit + 2, y0 + 8)]), crack, 1.5)
+		if hp <= 1:
+			# it sags: a dark belly under the planks, and the planks tinted where they're giving
+			var pts := PackedVector2Array()
+			for k in 9:
+				var t := k / 8.0
+				pts.append(Vector2(lerpf(x0, x1, t), w.y1 + 1 + sin(t * PI) * (5.0 if hp == 1 else 9.0)))
+			draw_polyline(pts, Color("2a1a0e", 0.85), 2.0)
+			draw_rect(Rect2(x0, y0, x1 - x0, w.y1 - y0), Color("ff7a3d", 0.18 if hp == 1 else 0.3))
+		if hp == 0:
+			var top := y0 - 70.0
+			draw_rect(Rect2(x0, top, x1 - x0, w.y1 - top), Color("ff4d3d", 0.16))
+			var y := top
+			while y < w.y1:
+				draw_line(Vector2(x0, y), Vector2(minf(x1, x0 + 30), y + 30), Color("ff4d3d", 0.3), 2.0)
+				y += 20
+			Art.text(self, "FALLS NEXT ROUND", Vector2((x0 + x1) / 2.0, top - 4), 8, Color("ff7a5a"), HORIZONTAL_ALIGNMENT_CENTER)
 
 func draw_crumble() -> void:
 	## R3: what has fallen away, and the strip that goes next round
