@@ -303,6 +303,7 @@ func enemy_phase() -> void:
 	bt.ui_dirty = true
 	bt.banner("ENEMY PHASE", Color("ff4d3d"))
 	await bt.wait(45)
+	await bt.drop_walks()  # K1
 	bt.vtech.relay_waves()
 	bt.camp_ops.hold_waves()
 	for m in bt.units.filter(func(e): return e.elite == "medic" and not e.dead and e.active):

@@ -13,6 +13,7 @@ OUT=${OUT:-/tmp/ia-smoke}
 SMOKE="runsave settings pause draft recruits identity ending wardeep company aliens3 bcalls xcalls tcalls camp hub doc story gear events10 hq gate tags drill vehicles reinforce field biomes2 stranded bp3 variety boarkits orders rares fork seeds biomebosses bossframe bosses2 bosses3 bosses4 bosses5 segments3 vpicks vpicks2 vpicks3 audit"
 SMOKE="$SMOKE tour guided keywords"  # guided: a bot that only clicks what boot camp highlights  # the UI tour: every screen and the game menu
 SMOKE="$SMOKE gearpick"  # mid-level gear panel, belt column, class auto-equip
+SMOKE="$SMOKE kpicks"  # thorough playtest picks K1-K8: boardwalks, bedrock floor, bosses, order bubbles, holds
 LONG="playtest campaignplay campsweep trailer campaign pinball survey bot bakefog"
 if [ "$1" = "--all" ]; then
   LIST=$(sed -n '/^\tmatch scenario:/,/^\t\t_:/p' tools/test_runner.gd | grep -oP '^\t\t"[a-z0-9_]+"' | tr -d '\t"')

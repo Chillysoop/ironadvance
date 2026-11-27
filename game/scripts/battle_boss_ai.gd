@@ -448,9 +448,13 @@ func brood_hatch(u: Unit, w: Dictionary) -> void:
 	Sfx.play("splash")
 	bt.bosses.slowmo(Vector2(u.x, u.y - 40), 26, 0.4)
 	var full: int = bt.units.filter(func(o): return o.type == "skitter" and not o.dead and not o.gone).size()
+	var born := 0
 	for p in live:
 		if full >= Data.BROOD_CAP:
 			break
+		if bt.bosses.phase(u) == 1 and born >= Data.BROOD_PHASE1:
+			break  # K4: one Skitter a hatch until she's enraged; the brood did more harm than she did
+		born += 1
 		for k in Data.BROOD_PER_SAC:
 			bt.vharr_ai.spawn_skitter(p.x + (k * 2 - 1) * 10, u.y)
 			full += 1

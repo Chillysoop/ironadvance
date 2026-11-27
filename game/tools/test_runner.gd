@@ -906,6 +906,8 @@ func run() -> void:
 			await playtest()
 		"bossbot":
 			await bossbot()
+		"kpicks":
+			await kpicks()
 		"campsweep":
 			await campsweep()
 		"bcalls":
@@ -5865,6 +5867,128 @@ func playtest() -> void:
 					if x.alive:
 						x.hp = Run.eff_max_hp(x)
 			bot_shop()
+
+func kpicks() -> void:
+	## K1-K4, K6-K8 from the thorough playtest page (2026-11-27).
+	Run.meta["draft"] = ["moss", "hex", "vee", "rook"]
+	Run.meta["tips_off"] = true
+	Run.leave_campaign()
+	Run.new_run()
+	Run.first_run = false
+	# ---- K1: a boardwalk cracks, sags, warns, and only then drops
+	var T := Terrain.new(null)
+	var W: Dictionary = {}
+	for sd in range(900, 940):
+		Run.seed_val = sd
+		var lvl := Run.make_level("delta", 1)
+		T = Terrain.new(null)
+		T.build(lvl)
+		var far: Array = T.walks.filter(func(w): return w.x0 > T.firm_x1 + 100)
+		if far.size():
+			W = far[0]
+			break
+	check(not W.is_empty(), "K1: a Delta level has boardwalks over its pits")
+	if not W.is_empty():
+		var mx: float = (W.x0 + W.x1) / 2.0
+		var py: float = W.y0 + 2
+		check(W.hp == Terrain.WALK_HP and T.solid(mx, py), "K1: a fresh boardwalk is whole")
+		T.carve(mx, py, 4, null)
+		check(W.hp == Terrain.WALK_HP and T.solid(mx, py), "K1: a bullet chip doesn't wear it")
+		T.carve(mx, py, 30, null)
+		check(W.hp == Terrain.WALK_HP - 1 and T.solid(mx, py), "K1: a blast cracks it, and the planks hold (%d)" % W.hp)
+		T.carve(mx - 10, py, 30, null)
+		T.carve(mx + 10, py, 30, null)
+		check(W.hp == 0 and T.solid(mx, py), "K1: three blasts and it's about to go, but still there (%d)" % W.hp)
+		T.drop_walk(W)
+		check(not T.solid(mx, py) and W.hp < 0, "K1: then it drops")
+	# in battle: the warning, then the drop when the enemy moves
+	Run.seed_val = 901
+	var lv := Run.make_level("delta", 1)
+	lv["event"] = ""; lv["encounter"] = ""
+	lv.erase("remix"); lv.erase("rare"); lv.erase("road")
+	Run.level = lv
+	var b: Battle = main.start_battle(1, lv)
+	await until(func(): return b.state == "player" and not b.busy)
+	var walks: Array = b.T.walks.filter(func(w): return w.x0 > 300)
+	if walks.size():
+		var w: Dictionary = walks[0]
+		var wx: float = (w.x0 + w.x1) / 2.0
+		cam_on(b, wx)
+		for k in Terrain.WALK_HP:
+			b.T.carve(wx + (k - 1) * 8, w.y0 + 2, 28, null)
+		await frames_wait(20)
+		await shot("kpicks_walk_warn")
+		check(int(w.hp) == 0 and b.T.solid(wx, w.y0 + 2), "K1: in battle it shows FALLS NEXT ROUND and holds through your turn")
+		await b.drop_walks()
+		check(not b.T.solid(wx, w.y0 + 2), "K1: it gives way at the start of the enemy phase")
+	main.clear()
+	# ---- K2: the volcano's bedrock floor
+	Run.seed_val = 905
+	var vl := Run.make_level("volcano", 2)
+	var VT := Terrain.new(null)
+	VT.build(vl)
+	check(VT.floor_row > 0, "K2: the volcano has a bedrock floor")
+	var fx := 0.0
+	for x in range(700, 3000, 40):
+		var pit := false
+		for p in VT.pits:
+			if x >= p[0] - 20 and x < p[1] + 20:
+				pit = true
+		if not pit and VT.solid(x, Data.WATER_Y - 10):
+			fx = x
+			break
+	check(fx > 0, "K2: found solid ground over the floor")
+	for k in 12:
+		VT.carve(fx, VT.ground_at(fx) + 4, 34, null)
+	check(VT.solid(fx, Data.WATER_Y - 10) and VT.solid(fx, VT.floor_row * Terrain.CELL + 2), "K2: a dozen blasts can't dig through it (ground now %d)" % int(VT.ground_at(fx)))
+	# ---- K3: campaign Act III on gets the floor; Act I and quick runs don't
+	var dl := Run.make_level("desert", 1)
+	var DT := Terrain.new(null)
+	DT.build(dl)
+	check(DT.floor_row == 0, "K3: a quick-run desert has no floor (Worms rules)")
+	dl["act"] = 1
+	DT = Terrain.new(null); DT.build(dl)
+	check(DT.floor_row == 0, "K3: nor does Act II")
+	dl["act"] = 2
+	DT = Terrain.new(null); DT.build(dl)
+	check(DT.floor_row > 0, "K3: Act III does")
+	# ---- K4: the bosses evened out
+	check(Data.RAIL_DMG == 18 and Data.BROOD_PHASE1 == 1, "K4: rail shot 18, one Skitter a hatch in phase 1")
+	check(absf(float(Data.ETYPES.stormcrow.hp_k) - 1.56) < 0.01 and absf(float(Data.ETYPES.serpent.hp_k) - 1.32) < 0.01, "K4: Stormcrow and the Serpent +20%% HP")
+	# ---- K7: run order cards explain their terms
+	var terms: Array = Data.run_terms_in(Run.run_order_text("ironwill")).map(func(k): return k.name)
+	check(terms.has("DOG TAG"), "K7: IRON WILL explains DOG TAG (%s)" % str(terms))
+	terms = Data.run_terms_in(Run.run_order_text("warchest")).map(func(k): return k.name)
+	check(terms.has("SCRIP"), "K7: WAR CHEST explains SCRIP (%s)" % str(terms))
+	Run.new_run()
+	Run.run_order_offer = ["warchest", "ironwill", "medics"]
+	main.show_orders()
+	await frames_wait(10)
+	var scr: Array = [main.screen] if main.screen != null and main.screen.get("mode") == "orders" else []
+	if scr.size():
+		var r: Rect2 = scr[0].order_card(1)
+		Input.warp_mouse((r.position + r.size / 2.0) * 1.5)
+		await frames_wait(12)
+		check(scr[0].order_tip != null, "K7: hovering an order card shows the bubbles")
+		await shot("kpicks_orders_tip")
+	else:
+		check(false, "K7: the orders screen opens")
+	main.clear()
+	# ---- K8: holds field a grenadier, not a mortar crew
+	var keep := {"salvage": Run.meta.get("salvage", 0), "hq": Run.meta.get("hq", {}).duplicate()}
+	Run.delete_campaign(2)
+	Run.new_campaign(2)
+	b = await op_battle("hold")
+	var mc := b.mk_enemy("mortarcrew", b.world_w * 0.6, b.T.ground_at(b.world_w * 0.6))
+	b.units.append(mc)
+	b.camp_ops.place_job()
+	check(not b.units.any(func(e): return e.type == "mortarcrew" and not e.dead), "K8: a hold op has no mortar crew")
+	check(b.units.any(func(e): return e.type == "nade" and absf(e.x - b.world_w * 0.6) < 2), "K8: a grenadier stands in its place")
+	main.clear()
+	Run.leave_campaign()
+	Run.delete_campaign(2)
+	Run.meta.salvage = keep.salvage
+	Run.meta.hq = keep.hq
 
 func bossbot() -> void:
 	## The autoplayer against each epic boss: a short level (start + the boss arena) in a biome
@@ -12605,7 +12729,7 @@ func bosses3_test() -> void:
 	var sk0: int = b.units.filter(func(o): return o.type == "skitter" and not o.dead and not o.gone).size()
 	await boss_turn(b, gm)
 	var sk1: int = b.units.filter(func(o): return o.type == "skitter" and not o.dead and not o.gone).size()
-	check(sk1 >= sk0 + 3, "turn 2: the brood hatches, a Skitter a sac (%d -> %d)" % [sk0, sk1])
+	check(sk1 == sk0 + Data.BROOD_PHASE1, "turn 2: the brood hatches, one Skitter before she's enraged (K4) (%d -> %d)" % [sk0, sk1])
 	await shot("b3_gravemother_hatched")
 	for o in b.units:
 		if o.type == "skitter":

@@ -820,9 +820,31 @@ class Screen extends Control:
 		if not held.has(n):
 			held[n] = load("res://assets/bg/%s.png" % n)
 		return held[n]
+	var order_tip = null  # K7: keyword bubbles beside the hovered ORDERS FROM HQ card
+	var order_tip_i := -1
 	func _process(_d: float) -> void:
 		t += 1
 		queue_redraw()
+		var hi := -1
+		if mode == "orders" and Run.meta.get("settings", {}).get("keywords", true):
+			var mp := get_local_mouse_position()
+			for i in Run.run_order_offer.size():
+				if order_card(i).has_point(mp):
+					hi = i
+		if hi != order_tip_i:
+			if order_tip != null:
+				order_tip.queue_free()
+				order_tip = null
+			order_tip_i = hi
+			if hi >= 0:
+				var keys: Array = Data.run_terms_in(Run.run_order_text(Run.run_order_offer[hi]))
+				if keys.size():
+					order_tip = CardView.CardTip.new()
+					order_tip.keys = keys.slice(0, 6)
+					add_child(order_tip)
+					# in the card's empty lower half, so it covers neither neighbour
+					var cr := order_card(hi)
+					order_tip.position = Vector2(cr.position.x + (cr.size.x - order_tip.size.x) / 2.0, cr.end.y - order_tip.size.y - 10)
 	func _draw() -> void:
 		var theme := "dusk"
 		if mode == "brief":

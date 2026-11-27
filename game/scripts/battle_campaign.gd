@@ -775,6 +775,13 @@ func place_job() -> void:
 			q.fl["quarry"] = (names if names.size() else Data.QUARRY_NAMES)[randi() % (names.size() if names.size() else Data.QUARRY_NAMES.size())]
 		"hold":
 			bt.job_st = {"on": false, "left": Data.HOLD_PHASES}
+			# K8: a hold asks the squad to stand still, and a mortar crew shells whoever stands still
+			# from 800 px out: holds field a grenadier in its place
+			for e in bt.units.filter(func(o): return o.team == "enemy" and o.type == "mortarcrew" and not o.dead):
+				var g: Unit = bt.mk_enemy("nade", e.x, e.y)
+				g.active = e.active
+				bt.units.erase(e)
+				bt.units.append(g)
 
 func place_nemesis() -> void:
 	## W3: an officer who got away on an earlier op is back: the farthest foe, with a new elite trick
