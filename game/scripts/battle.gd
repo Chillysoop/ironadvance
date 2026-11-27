@@ -2268,7 +2268,8 @@ func kill(tg: Unit, src) -> void:
 		stats.kia += 1
 		stats.downs += 1
 		var cause := who_did(tg, src)
-		stats["last_down"] = "%s, BY %s" % [tg.def.name.to_upper(), cause]
+		# "ROOK, DROWNED" / "ROOK, BY A JACKAL GRUNT": drowning and the wheels read as what happened, not who
+		stats["last_down"] = ("%s, %s" if cause in ["DROWNED", "UNDER THE WHEELS"] else "%s, BY %s") % [tg.def.name.to_upper(), cause]
 		stats["down_log"] = stats.get("down_log", []) + ["%s: %s, round %d" % [tg.def.name.to_upper(), cause, round_n]]  # H3: the playtest diary
 		banner("%s DOWN" % tg.def.name.to_upper(), Color("ffb23e"), cause)  # X2: say what did it
 		if state == "player" or state == "enemy":

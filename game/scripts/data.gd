@@ -2739,7 +2739,7 @@ const KEYWORDS := [
 	{"k": "overwatch", "name": "OVERWATCH", "re": "overwatch", "text": "Holds fire through the Jackals' turn and shoots the first enemies that move into view."},
 	{"k": "armor", "name": "ARMOR", "re": "armou?r", "text": "Soaks damage before HP does. Resets at the start of each of your turns."},
 	{"k": "blast", "name": "BLAST", "re": "blasts?|explodes?|explosive|radius", "text": "Hurts everything in the circle, knocks it away and blows a hole in the terrain."},
-	{"k": "bounce", "name": "RICOCHET", "re": "ricochets?|bounces?|bounce \\d+", "text": "Bullets bounce off stone, concrete and steel. The aim laser shows each bounce; wood and dirt soak the bullet."},
+	{"k": "bounce", "name": "BOUNCE / RICOCHET", "re": "ricochets?|bounces?|bounce \\d+", "text": "Bullets ricochet off stone, concrete and steel (the aim laser shows each bounce; wood and dirt soak them). Grenades and bombs bounce off any ground until the fuse runs out."},
 	{"k": "pierce", "name": "PIERCE", "re": "pierces?|piercing", "text": "The round goes through bodies and hits everyone on its line."},
 	{"k": "knock", "name": "KNOCKBACK", "re": "knocks? (them |him |it )?back|knocked back|flying|knockback", "text": "Hits shove bodies. Slamming into a wall or falling far hurts, and a ledge is a long way down."},
 	{"k": "slam", "name": "SLAM / FALL", "re": "slams?|fall damage|takes the fall", "text": "Damage a body takes when it is thrown into terrain or drops a long way."},

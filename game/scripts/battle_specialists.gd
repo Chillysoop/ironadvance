@@ -153,7 +153,10 @@ func sentry_fire(st: Unit) -> void:
 		for sg in tr.segs:
 			bt.tracers.append({"x1": sg[0], "y1": sg[1] - 1, "x2": sg[2], "y2": sg[3] - 1, "c": Color("ff9a3d"), "t": 22})
 			bt.tracers.append({"x1": sg[0], "y1": sg[1] + 1, "x2": sg[2], "y2": sg[3] + 1, "c": Color("ff9a3d"), "t": 22})
+		var was_how: String = bt.kill_how
+		bt.kill_how = "SENTRY"  # the kill feed names the turret, not BLAST
 		bt.fire_bullet(by if by is Unit else st, mx, my, ang, {"dmg": dmg, "range": 560, "bounce": 0, "pierce": ksc}, false)
+		bt.kill_how = was_how
 		bt.sparks(mx + st.face * 20, my - 1, 5)
 		if not tg.dead and tg.hp >= hp0:
 			bt.float_text(tg, "SENTRY MISSED", Color("c9d1da"))

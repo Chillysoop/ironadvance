@@ -1302,7 +1302,7 @@ class Screen extends Control:
 		var hurt := int(stats.get("hurt_enemy", 0)) + int(stats.get("hurt_own", 0)) + int(stats.get("hurt_terrain", 0))
 		if hurt > 0:
 			# X2: where the squad's wounds came from
-			rows.append(["DAMAGE TAKEN", "ENEMIES %d  OWN FIRE %d  TERRAIN %d" % [int(stats.get("hurt_enemy", 0)), int(stats.get("hurt_own", 0)), int(stats.get("hurt_terrain", 0))]])
+			rows.append(["DAMAGE TAKEN", "FOES %d  OWN FIRE %d  TERRAIN %d" % [int(stats.get("hurt_enemy", 0)), int(stats.get("hurt_own", 0)), int(stats.get("hurt_terrain", 0))]])
 		for bt in stats.get("bounties", []):
 			rows.append(["BOUNTY " + bt[0], ("+%d$" % bt[1]) if bt[2] else "MISSED"])
 		if mode == "final" or mode == "lost":
