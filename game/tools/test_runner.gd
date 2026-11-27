@@ -7189,6 +7189,15 @@ func ops() -> void:
 	check(tr != null and tr.hp == Data.TRUCK_HP, "an escort op has the truck")
 	var s1: Unit = b.squad_alive()[0]
 	check(b.unit_at_point(tr.x, tr.y - 10, s1, 200, {}) != tr, "the squad's rounds pass the truck")
+	# playtest 2026-11-27: the squad's SV-001 Slug charged into the truck every turn and lost the op
+	var sl := b.mk_unit()
+	sl.team = "ally"; sl.kind = "slug"; sl.heavy = true; sl.w = 64; sl.h = 40; sl.hp = 99; sl.max_hp = 99
+	sl.x = tr.x - 70; sl.y = tr.y; sl.rushing = true; sl.vx = 6.5; sl.bumped = {}; sl.last_hit_by = s1
+	b.units.append(sl)
+	await frames_wait(40)
+	b.damage(tr, 14, sl)
+	check(tr.hp == Data.TRUCK_HP, "the squad's own Slug can't ram the truck to death (%d/%d)" % [tr.hp, Data.TRUCK_HP])
+	sl.gone = true; sl.rushing = false
 	for e in b.units:
 		if e.team == "enemy":
 			e.dead = true; e.gone = true
@@ -12731,7 +12740,9 @@ func bosses4_test() -> void:
 		if s2 != vic:
 			ground_unit(b, s2, dx + (160 if dx < (ar[0] + ar[1]) / 2.0 else -160) + b.squad_alive().find(s2) * 24, 0)
 	var vh: int = vic.hp
-	var gy0: float = b.T.ground_at(dx)
+	# where the dive lands, the way serpent_dive works it out (a tower top or sandbag can be above the ground)
+	var gy_hit = b.T.stand_y(dx, sp.y)
+	var gy0: float = gy_hit if gy_hit != null else b.T.ground_at(dx)
 	await boss_turn(b, sp)
 	check(vic.hp <= vh - 12 or vic.dead, "turn 2: it dives on the soldier under it (%d -> %d)" % [vh, vic.hp])
 	check(not b.T.solid(dx, gy0 + 10), "and leaves a crater")

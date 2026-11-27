@@ -1805,8 +1805,9 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 				give_xp(own, 6)
 		return
 	if tg.kind == "truck":
-		# O5: the squad's fire never touches the truck; Jackal fire does
-		if own != null:
+		# O5: the squad's fire never touches the truck; Jackal fire does. Nor do allies: the SV-001
+		# Slug's charge used to ram the escort truck (14 a turn) and lose the op by itself.
+		if own != null or (src is Unit and src.team == "ally"):
 			return
 		tg.hp -= amt
 		tg.flash = 8
