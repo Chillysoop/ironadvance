@@ -34,6 +34,7 @@ var playtest_debug := false
 var start_arg := 0
 var clip_arg := ""
 var biome_arg := ""   # --biome=X: playtest plays only level --start in biome X
+var boss_arg := ""    # --boss=a,b: bossbot fights these bosses (default: every epic boss)
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -53,6 +54,8 @@ func _ready() -> void:
 			start_arg = int(a.substr(8))
 		elif a.begins_with("--biome="):
 			biome_arg = a.substr(8)
+		elif a.begins_with("--boss="):
+			boss_arg = a.substr(7)
 		elif a.begins_with("--clip="):
 			clip_arg = a.substr(7)
 		elif a.begins_with("--runs="):
@@ -901,6 +904,8 @@ func run() -> void:
 			await aliens8()
 		"playtest":
 			await playtest()
+		"bossbot":
+			await bossbot()
 		"campsweep":
 			await campsweep()
 		"bcalls":
@@ -3918,6 +3923,8 @@ func owcine() -> void:
 	await until(func(): return b.owcam.amt == 0.0 and b.owcam.slow == 1.0 and b.owcam.zoom == 1.0, 400)
 	check(b.owcam.amt == 0.0 and b.owcam.slow == 1.0 and b.owcam.zoom == 1.0 and Sfx.pitch_mul == 1.0, "and it eases all the way back (amt %.3f slow %.3f zoom %.3f)" % [b.owcam.amt, b.owcam.slow, b.owcam.zoom])
 	check(s.overwatch < 2, "the soldier spent overwatch shots (%d left)" % s.overwatch)
+	var ow_feed: Array = b.feed.filter(func(f): return f.killer == s.def.name.to_upper())
+	check(ow_feed.is_empty() or ow_feed.all(func(f): return f.how == "OVERWATCH"), "the kill feed names the shot OVERWATCH, not BLAST (%s)" % str(ow_feed.map(func(f): return f.how)))
 	await shot("owcine_4_after")
 	# with the setting off it is the old quick beat
 	SettingsScript.set_value("slowmo", false)
@@ -5859,6 +5866,44 @@ func playtest() -> void:
 						x.hp = Run.eff_max_hp(x)
 			bot_shop()
 
+func bossbot() -> void:
+	## The autoplayer against each epic boss: a short level (start + the boss arena) in a biome
+	## whose pool has that boss, the squad levelled as if it cleared the levels before (--start=N,
+	## default 1 = level 2). One [bb] JSON line per fight. --boss=a,b --seed=N --runs=K
+	playtest_debug = true
+	var pool := {}
+	for bio in Data.BOSS_POOLS:
+		for bs in Data.BOSS_POOLS[bio]:
+			if not pool.has(bs):
+				pool[bs] = bio
+	var list: Array = Array(boss_arg.split(",")) if boss_arg != "" else pool.keys()
+	var tier := maxi(1, start_arg)
+	for bs in list:
+		for r in runs_arg:
+			seed(seed_arg * 1000 + r)
+			Run.new_run()
+			Run.first_run = false
+			for x in Run.soldiers:
+				for k in 4 * tier:
+					x.lvl += 1
+					x.xp = Run.xp_floor(x)
+					var opts := Run.level_options(x)
+					Run.apply_option(x, opts[randi() % opts.size()])
+				x.hp = Run.eff_max_hp(x)
+			Run.mission = tier
+			var lv := Run.make_level(biome_arg if biome_arg != "" else pool.get(bs, "desert"), tier)
+			lv.boss = bs
+			lv.segments = [lv.segments[0], lv.segments.back()]
+			lv.detours = []
+			Run.level = lv
+			var ms0 := Time.get_ticks_msec()
+			var ok := await bot(tier, 40, false, lv)
+			var row := bot_stats.duplicate()
+			row.erase("round_hp")
+			row.merge({"boss": bs, "biome": lv.biome, "seed": seed_arg, "run": r, "won": ok, "secs": (Time.get_ticks_msec() - ms0) / 1000.0})
+			print("[bb] ", JSON.stringify(row))
+			await shot("bb_%s_s%d_r%d" % [bs, seed_arg, r])
+
 func bot_shop() -> Dictionary:
 	## B6: spend scrip at HQ like a sensible player. Dog tags first, then Drill Sergeant levels for
 	## whoever is behind, then one card each for the lowest-level soldiers. Prints one [shop] line.
@@ -7144,6 +7189,15 @@ func ops() -> void:
 	check(tr != null and tr.hp == Data.TRUCK_HP, "an escort op has the truck")
 	var s1: Unit = b.squad_alive()[0]
 	check(b.unit_at_point(tr.x, tr.y - 10, s1, 200, {}) != tr, "the squad's rounds pass the truck")
+	# playtest 2026-11-27: the squad's SV-001 Slug charged into the truck every turn and lost the op
+	var sl := b.mk_unit()
+	sl.team = "ally"; sl.kind = "slug"; sl.heavy = true; sl.w = 64; sl.h = 40; sl.hp = 99; sl.max_hp = 99
+	sl.x = tr.x - 70; sl.y = tr.y; sl.rushing = true; sl.vx = 6.5; sl.bumped = {}; sl.last_hit_by = s1
+	b.units.append(sl)
+	await frames_wait(40)
+	b.damage(tr, 14, sl)
+	check(tr.hp == Data.TRUCK_HP, "the squad's own Slug can't ram the truck to death (%d/%d)" % [tr.hp, Data.TRUCK_HP])
+	sl.gone = true; sl.rushing = false
 	for e in b.units:
 		if e.team == "enemy":
 			e.dead = true; e.gone = true
@@ -12248,6 +12302,8 @@ func keywords_test() -> void:
 	## text shows all of it, and the belt and stash explain themselves on hover.
 	check("stun" in Data.keywords_in("Stuns the target and heals you.").map(func(k): return k.k), "Stuns finds STUNNED")
 	check(Data.keywords_in("Ricochets once.").map(func(k): return k.k) == ["bounce"], "Ricochets finds only RICOCHET")
+	var fb: Array = Data.keywords_in(Data.card("frag").text).filter(func(k): return k.k == "bounce")
+	check(fb.size() == 1 and fb[0].text.contains("Grenades"), "a grenade's Bounces explains grenade bounces, not only bullets")
 	check(not ("mark" in Data.keywords_in("Moss throws a marker.").map(func(k): return k.k)), "marker is not MARKED")
 	var sp: Array = Data.keyword_spans("Lights up every Jackal: FLARED, they burn")
 	check(sp.size() == 2 and sp[0][0] == 24 and sp[0][1] == 6, "spans mark FLARED and burn (%s)" % [sp])
@@ -12684,7 +12740,9 @@ func bosses4_test() -> void:
 		if s2 != vic:
 			ground_unit(b, s2, dx + (160 if dx < (ar[0] + ar[1]) / 2.0 else -160) + b.squad_alive().find(s2) * 24, 0)
 	var vh: int = vic.hp
-	var gy0: float = b.T.ground_at(dx)
+	# where the dive lands, the way serpent_dive works it out (a tower top or sandbag can be above the ground)
+	var gy_hit = b.T.stand_y(dx, sp.y)
+	var gy0: float = gy_hit if gy_hit != null else b.T.ground_at(dx)
 	await boss_turn(b, sp)
 	check(vic.hp <= vh - 12 or vic.dead, "turn 2: it dives on the soldier under it (%d -> %d)" % [vh, vic.hp])
 	check(not b.T.solid(dx, gy0 + 10), "and leaves a crater")

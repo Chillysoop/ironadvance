@@ -1805,8 +1805,9 @@ func damage(tg: Unit, amt: int, src, o := {}) -> void:
 				give_xp(own, 6)
 		return
 	if tg.kind == "truck":
-		# O5: the squad's fire never touches the truck; Jackal fire does
-		if own != null:
+		# O5: the squad's fire never touches the truck; Jackal fire does. Nor do allies: the SV-001
+		# Slug's charge used to ram the escort truck (14 a turn) and lose the op by itself.
+		if own != null or (src is Unit and src.team == "ally"):
 			return
 		tg.hp -= amt
 		tg.flash = 8
@@ -2268,7 +2269,8 @@ func kill(tg: Unit, src) -> void:
 		stats.kia += 1
 		stats.downs += 1
 		var cause := who_did(tg, src)
-		stats["last_down"] = "%s, BY %s" % [tg.def.name.to_upper(), cause]
+		# "ROOK, DROWNED" / "ROOK, BY A JACKAL GRUNT": drowning and the wheels read as what happened, not who
+		stats["last_down"] = ("%s, %s" if cause in ["DROWNED", "UNDER THE WHEELS"] else "%s, BY %s") % [tg.def.name.to_upper(), cause]
 		stats["down_log"] = stats.get("down_log", []) + ["%s: %s, round %d" % [tg.def.name.to_upper(), cause, round_n]]  # H3: the playtest diary
 		banner("%s DOWN" % tg.def.name.to_upper(), Color("ffb23e"), cause)  # X2: say what did it
 		if state == "player" or state == "enemy":

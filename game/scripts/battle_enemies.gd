@@ -608,7 +608,10 @@ func overwatch_check(e: Unit) -> void:
 			oc["forcehead"] = s.fl.get("ow_crit", false)
 			oc["boomhit"] = bt.ks(s, "claymore")
 			var hp0 := e.hp
+			var was_how: String = bt.kill_how
+			bt.kill_how = "OVERWATCH"  # the kill feed names the reaction shot, not BLAST
 			bt.fire_bullet(s, m.x, m.y, ang, oc, s.adr >= 50)
+			bt.kill_how = was_how
 			bt.owcam.shot(hp0)
 			await bt.wait(16)
 	if fired:
